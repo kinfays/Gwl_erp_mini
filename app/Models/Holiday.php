@@ -19,4 +19,9 @@ class Holiday extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function scopeUpcoming($query)
+    {
+        return $query->whereDate('holiday_date', '>=', now()->toDateString())->orderBy('holiday_date');
+    }
 }

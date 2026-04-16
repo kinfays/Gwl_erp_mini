@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class District extends Model
 {
@@ -24,5 +25,15 @@ class District extends Model
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
+    }
+
+    public function employees(): HasMany
+    {
+        return $this->hasMany(Employee::class);
+    }
+
+    public function scopeSearch($query, ?string $term)
+    {
+        return $query->when($term, fn ($q) => $q->where('district_name', 'like', '%' . $term . '%'));
     }
 }

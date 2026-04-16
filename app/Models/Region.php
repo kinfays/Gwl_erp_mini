@@ -24,4 +24,14 @@ class Region extends Model
     {
         return $this->hasMany(District::class);
     }
+
+    public function employees(): HasMany
+    {
+        return $this->hasMany(Employee::class);
+    }
+
+    public function scopeActiveHierarchy($query)
+    {
+        return $query->with(['districts', 'employees']);
+    }
 }
