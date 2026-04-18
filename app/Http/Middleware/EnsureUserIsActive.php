@@ -21,7 +21,7 @@ class EnsureUserIsActive
             $request->session()->regenerateToken();
 
             return redirect()->route('login')->withErrors([
-                'email' => 'Your account is deactivated. Please contact your administrator.',
+                'staff_id' => 'Your account is deactivated. Please contact your administrator.',
             ]);
         }
 

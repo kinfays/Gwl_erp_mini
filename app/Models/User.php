@@ -99,24 +99,22 @@ class User extends Authenticatable
             ->exists();
     }
 
-    public function getAccessibleModules(): array
-    {
-        $roles = $this->relationLoaded('roles') ? $this->roles : $this->roles()->with('moduleAccesses')->get();
+    
+public function getAccessibleModules(): array
 
-        if ($roles->isEmpty()) {
-            return [];
-        }
+{
+    return $this->roles()
+        ->with('moduleAccess')
+        ->get()
+        ->pluck('moduleAccess')
+        ->flatten()
+        ->where('can_access', true)
+        ->pluck('module')
+        ->unique()
+        ->values()
+        ->toArray();
+}
 
-        $roles->loadMissing('moduleAccesses');
-
-        return $roles
-            ->flatMap(fn ($role) => $role->moduleAccesses)
-            ->where('can_access', true)
-            ->pluck('module')
-            ->unique()
-            ->values()
-            ->all();
-    }
 
     public function scopeActive($query)
     {

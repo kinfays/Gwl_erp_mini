@@ -15,9 +15,9 @@ class SuperAdminSeeder extends Seeder
         
 
         $user = User::query()->updateOrCreate(
-            ['email' => 'fewuntomah@gwcl.com.gh'],
+            
             [
-                'full_name' => 'Faisal Ewuntomah',
+                
                 'staff_id' => '21475',
                 'password' => Hash::make('Admin@12'),
                 'is_active' => true,
