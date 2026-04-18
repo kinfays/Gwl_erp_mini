@@ -13,7 +13,7 @@ class CheckRole
      */
     public function handle(Request $request, Closure $next, string $role): Response
     {
-        if (!$request->user() || $request->user()->role !== $role) {
+        if (!$request->user() || !$request->user()->hasRoles($role)) {
             return redirect('/dashboard')->with('error', 'You do not have the required permissions to access this area.');
         }
 

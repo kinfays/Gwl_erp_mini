@@ -1,24 +1,42 @@
 @extends('layouts.uac')
 
 @section('content')
-<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <form method="GET" class="flex-1 max-w-xl">
-            <label class="block text-sm font-medium text-slate-700 mb-1.5">Search users</label>
-            <div class="flex gap-3">
-                <input type="text" name="search" value="{{ $search }}" placeholder="Search by name, email, or staff ID" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#185FA5]/20 focus:border-[#185FA5] transition-all duration-150">
-                <button type="submit" class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition-all duration-150">Search</button>
-            </div>
+<div class="bg-white rounded-lg shadow">
+    <div class="p-6 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
+        <form action="{{ route('uac.users') }}" method="GET" class="flex flex-wrap items-center gap-3">
+            <input type="text" name="search" value="{{ $search }}" placeholder="Search name, email, or staff ID..." 
+                   class="border rounded px-3 py-2 text-sm w-64">
+
+            <select name="role_id" class="border rounded px-3 py-2 text-sm">
+                <option value="">All Roles</option>
+                @foreach($roles as $role)
+                    <option value="{{ $role->id }}" {{ $roleId == $role->id ? 'selected' : '' }}>
+                        {{ $role->display_name }}
+                    </option>
+                @endforeach
+            </select>
+
+            <select name="status" class="border rounded px-3 py-2 text-sm">
+                <option value="">All Status</option>
+                <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
+                <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
+            </select>
+
+            <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700">
+                Filter
+            </button>
         </form>
-        <button class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition-all duration-150">Add New</button>
+
+        <button onclick="toggleModal('add-user-modal')" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-500">
+            + Add User
+        </button>
     </div>
-</div>
 
 <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
     <table class="min-w-full">
         <thead class="bg-slate-50 border-b border-slate-200">
             <tr>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Full Name</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Staff ID</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Roles</th>

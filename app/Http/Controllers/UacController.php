@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -29,6 +30,49 @@ class UacController extends Controller
             'recentUsers' => $recentUsers,
             'recentLogs' => $recentLogs,
         ]);
+    }
+
+    // Shared data for ERP Sidebar/Header
+    protected function sharedLayoutData(Request $request, string $pageTitle): array
+    {
+        $user = $request->user()->loadMissing('roles');
+        return [
+            'pageTitle' => $pageTitle,
+            'currentUser' => $user,
+            'currentRoleName' => $user->roles->first()?->display_name ?? 'Staff', [cite: 21]
+        ];
+    }
+
+    public function users(Request $request): View
+    {
+        $search = $request->string('search')->toString();
+        $roleId = $request->integer('role_id');
+        $status = $request->string('status')->toString();
+
+        $users = User::query()
+            ->with(['roles', 'employee']) // Linked to employee for Leave/ERP context
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('full_name', 'like', '%' . $search . '%') [cite: 8]
+                             ->orWhere('email', 'like', '%' . $search . '%')
+                             ->orWhere('staff_id', 'like', '%' . $search . '%');
+                });
+            })
+            ->when($roleId, fn ($query) => $query->whereHas('roles', fn ($q) => $q->where('id', $roleId)))
+            [cite_start]->when($status === 'active', fn ($query) => $query->where('is_active', true)) [cite: 9]
+            ->when($status === 'inactive', fn ($query) => $query->where('is_active', false))
+            ->latest()
+            [cite_start]->paginate(15) 
+            ->withQueryString();
+
+        return view('uac.users', array_merge($this->sharedLayoutData($request, 'User Management'), [
+            'users' => $users,
+            'search' => $search,
+            'roleId' => $roleId,
+            'status' => $status,
+            'roles' => Role::query()->orderBy('display_name')->get(),
+            'employees' => Employee::orderBy('full_name')->get(), [cite: 10]
+        ]));
     }
 
     public function users(Request $request): View

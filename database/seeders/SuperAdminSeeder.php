@@ -7,17 +7,19 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
+
 class SuperAdminSeeder extends Seeder
 {
     public function run(): void
     {
+        
+
         $user = User::query()->updateOrCreate(
-            ['email' => 'superadmin@ml.local'],
+            ['email' => 'fewuntomah@gwcl.com.gh'],
             [
-                'full_name' => 'Super Admin',
+                'full_name' => 'Faisal Ewuntomah',
                 'staff_id' => '21475',
                 'password' => Hash::make('Admin@12'),
-                'employee_id' => null,
                 'is_active' => true,
             ]
         );
@@ -27,5 +29,6 @@ class SuperAdminSeeder extends Seeder
         if ($role && ! $user->roles()->where('roles.id', $role->id)->exists()) {
             $user->roles()->attach($role->id);
         }
+    
     }
 }
