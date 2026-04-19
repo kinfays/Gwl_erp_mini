@@ -24,6 +24,11 @@ class Role extends Model
         'updated_at' => 'datetime',
     ];
 
+    public function moduleAccess()
+{
+    return $this->hasMany(\App\Models\ModuleAccess::class);
+}
+
     public function permissions(): BelongsToMany
     {
         return $this->belongsToMany(Permission::class, 'role_permissions')->using(RolePermission::class);
