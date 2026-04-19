@@ -21,10 +21,10 @@ return new class extends Migration {
             ]);
             $table->string('email')->unique();
 
-            $table->foreignId('job_title_id')->constrained();
-            $table->foreignId('department_id')->constrained();
-            $table->foreignId('region_id')->constrained();
-            $table->foreignId('district_id')->constrained();
+         //   $table->foreignId('job_title_id')->constrained();
+         //   $table->foreignId('department_id')->constrained();
+         //   $table->foreignId('region_id')->constrained();
+         //   $table->foreignId('district_id')->constrained();
 
             $table->enum('location_type', ['HeadOffice', 'Region', 'District']);
             $table->date('date_of_birth')->nullable();
