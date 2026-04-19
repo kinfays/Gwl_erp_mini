@@ -6,9 +6,16 @@ use App\Http\Controllers\UacController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
+// Public Routes
 Route::get('/', function () {
-    return view('welcome'); // Or redirect('/login') depending on your preference
+    return view('auth.login'); // Or redirect('/login') depending on your preference
 });
+
+/* 
+Route::get('/', function () {
+    return redirect()->route('dashboard');
+}); */
+
 
 // Post-Login Welcome Screen
 Route::get('/dashboard', [DashboardController::class, 'index'])
