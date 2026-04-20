@@ -1,0 +1,64 @@
+<x-app-layout>
+    <div class="min-h-screen flex bg-gray-100">
+
+        {{-- Sidebar --}}
+        <aside class="w-64 bg-white border-r">
+            <div class="px-6 py-4 border-b font-semibold text-slate-800">
+                User Access Control
+            </div>
+
+            <nav class="mt-4 space-y-1">
+                <a href="{{ route('uac.users') }}"
+                   class="block px-6 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('uac.users') ? 'bg-gray-200 font-medium' : '' }}">
+                    Users
+                </a>
+
+                <a href="{{ route('uac.roles') }}"
+                   class="block px-6 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('uac.roles') ? 'bg-gray-200 font-medium' : '' }}">
+                    Roles & Permissions
+                </a>
+
+                <a href="{{ route('uac.import') }}"
+                   class="block px-6 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('uac.import') ? 'bg-gray-200 font-medium' : '' }}">
+                    Bulk Import
+                </a>
+
+                <a href="{{ route('uac.audit-log') }}"
+                   class="block px-6 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('uac.audit-log') ? 'bg-gray-200 font-medium' : '' }}">
+                    Audit Log
+                </a>
+            </nav>
+        </aside>
+
+        {{-- Main --}}
+        <main class="flex-1 p-8">
+
+            {{-- Flash messages --}}
+            @if (session('success'))
+                <div x-data="{ show: true }"
+                     x-init="setTimeout(() => show = false, 4000)"
+                     x-show="show"
+                     x-transition
+                     class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 relative">
+                    <p class="text-sm font-medium">{{ session('success') }}</p>
+                    <button type="button"
+                            x-on:click="show = false"
+                            class="absolute top-2 right-2 text-emerald-600 hover:text-emerald-800">
+                        &times;
+                    </button>
+                </div>
+            @endif
+
+            @if (session('error'))
+                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800">
+                    <p class="text-sm font-medium">{{ session('error') }}</p>
+                </div>
+            @endif
+
+            {{-- Slot content --}}
+            {{ $slot }}
+        </main>
+
+    </div>
+</x-app-layout>
+``

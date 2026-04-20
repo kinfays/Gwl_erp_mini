@@ -1,6 +1,11 @@
-@extends('layouts.uac')
 
-@section('content')
+<x-uac-layout>
+    <livewire:uac.role-access-manager />
+</x-uac-layout>
+
+
+{{--<x-uac-layout>
+
 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -61,4 +66,5 @@
         @endforeach
     </div>
 </div>
-@endsection
+
+</x-uac-layout> --}}

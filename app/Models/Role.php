@@ -24,6 +24,11 @@ class Role extends Model
         'updated_at' => 'datetime',
     ];
 
+    
+/**
+ * Backward-compatible alias (in case some code calls moduleAccess())
+ */
+
     public function moduleAccess()
 {
     return $this->hasMany(\App\Models\ModuleAccess::class);

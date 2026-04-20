@@ -35,9 +35,11 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
 
     // User Management
     Route::get('/users', [UacController::class, 'users'])->name('users');
-    Route::post('/users', [UacController::class, 'storeUser'])->name('users.store');
+    Route::post('/users', [UacController::class, 'store'])->name('users.store');
     Route::put('/users/{user}', [UacController::class, 'updateUser'])->name('users.update');
-    Route::patch('/users/{user}/status', [UacController::class, 'toggleUserStatus'])->name('users.status');
+    Route::get('/users/{user}', [UacController::class, 'show'])->name('users.show');
+    Route::patch('/users/{user}/status', [UacController::class, 'toggleStatus'])->name('users.toggle-status');
+    Route::post('/users/{user}/invite', [UacController::class, 'resendInvite'])->name('users.invite');
 
     // Roles & Permissions
     Route::get('/roles', [UacController::class, 'rolesPermissions'])->name('roles');

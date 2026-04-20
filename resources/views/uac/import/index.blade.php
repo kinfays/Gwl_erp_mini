@@ -1,6 +1,4 @@
-@extends('layouts.uac')
-
-@section('content')
+<x-uac-layout>
 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 max-w-3xl">
     <div class="mb-6">
         <h2 class="text-lg font-semibold text-slate-700">Bulk Import Workspace</h2>
@@ -37,4 +35,4 @@
         </div>
     </div>
 </div>
-@endsection
+</x-uac-layout>

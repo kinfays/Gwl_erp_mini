@@ -21,6 +21,7 @@ class AuditLog extends Model
         'old_values',
         'new_values',
         'ip_address',
+        'metadata', // For any additional contextual info
     ];
 
     protected $casts = [

@@ -1,6 +1,5 @@
-@extends('layouts.uac')
+<x-uac-layout>
 
-@section('content')
 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <form method="GET" class="flex-1 max-w-xl">
@@ -58,4 +57,4 @@
 <div class="mt-6">
     {{ $logs->links() }}
 </div>
-@endsection
+</x-uac-layout>

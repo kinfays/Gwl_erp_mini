@@ -1,6 +1,4 @@
-@extends('layouts.uac')
-
-@section('content')
+<x-uac-layout>
 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
     <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
         <div class="w-10 h-10 rounded-xl bg-[#185FA5]/10 flex items-center justify-center mb-4">
@@ -85,4 +83,4 @@
         </div>
     </div>
 </div>
-@endsection
+</x-uac-layout>
