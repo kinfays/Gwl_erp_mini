@@ -12,25 +12,21 @@ use Illuminate\View\View;
 
 class UacController extends Controller
 {
-    public function index(Request $request): View
+    
+ public function index(Request $request)
     {
-        $stats = [
-            'users' => User::query()->count(),
-            'roles' => Role::query()->count(),
-            'permissions' => Permission::query()->count(),
-            'audit_logs' => AuditLog::query()->count(),
-        ];
-
-        $recentUsers = User::query()->with('roles')->latest()->take(5)->get();
-        $recentLogs = AuditLog::query()->with('user')->latest()->take(6)->get();
-
         return view('uac.index', [
-            'pageTitle' => 'UAC Dashboard',
-            'stats' => $stats,
-            'recentUsers' => $recentUsers,
-            'recentLogs' => $recentLogs,
+            'stats' => [
+                'users' => User::count(),
+                'roles' => Role::count(),
+                'permissions' => Permission::count(),
+                'audit_logs' => AuditLog::count(),
+            ],
+            'recentUsers' => User::with('roles')->latest()->take(5)->get(),
+            'recentLogs'  => AuditLog::with('user')->latest()->take(6)->get(),
         ]);
     }
+
 
     // Shared data for ERP Sidebar/Header
     protected function sharedLayoutData(Request $request, string $pageTitle): array
@@ -43,105 +39,72 @@ class UacController extends Controller
         ];
     }
 
-    public function users(Request $request): View
-    {
+    public function users(Request $request)
+    
+{
         $search = $request->string('search')->toString();
-        $roleId = $request->integer('role_id');
-        $status = $request->string('status')->toString();
 
-        $users = User::query()
-            ->with(['roles', 'employee']) // Linked to employee for Leave/ERP context
-            ->when($search, function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('full_name', 'like', '%' . $search . '%') [cite: 8]
-                             ->orWhere('email', 'like', '%' . $search . '%')
-                             ->orWhere('staff_id', 'like', '%' . $search . '%');
-                });
-            })
-            ->when($roleId, fn ($query) => $query->whereHas('roles', fn ($q) => $q->where('id', $roleId)))
-            [cite_start]->when($status === 'active', fn ($query) => $query->where('is_active', true)) [cite: 9]
-            ->when($status === 'inactive', fn ($query) => $query->where('is_active', false))
+        $users = User::with([
+                'roles',
+                'employee.region',
+                'employee.district',
+                'employeeByStaffId.region',
+                'employeeByStaffId.district',
+            ])
+            ->when($search, fn ($q) =>
+                $q->where(fn ($sq) =>
+                    $sq->where('full_name', 'like', "%{$search}%")
+                       ->orWhere('email', 'like', "%{$search}%")
+                       ->orWhere('staff_id', 'like', "%{$search}%")
+                )
+            )
             ->latest()
-            [cite_start]->paginate(15) 
+            ->paginate(15)
             ->withQueryString();
 
-        return view('uac.users', array_merge($this->sharedLayoutData($request, 'User Management'), [
+        return view('uac.users.index', [
             'users' => $users,
             'search' => $search,
-            'roleId' => $roleId,
-            'status' => $status,
-            'roles' => Role::query()->orderBy('display_name')->get(),
-            'employees' => Employee::orderBy('full_name')->get(), [cite: 10]
-        ]));
+            'roles' => Role::orderBy('display_name')->get(),
+        ]);
     }
 
-    public function users(Request $request): View
+
+    public function roles()
+    
+{
+        return view('uac.roles.index', [
+            'roles' => Role::with(['permissions', 'moduleAccesses'])->orderBy('display_name')->get(),
+            'permissions' => Permission::orderBy('module')->orderBy('display_name')->get()->groupBy('module'),
+        ]);
+    }
+
+
+    
+ public function import()
+    {
+        return view('uac.import.index');
+    }
+
+
+    
+    public function auditLog(Request $request)
     {
         $search = $request->string('search')->toString();
 
-        $users = User::query()
-            ->with(['roles', 'employee.region', 'employee.district', 'employeeByStaffId.region', 'employeeByStaffId.district'])
-            ->when($search, function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery
-                        ->where('full_name', 'like', '%' . $search . '%')
-                        ->orWhere('email', 'like', '%' . $search . '%')
-                        ->orWhere('staff_id', 'like', '%' . $search . '%');
-                });
-            })
-            ->latest()
-            ->paginate(10)
-            ->withQueryString();
-
-        return view('uac.users', [
-            'pageTitle' => 'Users',
-            'users' => $users,
-            'search' => $search,
-        ]);
-    }
-
-    public function rolesPermissions(): View
-    {
-        $roles = Role::query()->with(['permissions', 'moduleAccesses'])->orderBy('display_name')->get();
-        $permissions = Permission::query()->orderBy('module')->orderBy('display_name')->get()->groupBy('module');
-
-        return view('uac.roles-permissions', [
-            'pageTitle' => 'Roles & Permissions',
-            'roles' => $roles,
-            'permissions' => $permissions,
-        ]);
-    }
-
-    public function bulkImport(): View
-    {
-        return view('uac.bulk-import', [
-            'pageTitle' => 'Bulk Import',
-        ]);
-    }
-
-    public function auditLog(Request $request): View
-    {
-        $search = $request->string('search')->toString();
-
-        $logs = AuditLog::query()
-            ->with('user')
-            ->when($search, function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery
-                        ->where('action', 'like', '%' . $search . '%')
-                        ->orWhere('module', 'like', '%' . $search . '%')
-                        ->orWhere('target_type', 'like', '%' . $search . '%')
-                        ->orWhere('ip_address', 'like', '%' . $search . '%');
-                });
-            })
+        $logs = AuditLog::with('user')
+            ->when($search, fn ($q) =>
+                $q->where(fn ($sq) =>
+                    $sq->where('action', 'like', "%{$search}%")
+                       ->orWhere('module', 'like', "%{$search}%")
+                       ->orWhere('target_type', 'like', "%{$search}%")
+                       ->orWhere('ip_address', 'like', "%{$search}%")
+                )
+            )
             ->latest()
             ->paginate(12)
             ->withQueryString();
 
-        return view('uac.audit-log', [
-            'pageTitle' => 'Audit Log',
-            'logs' => $logs,
-            'search' => $search,
-        ]);
+        return view('uac.audit-log.index', compact('logs', 'search'));
     }
 }
