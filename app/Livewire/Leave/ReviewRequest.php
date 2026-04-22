@@ -6,6 +6,9 @@ use App\Models\LeaveRequest;
 use App\Services\Leave\LeaveApprovalEngine;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use App\Exports\Leave\LeaveRequestsExport;
+use Maatwebsite\Excel\Facades\Excel;
+
 
 class ReviewRequest extends Component
 {
@@ -47,6 +50,15 @@ class ReviewRequest extends Component
         session()->flash('success', 'Leave denied.');
         return redirect()->route('leave.approvals');
     }
+    
+public function export()
+{
+    return Excel::download(
+        new LeaveRequestsExport($this->requests),
+        'leave_requests.xlsx'
+    
+    );
+}
 
     public function render()
     {

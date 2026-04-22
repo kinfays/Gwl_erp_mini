@@ -38,3 +38,6 @@
         </div>
     </div>
 </div>
+<button wire:click="export" class="btn">
+    Export Excel
+</button>

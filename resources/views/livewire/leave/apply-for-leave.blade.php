@@ -1,3 +1,5 @@
+
+<x-layouts.leave>
 <div>
     <div class="form-row">
         <div class="form-field">
@@ -47,3 +49,5 @@
         <button wire:click="submit" class="btn btn-primary">Submit request</button>
     </div>
 </div>
+
+</x-layouts.leave>
