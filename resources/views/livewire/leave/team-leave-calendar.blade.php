@@ -1,7 +1,5 @@
 
-<x-layouts.leave>
-
-    <div>
+<div>
     <h2 class="page-title">Team Leave</h2>
 
     <table>
@@ -28,6 +26,4 @@
         </tbody>
     </table>
 </div>
-
-</x-layouts.leave>
 

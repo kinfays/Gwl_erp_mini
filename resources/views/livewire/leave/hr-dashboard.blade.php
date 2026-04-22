@@ -1,30 +1,27 @@
-
-//KPI Cards
-
+<x-leave>
+<div>
+    <h2 class="page-title">HR Dashboard</h2>
 <div class="stats">
     <div class="stat">
         <div class="stat-lbl">On leave now</div>
-        <div class="stat-val">{{ $stats['on_leave_now'] }}</div>
+        <div class="stat-val">{{ $this->stats['on_leave_now'] }}</div>
     </div>
 
     <div class="stat">
         <div class="stat-lbl">Pending requests</div>
-        <div class="stat-val">{{ $stats['pending'] }}</div>
+        <div class="stat-val">{{ $this->stats['pending'] }}</div>
     </div>
 
     <div class="stat">
         <div class="stat-lbl">Approved this month</div>
-        <div class="stat-val">{{ $stats['approved_this_month'] }}</div>
+        <div class="stat-val">{{ $this->stats['approved_this_month'] }}</div>
     </div>
 
     <div class="stat">
         <div class="stat-lbl">Denied this month</div>
-        <div class="stat-val">{{ $stats['denied_this_month'] }}</div>
+        <div class="stat-val">{{ $this->stats['denied_this_month'] }}</div>
     </div>
 </div>
-
-//Status Tabs
-
 <div class="tabs">
     @foreach (['all','Pending Approval','Approved','Denied'] as $tab)
         <button
@@ -35,8 +32,6 @@
         </button>
     @endforeach
 </div>
-
-//Pending Approvals Table
 
 <table>
     <thead>
@@ -67,7 +62,7 @@
                     </span>
                 </td>
                 <td>
-                    <a href="{{ route('leave.review', $req) }}" class="actn">
+                    {{ route('leave.review', $req) }}
                         Review
                     </a>
                 </td>
@@ -75,8 +70,6 @@
         @endforeach
     </tbody>
 </table>
-
-//ApexCharts (Leave by Type)
 
 <div id="leaveByType"></div>
 
@@ -96,5 +89,6 @@ document.addEventListener('livewire:navigated', () => {
     }).render();
 });
 </script>
-
 <button wire:click="export" class="btn">Export Excel</button>
+</div>
+</x-leave>

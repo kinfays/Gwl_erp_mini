@@ -4,8 +4,11 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UacController;
 use App\Livewire\Leave\Approvals;
+use App\Livewire\Leave\ApplyForLeave;
+use App\Livewire\Leave\MyLeaveHistory;
 use App\Livewire\Leave\ReviewRequest;
 use App\Livewire\Leave\CompulsoryLeave;
+use App\Livewire\Leave\TeamLeaveCalendar;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
@@ -72,6 +75,29 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
+
+// -----------------------------------------------------------------------
+// Leave Management Module (Protected by Auth, Active Status, and Module Access)
+// -----------------------------------------------------------------------
+Route::middleware(['auth'])->group(function () {
+
+    Route::get('/leave', \App\Livewire\Leave\HrDashboard::class)
+        ->name('leave.dashboard');
+
+    Route::get('/leave/requests', Approvals::class)
+        ->name('leave.requests');
+
+    Route::get('/leave/apply', ApplyForLeave::class)
+        ->name('leave.apply');
+
+    Route::get('/leave/my-history', MyLeaveHistory::class)
+        ->name('leave.my-history');
+
+    Route::get('/leave/team', TeamLeaveCalendar::class)
+        ->name('leave.team');
+
+});
+
 
 Route::middleware(['auth'])->group(function () {
 

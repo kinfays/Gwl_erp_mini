@@ -166,7 +166,7 @@ class ApplyForLeave extends Component
         return view('livewire.leave.apply-for-leave', [
             'leaveTypes' => LeaveType::cases(),
             'employees' => $this->availableRequesters(),
-        ]);
+        ])->layout('layouts.leave');
     }
 
     protected function availableRequesters()

@@ -1,5 +1,3 @@
-
-<x-layouts.leave>
 <div>
     <h2 class="page-title">My Leave History</h2>
 
@@ -30,5 +28,3 @@
         @endforeach
     </div>
 </div>
-
-</x-layouts.leave>
