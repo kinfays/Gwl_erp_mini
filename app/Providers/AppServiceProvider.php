@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\URL;
+use App\Models\Employee;
+use App\Observers\EmployeeObserver;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,11 +18,14 @@ class AppServiceProvider extends ServiceProvider
         //
     }
 
+    
     /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
-        \URL::forceScheme('https');
+        Employee::observe(EmployeeObserver::class);
+        URL::forceScheme('https');
+        
     }
 }

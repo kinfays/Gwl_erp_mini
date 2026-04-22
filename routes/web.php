@@ -3,9 +3,11 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UacController;
+use App\Livewire\Leave\Approvals;
+use App\Livewire\Leave\ReviewRequest;
+use App\Livewire\Leave\CompulsoryLeave;
 use Illuminate\Support\Facades\Route;
 
-// Public Routes
 // Public Routes
 Route::get('/', function () {
     return view('auth.login'); // Or redirect('/login') depending on your preference
@@ -40,6 +42,7 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
     Route::get('/users/{user}', [UacController::class, 'show'])->name('users.show');
     Route::patch('/users/{user}/status', [UacController::class, 'toggleStatus'])->name('users.toggle-status');
     Route::post('/users/{user}/invite', [UacController::class, 'resendInvite'])->name('users.invite');
+    Route::get('/employees/search', [UacController::class, 'searchEmployees'])->name('employees.search');
 
     // Roles & Permissions
     Route::get('/roles', [UacController::class, 'rolesPermissions'])->name('roles');
@@ -69,5 +72,19 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
+
+Route::middleware(['auth'])->group(function () {
+
+    Route::get('/leave/approvals', Approvals::class)
+        ->name('leave.approvals');
+
+    Route::get('/leave/requests/{leaveRequest}',
+        ReviewRequest::class
+    )->name('leave.review');
+});
+
+Route::middleware(['auth', 'can:leave.manage_compulsory'])
+    ->get('/leave/compulsory', CompulsoryLeave::class)
+    ->name('leave.compulsory');
 
 require __DIR__.'/auth.php';

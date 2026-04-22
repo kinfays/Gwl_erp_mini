@@ -16,6 +16,7 @@ use Illuminate\View\View;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 
 class UacController extends Controller
 {
@@ -93,7 +94,7 @@ $users = User::query()
     
 public function store(StoreUserRequest $request)
 {
-    $employee = Employee::where('staff_id', $request->staff_id)->first();
+    /* $employee = Employee::where('staff_id', $request->staff_id)->first();
 
     if (! $employee) {
         abort(422, 'Employee record not found for the given staff ID.');
@@ -102,13 +103,35 @@ public function store(StoreUserRequest $request)
     $user = User::create([
         'staff_id'    => $request->staff_id,
         'employee_id' => $employee->id,
-       // 'full_name'   => $request->full_name,
+       'full_name'   => $request->full_name,
         'email'       => $request->email,
         'password'    => Hash::make(Str::random(12)),
         'is_active'   => true,
     ]);
     
-    $user->roles()->sync($request->roles);
+    $user->roles()->sync($request->roles); */
+
+$employee = Employee::findOrFail($request->employee_id);
+
+if (User::where('staff_id', $employee->staff_id)->exists()) {
+    return back()->withErrors(['employee_id' => 'A user already exists for this employee.'])->withInput();
+}
+
+$user = User::create([
+    'staff_id'    => $employee->staff_id,
+    'employee_id' => $employee->id,
+    'email'       => $employee->email,
+    'password'    => Hash::make(Str::random(12)),
+    'is_active'   => true,
+]);
+
+if (Schema::hasColumn('users', 'full_name')) {
+    $user->update(['full_name' => $employee->full_name]);
+}
+
+$user->roles()->sync($request->roles);
+
+
 
     // send invite email (set password link)
     $this->sendInviteEmail($user);
@@ -153,7 +176,7 @@ public function update(UpdateUserRequest $request, User $user)
     return back()->with('success', 'User updated.');
 }
 
-protected function sendInviteEmail(\App\Models\User $user): void
+protected function sendInviteEmail(User $user): void
 {
     // Create a reset token for the user
     $token = Password::broker()->createToken($user);
@@ -168,7 +191,7 @@ protected function sendInviteEmail(\App\Models\User $user): void
     $user->notify(new InviteUserNotification($url, $user->staff_id));
 }
 
-public function resendInvite(\App\Models\User $user)
+public function resendInvite(User $user)
 {
     // only allow resend if user never logged in
     if ($user->last_login_at) abort(403);
@@ -256,6 +279,24 @@ public function show(Request $request, User $user)
             'parental_days' => $employee->parental_days,
         ] : null,
     ]);
+}
+
+
+public function searchEmployees(Request $request)
+{
+    $q = $request->string('q')->toString();
+
+    $employees = Employee::query()
+        ->when($q, function ($query) use ($q) {
+            $query->where('staff_id', 'like', "%{$q}%")
+                ->orWhere('full_name', 'like', "%{$q}%")
+                ->orWhere('email', 'like', "%{$q}%");
+        })
+        ->orderBy('staff_id')
+        ->limit(10)
+        ->get(['id', 'staff_id', 'full_name', 'email']);
+
+    return response()->json($employees);
 }
 
     public function roles()

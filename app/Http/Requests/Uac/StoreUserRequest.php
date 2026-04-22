@@ -11,7 +11,7 @@ class StoreUserRequest extends FormRequest
         return true;
     }
 
-    public function rules(): array
+   /*-- public function rules(): array
     {
         return [
             'staff_id' => ['required', 'string', 'max:50', 'unique:users,staff_id'],
@@ -19,5 +19,13 @@ class StoreUserRequest extends FormRequest
             'full_name' => ['required', 'string', 'max:255'],
             'roles' => ['required', 'array', 'exists:roles,id'],
         ];
-    }
+    } */
+
+        public function rules(): array
+{
+    return [
+        'employee_id' => ['required', 'exists:employees,id'],
+        'roles' => ['required', 'array', 'exists:roles,id'],
+    ];
+}
 }

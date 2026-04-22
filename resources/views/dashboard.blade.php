@@ -4,8 +4,8 @@
         {{-- Top Navigation --}}
         <div class="bg-white shadow px-6 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <img src="/images/ml-logo.png" alt="ML Logo" class="h-8">
-                <span class="text-lg font-semibold">ML Enterprise Portal</span>
+                <img src="/images/gwl.png" alt="GWL Logo" class="h-8">
+                <span class="text-lg font-semibold">GWL Mini Erp Portal</span>
             </div>
 
             <div class="flex items-center space-x-6">

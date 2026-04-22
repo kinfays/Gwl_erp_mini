@@ -301,49 +301,81 @@
             @csrf
 
             {{-- Staff ID --}}
-            <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Staff ID
-                </label>
-                <input
-                    type="text"
-                    name="staff_id"
-                    x-model="staffId"
-                    required
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#185FA5]/20"
-                />
-                <p class="text-xs text-slate-500 mt-1">
-                    Must match an existing employee record.
-                </p>
-            </div>
+           <div x-data="employeePicker()">
+    <label class="block text-sm font-medium text-slate-700 mb-1">Employee (Search by Staff ID)</label>
 
-            {{-- Full Name --}}
-            <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Full Name
-                </label>
-                <input
-                    type="text"
-                    name="full_name"
-                    x-model="name"
-                    required
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#185FA5]/20"
-                />
-            </div>
+    <input type="text"
+           x-model="query"
+           x-on:input.debounce.300ms="search()"
+           placeholder="Type staff ID or name..."
+           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
 
-            {{-- Email --}}
-            <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                </label>
-                <input
-                    type="email"
-                    name="email"
-                    x-model="email"
-                    required
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#185FA5]/20"
-                />
-            </div>
+    <div x-show="results.length > 0" class="mt-2 border border-slate-200 rounded-lg bg-white max-h-48 overflow-auto">
+        <template x-for="emp in results" :key="emp.id">
+            <button type="button"
+                    x-on:click="select(emp)"
+                    class="w-full text-left px-3 py-2 hover:bg-slate-50">
+                <div class="text-sm font-medium text-slate-800" x-text="emp.staff_id + ' — ' + emp.full_name"></div>
+                <div class="text-xs text-slate-500" x-text="emp.email"></div>
+            </button>
+        </template>
+    </div>
+
+    {{-- Values submitted to backend --}}
+    <input type="hidden" name="employee_id" x-model="selectedEmployeeId">
+    <input type="hidden" name="staff_id" x-model="selectedStaffId">
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+            <input type="text"
+                   x-model="selectedFullName"
+                   readonly
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-100" />
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input type="text"
+                   x-model="selectedEmail"
+                   readonly
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-100" />
+        </div>
+    </div>
+</div>
+
+<script>
+function employeePicker() {
+    return {
+        query: '',
+        results: [],
+        selectedEmployeeId: '',
+        selectedStaffId: '',
+        selectedFullName: '',
+        selectedEmail: '',
+
+        async search() {
+            if (this.query.trim().length < 2) {
+                this.results = [];
+                return;
+            }
+
+            const url = `{{ route('uac.employees.search') }}?q=${encodeURIComponent(this.query)}`;
+            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            this.results = await res.json();
+        },
+
+        select(emp) {
+            this.selectedEmployeeId = emp.id;
+            this.selectedStaffId = emp.staff_id;
+            this.selectedFullName = emp.full_name;
+            this.selectedEmail = emp.email;
+            this.results = [];
+            this.query = emp.staff_id;
+        }
+    }
+}
+</script>
 
             {{-- Roles --}}
             <div>

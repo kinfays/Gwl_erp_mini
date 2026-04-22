@@ -146,4 +146,85 @@ class Employee extends Model
     {
         return $query->where('district_id', $districtId);
     }
+
+    public function isHeadOffice(): bool
+{
+    return is_null($this->region_id) && is_null($this->district_id);
+}
+
+
+//leave approval hierarchy helpers
+public function isRegion(): bool
+{
+    return ! is_null($this->region_id) && is_null($this->district_id);
+}
+
+public function isDistrict(): bool
+{
+    return ! is_null($this->district_id);
+}
+
+public function unitManager(): ?self
+{
+    if (! $this->unit_id) {
+        return null;
+    }
+
+    return self::where('unit_id', $this->unit_id)
+        ->whereHas('roles', fn ($q) =>
+            $q->where('name', 'Unit Manager')
+        )
+        ->first();
+}
+
+public function departmentManager(): ?self
+{
+    if (! $this->department_id) {
+        return null;
+    }
+
+    return self::where('department_id', $this->department_id)
+        ->whereHas('roles', fn ($q) =>
+            $q->whereIn('name', [
+                'Department Manager',
+                'Dept Manager',
+            ])
+        )
+        ->first();
+}
+
+public function districtManager(): ?self
+{
+    if (! $this->district_id) {
+        return null;
+    }
+
+    return self::where('district_id', $this->district_id)
+        ->whereHas('roles', fn ($q) =>
+            $q->where('name', 'District Manager')
+        )
+        ->first();
+}
+
+public function chiefManager(): ?self
+{
+    // Head Office Chief Manager
+    if ($this->isHeadOffice()) {
+        return self::whereHas('roles', fn ($q) =>
+            $q->where('name', 'Chief Manager')
+        )->whereNull('region_id')->first();
+    }
+
+    // Regional Chief Manager
+    if ($this->isRegion() || $this->isDistrict()) {
+        return self::where('region_id', $this->region_id)
+            ->whereHas('roles', fn ($q) =>
+                $q->where('name', 'Regional Chief Manager')
+            )
+            ->first();
+    }
+
+    return null;
+}
+
 }
