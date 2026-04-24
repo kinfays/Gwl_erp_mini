@@ -6,7 +6,7 @@
 **Dates:** {{ $request->start_date->format('d M Y') }} → {{ $request->end_date->format('d M Y') }}  
 **Working Days:** {{ $request->total_days_applied }}
 
-@component('mail::button', ['url' => url('/leave/requests')])
+@component('mail::button', ['url' => route('leave.approvals')])
 Review Request
 @endcomponent
 

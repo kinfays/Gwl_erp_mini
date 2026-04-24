@@ -5,10 +5,8 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UacController;
 use App\Http\Controllers\Leave\LeaveRequestController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
-use App\Http\Controllers\Leave\LeaveDashboardController;
-use App\Http\Controllers\Leave\LeaveApplyController;
-use App\Http\Controllers\Leave\LeaveCompulsoryController;
 use App\Http\Controllers\Leave\LeaveHomeController;
+use  app\Http\Controllers\Leave\LeaveExportController;
 use App\Livewire\Leave\Approvals;
 use App\Livewire\Leave\ReviewRequest;
 use App\Livewire\Leave\CompulsoryLeave;
@@ -105,16 +103,20 @@ Route::middleware(['auth', 'active', 'module:leave'])
 
         // Apply for leave
         Route::get('/apply', fn () => view('leave.apply'))->name('apply');
-
-
         
         // Approval of leave
         Route::get('/approvals', [LeaveApprovalsController::class, 'index'])->name('approvals');
 
+        //team views
+        Route::get('/team-dashboard', fn () => view('leave.team-dashboard'))->middleware(['module:leave'])->name('leave.team-dashboard');
+
+        // Exports (permission-gated)
+        Route::get('/export/approved/excel', [LeaveExportController::class, 'approvedExcel'])->middleware('permission:leave.export')->name('leave.export.approved.excel');
+
+        Route::get('/export/team/excel', [LeaveExportController::class, 'teamExcel'])->middleware('permission:leave.export')->name('leave.export.team.excel');
+
         // Compulsory leave (permission-gated)
-        Route::get('/compulsory', [LeaveCompulsoryController::class, 'index'])
-            ->middleware('permission:leave.manage_compulsory')
-            ->name('compulsory.index');
+        Route::get('/compulsory', fn () => view('leave.compulsory'))->middleware('permission:leave.manage_compulsory')->name('leave.compulsory');
     });
 
 

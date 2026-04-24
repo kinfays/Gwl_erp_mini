@@ -5,6 +5,7 @@ namespace App\Services\Leave;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\LeaveBalance;
+use App\Services\Leave\LeaveNotificationService;
 use Illuminate\Support\Facades\DB;
 
 class LeaveWorkflowService
@@ -12,7 +13,8 @@ class LeaveWorkflowService
     public function __construct(
         protected WorkingDaysCalculator $daysCalc,
         protected LeaveBalanceService $balances,
-        protected LeaveApprovalChainResolver $chain
+        protected LeaveApprovalChainResolver $chain,
+        protected LeaveNotificationService $notify
     ) {}
 
     public function savePlanned(Employee $requester, array $data): LeaveRequest
@@ -31,6 +33,8 @@ class LeaveWorkflowService
         }
 
         return $this->createOrUpdate($requester, $data, 'Pending Approval');
+        $this->notify->submitted($request);
+
     }
 
     protected function createOrUpdate(Employee $requester, array $data, string $status): LeaveRequest
@@ -76,12 +80,18 @@ class LeaveWorkflowService
 
         $req->manager_comments = $comments;
         $req->manager_recommendation = $recommended ? 'Recommended' : 'Rejected';
-
-        if (! $recommended) {
+        if ($recommended) {
+    [$mgr, $chief] = $this->chain->resolve($req->requester);
+    $this->notify->recommended($req, $chief->email);
+        } else {
             $req->leave_status = 'Denied';
         }
 
         $req->save();
+
+        if (! $recommended) {
+            $this->notify->denied($req);
+        }
 
         return $req;
     }
@@ -106,6 +116,7 @@ class LeaveWorkflowService
             if (! $approve) {
                 $req->leave_status = 'Denied';
                 $req->save();
+                $this->notify->denied($req);
                 return $req;
             }
 
@@ -115,6 +126,13 @@ class LeaveWorkflowService
             // Create/fetch balance on approval & deduct days
             $balance = $this->balances->getOrCreateForApproval($req->requester, $req->leave_type, (int) $req->request_year);
             $this->balances->deduct($balance, (int) $req->total_days_applied);
+            $hrEmails = \App\Models\User::query()
+                ->whereHas('roles', fn ($r) => $r->whereIn('name', ['hr_headoffice', 'hr_region']))
+                ->when($req->region_id, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('region_id', $req->region_id)))
+                ->pluck('email')
+                ->toArray();
+
+            $this->notify->approved($req, $balance, $hrEmails);
 
             return $req;
         });

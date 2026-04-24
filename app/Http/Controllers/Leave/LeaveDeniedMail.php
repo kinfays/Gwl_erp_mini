@@ -5,14 +5,14 @@ namespace App\Mail;
 use App\Models\LeaveRequest;
 use Illuminate\Mail\Mailable;
 
-class LeaveSubmittedMail extends Mailable
+class LeaveDeniedMail extends Mailable
 {
     public function __construct(public LeaveRequest $request) {}
 
     public function build()
     {
         return $this
-            ->subject('Leave Request Submitted')
-            ->markdown('emails.leave.submitted');
+            ->subject('Leave Request Denied')
+            ->markdown('emails.leave.denied');
     }
 }
