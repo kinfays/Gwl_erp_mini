@@ -2,11 +2,7 @@
 
 namespace App\Models;
 
-use App\Enums\LeaveStatus;
-use App\Enums\LeaveType;
-use App\Enums\ManagerRecommendation;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LeaveRequest extends Model
 {
@@ -30,38 +26,48 @@ class LeaveRequest extends Model
     ];
 
     protected $casts = [
-        'leave_type' => LeaveType::class,
-        'leave_status' => LeaveStatus::class,
-        'manager_recommendation' => ManagerRecommendation::class,
         'start_date' => 'date',
         'end_date' => 'date',
         'request_year' => 'integer',
     ];
 
-    /* ---------------- Relationships ---------------- */
-
-    public function requester(): BelongsTo
+    public function requester()
     {
         return $this->belongsTo(Employee::class, 'requester_id');
     }
 
-    public function manager(): BelongsTo
+    public function manager()
     {
         return $this->belongsTo(Employee::class, 'manager_id');
     }
 
-    public function approver(): BelongsTo
+    public function approvedBy()
     {
         return $this->belongsTo(Employee::class, 'approved_by_id');
     }
 
-    public function department(): BelongsTo
+    public function department()
     {
         return $this->belongsTo(Department::class);
     }
 
-    public function region(): BelongsTo
+    public function region()
     {
         return $this->belongsTo(Region::class);
     }
+
+    public function scopeVisibleForApprovals($query, Employee $actor, User $actorUser)
+{
+    // Manager queue: direct recommender
+    $query->where(function ($q) use ($actor) {
+        $q->where('manager_id', $actor->id);
+    });
+
+    // Chief queue: only those where the resolved chief == actor
+    // We resolve by matching current chain rules using stored manager_id and region/location data.
+    // For correctness, we filter by "recommended & pending" and then match approver in service layer
+    // (efficient enough for pagination-size lists).
+    return $query;
+}
+
 }

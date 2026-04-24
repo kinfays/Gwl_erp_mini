@@ -1,20 +1,15 @@
-<h3>New Leave Request</h3>
+@component('mail::message')
+# Leave Request Submitted
 
-<p>{{ $leaveRequest->requester->full_name }} has submitted a leave request.</p>
+**Employee:** {{ $request->requester->full_name }}  
+**Leave Type:** {{ $request->leave_type }}  
+**Dates:** {{ $request->start_date->format('d M Y') }} → {{ $request->end_date->format('d M Y') }}  
+**Working Days:** {{ $request->total_days_applied }}
 
-<table cellpadding="6">
-    <tr><td><strong>Type</strong></td><td>{{ $leaveRequest->leave_type->value }}</td></tr>
-    <tr><td><strong>Dates</strong></td>
-        <td>
-            {{ $leaveRequest->start_date->toFormattedDateString() }} –
-            {{ $leaveRequest->end_date->toFormattedDateString() }}
-        </td>
-    </tr>
-    <tr><td><strong>Days</strong></td><td>{{ $leaveRequest->total_days_applied }}</td></tr>
-</table>
+@component('mail::button', ['url' => url('/leave/requests')])
+Review Request
+@endcomponent
 
-<p>
-    <a href="{{ route('leave.review', $leaveRequest) }}">
-        Review this request
-    </a>
-</p>
+Thanks,  
+{{ config('app.name') }}
+@endcomponent

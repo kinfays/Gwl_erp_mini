@@ -28,7 +28,7 @@ if (!function_exists('dashboardModules')) {
                 'title' => 'Leave Management',
                 'description' => 'Apply for leave, track balances, and manage approvals',
                 'icon' => '🗓️',
-                'route' => '#',
+                'route' => route('leave.home',)
             ],
             [
                 'slug' => 'staff',

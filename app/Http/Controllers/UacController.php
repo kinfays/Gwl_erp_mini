@@ -12,11 +12,11 @@ use App\Http\Requests\Uac\StoreUserRequest;
 use App\Http\Requests\Uac\UpdateUserRequest;
 use App\Support\Audit;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
+
 
 class UacController extends Controller
 {
@@ -320,7 +320,6 @@ public function rolesPermissions()
     }
 
 
-    
     public function auditLog(Request $request)
     {
         $search = $request->string('search')->toString();

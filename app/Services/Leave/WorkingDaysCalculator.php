@@ -2,94 +2,102 @@
 
 namespace App\Services\Leave;
 
+use App\Models\Holiday;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
-use Illuminate\Support\Facades\DB;
 
 class WorkingDaysCalculator
 {
     /**
-     * Calculate working days between two dates (inclusive),
-     * excluding weekends and public holidays with Ghana-specific rules.
+     * Calculate working days between two dates inclusive.
      */
-    public function calculate(Carbon $startDate, Carbon $endDate): int
+    public function workingDays(Carbon $start, Carbon $end): int
     {
-        if ($endDate->lessThan($startDate)) {
-            return 0;
+        $start = $start->copy()->startOfDay();
+        $end = $end->copy()->startOfDay();
+
+        if ($end->lt($start)) {
+            [$start, $end] = [$end, $start];
         }
 
-        // Normalize dates
-        $startDate = $startDate->copy()->startOfDay();
-        $endDate   = $endDate->copy()->startOfDay();
+        $excluded = $this->excludedDatesBetween($start, $end);
 
-        // Fetch holidays in range (+ buffer for spillovers)
-        $holidays = DB::table('holidays')
-            ->whereBetween('date', [
-                $startDate->copy()->subDays(1),
-                $endDate->copy()->addDays(3),
-            ])
-            ->get(['date', 'name'])
-            ->map(fn ($h) => [
-                'date' => Carbon::parse($h->date)->toDateString(),
-                'name' => strtolower($h->name),
-            ]);
+        $count = 0;
 
-        // Build exclusion date set
-        $excludedDates = collect();
-
-        foreach ($holidays as $holiday) {
-            $holidayDate = Carbon::parse($holiday['date']);
-            $excludedDates->push($holidayDate->toDateString());
-
-            // Skip extension rules for Eid holidays
-            if ($this->isEidHoliday($holiday['name'])) {
+        foreach (CarbonPeriod::create($start, $end) as $date) {
+            // Weekend?
+            if ($date->isSaturday() || $date->isSunday()) {
                 continue;
             }
 
-            // Weekend spillover → next Monday
-            if ($holidayDate->isSaturday() || $holidayDate->isSunday()) {
-                $excludedDates->push(
-                    $holidayDate->copy()->next(Carbon::MONDAY)->toDateString()
-                );
-            }
-
-            // Tue/Wed/Thu → extend to Friday
-            if (
-                $holidayDate->isTuesday() ||
-                $holidayDate->isWednesday() ||
-                $holidayDate->isThursday()
-            ) {
-                $excludedDates->push(
-                    $holidayDate->copy()->next(Carbon::FRIDAY)->toDateString()
-                );
-            }
-        }
-
-        $excludedDates = $excludedDates->unique();
-
-        // Iterate through date range
-        $workingDays = 0;
-
-        foreach (CarbonPeriod::create($startDate, $endDate) as $date) {
-            if ($date->isWeekend()) {
+            // Holiday/observed holiday?
+            if (isset($excluded[$date->toDateString()])) {
                 continue;
             }
 
-            if ($excludedDates->contains($date->toDateString())) {
-                continue;
-            }
-
-            $workingDays++;
+            $count++;
         }
 
-        return $workingDays;
+        return $count;
     }
 
     /**
-     * Determine if a holiday is an Eid festival.
+     * Build a set of excluded dates (holidays + observed holidays) within range.
      */
-    protected function isEidHoliday(string $holidayName): bool
+    public function excludedDatesBetween(Carbon $start, Carbon $end): array
     {
-        return str_contains($holidayName, 'eid');
+        // Pull holidays near the range because observed dates might spill (Mon/Fri)
+        $queryStart = $start->copy()->subDays(7);
+        $queryEnd = $end->copy()->addDays(7);
+
+        $holidays = Holiday::query()
+            ->whereBetween('holiday_date', [$queryStart->toDateString(), $queryEnd->toDateString()])
+            ->get(['holiday_name', 'holiday_date']);
+
+        $excluded = [];
+
+        foreach ($holidays as $holiday) {
+            $name = (string) $holiday->holiday_name;
+            $date = Carbon::parse($holiday->holiday_date)->startOfDay();
+
+            // Determine observed date based on your rules
+            $observed = $this->observedHolidayDate($name, $date);
+
+            $excluded[$observed->toDateString()] = true;
+
+            // Special Eid clarification:
+            // Eid is stored as separate holiday rows (2 rows for Eid al-Fitr, 1 for Eid ul-Adha).
+            // Each row is processed individually; weekend shift applies to each.
+        }
+
+        return $excluded;
+    }
+
+    /**
+     * Apply your exact holiday shifting rules:
+     * - If Sat/Sun => observed next Monday
+     * - If Tue/Wed/Thu => observed Friday (except Eid holidays remain on the date)
+     */
+    public function observedHolidayDate(string $holidayName, Carbon $holidayDate): Carbon
+    {
+        $isEid = str_contains(mb_strtolower($holidayName), 'eid');
+
+        // Weekend shift: Saturday/Sunday => Monday
+        if ($holidayDate->isSaturday()) {
+            return $holidayDate->copy()->addDays(2); // Monday
+        }
+
+        if ($holidayDate->isSunday()) {
+            return $holidayDate->copy()->addDay(); // Monday
+        }
+
+        // Tue/Wed/Thu => move to Friday (except Eid)
+        if (! $isEid && ($holidayDate->isTuesday() || $holidayDate->isWednesday() || $holidayDate->isThursday())) {
+            // Move to Friday of the same week
+            return $holidayDate->copy()->next(Carbon::FRIDAY);
+        }
+
+        // Otherwise unchanged
+        return $holidayDate->copy();
     }
 }

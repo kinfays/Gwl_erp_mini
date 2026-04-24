@@ -8,8 +8,11 @@ use App\Models\Role;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
+
 
 class EmployeeObserver
 {

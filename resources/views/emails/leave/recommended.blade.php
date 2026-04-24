@@ -1,13 +1,16 @@
-<h3>Leave Request Recommended</h3>
+@component('mail::message')
+# Leave Request Recommended
 
-<p>
-    {{ $leaveRequest->manager->full_name }}
-    has recommended a leave request for
-    {{ $leaveRequest->requester->full_name }}.
-</p>
+**Employee:** {{ $request->requester->full_name }}  
+**Recommended By:** {{ $request->manager->full_name }}  
+**Leave Type:** {{ $request->leave_type }}  
+**Dates:** {{ $request->start_date->format('d M Y') }} → {{ $request->end_date->format('d M Y') }}  
+**Working Days:** {{ $request->total_days_applied }}
 
-<p>
-    <a href="{{ route('leave.review', $leaveRequest) }}">
-        Review & approve
-    </a>
-</p>
+@component('mail::button', ['url' => url('/leave/requests')])
+Approve / Deny
+@endcomponent
+
+Thanks,  
+{{ config('app.name') }}
+@endcomponent

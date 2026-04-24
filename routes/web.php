@@ -3,13 +3,18 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UacController;
+use App\Http\Controllers\Leave\LeaveRequestController;
+use App\Http\Controllers\Leave\LeaveApprovalsController;
+use App\Http\Controllers\Leave\LeaveDashboardController;
+use App\Http\Controllers\Leave\LeaveApplyController;
+use App\Http\Controllers\Leave\LeaveCompulsoryController;
+use App\Http\Controllers\Leave\LeaveHomeController;
 use App\Livewire\Leave\Approvals;
-use App\Livewire\Leave\ApplyForLeave;
-use App\Livewire\Leave\MyLeaveHistory;
 use App\Livewire\Leave\ReviewRequest;
 use App\Livewire\Leave\CompulsoryLeave;
-use App\Livewire\Leave\TeamLeaveCalendar;
+use App\Livewire\Leave\HrDashboard;
 use Illuminate\Support\Facades\Route;
+
 
 // Public Routes
 Route::get('/', function () {
@@ -79,38 +84,39 @@ Route::middleware(['auth', 'active'])->group(function () {
 // -----------------------------------------------------------------------
 // Leave Management Module (Protected by Auth, Active Status, and Module Access)
 // -----------------------------------------------------------------------
-Route::middleware(['auth'])->group(function () {
-
-    Route::get('/leave', \App\Livewire\Leave\HrDashboard::class)
-        ->name('leave.dashboard');
-
-    Route::get('/leave/requests', Approvals::class)
-        ->name('leave.requests');
-
-    Route::get('/leave/apply', ApplyForLeave::class)
-        ->name('leave.apply');
-
-    Route::get('/leave/my-history', MyLeaveHistory::class)
-        ->name('leave.my-history');
-
-    Route::get('/leave/team', TeamLeaveCalendar::class)
-        ->name('leave.team');
-
-});
 
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'active', 'module:leave'])
+    ->prefix('leave')
+    ->name('leave.')
+    ->group(function () {
 
-    Route::get('/leave/approvals', Approvals::class)
-        ->name('leave.approvals');
+        // HR Dashboard
+        Route::get('/', [LeaveHomeController::class, 'index'])->name('home');
+        
+       // Route::get('/', [HrDashboard::class, 'leave.dashboard'])->name('home');
+        
 
-    Route::get('/leave/requests/{leaveRequest}',
-        ReviewRequest::class
-    )->name('leave.review');
-});
+        // All requests
+        //Route::get('/requests', [LeaveRequestController::class, 'index'])->name('requests.index');
 
-Route::middleware(['auth', 'can:leave.manage_compulsory'])
-    ->get('/leave/compulsory', CompulsoryLeave::class)
-    ->name('leave.compulsory');
+        Route::get('/requests', fn () => view('leave.requests'))->name('requests');
+        Route::get('/my-history', fn () => view('leave.my-history'))->name('my-history');
+
+        // Apply for leave
+        Route::get('/apply', fn () => view('leave.apply'))->name('apply');
+
+
+        
+        // Approval of leave
+        Route::get('/approvals', [LeaveApprovalsController::class, 'index'])->name('approvals');
+
+        // Compulsory leave (permission-gated)
+        Route::get('/compulsory', [LeaveCompulsoryController::class, 'index'])
+            ->middleware('permission:leave.manage_compulsory')
+            ->name('compulsory.index');
+    });
+
+
 
 require __DIR__.'/auth.php';

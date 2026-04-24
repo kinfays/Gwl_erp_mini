@@ -99,8 +99,17 @@ class User extends Authenticatable
             ->exists();
     }
 
-    
-public function getAccessibleModules(): array
+    public function isHrUser(): bool
+{
+    return $this->hasRoles('hr_headoffice', 'hr_region');
+}
+
+    public function isHeadOfficeHr(): bool
+{
+    return $this->hasRoles('hr_headoffice');
+}
+
+    public function getAccessibleModules(): array
 
 {
     return $this->roles()

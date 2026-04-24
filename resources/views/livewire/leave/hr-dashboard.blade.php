@@ -1,94 +1,27 @@
-<x-leave>
-<div>
-    <h2 class="page-title">HR Dashboard</h2>
-<div class="stats">
-    <div class="stat">
-        <div class="stat-lbl">On leave now</div>
-        <div class="stat-val">{{ $this->stats['on_leave_now'] }}</div>
+<div class="space-y-6">
+    <div>
+        <h2 class="text-lg font-semibold">HR Dashboard</h2>
+        <p class="text-sm text-slate-600">Leave module overview for your scope.</p>
     </div>
 
-    <div class="stat">
-        <div class="stat-lbl">Pending requests</div>
-        <div class="stat-val">{{ $this->stats['pending'] }}</div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white border rounded-xl p-4">
+            <p class="text-xs text-slate-500">Pending Requests</p>
+            <p class="text-2xl font-bold">{{ $pendingCount }}</p>
+        </div>
+
+        <div class="bg-white border rounded-xl p-4">
+            <p class="text-xs text-slate-500">Approved This Month</p>
+            <p class="text-2xl font-bold">{{ $approvedThisMonth }}</p>
+        </div>
+
+        <div class="bg-white border rounded-xl p-4">
+            <p class="text-xs text-slate-500">Denied This Month</p>
+            <p class="text-2xl font-bold">{{ $deniedThisMonth }}</p>
+        </div>
     </div>
 
-    <div class="stat">
-        <div class="stat-lbl">Approved this month</div>
-        <div class="stat-val">{{ $this->stats['approved_this_month'] }}</div>
-    </div>
-
-    <div class="stat">
-        <div class="stat-lbl">Denied this month</div>
-        <div class="stat-val">{{ $this->stats['denied_this_month'] }}</div>
+    <div class="bg-white border rounded-xl p-4 text-slate-500">
+        Pending approvals table + charts (ApexCharts) will be added next.
     </div>
 </div>
-<div class="tabs">
-    @foreach (['all','Pending Approval','Approved','Denied'] as $tab)
-        <button
-            wire:click="$set('statusTab','{{ $tab === 'all' ? 'all' : $tab }}')"
-            class="tab {{ $statusTab === $tab ? 'active' : '' }}"
-        >
-            {{ ucfirst($tab) }}
-        </button>
-    @endforeach
-</div>
-
-<table>
-    <thead>
-        <tr>
-            <th>Employee</th>
-            <th>Department</th>
-            <th>Type</th>
-            <th>Dates</th>
-            <th>Days</th>
-            <th>Status</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach ($this->requests as $req)
-            <tr>
-                <td>{{ $req->requester->full_name }}</td>
-                <td>{{ $req->department?->name }}</td>
-                <td>{{ $req->leave_type->value }}</td>
-                <td>
-                    {{ $req->start_date->format('d M') }} –
-                    {{ $req->end_date->format('d M') }}
-                </td>
-                <td>{{ $req->total_days_applied }}</td>
-                <td>
-                    <span class="pill">
-                        {{ $req->leave_status->value }}
-                    </span>
-                </td>
-                <td>
-                    {{ route('leave.review', $req) }}
-                        Review
-                    </a>
-                </td>
-            </tr>
-        @endforeach
-    </tbody>
-</table>
-
-<div id="leaveByType"></div>
-
-<script>
-document.addEventListener('livewire:navigated', () => {
-    const data = @json($this->leaveByType);
-
-    new ApexCharts(document.querySelector("#leaveByType"), {
-        chart: { type: 'bar', height: 220 },
-        series: [{
-            name: 'Leaves',
-            data: Object.values(data)
-        }],
-        xaxis: {
-            categories: Object.keys(data)
-        }
-    }).render();
-});
-</script>
-<button wire:click="export" class="btn">Export Excel</button>
-</div>
-</x-leave>

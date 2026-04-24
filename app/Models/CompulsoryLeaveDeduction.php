@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use App\Enums\LocationType;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CompulsoryLeaveDeduction extends Model
 {
@@ -20,13 +18,11 @@ class CompulsoryLeaveDeduction extends Model
 
     protected $casts = [
         'year' => 'integer',
-        'deduction_days' => 'integer',
         'applies_to_categories' => 'array',
-        'excludes_location_type' => LocationType::class,
         'applied_at' => 'datetime',
     ];
 
-    public function appliedBy(): BelongsTo
+    public function appliedBy()
     {
         return $this->belongsTo(Employee::class, 'applied_by_id');
     }
