@@ -25,13 +25,13 @@ class UacController extends Controller
     {
         return view('uac.index', [
             'stats' => [
-                'users' => User::count(),
-                'roles' => Role::count(),
+                'users' => User::visibleInErp()->count(),
+                'roles' => Role::where('name', '!=', 'super_admin')->count(),
                 'permissions' => Permission::count(),
                 'audit_logs' => AuditLog::count(),
             ],
-            'recentUsers' => User::with('roles')->latest()->take(5)->get(),
-            'recentLogs'  => AuditLog::with('user')->latest()->take(6)->get(),
+            'recentUsers' => User::visibleInErp()->with('roles')->latest()->take(5)->get(),
+            'recentLogs'  => AuditLog::with('user.roles')->latest()->take(6)->get(),
         ]);
     }
 
@@ -57,6 +57,7 @@ class UacController extends Controller
 
        
 $users = User::query()
+        ->visibleInErp()
         ->with([
             'roles',
             'employee.region',
@@ -84,7 +85,7 @@ $users = User::query()
     return view('uac.users.index', [
         'users' => $users,
         'search' => $search,
-        'roles' => Role::orderBy('display_name')->get(),
+        'roles' => Role::where('name', '!=', 'super_admin')->orderBy('display_name')->get(),
         'roleId' => $roleId,
         'status' => $status,
     ])
@@ -111,7 +112,7 @@ public function store(StoreUserRequest $request)
     
     $user->roles()->sync($request->roles); */
 
-$employee = Employee::findOrFail($request->employee_id);
+$employee = Employee::visibleInErp()->findOrFail($request->employee_id);
 
 if (User::where('staff_id', $employee->staff_id)->exists()) {
     return back()->withErrors(['employee_id' => 'A user already exists for this employee.'])->withInput();
@@ -155,10 +156,7 @@ $user->roles()->sync($request->roles);
 
 public function update(UpdateUserRequest $request, User $user)
 {
-    $user->update([
-        'full_name' => $request->full_name,
-        'email'     => $request->email,
-    ]);
+    abort_if($user->hasRoles('super_admin'), 404);
 
     $user->roles()->sync($request->roles);
 
@@ -193,6 +191,8 @@ protected function sendInviteEmail(User $user): void
 
 public function resendInvite(User $user)
 {
+    abort_if($user->hasRoles('super_admin'), 404);
+
     // only allow resend if user never logged in
     if ($user->last_login_at) abort(403);
 
@@ -205,7 +205,7 @@ public function resendInvite(User $user)
     public function toggleStatus(User $user)
         {
          if ($user->roles()->where('name', 'super_admin')->exists()) {
-        abort(403, 'Super admin cannot be deactivated.');
+        abort(404);
     }
 
     $user->update([
@@ -228,6 +228,8 @@ public function resendInvite(User $user)
 
 public function show(Request $request, User $user)
 {
+    abort_if($user->hasRoles('super_admin'), 404);
+
     // UAC protection already handled by middleware.
     // Load relationships used in the drawer.
     $user->load([
@@ -287,6 +289,7 @@ public function searchEmployees(Request $request)
     $q = $request->string('q')->toString();
 
     $employees = Employee::query()
+        ->visibleInErp()
         ->when($q, function ($query) use ($q) {
             $query->where('staff_id', 'like', "%{$q}%")
                 ->orWhere('full_name', 'like', "%{$q}%")
@@ -303,7 +306,7 @@ public function searchEmployees(Request $request)
     
 {
         return view('uac.roles.index', [
-            'roles' => Role::with(['permissions', 'moduleAccesses'])->orderBy('display_name')->get(),
+            'roles' => Role::with(['permissions', 'moduleAccesses'])->where('name', '!=', 'super_admin')->orderBy('display_name')->get(),
             'permissions' => Permission::orderBy('module')->orderBy('display_name')->get()->groupBy('module'),
         ]);
     }
@@ -324,7 +327,7 @@ public function rolesPermissions()
     {
         $search = $request->string('search')->toString();
 
-        $logs = AuditLog::with('user')
+        $logs = AuditLog::with('user.roles')
             ->when($search, fn ($q) =>
                 $q->where(fn ($sq) =>
                     $sq->where('action', 'like', "%{$search}%")

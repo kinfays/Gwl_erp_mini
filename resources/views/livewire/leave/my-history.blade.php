@@ -16,6 +16,9 @@
             <button wire:click="togglePast" class="px-4 py-2 rounded bg-slate-100 text-sm">
                 {{ $includePast36Months ? 'Show Current Year' : 'Show Past 36 Months' }}
             </button>
+            <a href="{{ route('leave.export.approved.excel') }}" class="px-4 py-2 rounded bg-slate-100 text-sm">
+                Export Excel
+            </a>
             <a href="{{ route('leave.apply') }}" class="px-4 py-2 rounded bg-blue-600 text-white text-sm">
                 + Apply
             </a>

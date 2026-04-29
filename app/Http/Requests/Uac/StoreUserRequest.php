@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Uac;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreUserRequest extends FormRequest
 {
@@ -25,7 +26,8 @@ class StoreUserRequest extends FormRequest
 {
     return [
         'employee_id' => ['required', 'exists:employees,id'],
-        'roles' => ['required', 'array', 'exists:roles,id'],
+        'roles' => ['required', 'array'],
+        'roles.*' => ['integer', Rule::exists('roles', 'id')->where(fn ($query) => $query->where('name', '!=', 'super_admin'))],
     ];
 }
 }

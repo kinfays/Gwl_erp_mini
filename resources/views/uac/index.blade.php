@@ -72,7 +72,7 @@
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <p class="text-sm font-semibold text-slate-900">{{ $log->action }}</p>
-                            <p class="text-sm text-slate-600 mt-1">{{ $log->user?->full_name ?? 'System' }} • {{ $log->module ?: 'general' }}</p>
+                            <p class="text-sm text-slate-600 mt-1">{{ $log->user?->hasRoles('super_admin') ? 'System' : ($log->user?->full_name ?? 'System') }} • {{ $log->module ?: 'general' }}</p>
                         </div>
                         <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-xs font-medium">{{ $log->created_at?->diffForHumans() }}</span>
                     </div>

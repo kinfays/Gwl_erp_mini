@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>{{ config('app.name', 'LaraCopilot') }}</title>
+        <title>{{ config('app.name', 'GWL') }}</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -23,7 +23,7 @@
         <div class="flex items-center justify-center w-full transition-opacity opacity-100 duration-750 lg:grow starting:opacity-0">
             <main class="flex max-w-[335px] w-full flex-col-reverse lg:max-w-4xl lg:flex-row">
                 <div class="text-[13px] leading-[20px] flex-1 p-6 pb-6 lg:p-12 lg:pb-10 bg-white dark:bg-[#161615] dark:text-[#EDEDEC] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d] rounded-bl-lg rounded-br-lg lg:rounded-tl-lg lg:rounded-br-none flex flex-col items-center justify-center text-center">
-                    <!-- LaraCopilot Logo -->
+                    <!-- Laravel Logo -->
                     <svg style="width: 160px; height: 160px; margin-bottom: 1.25rem;" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <g clip-path="url(#clip-lc)">
                             <path fill-rule="evenodd" clip-rule="evenodd" d="M79.2816 98.7222C73.4592 108.427 66.4182 112.8 60 112.8C53.5816 112.8 46.5407 108.427 40.7181 98.7222C34.9815 89.1612 31.2 75.4878 31.2 60C31.2 44.512 34.9815 30.8389 40.7181 21.278C46.5407 11.5737 53.5816 7.2 60 7.2C66.4182 7.2 73.4592 11.5737 79.2816 21.278C85.0182 30.8389 88.8 44.512 88.8 60C88.8 75.4878 85.0182 89.1612 79.2816 98.7222ZM120 60C120 26.8629 93.1368 0 60 0C26.8629 0 0 26.8629 0 60C0 93.1368 26.8629 120 60 120C93.1368 120 120 93.1368 120 60ZM7.2 60C7.2 81.558 20.1196 100.098 38.6384 108.3C29.7589 97.3734 24 79.8078 24 60C24 40.1924 29.7589 22.6265 38.6384 11.6997C20.1196 19.9021 7.2 38.4422 7.2 60ZM112.8 60C112.8 81.558 99.8802 100.098 81.3618 108.3C90.2412 97.3734 96 79.8078 96 60C96 40.1924 90.2412 22.6265 81.3618 11.6997C99.8802 19.9021 112.8 38.4422 112.8 60Z" fill="#1b1b18" class="dark:fill-white"/>

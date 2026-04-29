@@ -2,6 +2,7 @@
 namespace App\Http\Requests\Uac;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -15,9 +16,8 @@ class UpdateUserRequest extends FormRequest
         $userId = $this->route('user')->id;
 
         return [
-            'email' => ['required', 'email', "unique:users,email,{$userId}"],
-            'full_name' => ['required', 'string', 'max:255'],
-            'roles' => ['required', 'array', 'exists:roles,id'],
+            'roles' => ['required', 'array'],
+            'roles.*' => ['integer', Rule::exists('roles', 'id')->where(fn ($query) => $query->where('name', '!=', 'super_admin'))],
         ];
     }
 }

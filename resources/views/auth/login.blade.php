@@ -2,8 +2,14 @@
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
-    <form method="POST" action="{{ route('login') }}">
+    <form method="POST" action="{{ route('login') }}" x-data="{ clearErrors() { this.$root.querySelectorAll('[data-login-error]').forEach((el) => el.remove()) } }">
         @csrf
+
+        @if ($errors->has('staff_id'))
+            <div data-login-error class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {{ $errors->first('staff_id') }}
+            </div>
+        @endif
 
         <!-- Staff ID -->
         <div>
@@ -13,6 +19,7 @@
                    value="{{ old('staff_id') }}"
                    required
                    autofocus
+                   x-on:input="clearErrors()"
                    class="block mt-1 w-full">
         </div>
 
@@ -23,6 +30,7 @@
             <x-text-input id="password" class="block mt-1 w-full"
                             type="password"
                             name="password"
+                            x-on:input="clearErrors()"
                             required autocomplete="current-password" />
 
             <x-input-error :messages="$errors->get('password')" class="mt-2" />

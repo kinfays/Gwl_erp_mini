@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             PermissionSeeder::class,
             ModuleAccessSeeder::class,
+            LettersRolePermissionSeeder::class,
+            VisitorsRolePermissionSeeder::class,
             HolidaySeeder::class,
             SuperAdminSeeder::class,
         ]);

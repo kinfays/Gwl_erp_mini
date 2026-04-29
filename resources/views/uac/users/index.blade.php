@@ -99,11 +99,11 @@
                     <td class="px-4 py-3.5 text-sm text-slate-700">
                         <div class="flex gap-2 items-center">
                           <button
-    type="button"
-    x-data
-    x-on:click.prevent="$dispatch('open-user-drawer', { id: {{ $user->id }} })"
-    class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all duration-150"
-    title="View details"
+                    type="button"
+                            x-data
+                                x-on:click.prevent="$dispatch('open-user-drawer', { id: {{ $user->id }} })"
+                                class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all duration-150"
+                                    title="View details"
 >
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round"
@@ -209,7 +209,9 @@
                     name="full_name"
                     x-model="name"
                     required
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#185FA5]/20"
+                    readonly
+                    aria-readonly="true"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-100 text-slate-600 cursor-not-allowed"
                 />
             </div>
 
@@ -223,7 +225,9 @@
                     name="email"
                     x-model="email"
                     required
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#185FA5]/20"
+                    readonly
+                    aria-readonly="true"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-100 text-slate-600 cursor-not-allowed"
                 />
             </div>
 

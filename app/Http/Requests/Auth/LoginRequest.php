@@ -5,9 +5,11 @@ namespace App\Http\Requests\Auth;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Models\User;
 
 class LoginRequest extends FormRequest
 {
@@ -28,17 +30,31 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt(
-            $this->only('staff_id', 'password'),
-            $this->boolean('remember')
-        )) {
-            RateLimiter::hit($this->throttleKey());
+        $user = User::query()->where('staff_id', $this->input('staff_id'))->first();
+
+        if (! $user || ! Hash::check((string) $this->input('password'), $user->password)) {
+            $attempts = RateLimiter::hit($this->throttleKey(), 120);
+
+            if ($attempts >= 5) {
+                throw ValidationException::withMessages([
+                    'staff_id' => __('try again in 2 minutes time'),
+                ]);
+            }
 
             throw ValidationException::withMessages([
-                'staff_id' => __('Auth failed'),
+                'staff_id' => __('Invalid Staff ID or Password'),
             ]);
         }
 
+        if (! $user->is_active) {
+            RateLimiter::clear($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'staff_id' => __("You don't have access. Please contact your Administrator."),
+            ]);
+        }
+
+        Auth::login($user, $this->boolean('remember'));
         RateLimiter::clear($this->throttleKey());
     }
 
@@ -51,7 +67,7 @@ class LoginRequest extends FormRequest
         event(new Lockout($this));
 
         throw ValidationException::withMessages([
-            'staff_id' => __('Too many login attempts. Try again later.'),
+            'staff_id' => __('try again in 2 minutes time'),
         ]);
     }
 

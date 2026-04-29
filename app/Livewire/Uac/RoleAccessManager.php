@@ -130,7 +130,9 @@ $this->roles = Role::query()
     public function selectRole(int $roleId): void
     {
         $this->selectedRoleId = $roleId;
-        $role = Role::with(['permissions', 'moduleAccesses'])->findOrFail($roleId);
+        $role = Role::with(['permissions', 'moduleAccesses'])
+            ->where('name', '!=', 'super_admin')
+            ->findOrFail($roleId);
 
         $this->selectedPermissionIds = $role->permissions->pluck('id')->toArray();
 
@@ -157,7 +159,9 @@ $this->roles = Role::query()
             return;
         }
 
-        $role = Role::with(['permissions', 'moduleAccesses'])->findOrFail($this->selectedRoleId);
+        $role = Role::with(['permissions', 'moduleAccesses'])
+            ->where('name', '!=', 'super_admin')
+            ->findOrFail($this->selectedRoleId);
 
         // Lock system roles like super_admin and employee
         if ($role->is_system && in_array($role->name, ['super_admin', 'employee'], true)) {
@@ -167,17 +171,14 @@ $this->roles = Role::query()
         $oldPermissions = $role->permissions->pluck('name')->toArray();
         $oldModules = $role->moduleAccesses->pluck('can_access', 'module')->toArray();
 
-        // Sync permissions
         $role->permissions()->sync($this->selectedPermissionIds);
 
-   // Upsert module access
-    /* 
-     {{--   foreach ($this->modules as $module) {
+        foreach ($this->modules as $module) {
             ModuleAccess::updateOrCreate(
                 ['role_id' => $role->id, 'module' => $module],
                 ['can_access' => (bool) ($this->moduleAccess[$module] ?? false)]
             );
-        } */
+        }
 
         $role->refresh()->load(['permissions', 'moduleAccesses']);
 
@@ -205,7 +206,7 @@ $this->roles = Role::query()
         abort(403);
     }
 
-    $role = Role::findOrFail($this->selectedRoleId);
+    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->selectedRoleId);
 
     if ($role->is_system) {
         $this->message = 'System roles cannot be edited.';
@@ -226,7 +227,7 @@ public function updateRole(): void
         abort(403);
     }
 
-    $role = Role::findOrFail($this->editRoleId);
+    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->editRoleId);
 
     if ($role->is_system) {
         abort(403);
@@ -262,7 +263,7 @@ public function openDeleteRole(): void
         abort(403);
     }
 
-    $role = Role::withCount('users')->findOrFail($this->selectedRoleId);
+    $role = Role::where('name', '!=', 'super_admin')->withCount('users')->findOrFail($this->selectedRoleId);
 
     if ($role->is_system) {
         $this->message = 'System roles cannot be deleted.';
@@ -291,7 +292,7 @@ public function deleteRole(): void
         return;
     }
 
-    $role = Role::findOrFail($this->deleteRoleId);
+    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->deleteRoleId);
 
     \DB::transaction(function () use ($role) {
         $role->permissions()->detach();
@@ -315,7 +316,9 @@ public function deleteRole(): void
 
     public function render()
     {
-        $selectedRole = $this->selectedRoleId ? Role::find($this->selectedRoleId) : null;
+        $selectedRole = $this->selectedRoleId
+            ? Role::where('name', '!=', 'super_admin')->find($this->selectedRoleId)
+            : null;
 
         $locked = $selectedRole
             ? ($selectedRole->is_system && in_array($selectedRole->name, ['super_admin', 'employee'], true))

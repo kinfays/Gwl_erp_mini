@@ -1,5 +1,5 @@
-<x-app-layout>
-    <div class="p-6">
+<x-erp-layout module="leave" title="All Leave Requests">
+    <div class="content">
         <livewire:leave.all-requests />
     </div>
-</x-app-layout>
+</x-erp-layout>

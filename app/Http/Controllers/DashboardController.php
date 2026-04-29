@@ -26,7 +26,7 @@ class DashboardController extends Controller
                 'slug' => Permission::MODULE_LEAVE,
                 'title' => 'Leave Management',
                 'description' => 'Apply for leave, track balances, and manage approvals',
-                'route' => '#',
+                'route' => route('leave.home'),
                 'badge' => 'Everyone',
                 'accent' => 'border-t-4 border-[#185FA5]',
                 'icon_bg' => 'bg-blue-50',
@@ -37,7 +37,7 @@ class DashboardController extends Controller
                 'slug' => Permission::MODULE_STAFF,
                 'title' => 'Staff Management',
                 'description' => 'Manage employee records, import staff data, update profiles',
-                'route' => '#',
+                'route' => route('staff.index'),
                 'badge' => $role?->display_name ?? 'Authorized',
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-sky-50',
@@ -48,7 +48,7 @@ class DashboardController extends Controller
                 'slug' => Permission::MODULE_LETTERS,
                 'title' => 'Letters & Documents',
                 'description' => 'Receive, review, forward and close official correspondence',
-                'route' => '#',
+                'route' => route('letters.home'),
                 'badge' => $role?->display_name ?? 'Authorized',
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-amber-50',
@@ -59,7 +59,7 @@ class DashboardController extends Controller
                 'slug' => Permission::MODULE_VISITORS,
                 'title' => 'Visitors Log',
                 'description' => 'Monitor visitor sign-ins, manage check-ins and check-outs',
-                'route' => '#',
+                'route' => route('visitors.home'),
                 'badge' => $role?->display_name ?? 'Authorized',
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-emerald-50',
@@ -84,7 +84,7 @@ class DashboardController extends Controller
         $location = collect([
             $employee?->district?->district_name,
             $employee?->region?->region_name,
-        ])->filter()->implode(' • ');
+        ])->filter()->implode(' - ');
 
         $greeting = match (true) {
             now()->hour < 12 => 'Good morning',

@@ -129,4 +129,9 @@ class User extends Authenticatable
     {
         return $query->where('is_active', true);
     }
+
+    public function scopeVisibleInErp($query)
+    {
+        return $query->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->where('name', 'super_admin'));
+    }
 }

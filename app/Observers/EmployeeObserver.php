@@ -7,11 +7,9 @@ use App\Models\User;
 use App\Models\Role;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
-use RuntimeException;
 
 
 class EmployeeObserver
@@ -29,15 +27,19 @@ class EmployeeObserver
             return;
         }
 
-        // Create user
-        $user = User::create([
+        $payload = [
             'staff_id'    => $employee->staff_id,
             'employee_id' => $employee->id,
             'email'       => $employee->email,
-            'full_name'   => $employee->full_name,
             'password'    => Hash::make(Str::random(20)),
-            'is_active'   => true,
-        ]);
+            'is_active'   => $employee->is_active,
+        ];
+
+        if (Schema::hasColumn('users', 'full_name')) {
+            $payload['full_name'] = $employee->full_name;
+        }
+
+        $user = User::create($payload);
 
         // Attach default employee role
         $employeeRole = Role::where('name', 'employee')->first();
@@ -59,9 +61,15 @@ class EmployeeObserver
 
         $user->update([
             'email'       => $employee->email,
-            'full_name'   => $employee->full_name,
             'employee_id' => $employee->id,
+            'is_active'   => $employee->is_active,
         ]);
+
+        if (Schema::hasColumn('users', 'full_name')) {
+            $user->update([
+                'full_name' => $employee->full_name,
+            ]);
+        }
     }
 
     protected function sendInvite(User $user): void

@@ -32,7 +32,7 @@
                     <td class="px-4 py-3.5 text-sm text-slate-700">
                         <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-xs font-medium">{{ $log->action }}</span>
                     </td>
-                    <td class="px-4 py-3.5 text-sm text-slate-700">{{ $log->user?->full_name ?? 'System' }}</td>
+                    <td class="px-4 py-3.5 text-sm text-slate-700">{{ $log->user?->hasRoles('super_admin') ? 'System' : ($log->user?->full_name ?? 'System') }}</td>
                     <td class="px-4 py-3.5 text-sm text-slate-700">{{ strtoupper($log->module ?: 'general') }}</td>
                     <td class="px-4 py-3.5 text-sm text-slate-700">{{ $log->target_type ?: '—' }} @if($log->target_id)#{{ $log->target_id }}@endif</td>
                     <td class="px-4 py-3.5 text-sm text-slate-700">{{ $log->ip_address ?: '—' }}</td>

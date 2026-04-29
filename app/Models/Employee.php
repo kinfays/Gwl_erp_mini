@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Employee extends Model
@@ -25,7 +26,6 @@ class Employee extends Model
         'date_of_birth',
         'date_joined',
         'present_appointment',
-        'role',
         'department_id',
         'unit',
         'is_active',
@@ -103,6 +103,16 @@ class Employee extends Model
         return $this->hasOne(User::class, 'staff_id', 'staff_id');
     }
 
+    public function leaveBalances(): HasMany
+    {
+        return $this->hasMany(LeaveBalance::class);
+    }
+
+    public function leaveRequests(): HasMany
+    {
+        return $this->hasMany(LeaveRequest::class, 'requester_id');
+    }
+
     public function getAgeAttribute(): ?int
     {
         if (! $this->date_of_birth) {
@@ -127,9 +137,23 @@ class Employee extends Model
         return $this->gender === 'Female' ? 93 : 7;
     }
 
+    public function getInitialsAttribute(): string
+    {
+        return collect(preg_split('/\s+/', trim($this->full_name)) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn (string $part) => strtoupper(substr($part, 0, 1)))
+            ->join('') ?: 'NA';
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    public function scopeVisibleInErp($query)
+    {
+        return $query->whereDoesntHave('userByStaffId.roles', fn ($roleQuery) => $roleQuery->where('name', 'super_admin'));
     }
 
     public function scopeAtLocation($query, string $locationType)
@@ -148,83 +172,75 @@ class Employee extends Model
     }
 
     public function isHeadOffice(): bool
-{
-    return is_null($this->region_id) && is_null($this->district_id);
-}
-
-
-//leave approval hierarchy helpers
-public function isRegion(): bool
-{
-    return ! is_null($this->region_id) && is_null($this->district_id);
-}
-
-public function isDistrict(): bool
-{
-    return ! is_null($this->district_id);
-}
-
-public function unitManager(): ?self
-{
-    if (! $this->unit_id) {
-        return null;
+    {
+        return is_null($this->region_id) && is_null($this->district_id);
     }
 
-    return self::where('unit_id', $this->unit_id)
-        ->whereHas('roles', fn ($q) =>
-            $q->where('name', 'Unit Manager')
-        )
-        ->first();
-}
 
-public function departmentManager(): ?self
-{
-    if (! $this->department_id) {
-        return null;
+    // Leave approval hierarchy helpers
+    public function isRegion(): bool
+    {
+        return ! is_null($this->region_id) && is_null($this->district_id);
     }
 
-    return self::where('department_id', $this->department_id)
-        ->whereHas('roles', fn ($q) =>
-            $q->whereIn('name', [
-                'Department Manager',
-                'Dept Manager',
-            ])
-        )
-        ->first();
-}
-
-public function districtManager(): ?self
-{
-    if (! $this->district_id) {
-        return null;
+    public function isDistrict(): bool
+    {
+        return ! is_null($this->district_id);
     }
 
-    return self::where('district_id', $this->district_id)
-        ->whereHas('roles', fn ($q) =>
-            $q->where('name', 'District Manager')
-        )
-        ->first();
-}
+    public function unitManager(): ?self
+    {
+        if (! $this->unit) {
+            return null;
+        }
 
-public function chiefManager(): ?self
-{
-    // Head Office Chief Manager
-    if ($this->isHeadOffice()) {
-        return self::whereHas('roles', fn ($q) =>
-            $q->where('name', 'Chief Manager')
-        )->whereNull('region_id')->first();
-    }
-
-    // Regional Chief Manager
-    if ($this->isRegion() || $this->isDistrict()) {
-        return self::where('region_id', $this->region_id)
-            ->whereHas('roles', fn ($q) =>
-                $q->where('name', 'Regional Chief Manager')
-            )
+        return self::query()
+            ->where('department_id', $this->department_id)
+            ->where('unit', $this->unit)
+            ->whereHas('userByStaffId.roles', fn ($q) => $q->where('name', 'manager'))
             ->first();
     }
 
-    return null;
-}
+    public function departmentManager(): ?self
+    {
+        if (! $this->department_id) {
+            return null;
+        }
 
+        return self::query()
+            ->where('department_id', $this->department_id)
+            ->whereHas('userByStaffId.roles', fn ($q) => $q->where('name', 'departmental_manager'))
+            ->first();
+    }
+
+    public function districtManager(): ?self
+    {
+        if (! $this->district_id) {
+            return null;
+        }
+
+        return self::query()
+            ->where('district_id', $this->district_id)
+            ->whereHas('userByStaffId.roles', fn ($q) => $q->where('name', 'district_manager'))
+            ->first();
+    }
+
+    public function chiefManager(): ?self
+    {
+        if ($this->isHeadOffice()) {
+            return self::query()
+                ->where('department_id', $this->department_id)
+                ->whereHas('userByStaffId.roles', fn ($q) => $q->where('name', 'chief_manager'))
+                ->first();
+        }
+
+        if ($this->isRegion() || $this->isDistrict()) {
+            return self::query()
+                ->where('region_id', $this->region_id)
+                ->whereHas('userByStaffId.roles', fn ($q) => $q->where('name', 'regional_chief_manager'))
+                ->first();
+        }
+
+        return null;
+    }
 }

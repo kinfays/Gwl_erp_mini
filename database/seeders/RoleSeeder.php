@@ -21,6 +21,7 @@ class RoleSeeder extends Seeder
             'chief_manager',
             'regional_chief_manager',
             'employee',
+            'secretary',
             'receptionist',
         ];
 

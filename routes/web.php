@@ -1,124 +1,144 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\UacController;
-use App\Http\Controllers\Leave\LeaveRequestController;
+use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
+use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
-use  app\Http\Controllers\Leave\LeaveExportController;
-use App\Livewire\Leave\Approvals;
-use App\Livewire\Leave\ReviewRequest;
-use App\Livewire\Leave\CompulsoryLeave;
-use App\Livewire\Leave\HrDashboard;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Staff\StaffController;
+use App\Http\Controllers\UacController;
+use App\Http\Controllers\Visitors\VisitorExportController;
 use Illuminate\Support\Facades\Route;
 
-
-// Public Routes
 Route::get('/', function () {
-    return view('auth.login'); // Or redirect('/login') depending on your preference
+    return view('auth.login');
 });
 
-/* 
-Route::get('/', function () {
-    return redirect()->route('dashboard');
-}); */
+Route::get('/kiosk', fn () => view('visitors.kiosk'))->name('visitors.kiosk');
 
-
-// Post-Login Welcome Screen
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'active'])
     ->name('dashboard');
 
-// -----------------------------------------------------------------------
-// UAC MODULE (Strictly Protected by Auth, Active Status, Module, and Roles)
-// -----------------------------------------------------------------------
 Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
     ->prefix('uac')
     ->name('uac.')
     ->group(function () {
+        Route::get('/', [UacController::class, 'index'])->name('index');
 
-    // Main UAC Dashboard / Master Layout
-    Route::get('/', [UacController::class, 'index'])->name('index');
+        Route::get('/users', [UacController::class, 'users'])->name('users');
+        Route::post('/users', [UacController::class, 'store'])->name('users.store');
+        Route::patch('/users/{user}', [UacController::class, 'update'])->name('users.update');
+        Route::get('/users/{user}', [UacController::class, 'show'])->name('users.show');
+        Route::patch('/users/{user}/status', [UacController::class, 'toggleStatus'])->name('users.toggle-status');
+        Route::post('/users/{user}/invite', [UacController::class, 'resendInvite'])->name('users.invite');
+        Route::get('/employees/search', [UacController::class, 'searchEmployees'])->name('employees.search');
 
-    // User Management
-    Route::get('/users', [UacController::class, 'users'])->name('users');
-    Route::post('/users', [UacController::class, 'store'])->name('users.store');
-    Route::put('/users/{user}', [UacController::class, 'updateUser'])->name('users.update');
-    Route::get('/users/{user}', [UacController::class, 'show'])->name('users.show');
-    Route::patch('/users/{user}/status', [UacController::class, 'toggleStatus'])->name('users.toggle-status');
-    Route::post('/users/{user}/invite', [UacController::class, 'resendInvite'])->name('users.invite');
-    Route::get('/employees/search', [UacController::class, 'searchEmployees'])->name('employees.search');
+        Route::get('/roles', [UacController::class, 'rolesPermissions'])->name('roles');
 
-    // Roles & Permissions
-    Route::get('/roles', [UacController::class, 'rolesPermissions'])->name('roles');
-    Route::post('/roles', [UacController::class, 'storeRole'])->name('roles.store');
-    Route::put('/roles/{role}/permissions', [UacController::class, 'updateRolePermissions'])->name('roles.permissions.update');
+        Route::get('/import', [ImportController::class, 'uac'])->name('import');
+        Route::get('/import/template/{type}', [ImportController::class, 'downloadTemplate'])
+            ->defaults('context', 'uac')
+            ->name('import.template');
+        Route::post('/import/preview', [ImportController::class, 'preview'])
+            ->defaults('context', 'uac')
+            ->name('import.preview');
+        Route::post('/import/run', [ImportController::class, 'run'])
+            ->defaults('context', 'uac')
+            ->name('import.run');
 
-    // Bulk Import for HR Data
-    Route::get('/import', [UacController::class, 'bulkImport'])->name('import');
-    Route::get('/import/template/{type}', [UacController::class, 'downloadImportTemplate'])->name('import.template');
-    Route::post('/import/preview', [UacController::class, 'previewImport'])->name('import.preview');
-    Route::post('/import/run', [UacController::class, 'runImport'])->name('import.run');
-
-    // -------------------------------------------------------------------
-    // AUDIT LOG (Strictly Super Admin Only)
-    // -------------------------------------------------------------------
-    Route::middleware(['role:super_admin'])->group(function () {
-        Route::get('/audit-log', [UacController::class, 'auditLog'])->name('audit-log');
+        Route::middleware(['role:super_admin'])->group(function () {
+            Route::get('/audit-log', [UacController::class, 'auditLog'])->name('audit-log');
+        });
     });
 
-});
-
-// -----------------------------------------------------------------------
-// USER PROFILE
-// -----------------------------------------------------------------------
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// -----------------------------------------------------------------------
-// Leave Management Module (Protected by Auth, Active Status, and Module Access)
-// -----------------------------------------------------------------------
-
-
 Route::middleware(['auth', 'active', 'module:leave'])
     ->prefix('leave')
     ->name('leave.')
     ->group(function () {
-
-        // HR Dashboard
         Route::get('/', [LeaveHomeController::class, 'index'])->name('home');
-        
-       // Route::get('/', [HrDashboard::class, 'leave.dashboard'])->name('home');
-        
-
-        // All requests
-        //Route::get('/requests', [LeaveRequestController::class, 'index'])->name('requests.index');
-
         Route::get('/requests', fn () => view('leave.requests'))->name('requests');
         Route::get('/my-history', fn () => view('leave.my-history'))->name('my-history');
-
-        // Apply for leave
         Route::get('/apply', fn () => view('leave.apply'))->name('apply');
-        
-        // Approval of leave
         Route::get('/approvals', [LeaveApprovalsController::class, 'index'])->name('approvals');
+        Route::get('/team-dashboard', fn () => view('leave.team-dashboard'))->name('team-dashboard');
+        Route::get('/reports', fn () => view('leave.reports'))
+            ->middleware('permission:leave.export')
+            ->name('reports');
 
-        //team views
-        Route::get('/team-dashboard', fn () => view('leave.team-dashboard'))->middleware(['module:leave'])->name('leave.team-dashboard');
-
-        // Exports (permission-gated)
-        Route::get('/export/approved/excel', [LeaveExportController::class, 'approvedExcel'])->middleware('permission:leave.export')->name('leave.export.approved.excel');
-
-        Route::get('/export/team/excel', [LeaveExportController::class, 'teamExcel'])->middleware('permission:leave.export')->name('leave.export.team.excel');
-
-        // Compulsory leave (permission-gated)
-        Route::get('/compulsory', fn () => view('leave.compulsory'))->middleware('permission:leave.manage_compulsory')->name('leave.compulsory');
+        Route::get('/export/approved/excel', [LeaveExportController::class, 'approvedExcel'])
+            ->middleware('permission:leave.export')
+            ->name('export.approved.excel');
+        Route::get('/export/team/excel', [LeaveExportController::class, 'teamExcel'])
+            ->middleware('permission:leave.export')
+            ->name('export.team.excel');
+        Route::get('/compulsory', fn () => view('leave.compulsory'))
+            ->middleware('permission:leave.manage_compulsory')
+            ->name('compulsory');
     });
 
+Route::middleware([
+    'auth',
+    'active',
+    'module:staff',
+    'role:hr_headoffice,hr_region,admin,super_admin,manager,departmental_manager,district_manager,chief_manager,regional_chief_manager',
+])->prefix('staff')
+    ->name('staff.')
+    ->group(function () {
+        Route::get('/', [StaffController::class, 'index'])->name('index');
+        Route::get('/export', [StaffController::class, 'export'])->name('export');
 
+        Route::middleware(['role:hr_headoffice,hr_region,admin,super_admin'])->group(function () {
+            Route::get('/create', [StaffController::class, 'create'])->name('create');
+            Route::get('/{employee}/edit', [StaffController::class, 'edit'])->name('edit');
+            Route::patch('/{employee}/status', [StaffController::class, 'toggleStatus'])->name('toggle-status');
 
-require __DIR__.'/auth.php';
+            Route::get('/import', [ImportController::class, 'staff'])->name('import');
+            Route::get('/import/template/{type}', [ImportController::class, 'downloadTemplate'])
+                ->defaults('context', 'staff')
+                ->name('import.template');
+            Route::post('/import/preview', [ImportController::class, 'preview'])
+                ->defaults('context', 'staff')
+                ->name('import.preview');
+            Route::post('/import/run', [ImportController::class, 'run'])
+                ->defaults('context', 'staff')
+                ->name('import.run');
+
+            Route::get('/departments', [StaffController::class, 'departments'])->name('departments');
+        });
+    });
+
+Route::middleware(['auth', 'active', 'module:letters'])
+    ->prefix('letters')
+    ->name('letters.')
+    ->group(function () {
+        Route::get('/', fn () => view('letters.home'))->name('home');
+        Route::get('/active', fn () => view('letters.active'))->name('active');
+        Route::get('/new', fn () => view('letters.create'))
+            ->middleware('permission:letters.create')
+            ->name('create');
+        Route::get('/closed', fn () => view('letters.active', ['closed' => true]))->name('closed');
+    });
+
+Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])
+    ->prefix('visitors')
+    ->name('visitors.')
+    ->group(function () {
+        Route::get('/', fn () => view('visitors.home'))->name('home');
+        Route::get('/history', fn () => view('visitors.history'))->name('history');
+        Route::get('/export/excel', [VisitorExportController::class, 'excel'])
+            ->middleware('permission:visitors.export')
+            ->name('export.excel');
+        Route::get('/export/pdf', [VisitorExportController::class, 'pdf'])
+            ->middleware('permission:visitors.export')
+            ->name('export.pdf');
+    });
+
+require __DIR__ . '/auth.php';

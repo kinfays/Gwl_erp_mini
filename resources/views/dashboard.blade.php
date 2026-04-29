@@ -11,7 +11,7 @@
             <div class="flex items-center space-x-6">
                 {{-- Notification Bell (placeholder) --}}
                 <button class="relative">
-                    🔔
+                    Alerts
                     <span class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1">
                         0
                     </span>
@@ -19,19 +19,21 @@
 
                 {{-- User Info --}}
                 <div class="flex items-center space-x-3">
-                    <div class="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-                        {{ strtoupper(substr(auth()->user()->employee->full_name ?? 'U', 0, 1)) }}
-                    </div>
-                    <div>
-                        <div class="text-sm font-medium">
-                            {{ auth()->user()->employee->full_name ?? 'User' }}
-                        </div>
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
-                            <button class="text-xs text-red-600">Sign out</button>
-                        </form>
-                    </div>
-                </div>
+    <div class="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
+        {{ strtoupper(substr(auth()->user()->employee->full_name ?? 'U', 0, 1)) }}
+    </div>
+    <div>
+        <div class="text-sm font-medium">
+            <a href="{{ route('profile.edit') }}" class="tb-profile hover:underline">
+                {{ auth()->user()->employee->full_name ?? 'User' }}
+            </a>
+        </div>
+        <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button class="text-xs text-red-600">Sign out</button>
+        </form>
+    </div>
+</div>
             </div>
         </div>
 
@@ -44,10 +46,10 @@
 
             <p class="text-gray-600 mt-1">
                 {{ now()->format('l, jS F Y') }}
-                —
+                -
                 {{ auth()->user()->employee->district->district_name ?? '' }},
                 {{ auth()->user()->employee->region->region_name ?? '' }}
-                —
+                -
                 {{ auth()->user()->roles->pluck('display_name')->join(', ') }}
             </p>
         </div>
