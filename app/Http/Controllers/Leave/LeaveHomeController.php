@@ -26,6 +26,10 @@ class LeaveHomeController extends Controller
             return view('leave.dashboard');
         }
 
-        return redirect()->route('leave.apply');
+        if ($user->hasRoles('manager', 'departmental_manager', 'district_manager', 'chief_manager', 'regional_chief_manager')) {
+            return view('leave.team-dashboard');
+        }
+
+        return view('leave.home');
     }
 }

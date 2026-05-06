@@ -13,14 +13,16 @@ class DepartmentsManager extends Component
     use EnforcesModuleAccess;
 
     public string $department_name = '';
+
     public ?int $editingId = null;
+
     public string $editingName = '';
 
     public function mount(ErpNavigation $navigation): void
     {
         $this->enforceLivewireModule('staff');
 
-        if (! $navigation->canManageStaff(auth()->user())) {
+        if (! $this->canManageDepartments()) {
             abort(403);
         }
     }
@@ -37,6 +39,7 @@ class DepartmentsManager extends Component
 
         $this->reset('department_name');
         session()->flash('success', 'Department created successfully.');
+        $this->dispatch('toast', type: 'success', message: 'Department created successfully.');
     }
 
     public function edit(int $departmentId): void
@@ -57,7 +60,7 @@ class DepartmentsManager extends Component
         $department = Department::findOrFail($this->editingId);
 
         $validated = $this->validate([
-            'editingName' => ['required', 'string', 'max:255', 'unique:departments,department_name,' . $department->id],
+            'editingName' => ['required', 'string', 'max:255', 'unique:departments,department_name,'.$department->id],
         ]);
 
         $old = $department->toArray();
@@ -69,6 +72,7 @@ class DepartmentsManager extends Component
 
         $this->reset('editingId', 'editingName');
         session()->flash('success', 'Department updated successfully.');
+        $this->dispatch('toast', type: 'success', message: 'Department updated successfully.');
     }
 
     public function delete(int $departmentId): void
@@ -77,6 +81,7 @@ class DepartmentsManager extends Component
 
         if ($department->employees_count > 0) {
             $this->addError('department_name', 'You cannot delete a department that still has employees assigned.');
+            $this->dispatch('toast', type: 'error', message: 'Department still has employees assigned.');
 
             return;
         }
@@ -86,6 +91,7 @@ class DepartmentsManager extends Component
 
         AuditLog::record('delete_department', 'staff', 'departments', $departmentId, $old, null);
         session()->flash('success', 'Department deleted successfully.');
+        $this->dispatch('toast', type: 'success', message: 'Department deleted successfully.');
     }
 
     public function render()
@@ -96,5 +102,12 @@ class DepartmentsManager extends Component
                 ->orderBy('department_name')
                 ->get(),
         ]);
+    }
+
+    protected function canManageDepartments(): bool
+    {
+        $user = auth()->user();
+
+        return $user && ($user->hasRoles('super_admin') || $user->hasPermission('staff.manage_departments'));
     }
 }

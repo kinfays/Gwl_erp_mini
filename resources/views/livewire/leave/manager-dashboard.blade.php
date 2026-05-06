@@ -125,7 +125,6 @@
 
         </div>
     </div>
-</div>
 <a href="{{ route('leave.export.team.excel') }}" class="btn">
     Export Team Leave
 </a>
@@ -147,3 +146,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }).render();
 });
 </script>
+</div>

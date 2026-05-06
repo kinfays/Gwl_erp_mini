@@ -4,9 +4,11 @@ namespace App\Services\Leave;
 
 use App\Models\Employee;
 use App\Models\LeaveRequest;
-use App\Models\LeaveBalance;
-use App\Services\Leave\LeaveNotificationService;
+use App\Models\User;
+use App\Notifications\GeneralDatabaseNotification;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class LeaveWorkflowService
 {
@@ -32,8 +34,16 @@ class LeaveWorkflowService
             }
         }
 
-        return $this->createOrUpdate($requester, $data, 'Pending Approval');
-        $this->notify->submitted($request);
+        $request = $this->createOrUpdate($requester, $data, 'Pending Approval');
+        $this->notifyEmployee(
+            $request->manager,
+            'Leave approval needed',
+            $requester->full_name.' submitted a '.$request->leave_type.' leave request.',
+            route('leave.approvals'),
+            ['type' => 'leave_submitted', 'leave_request_id' => $request->id]
+        );
+
+        return $request;
 
     }
 
@@ -45,11 +55,11 @@ class LeaveWorkflowService
         $end = $data['end_date'];
 
         $total = $this->daysCalc->workingDays(
-            \Carbon\Carbon::parse($start),
-            \Carbon\Carbon::parse($end)
+            Carbon::parse($start),
+            Carbon::parse($end)
         );
 
-        $year = (int) \Carbon\Carbon::parse($start)->format('Y');
+        $year = (int) Carbon::parse($start)->format('Y');
 
         return LeaveRequest::create([
             'requester_id' => $requester->id,
@@ -81,8 +91,8 @@ class LeaveWorkflowService
         $req->manager_comments = $comments;
         $req->manager_recommendation = $recommended ? 'Recommended' : 'Rejected';
         if ($recommended) {
-    [$mgr, $chief] = $this->chain->resolve($req->requester);
-    $this->notify->recommended($req, $chief->email);
+            [$mgr, $chief] = $this->chain->resolve($req->requester);
+            $this->notify->recommended($req, $chief->email);
         } else {
             $req->leave_status = 'Denied';
         }
@@ -91,6 +101,21 @@ class LeaveWorkflowService
 
         if (! $recommended) {
             $this->notify->denied($req);
+            $this->notifyEmployee(
+                $req->requester,
+                'Leave request rejected',
+                'Your '.$req->leave_type.' leave request was rejected by your manager.',
+                route('leave.my-history'),
+                ['type' => 'leave_rejected', 'leave_request_id' => $req->id]
+            );
+        } else {
+            $this->notifyEmployee(
+                $chief,
+                'Final leave approval needed',
+                $req->requester->full_name."'s leave request has been recommended.",
+                route('leave.approvals'),
+                ['type' => 'leave_recommended', 'leave_request_id' => $req->id]
+            );
         }
 
         return $req;
@@ -117,6 +142,14 @@ class LeaveWorkflowService
                 $req->leave_status = 'Denied';
                 $req->save();
                 $this->notify->denied($req);
+                $this->notifyEmployee(
+                    $req->requester,
+                    'Leave request denied',
+                    'Your '.$req->leave_type.' leave request was denied.',
+                    route('leave.my-history'),
+                    ['type' => 'leave_denied', 'leave_request_id' => $req->id]
+                );
+
                 return $req;
             }
 
@@ -126,13 +159,20 @@ class LeaveWorkflowService
             // Create/fetch balance on approval & deduct days
             $balance = $this->balances->getOrCreateForApproval($req->requester, $req->leave_type, (int) $req->request_year);
             $this->balances->deduct($balance, (int) $req->total_days_applied);
-            $hrEmails = \App\Models\User::query()
+            $hrEmails = User::query()
                 ->whereHas('roles', fn ($r) => $r->whereIn('name', ['hr_headoffice', 'hr_region']))
                 ->when($req->region_id, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('region_id', $req->region_id)))
                 ->pluck('email')
                 ->toArray();
 
             $this->notify->approved($req, $balance, $hrEmails);
+            $this->notifyEmployee(
+                $req->requester,
+                'Leave request approved',
+                'Your '.$req->leave_type.' leave request was approved.',
+                route('leave.my-history'),
+                ['type' => 'leave_approved', 'leave_request_id' => $req->id]
+            );
 
             return $req;
         });
@@ -156,5 +196,25 @@ class LeaveWorkflowService
         $req->save();
 
         return $req;
+    }
+
+    protected function notifyEmployee(Employee $employee, string $title, string $message, string $url, array $meta = []): void
+    {
+        if (! Schema::hasTable('notifications')) {
+            return;
+        }
+
+        $user = User::query()
+            ->where('employee_id', $employee->id)
+            ->orWhere('staff_id', $employee->staff_id)
+            ->first();
+
+        $user?->notify(new GeneralDatabaseNotification(
+            $title,
+            $message,
+            $url,
+            'leave',
+            $meta
+        ));
     }
 }

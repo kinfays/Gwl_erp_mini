@@ -3,73 +3,65 @@
 namespace App\Observers;
 
 use App\Models\Employee;
-use App\Models\User;
 use App\Models\Role;
+use App\Models\User;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-
 
 class EmployeeObserver
 {
     public function created(Employee $employee): void
     {
-        /*
-        Log::info('EmployeeObserver fired', [
-            'employee_id' => $employee->id,
-            'staff_id' => $employee->staff_id,
-        ]); */
+        $this->syncUser($employee, sendInviteForNewUser: true);
+    }
 
-        // Prevent duplicate users
-        if (User::where('staff_id', $employee->staff_id)->exists()) {
-            return;
+    public function updated(Employee $employee): void
+    {
+        $this->syncUser($employee, sendInviteForNewUser: true);
+    }
+
+    protected function syncUser(Employee $employee, bool $sendInviteForNewUser = false): User
+    {
+        $user = User::query()
+            ->where('employee_id', $employee->id)
+            ->orWhere('staff_id', $employee->staff_id)
+            ->first();
+
+        if (! $user) {
+            $user = new User([
+                'staff_id' => $employee->staff_id,
+            ]);
+            $user->password = Hash::make(Str::random(20));
         }
 
         $payload = [
-            'staff_id'    => $employee->staff_id,
+            'staff_id' => $employee->staff_id,
             'employee_id' => $employee->id,
-            'email'       => $employee->email,
-            'password'    => Hash::make(Str::random(20)),
-            'is_active'   => $employee->is_active,
+            'email' => $employee->email,
+            'is_active' => $employee->is_active ?? true,
         ];
 
         if (Schema::hasColumn('users', 'full_name')) {
             $payload['full_name'] = $employee->full_name;
         }
 
-        $user = User::create($payload);
+        $user->fill($payload);
+        $wasNewUser = ! $user->exists;
+        $user->save();
 
-        // Attach default employee role
         $employeeRole = Role::where('name', 'employee')->first();
         if ($employeeRole) {
             $user->roles()->syncWithoutDetaching([$employeeRole->id]);
         }
 
-        // Send invite email
-        $this->sendInvite($user);
-    }
-
-    public function updated(Employee $employee): void
-    {
-        $user = User::where('staff_id', $employee->staff_id)->first();
-
-        if (! $user) {
-            return;
+        if ($wasNewUser && $sendInviteForNewUser) {
+            $this->sendInvite($user);
         }
 
-        $user->update([
-            'email'       => $employee->email,
-            'employee_id' => $employee->id,
-            'is_active'   => $employee->is_active,
-        ]);
-
-        if (Schema::hasColumn('users', 'full_name')) {
-            $user->update([
-                'full_name' => $employee->full_name,
-            ]);
-        }
+        return $user;
     }
 
     protected function sendInvite(User $user): void

@@ -8,6 +8,8 @@ class CompulsoryLeaveDeduction extends Model
 {
     protected $fillable = [
         'year',
+        'start_date',
+        'end_date',
         'deduction_days',
         'applied_by_id',
         'applies_to_categories',
@@ -18,6 +20,8 @@ class CompulsoryLeaveDeduction extends Model
 
     protected $casts = [
         'year' => 'integer',
+        'start_date' => 'date',
+        'end_date' => 'date',
         'applies_to_categories' => 'array',
         'applied_at' => 'datetime',
     ];

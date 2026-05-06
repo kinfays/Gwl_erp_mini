@@ -2,6 +2,11 @@ import './bootstrap';
 
 import Alpine from 'alpinejs';
 
-window.Alpine = Alpine;
+const livewirePresent = window.Livewire
+    || document.querySelector('[wire\\:id], script[src*="livewire"]');
 
-Alpine.start();
+if (! livewirePresent && ! window.Alpine) {
+    window.Alpine = Alpine;
+
+    Alpine.start();
+}

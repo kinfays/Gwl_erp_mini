@@ -40,7 +40,20 @@
                             <td>
                                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                                     <button wire:click="edit({{ $department->id }})" class="actn">Edit</button>
-                                    <button wire:click="delete({{ $department->id }})" class="actn actn-r">Delete</button>
+                                    <button
+                                        type="button"
+                                        class="actn actn-r"
+                                        x-data
+                                        x-on:click.prevent="$dispatch('confirm-action', {
+                                            title: 'Delete department?',
+                                            message: @js('This will delete ' . $department->department_name . ' if no employees are assigned.'),
+                                            confirmLabel: 'Delete',
+                                            variant: 'danger',
+                                            action: () => $wire.delete({{ $department->id }})
+                                        })"
+                                    >
+                                        Delete
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -61,12 +74,24 @@
             <div style="padding:14px">
                 <div class="form-field" style="margin-bottom:12px">
                     <label class="form-label">Department Name</label>
-                    <input
-                        type="text"
-                        wire:model.defer="{{ $editingId ? 'editingName' : 'department_name' }}"
-                        class="form-input"
-                        placeholder="Enter department name"
-                    >
+                    @if ($editingId)
+                        <input
+                            type="text"
+                            wire:model="editingName"
+                            class="form-input"
+                            placeholder="Enter department name"
+                        >
+                    @else
+                        <input
+                            type="text"
+                            wire:model="department_name"
+                            class="form-input"
+                            placeholder="Enter department name"
+                        >
+                    @endif
+                    @error($editingId ? 'editingName' : 'department_name')
+                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 <div style="display:flex;gap:8px;justify-content:flex-end">

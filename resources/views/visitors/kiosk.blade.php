@@ -13,6 +13,9 @@
     <body class="visitor-kiosk-body">
         <livewire:visitors.kiosk />
 
+        <x-global.toast-center />
+        <x-global.confirm-modal />
+
         @livewireScripts
         <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.2.0/dist/signature_pad.umd.min.js"></script>
         <script>
@@ -30,18 +33,85 @@
                 });
             }
 
+            function signatureComponent(canvas) {
+                const root = canvas.closest('[wire\\:id]');
+
+                return root && window.Livewire ? Livewire.find(root.getAttribute('wire:id')) : null;
+            }
+
+            function signatureValue(canvas) {
+                const pad = canvas._kioskSignaturePad;
+
+                if (pad && typeof pad.isEmpty === 'function' && pad.isEmpty()) {
+                    return '';
+                }
+
+                if (!pad && canvas.dataset.drawn !== '1') {
+                    return '';
+                }
+
+                return canvas.toDataURL('image/png');
+            }
+
+            function setSignatureValue(canvas, value, live = false) {
+                const component = signatureComponent(canvas);
+
+                if (!component || typeof component.set !== 'function') {
+                    return Promise.resolve();
+                }
+
+                const result = component.set(canvas.dataset.signaturePad, value, live);
+
+                return result && typeof result.then === 'function'
+                    ? result
+                    : Promise.resolve(result);
+            }
+
+            function syncSignatureCanvas(canvas, live = false) {
+                return setSignatureValue(canvas, signatureValue(canvas), live);
+            }
+
+            window.syncKioskSignature = function (property) {
+                initSignaturePads();
+
+                const canvas = document.querySelector(`[data-signature-pad="${property}"]`);
+
+                return canvas ? syncSignatureCanvas(canvas, true) : Promise.resolve();
+            };
+
+            window.clearKioskSignature = function (property) {
+                initSignaturePads();
+
+                const canvas = document.querySelector(`[data-signature-pad="${property}"]`);
+
+                if (!canvas) {
+                    return Promise.resolve();
+                }
+
+                if (canvas._kioskSignaturePad) {
+                    canvas._kioskSignaturePad.clear();
+                } else {
+                    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+                }
+
+                canvas.dataset.drawn = '0';
+
+                return setSignatureValue(canvas, '', true);
+            };
+
             function initSignaturePads() {
                 document.querySelectorAll('[data-signature-pad]').forEach((canvas) => {
                     if (canvas.dataset.ready === '1') return;
 
-                    const property = canvas.dataset.signaturePad;
-                    const clearButton = document.querySelector(`[data-clear-signature="${property}"]`);
                     const context = canvas.getContext('2d');
                     const ratio = Math.max(window.devicePixelRatio || 1, 1);
                     const rect = canvas.getBoundingClientRect();
-                    canvas.width = rect.width * ratio;
-                    canvas.height = rect.height * ratio;
+                    const width = rect.width || canvas.offsetWidth || 300;
+                    const height = rect.height || canvas.offsetHeight || 150;
+                    canvas.width = width * ratio;
+                    canvas.height = height * ratio;
                     context.scale(ratio, ratio);
+                    canvas.dataset.drawn = '0';
 
                     let pad;
                     if (window.SignaturePad) {
@@ -49,6 +119,10 @@
                             backgroundColor: 'rgb(255,255,255)',
                             penColor: 'rgb(23,34,52)'
                         });
+
+                        if (typeof pad.addEventListener === 'function') {
+                            pad.addEventListener('endStroke', () => syncSignatureCanvas(canvas));
+                        }
                     } else {
                         let drawing = false;
 
@@ -80,7 +154,8 @@
                         function stop() {
                             if (!drawing) return;
                             drawing = false;
-                            syncSignature();
+                            canvas.dataset.drawn = '1';
+                            syncSignatureCanvas(canvas);
                         }
 
                         canvas.addEventListener('mousedown', start);
@@ -92,32 +167,30 @@
                         canvas.addEventListener('touchend', stop);
                     }
 
-                    function component() {
-                        const root = canvas.closest('[wire\\:id]');
-                        return root ? Livewire.find(root.getAttribute('wire:id')) : null;
-                    }
+                    canvas._kioskSignaturePad = pad || null;
 
-                    function syncSignature() {
-                        if (!pad || !pad.isEmpty()) {
-                            component()?.set(property, canvas.toDataURL('image/png'));
-                        }
-                    }
-
-                    canvas.addEventListener('mouseup', syncSignature);
-                    canvas.addEventListener('touchend', syncSignature);
-
-                    clearButton?.addEventListener('click', () => {
-                        if (pad) {
-                            pad.clear();
-                        } else {
-                            context.clearRect(0, 0, canvas.width, canvas.height);
-                        }
-                        component()?.set(property, '');
+                    ['pointerup', 'mouseup', 'touchend'].forEach((eventName) => {
+                        canvas.addEventListener(eventName, () => {
+                            requestAnimationFrame(() => syncSignatureCanvas(canvas));
+                        });
                     });
 
                     canvas.dataset.ready = '1';
                 });
             }
+
+            document.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-clear-signature]');
+
+                if (!button) return;
+
+                event.preventDefault();
+                window.clearKioskSignature(button.dataset.clearSignature);
+            });
+
+            document.addEventListener('kiosk-clear-signature', (event) => {
+                window.clearKioskSignature(event.detail?.property);
+            });
 
             document.addEventListener('DOMContentLoaded', () => {
                 kioskClock();
@@ -129,7 +202,7 @@
             document.addEventListener('livewire:init', () => {
                 if (window.Livewire?.hook) {
                     Livewire.hook('morph.updated', initSignaturePads);
-                    Livewire.hook('commit', ({ succeed }) => succeed(initSignaturePads));
+                    Livewire.hook('commit', ({ succeed }) => succeed(() => initSignaturePads()));
                 }
             });
         </script>

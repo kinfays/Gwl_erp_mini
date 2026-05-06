@@ -66,8 +66,16 @@
                     @endif
 
                     @if($r->leave_status === 'Planned')
-                        <button wire:click="deletePlanned({{ $r->id }})"
-                                onclick="return confirm('Delete this planned request?')"
+                        <button
+                                type="button"
+                                x-data
+                                x-on:click.prevent="$dispatch('confirm-action', {
+                                    title: 'Delete planned request?',
+                                    message: 'This planned leave request will be removed.',
+                                    confirmLabel: 'Delete',
+                                    variant: 'danger',
+                                    action: () => $wire.deletePlanned({{ $r->id }})
+                                })"
                                 class="px-3 py-1.5 rounded bg-red-50 text-red-700 text-xs border border-red-200">
                             Delete
                         </button>
@@ -157,8 +165,16 @@
                     @endif
 
                     @if($selectedRequest->leave_status === 'Planned')
-                        <button wire:click="deletePlanned({{ $selectedRequest->id }})"
-                                onclick="return confirm('Delete this planned request?')"
+                        <button
+                                type="button"
+                                x-data
+                                x-on:click.prevent="$dispatch('confirm-action', {
+                                    title: 'Delete planned request?',
+                                    message: 'This planned leave request will be removed.',
+                                    confirmLabel: 'Delete',
+                                    variant: 'danger',
+                                    action: () => $wire.deletePlanned({{ $selectedRequest->id }})
+                                })"
                                 class="px-4 py-2 rounded bg-red-600 text-white text-sm">
                             Delete
                         </button>

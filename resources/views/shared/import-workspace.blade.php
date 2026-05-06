@@ -81,8 +81,9 @@
 
                 @if ($preview)
                     <div style="display:flex;gap:12px;font-size:10px;margin-top:12px;flex-wrap:wrap">
-                        <span style="color:#3B6D11">✓ {{ $preview['valid_count'] }} rows validated</span>
-                        <span style="color:#A32D2D">✗ {{ $preview['error_count'] }} issues found</span>
+                        <span style="color:#3B6D11">OK {{ $preview['valid_count'] }} rows validated</span>
+                        <span style="color:#A32D2D">! {{ $preview['error_count'] }} issues found</span>
+                        <span style="color:var(--color-text-secondary)">{{ $preview['failure_percent'] ?? 0 }}% failure rate; max {{ $preview['max_failure_percent'] ?? config('gwl.max_import_failure_percent', 20) }}%</span>
                     </div>
                 @endif
             </div>
@@ -93,11 +94,11 @@
                 <span class="pg-title">Supported Types</span>
             </div>
 
-            <div style="padding:14px;display:grid;gap:10px">
+            <div class="supported-types-list">
                 @foreach ($types as $type)
-                    <div class="erp-card" style="padding:12px">
-                        <div style="font-size:12px;font-weight:600">{{ $type['label'] }}</div>
-                        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px">{{ $type['description'] }}</div>
+                    <div class="supported-type-card">
+                        <div class="supported-type-title">{{ $type['label'] }}</div>
+                        <div class="supported-type-desc">{{ $type['description'] }}</div>
                     </div>
                 @endforeach
             </div>
@@ -110,12 +111,31 @@
                 <span class="pg-title">Preview Results</span>
 
                 @if (! empty($preview['valid_rows']))
-                    <form action="{{ route($routePrefix . '.import.run') }}" method="POST">
+                    <form action="{{ route($routePrefix . '.import.run') }}" method="POST" x-data>
                         @csrf
-                        <button type="submit" class="btn btn-primary">Run Import</button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            @if (! empty($preview['blocked'])) disabled @endif
+                            x-on:click.prevent="$dispatch('confirm-action', {
+                                title: 'Run bulk import?',
+                                message: 'Validated rows will be written to the database and audited.',
+                                confirmLabel: 'Run Import',
+                                variant: 'primary',
+                                action: () => $root.submit()
+                            })"
+                        >
+                            Run Import
+                        </button>
                     </form>
                 @endif
             </div>
+
+            @if (! empty($preview['blocked']))
+                <div style="padding:12px 14px;border-top:0.5px solid var(--color-border-tertiary);background:#fcebeb;color:#a32d2d;font-size:11px">
+                    Import is blocked because the validation failure rate is above the configured limit.
+                </div>
+            @endif
 
             @if (! empty($preview['preview_rows']))
                 <table>

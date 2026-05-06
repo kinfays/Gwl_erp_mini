@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             PermissionSeeder::class,
             ModuleAccessSeeder::class,
+            StaffRolePermissionSeeder::class,
             LettersRolePermissionSeeder::class,
             VisitorsRolePermissionSeeder::class,
             HolidaySeeder::class,

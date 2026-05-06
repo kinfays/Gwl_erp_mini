@@ -102,6 +102,12 @@
                 </tbody>
             </table>
 
+            <div wire:loading.delay class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
+            </div>
+
             @if (method_exists($letters, 'links'))
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
                     <div style="font-size:11px;color:var(--color-text-secondary)">
@@ -134,7 +140,20 @@
                         </div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
                             @if ($isCreator && ! $isClosed)
-                                <button type="button" wire:click="closeLetter" onclick="return confirm('Close this letter?')" class="actn actn-r">Close Letter</button>
+                                <button
+                                    type="button"
+                                    class="actn actn-r"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Close letter?',
+                                        message: 'This letter will move to the closed list.',
+                                        confirmLabel: 'Close Letter',
+                                        variant: 'danger',
+                                        action: () => $wire.closeLetter()
+                                    })"
+                                >
+                                    Close Letter
+                                </button>
                             @endif
                             @if ($isCreator && $isClosed)
                                 <button type="button" wire:click="reopenLetter" class="actn actn-g">Re-open</button>

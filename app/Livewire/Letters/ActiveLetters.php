@@ -16,28 +16,43 @@ class ActiveLetters extends Component
     use WithPagination;
 
     public string $tab = 'active';
+
     public string $typeFilter = '';
+
     public string $search = '';
+
     public int $perPage = 15;
 
     public ?int $selectedLetterId = null;
+
     public string $detailTab = 'remarks';
+
     public bool $confirmPrompt = false;
+
     public string $flashMessage = '';
 
     public string $remarkContent = '';
+
     public ?int $editingRemarkId = null;
+
     public string $editingRemarkContent = '';
 
     public string $secretarySearch = '';
+
     public int|string $dispatchToId = '';
 
     public string $editSubject = '';
+
     public string $editRefNo = '';
+
     public string $editType = 'Internal';
+
     public int|string $editMemoSenderId = '';
+
     public string $editCompanySender = '';
+
     public string $editDateOnLetter = '';
+
     public string $editSenderSearch = '';
 
     public function mount(LetterWorkflowService $workflow): void
@@ -77,11 +92,13 @@ class ActiveLetters extends Component
 
         if ($fromNotification && $workflow->pendingIncomingRoute($letter, $employee)) {
             $this->confirmPrompt = true;
+
             return;
         }
 
         if ($workflow->pendingIncomingRoute($letter, $employee)) {
             $this->confirmPrompt = true;
+
             return;
         }
 
@@ -105,6 +122,7 @@ class ActiveLetters extends Component
         $workflow->confirmHardcopy($letter, $employee);
         $this->confirmPrompt = false;
         $this->flashMessage = 'Hardcopy receipt confirmed.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
         $this->fillEditForm($letter->fresh());
     }
 
@@ -124,7 +142,8 @@ class ActiveLetters extends Component
 
         $this->dispatchToId = '';
         $this->secretarySearch = '';
-        $this->flashMessage = 'Letter dispatched to ' . $recipient->full_name . '.';
+        $this->flashMessage = 'Letter dispatched to '.$recipient->full_name.'.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function closeLetter(LetterWorkflowService $workflow): void
@@ -132,6 +151,7 @@ class ActiveLetters extends Component
         $workflow->close($this->selectedLetter($workflow), $this->requireEmployee());
         $this->tab = 'closed';
         $this->flashMessage = 'Letter closed.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function reopenLetter(LetterWorkflowService $workflow): void
@@ -139,6 +159,7 @@ class ActiveLetters extends Component
         $workflow->reopen($this->selectedLetter($workflow), $this->requireEmployee());
         $this->tab = 'active';
         $this->flashMessage = 'Letter reopened.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function addRemark(LetterWorkflowService $workflow): void
@@ -152,6 +173,7 @@ class ActiveLetters extends Component
         $workflow->addRemark($this->selectedLetter($workflow), $this->requireEmployee(), $this->remarkContent);
         $this->remarkContent = '';
         $this->flashMessage = 'Remark added.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function startEditRemark(int $remarkId): void
@@ -175,6 +197,7 @@ class ActiveLetters extends Component
         $this->editingRemarkId = null;
         $this->editingRemarkContent = '';
         $this->flashMessage = 'Remark updated.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function updateLetter(LetterWorkflowService $workflow): void
@@ -201,6 +224,7 @@ class ActiveLetters extends Component
         ]);
 
         $this->flashMessage = 'Letter details updated.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
 
     public function render(LetterWorkflowService $workflow)
@@ -214,7 +238,7 @@ class ActiveLetters extends Component
                 'selectedLetter' => null,
                 'secretaries' => collect(),
                 'senders' => collect(),
-            'canRemark' => false,
+                'canRemark' => false,
                 'canForward' => false,
             ]);
         }
@@ -242,11 +266,11 @@ class ActiveLetters extends Component
             ->when($this->search, function ($query) {
                 $query->where(function ($searchQuery) {
                     $searchQuery
-                        ->where('subject', 'like', '%' . $this->search . '%')
-                        ->orWhere('ref_no', 'like', '%' . $this->search . '%')
-                        ->orWhere('sn_number', 'like', '%' . $this->search . '%')
-                        ->orWhere('company_sender', 'like', '%' . $this->search . '%')
-                        ->orWhereHas('memoSender', fn ($senderQuery) => $senderQuery->where('full_name', 'like', '%' . $this->search . '%'));
+                        ->where('subject', 'like', '%'.$this->search.'%')
+                        ->orWhere('ref_no', 'like', '%'.$this->search.'%')
+                        ->orWhere('sn_number', 'like', '%'.$this->search.'%')
+                        ->orWhere('company_sender', 'like', '%'.$this->search.'%')
+                        ->orWhereHas('memoSender', fn ($senderQuery) => $senderQuery->where('full_name', 'like', '%'.$this->search.'%'));
                 });
             })
             ->latest()
@@ -277,8 +301,8 @@ class ActiveLetters extends Component
                 ->when($this->editSenderSearch, function ($query) {
                     $query->where(function ($searchQuery) {
                         $searchQuery
-                            ->where('full_name', 'like', '%' . $this->editSenderSearch . '%')
-                            ->orWhere('staff_id', 'like', '%' . $this->editSenderSearch . '%');
+                            ->where('full_name', 'like', '%'.$this->editSenderSearch.'%')
+                            ->orWhere('staff_id', 'like', '%'.$this->editSenderSearch.'%');
                     });
                 })
                 ->orderBy('full_name')

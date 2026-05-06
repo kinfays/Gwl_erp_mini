@@ -2,24 +2,29 @@
 
 namespace App\Livewire\Leave;
 
-use Livewire\Component;
-use Livewire\WithPagination;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Department;
+use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Services\Leave\LeaveApprovalChainResolver;
+use Livewire\Component;
+use Livewire\WithPagination;
 
 class AllRequests extends Component
 {
-    use WithPagination;
     use EnforcesModuleAccess;
+    use WithPagination;
 
     public string $tab = 'pending'; // default: pending ✅
+
     public string $search = '';
 
     public string $leaveType = '';     // Annual/Casual/...
+
     public int|string $departmentId = ''; // department filter
+
     public string $dateFrom = '';
+
     public string $dateTo = '';
 
     public int $perPage = 15;
@@ -36,19 +41,18 @@ class AllRequests extends Component
         $this->resetPage();
     }
 
-   
-public function updating($name): void
+    public function updating($name): void
     {
-        if (in_array($name, ['tab','search','leaveType','departmentId','dateFrom','dateTo'], true)) {
+        if (in_array($name, ['tab', 'search', 'leaveType', 'departmentId', 'dateFrom', 'dateTo'], true)) {
             $this->resetPage();
         }
     }
 
     public function render()
     {
-       /** @var User|null $user */
+        /** @var User|null $user */
         $user = auth()->guard()->user();
-        $actor = $user->employee;
+        $actor = $this->employee();
 
         $departments = Department::query()->orderBy('department_name')->get();
 
@@ -58,7 +62,7 @@ public function updating($name): void
             ->when($this->search, function ($q) {
                 $q->whereHas('requester', function ($qq) {
                     $qq->where('full_name', 'like', "%{$this->search}%")
-                       ->orWhere('staff_id', 'like', "%{$this->search}%");
+                        ->orWhere('staff_id', 'like', "%{$this->search}%");
                 });
             })
             ->when($this->leaveType, fn ($q) => $q->where('leave_type', $this->leaveType))
@@ -80,9 +84,13 @@ public function updating($name): void
         /**
          * HR scoping (read-only): region-scoped, HO HR sees all
          */
-        if ($user->isHrUser()) {
+        if ($user->hasRoles('super_admin', 'admin') || $user->isHrUser()) {
             if (! $user->isHeadOfficeHr()) {
-                $base->where('region_id', $actor->region_id);
+                $base->when($user->isHrUser(), function ($query) use ($actor) {
+                    abort_if(! $actor, 403, 'Employee profile is required for regional leave access.');
+
+                    $query->where('region_id', $actor->region_id);
+                });
             }
 
             $requests = $base->latest()->paginate($this->perPage)->withQueryString();
@@ -100,14 +108,16 @@ public function updating($name): void
          * - direct manager queue: manager_id = actor.id
          * - chief queue: actor must be resolved chief for requester
          */
+        abort_if(! $actor, 403, 'Employee profile is required for leave approvals.');
+
         $resolver = app(LeaveApprovalChainResolver::class);
 
         $candidate = (clone $base)
             ->where(function ($q) use ($actor) {
                 $q->where('manager_id', $actor->id)
-                  ->orWhere(function ($qq) {
-                      $qq->where('manager_recommendation', 'Recommended');
-                  });
+                    ->orWhere(function ($qq) {
+                        $qq->where('manager_recommendation', 'Recommended');
+                    });
             })
             ->get();
 
@@ -140,4 +150,10 @@ public function updating($name): void
         ]);
     }
 
+    protected function employee(): ?Employee
+    {
+        $user = auth()->guard()->user();
+
+        return $user?->employee ?? $user?->employeeByStaffId;
+    }
 }

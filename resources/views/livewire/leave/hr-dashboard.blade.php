@@ -106,28 +106,7 @@
             </table>
         </div>
 
-        {{-- ANALYTICS --}}
-        <div class="space-y-4">
-
-            {{-- LEAVE BY TYPE --}}
-          <!--  <div class="pg">
-                <div class="pg-head">
-                    <span class="pg-title">Leave by type — {{ now()->year }}</span>
-                </div>
-
-                <div class="px-4 py-3">
-                    @foreach($leaveByType as $type => $pct)
-                        <div class="bar-row">
-                            <div class="bar-lbl">{{ $type }}</div>
-                            <div class="bar-track">
-                                <div class="bar-fill"
-                                     style="width:{{ $pct }}%; background:#185FA5"></div>
-                            </div>
-                            <div class="bar-val">{{ $pct }}%</div>
-                        </div>
-                    @endforeach
-                </div>
-            </div> -->
+        {{-- LEAVE BY TYPE --}}
 
             <div class="pg">
     <div class="pg-head">

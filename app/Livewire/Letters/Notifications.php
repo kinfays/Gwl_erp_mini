@@ -10,9 +10,32 @@ class Notifications extends Component
 {
     public bool $open = false;
 
+    public string $tab = 'unread';
+
     public function toggle(): void
     {
         $this->open = ! $this->open;
+    }
+
+    public function setTab(string $tab): void
+    {
+        $this->tab = $tab === 'all' ? 'all' : 'unread';
+    }
+
+    public function markAllRead(): void
+    {
+        $employee = $this->employee();
+
+        if (! $employee) {
+            return;
+        }
+
+        LetterNotification::query()
+            ->where('secretariat_id', $employee->id)
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
+
+        $this->dispatch('toast', type: 'success', message: 'Letter notifications marked as read.');
     }
 
     public function openNotification(int $notificationId)
@@ -27,9 +50,16 @@ class Notifications extends Component
 
         $notification->update(['is_read' => true]);
 
+        $prompt = $notification->letter
+            ? $notification->letter->routingHistories()
+                ->where('to_secretariat_id', $employee->id)
+                ->where('received_confirm', false)
+                ->exists()
+            : false;
+
         return redirect()->route('letters.active', [
             'letter' => $notification->letter_id,
-            'prompt' => 1,
+            'prompt' => $prompt ? 1 : 0,
         ]);
     }
 
@@ -37,18 +67,27 @@ class Notifications extends Component
     {
         $employee = $this->employee();
 
-        $notifications = $employee
-            ? LetterNotification::query()
+        $notifications = collect();
+        $unreadCount = 0;
+
+        if ($employee) {
+            $base = LetterNotification::query()
                 ->with('letter')
-                ->where('secretariat_id', $employee->id)
+                ->where('secretariat_id', $employee->id);
+
+            $unreadCount = (clone $base)->where('is_read', false)->count();
+
+            $notifications = (clone $base)
+                ->when($this->tab === 'unread', fn ($query) => $query->where('is_read', false))
                 ->latest()
-                ->limit(8)
-                ->get()
-            : collect();
+                ->limit(10)
+                ->get();
+        }
 
         return view('livewire.letters.notifications', [
             'notifications' => $notifications,
-            'unreadCount' => $notifications->where('is_read', false)->count(),
+            'unreadCount' => $unreadCount,
+            'pollSeconds' => max(10, (int) config('gwl.leave_notification_poll_seconds', 90)),
         ]);
     }
 

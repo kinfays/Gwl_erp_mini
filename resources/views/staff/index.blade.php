@@ -3,3 +3,4 @@
         <livewire:staff.all-employees />
     </div>
 </x-erp-layout>
+<x-uac.user-drawer />

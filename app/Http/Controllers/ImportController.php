@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Notifications\GeneralDatabaseNotification;
 use App\Services\Import\DataImportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -29,7 +31,7 @@ class ImportController extends Controller
     {
         return Excel::download(
             $imports->templateExport($type),
-            $type . '_template.xlsx'
+            $type.'_template.xlsx'
         );
     }
 
@@ -42,6 +44,13 @@ class ImportController extends Controller
 
         $context = $this->resolveContext($request);
         $preview = $imports->preview($request->file('file'), $request->string('type')->toString());
+        $maxFailurePercent = (int) config('gwl.max_import_failure_percent', 20);
+        $rowCount = max(1, (int) ($preview['total_rows'] ?? 0));
+        $failurePercent = round(((int) ($preview['error_count'] ?? 0) / $rowCount) * 100, 1);
+
+        $preview['failure_percent'] = $failurePercent;
+        $preview['max_failure_percent'] = $maxFailurePercent;
+        $preview['blocked'] = $failurePercent > $maxFailurePercent;
 
         session()->put($this->previewKey($context), $preview);
 
@@ -59,6 +68,16 @@ class ImportController extends Controller
             ]);
         }
 
+        if (! empty($preview['blocked'])) {
+            return back()->withErrors([
+                'import' => sprintf(
+                    'Import blocked because %.1f%% of rows failed validation. The configured maximum is %d%%.',
+                    $preview['failure_percent'] ?? 0,
+                    $preview['max_failure_percent'] ?? config('gwl.max_import_failure_percent', 20)
+                ),
+            ]);
+        }
+
         $result = $imports->run($preview['type'], $preview['valid_rows']);
 
         AuditLog::record(
@@ -72,6 +91,16 @@ class ImportController extends Controller
 
         session()->forget($this->previewKey($context));
 
+        if (Schema::hasTable('notifications')) {
+            $request->user()?->notify(new GeneralDatabaseNotification(
+                'Import completed',
+                sprintf('%d %s rows were processed.', $result['processed'], str_replace('_', ' ', $preview['type'])),
+                route($context.'.import'),
+                $context,
+                ['type' => 'import_completed']
+            ));
+        }
+
         return back()->with('success', sprintf(
             'Import completed. %d processed, %d created, %d updated.',
             $result['processed'],
@@ -82,7 +111,7 @@ class ImportController extends Controller
 
     protected function previewKey(string $context): string
     {
-        return 'import_preview.' . $context;
+        return 'import_preview.'.$context;
     }
 
     protected function resolveContext(Request $request): string

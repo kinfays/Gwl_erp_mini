@@ -111,7 +111,12 @@ Route::middleware([
                 ->defaults('context', 'staff')
                 ->name('import.run');
 
-            Route::get('/departments', [StaffController::class, 'departments'])->name('departments');
+            Route::get('/departments', [StaffController::class, 'departments'])
+                ->middleware('permission:staff.manage_departments')
+                ->name('departments');
+            Route::get('/locations', [StaffController::class, 'locations'])
+                ->middleware('permission:staff.manage_locations')
+                ->name('locations');
         });
     });
 
@@ -141,4 +146,4 @@ Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])
             ->name('export.pdf');
     });
 
-require __DIR__ . '/auth.php';
+require __DIR__.'/auth.php';

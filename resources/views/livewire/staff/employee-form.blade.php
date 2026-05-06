@@ -86,54 +86,33 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Search Job Title</label>
-                        <input type="text" wire:model.live.debounce.300ms="jobTitleSearch" class="form-input" placeholder="Search job titles...">
-                    </div>
+                    <x-form.combobox
+                        label="Job Title"
+                        model="job_title_id"
+                        :options="$jobTitleOptions"
+                        placeholder="Type to search job titles"
+                    />
 
-                    <div class="form-field">
-                        <label class="form-label">Job Title</label>
-                        <select wire:model.defer="job_title_id" class="form-input">
-                            <option value="">Select job title</option>
-                            @foreach ($jobTitles as $jobTitle)
-                                <option value="{{ $jobTitle->id }}">{{ $jobTitle->job_title_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    <x-form.combobox
+                        label="Department"
+                        model="department_id"
+                        :options="$departmentOptions"
+                        placeholder="Type to search departments"
+                    />
                 </div>
 
                 <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Department</label>
-                        <select wire:model.defer="department_id" class="form-input">
-                            <option value="">Select department</option>
-                            @foreach ($departments as $department)
-                                <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
                     <div class="form-field">
                         <label class="form-label">Unit</label>
                         <input type="text" wire:model.defer="unit" class="form-input" placeholder="Optional">
                     </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Search District</label>
-                        <input type="text" wire:model.live.debounce.300ms="districtSearch" class="form-input" placeholder="Search districts...">
-                    </div>
-
-                    <div class="form-field">
-                        <label class="form-label">District</label>
-                        <select wire:model.live="district_id" class="form-input">
-                            <option value="">Select district</option>
-                            @foreach ($districts as $district)
-                                <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    <x-form.combobox
+                        label="District"
+                        model="district_id"
+                        :options="$districtOptions"
+                        placeholder="Type to search districts"
+                    />
                 </div>
 
                 <div class="form-row">

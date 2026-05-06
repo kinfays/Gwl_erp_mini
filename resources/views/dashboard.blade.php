@@ -1,89 +1,107 @@
 <x-app-layout>
-    <div class="min-h-screen bg-gray-100">
+    @php
+        $user = $user ?? auth()->user();
+        $employee = $employee ?? ($user?->employee ?? $user?->employeeByStaffId);
+        $dashboardModules = collect($modules ?? dashboardModules());
+        $accessibleModules = $user ? $user->getAccessibleModules() : [];
+        $canUseLetters = in_array('letters', $accessibleModules, true);
+        $initials = collect(preg_split('/\s+/', trim($employee?->full_name ?? $user?->full_name ?? 'User')) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn (string $part) => strtoupper(substr($part, 0, 1)))
+            ->join('') ?: 'U';
+    @endphp
 
-        {{-- Top Navigation --}}
-        <div class="bg-white shadow px-6 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <img src="/images/gwl.png" alt="GWL Logo" class="h-8">
-                <span class="text-lg font-semibold">GWL Mini Erp Portal</span>
+    <div class="dashboard-shell">
+        <header class="dashboard-topbar" x-data="{ userOpen: false }">
+            <div class="dashboard-brand">
+                <img src="{{ asset('images/gwlnew.png') }}" alt="GWL Logo">
+                <span>GWL Mini Portal</span>
             </div>
 
-            <div class="flex items-center space-x-6">
-                {{-- Notification Bell (placeholder) --}}
-                <button class="relative">
-                    Alerts
-                    <span class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1">
-                        0
-                    </span>
+            <div class="dashboard-actions">
+                <livewire:notifications.general-bell />
+
+                @if ($canUseLetters)
+                    <livewire:letters.notifications />
+                @endif
+
+                <button type="button" class="tb-icon-btn" x-on:click="toggleTheme()" x-bind:aria-label="darkMode ? 'Use light mode' : 'Use dark mode'">
+                    <svg x-show="! darkMode" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4" />
+                        <path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                    </svg>
+                    <svg x-show="darkMode" x-cloak width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z" />
+                    </svg>
                 </button>
 
-                {{-- User Info --}}
-                <div class="flex items-center space-x-3">
-    <div class="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-        {{ strtoupper(substr(auth()->user()->employee->full_name ?? 'U', 0, 1)) }}
-    </div>
-    <div>
-        <div class="text-sm font-medium">
-            <a href="{{ route('profile.edit') }}" class="tb-profile hover:underline">
-                {{ auth()->user()->employee->full_name ?? 'User' }}
-            </a>
-        </div>
-        <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button class="text-xs text-red-600">Sign out</button>
-        </form>
-    </div>
-</div>
+                <div class="tb-user-menu" x-on:click.outside="userOpen = false">
+                    <button type="button" class="tb-profile dashboard-profile" x-on:click="userOpen = ! userOpen" aria-label="Open account menu">
+                        <span class="tb-av">{{ $initials }}</span>
+                        <span class="tb-meta">
+                            <span class="tb-name">{{ $employee?->full_name ?? $user?->full_name ?? 'User' }}</span>
+                            <span class="tb-sub">{{ $roleName ?? $user?->roles?->pluck('display_name')->join(', ') }}</span>
+                        </span>
+                    </button>
+
+                    <div class="tb-user-dropdown" x-show="userOpen" x-transition x-cloak>
+                        <a href="{{ route('profile.edit') }}">Profile</a>
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit">Sign Out</button>
+                        </form>
+                    </div>
+                </div>
             </div>
-        </div>
+        </header>
 
-        {{-- Greeting Section --}}
-        <div class="px-8 py-6">
-            <h1 class="text-2xl font-semibold">
-                {{ dashboardGreeting() }},
-                {{ explode(' ', auth()->user()->employee->full_name ?? 'User')[0] }}
-            </h1>
+        <main class="dashboard-main">
+            <section class="dashboard-greeting">
+                <h1>
+                    {{ $greeting ?? dashboardGreeting() }},
+                    {{ $firstName ?? explode(' ', $employee?->full_name ?? 'User')[0] }}
+                </h1>
+                <p>
+                    {{ $today ?? now()->format('l, j F Y') }}
+                    <span>{{ $location ?? trim(($employee?->district?->district_name ?? '') . ', ' . ($employee?->region?->region_name ?? ''), ', ') }}</span>
+                    <span>{{ $roleName ?? $user?->roles?->pluck('display_name')->join(', ') }}</span>
+                </p>
+            </section>
 
-            <p class="text-gray-600 mt-1">
-                {{ now()->format('l, jS F Y') }}
-                -
-                {{ auth()->user()->employee->district->district_name ?? '' }},
-                {{ auth()->user()->employee->region->region_name ?? '' }}
-                -
-                {{ auth()->user()->roles->pluck('display_name')->join(', ') }}
-            </p>
-        </div>
+            <section class="dashboard-area" x-data="{ ready: false }" x-init="requestAnimationFrame(() => ready = true)">
+                <template x-if="! ready">
+                    <div class="dashboard-grid dashboard-grid-skeleton">
+                        @for ($i = 0; $i < 3; $i++)
+                            <div class="dashboard-card skeleton-card">
+                                <span class="skeleton-line short"></span>
+                                <span class="skeleton-line"></span>
+                                <span class="skeleton-line"></span>
+                            </div>
+                        @endfor
+                    </div>
+                </template>
 
-        {{-- Module Cards --}}
-        <div class="px-8 pb-10">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <template x-if="ready">
+                    <div class="dashboard-grid dashboard-grid-loaded">
+                        @foreach ($dashboardModules as $module)
+                            @php
+                                $slug = $module['slug'] ?? '';
+                                $icon = $module['icon'] ?? strtoupper(substr((string) ($module['title'] ?? 'M'), 0, 2));
+                            @endphp
+                            <a href="{{ $module['route'] }}" class="dashboard-card {{ $slug === 'leave' ? 'primary' : '' }}">
+                                <div class="dashboard-card-top">
+                                    <span class="dashboard-module-icon">{{ $icon }}</span>
+                                    <span class="dashboard-badge">{{ $module['badge'] ?? ($slug === 'leave' ? 'Everyone' : 'Authorized') }}</span>
+                                </div>
 
-                @foreach (dashboardModules() as $module)
-                    <a href="{{ $module['route'] }}"
-                       class="bg-white rounded shadow p-5 border-t-4
-                       {{ $module['slug'] === 'leave' ? 'border-blue-500' : 'border-gray-200' }}">
-                        
-                        <div class="flex justify-between items-start">
-                            <div class="text-3xl">{{ $module['icon'] }}</div>
-
-                            @if ($module['slug'] === 'leave')
-                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    everyone
-                                </span>
-                            @endif
-                        </div>
-
-                        <h3 class="mt-4 text-lg font-semibold">
-                            {{ $module['title'] }}
-                        </h3>
-
-                        <p class="text-gray-600 text-sm mt-1">
-                            {{ $module['description'] }}
-                        </p>
-                    </a>
-                @endforeach
-
-            </div>
-        </div>
+                                <h2>{{ $module['title'] }}</h2>
+                                <p>{{ $module['description'] }}</p>
+                            </a>
+                        @endforeach
+                    </div>
+                </template>
+            </section>
+        </main>
     </div>
 </x-app-layout>

@@ -82,7 +82,20 @@
                         <td><button type="button" wire:click="showSignature({{ $visitor->id }})" class="actn">View</button></td>
                         <td>
                             @if (! $visitor->check_out_at)
-                                <button type="button" wire:click="checkOut({{ $visitor->id }})" class="actn actn-p">Check Out</button>
+                                <button
+                                    type="button"
+                                    class="actn actn-p"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Check out visitor?',
+                                        message: @js('This will mark ' . $visitor->visitor_name . ' as checked out now.'),
+                                        confirmLabel: 'Check Out',
+                                        variant: 'primary',
+                                        action: () => $wire.checkOut({{ $visitor->id }})
+                                    })"
+                                >
+                                    Check Out
+                                </button>
                             @else
                                 <button type="button" wire:click="showSignature({{ $visitor->id }})" class="actn">View</button>
                             @endif
@@ -95,6 +108,12 @@
                 @endforelse
             </tbody>
         </table>
+
+        <div wire:loading.delay class="table-skeleton">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line short"></span>
+        </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
             <div style="font-size:11px;color:var(--color-text-secondary)">

@@ -2,24 +2,27 @@
 
 namespace App\Livewire\Leave;
 
-use Livewire\Component;
-use Livewire\WithPagination;
 use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Services\Leave\LeaveWorkflowService;
 use App\Support\Audit;
 use Carbon\Carbon;
+use Livewire\Component;
+use Livewire\WithPagination;
 
 class MyHistory extends Component
 {
-    use WithPagination;
     use EnforcesModuleAccess;
+    use WithPagination;
 
     public bool $includePast36Months = false;
 
     // Drawer state
     public bool $showDrawer = false;
+
     public ?int $selectedRequestId = null;
+
     public ?LeaveRequest $selectedRequest = null;
 
     public int $perPage = 12;
@@ -32,7 +35,11 @@ class MyHistory extends Component
 
     protected function requesterId(): int
     {
-        return auth()->user()->employee->id;
+        $employee = $this->employee();
+
+        abort_if(! $employee, 403, 'Employee profile is required for leave history.');
+
+        return $employee->id;
     }
 
     public function togglePast(): void
@@ -60,10 +67,6 @@ class MyHistory extends Component
         $this->selectedRequest = null;
     }
 
-    /**
-     * Edit allowed only for Planned or Pending Approval (per spec). [1](https://ghanawater-my.sharepoint.com/personal/fewuntomah_gwcl_com_gh/Documents/Microsoft%20Copilot%20Chat%20Files/PHASE%203.txt)
-     * We redirect to /leave/apply with a query param to load and edit the request.
-     */
     public function editRequest(int $id)
     {
         $req = LeaveRequest::query()
@@ -72,15 +75,14 @@ class MyHistory extends Component
 
         if (! in_array($req->leave_status, ['Planned', 'Pending Approval'], true)) {
             $this->addError('action', 'Only Planned or Pending Approval requests can be edited.');
+            $this->dispatch('toast', type: 'error', message: 'Only Planned or Pending Approval requests can be edited.');
+
             return;
         }
 
         return redirect()->route('leave.apply', ['edit' => $req->id]);
     }
 
-    /**
-     * Delete allowed only for Planned (per spec). [1](https://ghanawater-my.sharepoint.com/personal/fewuntomah_gwcl_com_gh/Documents/Microsoft%20Copilot%20Chat%20Files/PHASE%203.txt)
-     */
     public function deletePlanned(int $id): void
     {
         $req = LeaveRequest::query()
@@ -89,6 +91,8 @@ class MyHistory extends Component
 
         if ($req->leave_status !== 'Planned') {
             $this->addError('action', 'Only Planned requests can be deleted.');
+            $this->dispatch('toast', type: 'error', message: 'Only Planned requests can be deleted.');
+
             return;
         }
 
@@ -110,12 +114,10 @@ class MyHistory extends Component
         );
 
         session()->flash('success', 'Planned request deleted.');
+        $this->dispatch('toast', type: 'success', message: 'Planned request deleted.');
         $this->closeDrawer();
     }
 
-    /**
-     * Re-open allowed only for Denied (per spec). [1](https://ghanawater-my.sharepoint.com/personal/fewuntomah_gwcl_com_gh/Documents/Microsoft%20Copilot%20Chat%20Files/PHASE%203.txt)
-     */
     public function reopenDenied(int $id, LeaveWorkflowService $workflow): void
     {
         $req = LeaveRequest::query()
@@ -125,6 +127,8 @@ class MyHistory extends Component
 
         if ($req->leave_status !== 'Denied') {
             $this->addError('action', 'Only Denied requests can be reopened.');
+            $this->dispatch('toast', type: 'error', message: 'Only Denied requests can be reopened.');
+
             return;
         }
 
@@ -139,6 +143,7 @@ class MyHistory extends Component
         );
 
         session()->flash('success', 'Request reopened and set back to Planned.');
+        $this->dispatch('toast', type: 'success', message: 'Request reopened and set back to Planned.');
         $this->closeDrawer();
     }
 
@@ -160,5 +165,12 @@ class MyHistory extends Component
         return view('livewire.leave.my-history', [
             'requests' => $requests,
         ]);
+    }
+
+    protected function employee(): ?Employee
+    {
+        $user = auth()->user();
+
+        return $user?->employee ?? $user?->employeeByStaffId;
     }
 }

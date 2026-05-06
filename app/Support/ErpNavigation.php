@@ -143,12 +143,13 @@ class ErpNavigation
             || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
         $canExport = fn (User $currentUser) => $currentUser->hasPermission('leave.export')
             || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
+        $homeRoute = $this->leaveHomeRoute($user);
 
         return [
             [
                 'label' => $this->isHrViewer($user) ? 'HR Dashboard' : 'Leave Home',
-                'route' => 'leave.home',
-                'active' => ['leave.home'],
+                'route' => $homeRoute,
+                'active' => ['leave.home', 'leave.team-dashboard'],
                 'icon' => $this->icon('dashboard'),
             ],
             [
@@ -205,6 +206,8 @@ class ErpNavigation
     protected function staffSidebar(User $user): array
     {
         $canManage = fn (User $currentUser) => $this->canManageStaff($currentUser);
+        $canManageDepartments = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_departments');
+        $canManageLocations = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_locations');
 
         return [
             [
@@ -236,7 +239,14 @@ class ErpNavigation
                 'route' => 'staff.departments',
                 'active' => ['staff.departments'],
                 'icon' => $this->icon('grid'),
-                'can' => $canManage,
+                'can' => $canManageDepartments,
+            ],
+            [
+                'label' => 'Locations',
+                'route' => 'staff.locations',
+                'active' => ['staff.locations'],
+                'icon' => $this->icon('grid'),
+                'can' => $canManageLocations,
             ],
         ];
     }
@@ -373,6 +383,15 @@ class ErpNavigation
     public function isHrViewer(User $user): bool
     {
         return $user->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
+    }
+
+    protected function leaveHomeRoute(User $user): string
+    {
+        if (! $this->isHrViewer($user) && $this->isManagerialUser($user)) {
+            return 'leave.team-dashboard';
+        }
+
+        return 'leave.home';
     }
 
     protected function initials(string $name): string

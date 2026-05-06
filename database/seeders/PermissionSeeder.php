@@ -28,6 +28,8 @@ class PermissionSeeder extends Seeder
                 'staff.deactivate',
                 'staff.import',
                 'staff.export',
+                'staff.manage_departments',
+                'staff.manage_locations',
             ],
             'letters' => [
                 'letters.view',
@@ -68,7 +70,7 @@ class PermissionSeeder extends Seeder
                     [
                         'display_name' => $display,
                         'module' => $module,
-                        'description' => $display . ' permission for ' . strtoupper($module) . ' module',
+                        'description' => $display.' permission for '.strtoupper($module).' module',
                     ]
                 );
             }

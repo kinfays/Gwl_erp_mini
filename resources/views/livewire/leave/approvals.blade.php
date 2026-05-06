@@ -48,13 +48,39 @@
                                     {{-- Manager stage --}}
                                     @if($r->manager_recommendation === 'Pending' && $r->leave_status === 'Pending Approval')
                                         <button wire:click="recommend({{ $r->id }})" class="px-2 py-1 rounded bg-emerald-600 text-white text-xs">Recommend</button>
-                                        <button wire:click="reject({{ $r->id }})" class="px-2 py-1 rounded bg-red-600 text-white text-xs">Reject</button>
+                                        <button
+                                            type="button"
+                                            class="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                                            x-data
+                                            x-on:click.prevent="$dispatch('confirm-action', {
+                                                title: 'Reject leave request?',
+                                                message: @js('This will reject the request from ' . $r->requester->full_name . '.'),
+                                                confirmLabel: 'Reject',
+                                                variant: 'danger',
+                                                action: () => $wire.reject({{ $r->id }})
+                                            })"
+                                        >
+                                            Reject
+                                        </button>
                                     @endif
 
                                     {{-- Chief stage --}}
                                     @if($r->manager_recommendation === 'Recommended' && $r->leave_status === 'Pending Approval')
                                         <button wire:click="approve({{ $r->id }})" class="px-2 py-1 rounded bg-blue-600 text-white text-xs">Approve</button>
-                                        <button wire:click="deny({{ $r->id }})" class="px-2 py-1 rounded bg-red-600 text-white text-xs">Deny</button>
+                                        <button
+                                            type="button"
+                                            class="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                                            x-data
+                                            x-on:click.prevent="$dispatch('confirm-action', {
+                                                title: 'Deny leave request?',
+                                                message: @js('This will deny the request from ' . $r->requester->full_name . '.'),
+                                                confirmLabel: 'Deny',
+                                                variant: 'danger',
+                                                action: () => $wire.deny({{ $r->id }})
+                                            })"
+                                        >
+                                            Deny
+                                        </button>
                                     @endif
                                 </div>
                             @endif

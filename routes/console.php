@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Visitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -9,7 +10,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Artisan::command('gwcl:auto-checkout-visitors', function () {
-    $count = \App\Models\Visitor::query()
+    $count = Visitor::query()
         ->whereNull('check_out_at')
         ->whereDate('check_in_at', today())
         ->update([
@@ -18,8 +19,8 @@ Artisan::command('gwcl:auto-checkout-visitors', function () {
             'updated_at' => now(),
         ]);
 
-    $this->info($count . ' visitor(s) auto-checked out.');
+    $this->info($count.' visitor(s) auto-checked out.');
 })->purpose('Auto-checkout visitors still inside at the configured closing time');
 
 Schedule::command('gwcl:auto-checkout-visitors')
-    ->dailyAt(config('gwcl.visitors_auto_checkout_time', '18:00'));
+    ->dailyAt(config('gwl.auto_checkout_time', config('gwcl.visitors_auto_checkout_time', '18:00')));

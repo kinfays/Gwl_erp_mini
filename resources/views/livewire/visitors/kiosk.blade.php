@@ -10,8 +10,8 @@
     <div class="vk-main">
         <div class="vk-card">
             @if ($success)
-                <div class="vk-success" x-data="{ count: 5 }" x-init="setInterval(() => { count--; if (count <= 0) $wire.resetKiosk() }, 1000)">
-                    <div class="vk-success-mark">✓</div>
+                <div class="vk-success" x-data="{ count: {{ (int) config('gwl.visitor_kiosk_reset_seconds', 5) }} }" x-init="setInterval(() => { count--; if (count <= 0) $wire.resetKiosk() }, 1000)">
+                    <div class="vk-success-mark">OK</div>
                     <h1>Welcome {{ $successName }}!</h1>
                     <p>Your visit has been recorded. Please proceed to reception.</p>
                     <div class="vk-code" x-data="{ show: true, count: 30 }" x-init="setInterval(() => { if (count > 0) count-- }, 1000)" x-show="show">
@@ -24,7 +24,7 @@
                 </div>
             @else
                 @if ($duplicateWarning)
-                    <div class="vk-warning">A visitor with this name is already checked in today.</div>
+                    <div class="vk-warning">A visitor with this phone number is already checked in today.</div>
                 @endif
 
                 @if ($step === 1)
@@ -34,30 +34,18 @@
                     @error('visitor_name') <div class="vk-error">{{ $message }}</div> @enderror
 
                     <label class="vk-label">Phone Number</label>
-                    <input type="tel" wire:model="phone" class="vk-input" autocomplete="off">
+                    <input type="tel" wire:model.live.debounce.500ms="phone" class="vk-input" autocomplete="off">
+                    @error('phone') <div class="vk-error">{{ $message }}</div> @enderror
                 @elseif ($step === 2)
                     <h1>Who are you visiting?</h1>
-                    <label class="vk-label">Search employee</label>
-                    <input type="text" wire:model.live.debounce.400ms="employeeSearch" class="vk-input" placeholder="Type at least 2 characters">
-                    @error('staff_id') <div class="vk-error">{{ $message }}</div> @enderror
-
-                    <div class="vk-results">
-                        @if ($selectedEmployee)
-                            <div class="vk-result selected">
-                                <strong>{{ $selectedEmployee->full_name }}</strong>
-                                <span>{{ $selectedEmployee->department?->department_name ?? 'No department' }} · {{ $selectedEmployee->district?->district_name ?? 'Location not assigned' }}</span>
-                            </div>
-                        @endif
-
-                        @forelse ($employees as $employee)
-                            <button type="button" wire:click="$set('staff_id', {{ $employee->id }})" class="vk-result">
-                                <strong>{{ $employee->full_name }}</strong>
-                                <span>{{ $employee->department?->department_name ?? 'No department' }} · {{ $employee->district?->district_name ?? 'Location not assigned' }}</span>
-                            </button>
-                        @empty
-                            <div class="vk-muted">Search results will appear here.</div>
-                        @endforelse
-                    </div>
+                    <x-form.combobox
+                        class="vk-combobox"
+                        label="Search employee"
+                        model="staff_id"
+                        :options="$employeeOptions"
+                        placeholder="Type a name, staff ID, department, or location"
+                        empty-text="No matching employees"
+                    />
                 @elseif ($step === 3)
                     <h1>Purpose</h1>
                     <label class="vk-label">Purpose of visit</label>
@@ -82,7 +70,16 @@
                     @if ($step < 4)
                         <button type="button" wire:click="next" class="vk-btn">Next</button>
                     @else
-                        <button type="button" wire:click="submit" class="vk-btn">Submit</button>
+                        <button
+                            type="button"
+                            class="vk-btn"
+                            x-data
+                            x-on:click.prevent="(async () => { await window.syncKioskSignature?.('signature'); $wire.submit(); })()"
+                            wire:loading.attr="disabled"
+                            wire:target="submit"
+                        >
+                            Submit
+                        </button>
                     @endif
                 </div>
             @endif
@@ -94,9 +91,17 @@
             <h2>Checking out?</h2>
             <p>Enter your code to logout.</p>
         </div>
-        <div class="vk-checkout-form">
-            <input type="text" wire:model="selfCheckoutCode" class="vk-code-input" maxlength="3" placeholder="Code">
-            <button type="button" wire:click="findSelfCheckout" class="vk-btn small">Find</button>
+        <div class="vk-checkout-form" x-data="{ code: @entangle('selfCheckoutCode').live }">
+            <input type="text" x-model="code" class="vk-code-input" maxlength="3" inputmode="numeric" autocomplete="off" placeholder="Code">
+            <button
+                type="button"
+                wire:click="findSelfCheckout"
+                x-bind:disabled="code.trim() === ''"
+                class="vk-btn small"
+            >
+                Find
+            </button>
+            <button type="button" wire:click="cancelSelfCheckout" x-show="code.trim() !== ''" x-cloak class="vk-btn light small">Cancel</button>
         </div>
 
         @if ($selfCheckoutMessage)
@@ -111,7 +116,24 @@
                 </div>
                 <div class="vk-actions left">
                     <button type="button" data-clear-signature="selfCheckoutSignature" class="vk-btn light small">Clear</button>
-                    <button type="button" wire:click="confirmSelfCheckout" class="vk-btn small">Confirm Checkout</button>
+                    <button type="button" wire:click="cancelSelfCheckout" class="vk-btn light small">Cancel</button>
+                    <button
+                        type="button"
+                        class="vk-btn small"
+                        x-data
+                        x-on:click.prevent="$dispatch('confirm-action', {
+                            title: 'Confirm checkout?',
+                            message: 'Your visit will be closed using the signature shown here.',
+                            confirmLabel: 'Confirm Checkout',
+                            variant: 'primary',
+                            action: async () => {
+                                await window.syncKioskSignature?.('selfCheckoutSignature');
+                                await $wire.confirmSelfCheckout();
+                            }
+                        })"
+                    >
+                        Confirm Checkout
+                    </button>
                 </div>
             </div>
         @endif

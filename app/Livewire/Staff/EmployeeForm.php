@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\JobTitle;
+use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Livewire\Component;
 
@@ -18,20 +19,30 @@ class EmployeeForm extends Component
     public ?Employee $employee = null;
 
     public string $staff_id = '';
+
     public string $full_name = '';
+
     public string $gender = 'Male';
+
     public string $date_of_birth = '';
+
     public string $date_joined = '';
+
     public string $category = 'Senior Staff';
+
     public int|string $job_title_id = '';
+
     public int|string $department_id = '';
+
     public string $unit = '';
+
     public int|string $district_id = '';
+
     public ?int $region_id = null;
+
     public string $present_appointment = '';
+
     public string $email = '';
-    public string $jobTitleSearch = '';
-    public string $districtSearch = '';
 
     public function mount(?Employee $employee = null): void
     {
@@ -52,15 +63,13 @@ class EmployeeForm extends Component
         $this->date_of_birth = optional($this->employee->date_of_birth)->toDateString() ?? '';
         $this->date_joined = optional($this->employee->date_joined)->toDateString() ?? '';
         $this->category = $this->employee->category;
-        $this->job_title_id = $this->employee->job_title_id;
-        $this->department_id = $this->employee->department_id;
+        $this->job_title_id = $this->employee->job_title_id ?? '';
+        $this->department_id = $this->employee->department_id ?? '';
         $this->unit = $this->employee->unit ?? '';
-        $this->district_id = $this->employee->district_id;
+        $this->district_id = $this->employee->district_id ?? '';
         $this->region_id = $this->employee->region_id;
         $this->present_appointment = $this->employee->present_appointment ?? '';
         $this->email = $this->employee->email;
-        $this->jobTitleSearch = $this->employee->jobTitle?->job_title_name ?? '';
-        $this->districtSearch = $this->employee->district?->district_name ?? '';
     }
 
     public function updatedDistrictId($value): void
@@ -121,22 +130,36 @@ class EmployeeForm extends Component
     public function render()
     {
         return view('livewire.staff.employee-form', [
-            'departments' => Department::query()->orderBy('department_name')->get(),
-            'jobTitles' => JobTitle::query()
-                ->search($this->jobTitleSearch)
+            'departmentOptions' => Department::query()
+                ->orderBy('department_name')
+                ->get(['id', 'department_name'])
+                ->map(fn (Department $department) => [
+                    'value' => $department->id,
+                    'label' => $department->department_name,
+                ])
+                ->all(),
+            'jobTitleOptions' => JobTitle::query()
                 ->orderBy('job_title_name')
-                ->limit(40)
-                ->get(),
-            'districts' => District::query()
+                ->get(['id', 'job_title_name'])
+                ->map(fn (JobTitle $jobTitle) => [
+                    'value' => $jobTitle->id,
+                    'label' => $jobTitle->job_title_name,
+                ])
+                ->all(),
+            'districtOptions' => District::query()
                 ->with('region')
-                ->search($this->districtSearch)
                 ->orderBy('district_name')
-                ->limit(40)
-                ->get(),
-            'selectedRegionName' => $this->region_id
+                ->get(['id', 'district_name', 'region_id'])
+                ->map(fn (District $district) => [
+                    'value' => $district->id,
+                    'label' => $district->district_name,
+                    'description' => $district->region?->region_name,
+                ])
+                ->all(),
+            'selectedRegionName' => $this->district_id
                 ? optional(District::query()->with('region')->find($this->district_id)?->region)->region_name
                 : null,
-            'age' => $this->date_of_birth ? \Carbon\Carbon::parse($this->date_of_birth)->age : null,
+            'age' => $this->date_of_birth ? Carbon::parse($this->date_of_birth)->age : null,
             'leaveBalances' => $this->employee?->leaveBalances ?? collect(),
         ]);
     }
@@ -146,7 +169,7 @@ class EmployeeForm extends Component
         $employeeId = $this->employee?->id;
 
         return [
-            'staff_id' => ['required', 'string', 'max:50', 'unique:employees,staff_id,' . $employeeId],
+            'staff_id' => ['required', 'string', 'max:50', 'unique:employees,staff_id,'.$employeeId],
             'full_name' => ['required', 'string', 'max:255'],
             'gender' => ['required', 'in:Male,Female'],
             'date_of_birth' => ['required', 'date'],
@@ -157,7 +180,7 @@ class EmployeeForm extends Component
             'unit' => ['nullable', 'string', 'max:255'],
             'district_id' => ['required', 'exists:districts,id'],
             'present_appointment' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:employees,email,' . $employeeId],
+            'email' => ['required', 'email', 'max:255', 'unique:employees,email,'.$employeeId],
         ];
     }
 }

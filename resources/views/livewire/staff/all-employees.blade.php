@@ -1,4 +1,5 @@
-<div>
+
+    <div>
     <div class="page-head">
         <div class="ph-left">
             <h2>All Employees</h2>
@@ -124,13 +125,40 @@
                         <td><span class="pill {{ $statusClass }}">{{ $statusLabel }}</span></td>
                         <td>
                             <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                @if ($employee->user)
+                                    <button
+                                        x-data
+                                        x-on:click.prevent="$dispatch('open-user-drawer', { id: {{ $employee->user->id }} })"
+                                        class="actn"
+                                        title="View user details"
+                                    >
+                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
+                                                     -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+
+                                    </button>
+                                @endif
                                 @if ($canManage)
                                     <a href="{{ route('staff.edit', $employee) }}" class="actn">Edit</a>
 
-                                    <form method="POST" action="{{ route('staff.toggle-status', $employee) }}">
+                                    <form method="POST" action="{{ route('staff.toggle-status', $employee) }}" x-data>
                                         @csrf
                                         @method('PATCH')
-                                        <button type="submit" class="actn {{ $employee->is_active ? 'actn-r' : 'actn-g' }}">
+                                        <button
+                                            type="submit"
+                                            class="actn {{ $employee->is_active ? 'actn-r' : 'actn-g' }}"
+                                            x-on:click.prevent="$dispatch('confirm-action', {
+                                                title: @js($employee->is_active ? 'Deactivate employee?' : 'Activate employee?'),
+                                                message: @js(($employee->is_active ? 'This will deactivate ' : 'This will activate ') . $employee->full_name . '.'),
+                                                confirmLabel: @js($employee->is_active ? 'Deactivate' : 'Activate'),
+                                                variant: @js($employee->is_active ? 'danger' : 'primary'),
+                                                action: () => $root.submit()
+                                            })"
+                                        >
                                             {{ $employee->is_active ? 'Deactivate' : 'Activate' }}
                                         </button>
                                     </form>
@@ -147,6 +175,12 @@
                 @endforelse
             </tbody>
         </table>
+
+        <div wire:loading.delay class="table-skeleton">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line short"></span>
+        </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
             <div style="font-size:11px;color:var(--color-text-secondary)">

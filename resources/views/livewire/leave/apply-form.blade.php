@@ -10,10 +10,24 @@
       </div>
     @endif
 
+    @if (! empty($compulsoryRanges))
+      <div class="mb-4 blocked-ranges">
+        <div class="blocked-ranges-title">Unavailable compulsory leave dates</div>
+        <div class="blocked-ranges-grid">
+          @foreach ($compulsoryRanges as $range)
+            <div class="blocked-range">
+              <span>{{ $range['label'] }}</span>
+              <strong>{{ $range['days'] }} days</strong>
+            </div>
+          @endforeach
+        </div>
+      </div>
+    @endif
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
         <label class="text-sm font-medium">Leave Type</label>
-        <select wire:model="leave_type" class="w-full border rounded p-2">
+        <select wire:model.live="leave_type" class="w-full border rounded p-2">
           <option>Annual</option>
           <option>Casual</option>
           <option>Paternity</option>
@@ -31,21 +45,23 @@
 
       <div>
         <label class="text-sm font-medium">Start Date</label>
-        <input type="date" wire:model="start_date" class="w-full border rounded p-2">
+        <input type="date" wire:model.live="start_date" min="{{ $minDate }}" class="w-full border rounded p-2">
+        @error('start_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
       </div>
 
       <div>
         <label class="text-sm font-medium">End Date</label>
-        <input type="date" wire:model="end_date" class="w-full border rounded p-2">
+        <input type="date" wire:model.live="end_date" min="{{ $minEndDate }}" class="w-full border rounded p-2">
+        @error('end_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
       </div>
 
       <div class="md:col-span-2">
-        <label class="text-sm font-medium">Reason</label>
+        <label class="text-sm font-medium">Reason (Optional)</label>
         <textarea wire:model="leave_details" class="w-full border rounded p-2" rows="4"></textarea>
       </div>
 
       <div class="md:col-span-2">
-        <label class="text-sm font-medium">Attachment</label>
+        <label class="text-sm font-medium">Attachment (Optional)</label>
         <input type="file" wire:model="file_attachment" class="w-full">
       </div>
     </div>

@@ -60,7 +60,9 @@ class LeaveBalanceService
 
         if ($leaveType === 'Annual') {
             $carry = $this->eligibleAnnualCarryOver($employee, $year);
-            $carryExpiry = Carbon::create($year, 1, 1)->addDays(90)->toDateString();
+            $carryExpiry = Carbon::create($year, 1, 1)
+                ->addDays((int) config('gwl.carry_over_expiry_days', 90))
+                ->toDateString();
         }
 
         $remaining = $entitle + $carry;
@@ -88,6 +90,7 @@ class LeaveBalanceService
             // unlimited; we can still track used if desired
             $balance->used_days += $days;
             $balance->save();
+
             return;
         }
 
@@ -103,7 +106,8 @@ class LeaveBalanceService
     protected function eligibleAnnualCarryOver(Employee $employee, int $year): int
     {
         $prevYear = $year - 1;
-        $expiry = Carbon::create($year, 1, 1)->addDays(90);
+        $expiry = Carbon::create($year, 1, 1)
+            ->addDays((int) config('gwl.carry_over_expiry_days', 90));
 
         // If today is after expiry, no carry
         if (now()->greaterThan($expiry)) {

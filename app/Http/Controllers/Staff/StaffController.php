@@ -43,6 +43,11 @@ class StaffController extends Controller
         return view('staff.departments');
     }
 
+    public function locations(): View
+    {
+        return view('staff.locations');
+    }
+
     public function toggleStatus(Employee $employee): RedirectResponse
     {
         abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
@@ -89,7 +94,7 @@ class StaffController extends Controller
 
         return Excel::download(
             new EmployeesExport($employees),
-            'employees_' . now()->format('Y_m_d_His') . '.xlsx'
+            'employees_'.now()->format('Y_m_d_His').'.xlsx'
         );
     }
 }

@@ -1,47 +1,63 @@
 <div class="space-y-6">
-
-    <div class="p-4 bg-amber-50 border border-amber-200 rounded">
-        <strong>Warning:</strong> This action permanently deducts Annual leave from multiple employees.
+    <div class="compulsory-alert">
+        <strong>Compulsory leave window</strong>
+        <span>Choose dates only between {{ \Carbon\Carbon::parse($rangeStartLimit)->format('d M Y') }} and {{ \Carbon\Carbon::parse($rangeEndLimit)->format('d M Y') }}.</span>
     </div>
 
-    <div class="bg-white p-6 border rounded-xl space-y-4">
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="erp-card space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-                <label class="text-sm font-medium">Year</label>
-                <input type="number" wire:model="year" class="w-full border rounded p-2">
+                <label class="text-sm font-medium">Leave Year</label>
+                <input type="number" value="{{ $year }}" readonly class="w-full border rounded p-2 bg-slate-100 text-slate-600 cursor-not-allowed">
+                @error('year') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
             </div>
 
             <div>
-                <label class="text-sm font-medium">Deduction Days</label>
-                <input type="number" wire:model="deductionDays" class="w-full border rounded p-2">
+                <label class="text-sm font-medium">Start Date</label>
+                <input type="date" wire:model.live="startDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" class="w-full border rounded p-2">
+                @error('startDate') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
             </div>
 
+            <div>
+                <label class="text-sm font-medium">End Date</label>
+                <input type="date" wire:model.live="endDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" class="w-full border rounded p-2">
+                @error('endDate') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="compulsory-days">
+                <span>Deduction Days</span>
+                <strong>{{ $deductionDays }}</strong>
+                <small>Calculated working days</small>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="text-sm font-medium">Exclude Location Type</label>
-                <select wire:model="excludeLocationType" class="w-full border rounded p-2">
+                <select wire:model.live="excludeLocationType" class="w-full border rounded p-2">
                     <option value="">None</option>
                     <option value="HeadOffice">Head Office</option>
                     <option value="Region">Region</option>
                     <option value="District">District</option>
                 </select>
             </div>
-        </div>
 
-        <div>
-            <label class="text-sm font-medium">Employee Categories</label>
-            <div class="flex flex-wrap gap-3 mt-1">
-                @foreach($availableCategories as $c)
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" wire:model="categories" value="{{ $c }}">
-                        {{ $c }}
-                    </label>
-                @endforeach
+            <div>
+                <label class="text-sm font-medium">Employee Categories</label>
+                <div class="flex flex-wrap gap-3 mt-2">
+                    @foreach($availableCategories as $category)
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" wire:model.live="categories" value="{{ $category }}">
+                            {{ $category }}
+                        </label>
+                    @endforeach
+                </div>
+                @error('categories') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
             </div>
         </div>
 
-        <div class="p-3 bg-slate-50 border rounded text-sm">
-            <strong>{{ $affectedCount }}</strong> employees will be affected.
+        <div class="p-3 bg-slate-50 border rounded text-sm dark:bg-slate-900 dark:border-slate-700">
+            <strong>{{ $affectedCount }}</strong> employees will be affected. Annual leave will be deducted for the selected year.
         </div>
 
         <div>
@@ -62,11 +78,20 @@
         @endif
 
         <div>
-            <button wire:click="apply"
-                    class="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+            <button
+                type="button"
+                class="btn btn-danger"
+                x-data
+                x-on:click.prevent="$dispatch('confirm-action', {
+                    title: 'Apply compulsory deduction?',
+                    message: 'Annual leave balances for affected employees will be reduced by the selected working days.',
+                    confirmLabel: 'Apply Deduction',
+                    variant: 'danger',
+                    action: () => $wire.apply()
+                })"
+            >
                 Apply Deduction
             </button>
         </div>
     </div>
-
 </div>

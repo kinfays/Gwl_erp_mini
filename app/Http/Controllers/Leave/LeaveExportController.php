@@ -2,11 +2,9 @@
 
 namespace App\Http\Controllers\Leave;
 
+use App\Exports\Leave\ApprovedLeavesExport;
+use App\Exports\Leave\ManagerTeamLeaveExport;
 use App\Http\Controllers\Controller;
-use App\Exports\Leave\{
-    ApprovedLeavesExport,
-    ManagerTeamLeaveExport
-};
 use App\Support\Audit;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -26,25 +24,28 @@ class LeaveExportController extends Controller
 
         return Excel::download(
             new ApprovedLeavesExport($user),
-            'approved_leaves_' . now()->format('Y_m_d') . '.xlsx'
+            'approved_leaves_'.now()->format('Y_m_d').'.xlsx'
         );
     }
 
     public function teamExcel()
     {
         $user = auth()->user();
+        $employee = $user?->employee ?? $user?->employeeByStaffId;
+
+        abort_if(! $employee, 403, 'Employee profile is required for team leave export.');
 
         Audit::log(
             action: 'leave_export_excel',
             module: 'leave',
             targetType: 'team_leaves',
-            targetId: $user->employee->id,
+            targetId: $employee->id,
             metadata: ['by' => $user->id]
         );
 
         return Excel::download(
-            new ManagerTeamLeaveExport($user->employee->id),
-            'team_leave_' . now()->format('Y_m_d') . '.xlsx'
+            new ManagerTeamLeaveExport($employee->id),
+            'team_leave_'.now()->format('Y_m_d').'.xlsx'
         );
     }
 }

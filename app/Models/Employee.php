@@ -31,6 +31,10 @@ class Employee extends Model
         'is_active',
     ];
 
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
     protected $appends = [
         'age',
         'annual_leave_days',
@@ -175,7 +179,6 @@ class Employee extends Model
     {
         return is_null($this->region_id) && is_null($this->district_id);
     }
-
 
     // Leave approval hierarchy helpers
     public function isRegion(): bool

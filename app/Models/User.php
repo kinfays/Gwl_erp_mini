@@ -23,6 +23,10 @@ class User extends Authenticatable
         'last_login_at',
     ];
 
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
     protected $hidden = [
         'password',
         'remember_token',
@@ -100,30 +104,28 @@ class User extends Authenticatable
     }
 
     public function isHrUser(): bool
-{
-    return $this->hasRoles('hr_headoffice', 'hr_region');
-}
+    {
+        return $this->hasRoles('hr_headoffice', 'hr_region');
+    }
 
     public function isHeadOfficeHr(): bool
-{
-    return $this->hasRoles('hr_headoffice');
-}
+    {
+        return $this->hasRoles('hr_headoffice');
+    }
 
     public function getAccessibleModules(): array
-
-{
-    return $this->roles()
-        ->with('moduleAccess')
-        ->get()
-        ->pluck('moduleAccess')
-        ->flatten()
-        ->where('can_access', true)
-        ->pluck('module')
-        ->unique()
-        ->values()
-        ->toArray();
-}
-
+    {
+        return $this->roles()
+            ->with('moduleAccess')
+            ->get()
+            ->pluck('moduleAccess')
+            ->flatten()
+            ->where('can_access', true)
+            ->pluck('module')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
 
     public function scopeActive($query)
     {

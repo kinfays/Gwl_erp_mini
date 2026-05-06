@@ -2,20 +2,23 @@
 
 namespace App\Livewire\Leave;
 
-use Livewire\Component;
 use App\Livewire\Concerns\EnforcesModuleAccess;
-use App\Models\LeaveRequest;
 use App\Models\Employee;
-use Carbon\Carbon;
+use App\Models\LeaveRequest;
+use Livewire\Component;
 
 class ManagerDashboard extends Component
 {
     use EnforcesModuleAccess;
 
     public array $stats = [];
+
     public $onLeave;
+
     public $upcoming;
+
     public array $leaveByType = [];
+
     public array $slaStats = [];
 
     public function mount(): void
@@ -23,9 +26,9 @@ class ManagerDashboard extends Component
         $this->enforceLivewireModule('leave');
 
         $user = auth()->user();
-        $manager = $user->employee;
+        $manager = $this->employee();
 
-        if (! $manager || ! $manager->is_manager) {
+        if (! $manager || ! $user->hasRoles('manager', 'departmental_manager', 'district_manager', 'chief_manager', 'regional_chief_manager')) {
             abort(403);
         }
 
@@ -38,8 +41,12 @@ class ManagerDashboard extends Component
 
     protected function teamQuery()
     {
+        $manager = $this->employee();
+
+        abort_if(! $manager, 403, 'Employee profile is required for team leave access.');
+
         return LeaveRequest::query()
-            ->where('manager_id', auth()->user()->employee->id);
+            ->where('manager_id', $manager->id);
     }
 
     protected function loadStats(): void
@@ -47,7 +54,7 @@ class ManagerDashboard extends Component
         $today = today();
 
         $this->stats = [
-            'team_size' => Employee::where('manager_id', auth()->user()->employee->id)->count(),
+            'team_size' => (clone $this->teamQuery())->distinct('requester_id')->count('requester_id'),
 
             'on_leave_now' => $this->teamQuery()
                 ->where('leave_status', 'Approved')
@@ -93,7 +100,7 @@ class ManagerDashboard extends Component
             ->where('leave_status', 'Approved')
             ->sum('total_days_applied');
 
-        foreach (['Annual','Casual','Sick','Paternity','Maternity'] as $type) {
+        foreach (['Annual', 'Casual', 'Sick', 'Paternity', 'Maternity'] as $type) {
             $days = $this->teamQuery()
                 ->where('leave_status', 'Approved')
                 ->where('leave_type', $type)
@@ -108,11 +115,10 @@ class ManagerDashboard extends Component
     protected function loadSlaStats(): void
     {
         $requests = $this->teamQuery()
-            ->whereIn('leave_status', ['Approved','Denied'])
+            ->whereIn('leave_status', ['Approved', 'Denied'])
             ->get();
 
-        $times = $requests->map(fn ($r) =>
-            $r->updated_at->diffInHours($r->created_at)
+        $times = $requests->map(fn ($r) => $r->updated_at->diffInHours($r->created_at)
         );
 
         $this->slaStats = [
@@ -125,5 +131,12 @@ class ManagerDashboard extends Component
     public function render()
     {
         return view('livewire.leave.manager-dashboard');
+    }
+
+    protected function employee(): ?Employee
+    {
+        $user = auth()->user();
+
+        return $user?->employee ?? $user?->employeeByStaffId;
     }
 }

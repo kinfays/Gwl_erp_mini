@@ -2,55 +2,64 @@
 
 namespace App\Livewire\Uac;
 
-use Livewire\Component;
-use App\Models\Role;
-use App\Models\Permission;
 use App\Models\ModuleAccess;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Support\Audit;
+use Livewire\Component;
 
 class RoleAccessManager extends Component
 {
     public array $roles = [];
+
     public ?int $selectedRoleId = null;
 
     // UI state
     public array $permissionsByModule = []; // ['leave' => [..Permission..], ...]
+
     public array $selectedPermissionIds = []; // [1,2,3]
+
     public array $moduleAccess = []; // ['leave' => true, 'uac' => false...]
 
     public string $message = '';
 
     public array $modules = ['uac', 'leave', 'staff', 'letters', 'visitors'];
+
     public bool $showCreateRole = false;
 
-public string $newRoleSlug = '';
-public string $newRoleDisplayName = '';
-public string $newRoleDescription = '';
-public bool $showEditRole = false;
-public bool $showDeleteRole = false;
+    public string $newRoleSlug = '';
 
-public ?int $editRoleId = null;
-public string $editRoleDisplayName = '';
-public string $editRoleDescription = '';
+    public string $newRoleDisplayName = '';
 
-public ?int $deleteRoleId = null;
-public string $deleteConfirmText = '';
+    public string $newRoleDescription = '';
 
+    public bool $showEditRole = false;
+
+    public bool $showDeleteRole = false;
+
+    public ?int $editRoleId = null;
+
+    public string $editRoleDisplayName = '';
+
+    public string $editRoleDescription = '';
+
+    public ?int $deleteRoleId = null;
+
+    public string $deleteConfirmText = '';
 
     public function mount(): void
     {
-       
-$this->roles = Role::query()
-    ->where('name', '!=', 'super_admin')  // ✅ hide from list
-    ->orderBy('display_name')
-    ->get()
-    ->map(fn ($r) => [
-        'id' => $r->id,
-        'name' => $r->name,
-        'display_name' => $r->display_name,
-        'is_system' => (bool) $r->is_system,
-    ])->toArray();
 
+        $this->roles = Role::query()
+                   ->where('name', '!=', 'super_admin')  // ✅ hide from list
+                   ->orderBy('display_name')
+                   ->get()
+                   ->map(fn ($r) => [
+                       'id' => $r->id,
+                       'name' => $r->name,
+                       'display_name' => $r->display_name,
+                       'is_system' => (bool) $r->is_system,
+                   ])->toArray();
 
         $this->permissionsByModule = Permission::query()
             ->orderBy('module')
@@ -71,61 +80,60 @@ $this->roles = Role::query()
     }
 
     public function createRole(): void
-{
-    $user = auth()->user();
+    {
+        $user = auth()->user();
 
-    // ✅ admin and super_admin can create roles
-    if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-        abort(403, 'Only Admin or Super Admin can create roles.');
+        // ✅ admin and super_admin can create roles
+        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
+            abort(403, 'Only Admin or Super Admin can create roles.');
+        }
+
+        $this->validate([
+            'newRoleSlug' => ['required', 'string', 'max:50', 'regex:/^[a-z0-9_]+$/', 'unique:roles,name'],
+            'newRoleDisplayName' => ['required', 'string', 'max:100'],
+            'newRoleDescription' => ['nullable', 'string', 'max:255'],
+        ], [
+            'newRoleSlug.regex' => 'Slug must be lowercase letters, numbers, or underscores only (e.g. finance_manager).',
+        ]);
+
+        $role = Role::create([
+            'name' => $this->newRoleSlug,
+            'display_name' => $this->newRoleDisplayName,
+            'description' => $this->newRoleDescription,
+            'is_system' => false,
+        ]);
+
+        // Create default module_access rows (all false by default)
+        foreach ($this->modules as $module) {
+            ModuleAccess::updateOrCreate(
+                ['role_id' => $role->id, 'module' => $module],
+                ['can_access' => false]
+            );
+        }
+
+        // Refresh roles list (still hiding super_admin)
+        $this->roles = Role::query()
+            ->where('name', '!=', 'super_admin')
+            ->orderBy('display_name')
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->name,
+                'display_name' => $r->display_name,
+                'is_system' => (bool) $r->is_system,
+            ])->toArray();
+
+        // Select newly created role
+        $this->selectRole($role->id);
+
+        // Close modal + reset inputs
+        $this->showCreateRole = false;
+        $this->newRoleSlug = '';
+        $this->newRoleDisplayName = '';
+        $this->newRoleDescription = '';
+
+        $this->message = 'Role created successfully.';
     }
-
-    $this->validate([
-        'newRoleSlug' => ['required', 'string', 'max:50', 'regex:/^[a-z0-9_]+$/', 'unique:roles,name'],
-        'newRoleDisplayName' => ['required', 'string', 'max:100'],
-        'newRoleDescription' => ['nullable', 'string', 'max:255'],
-    ], [
-        'newRoleSlug.regex' => 'Slug must be lowercase letters, numbers, or underscores only (e.g. finance_manager).'
-    ]);
-
-    $role = \App\Models\Role::create([
-        'name' => $this->newRoleSlug,
-        'display_name' => $this->newRoleDisplayName,
-        'description' => $this->newRoleDescription,
-        'is_system' => false,
-    ]);
-
-    // Create default module_access rows (all false by default)
-    foreach ($this->modules as $module) {
-        ModuleAccess::updateOrCreate(
-            ['role_id' => $role->id, 'module' => $module],
-            ['can_access' => false]
-        );
-    }
-
-    // Refresh roles list (still hiding super_admin)
-    $this->roles = Role::query()
-        ->where('name', '!=', 'super_admin')
-        ->orderBy('display_name')
-        ->get()
-        ->map(fn ($r) => [
-            'id' => $r->id,
-            'name' => $r->name,
-            'display_name' => $r->display_name,
-            'is_system' => (bool) $r->is_system,
-        ])->toArray();
-
-    // Select newly created role
-    $this->selectRole($role->id);
-
-    // Close modal + reset inputs
-    $this->showCreateRole = false;
-    $this->newRoleSlug = '';
-    $this->newRoleDisplayName = '';
-    $this->newRoleDescription = '';
-
-    $this->message = 'Role created successfully.';
-}
-
 
     public function selectRole(int $roleId): void
     {
@@ -144,6 +152,43 @@ $this->roles = Role::query()
         }
 
         $this->message = '';
+    }
+
+    public function toggleModuleAccess(string $module): void
+    {
+        if (! $this->getCanEditProperty()) {
+            return;
+        }
+
+        $this->moduleAccess[$module] = ! ($this->moduleAccess[$module] ?? false);
+    }
+
+    public function togglePermission(int $permissionId): void
+    {
+        if (! $this->getCanEditProperty()) {
+            return;
+        }
+
+        $key = array_search($permissionId, $this->selectedPermissionIds);
+        if ($key !== false) {
+            unset($this->selectedPermissionIds[$key]);
+            $this->selectedPermissionIds = array_values($this->selectedPermissionIds); // re-index
+        } else {
+            $this->selectedPermissionIds[] = $permissionId;
+        }
+    }
+
+    public function getCanEditProperty(): bool
+    {
+        $selectedRole = $this->selectedRoleId
+            ? Role::where('name', '!=', 'super_admin')->find($this->selectedRoleId)
+            : null;
+
+        $locked = $selectedRole
+            ? ($selectedRole->is_system && in_array($selectedRole->name, ['super_admin', 'employee'], true))
+            : false;
+
+        return auth()->check() && auth()->user()->hasRoles('super_admin') && ! $locked;
     }
 
     public function save(): void
@@ -200,119 +245,121 @@ $this->roles = Role::query()
     }
 
     public function openEditRole(): void
-{
-    $user = auth()->user();
-    if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-        abort(403);
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
+            abort(403);
+        }
+
+        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->selectedRoleId);
+
+        if ($role->is_system) {
+            $this->message = 'System roles cannot be edited.';
+
+            return;
+        }
+
+        $this->editRoleId = $role->id;
+        $this->editRoleDisplayName = $role->display_name;
+        $this->editRoleDescription = $role->description ?? '';
+
+        $this->showEditRole = true;
     }
 
-    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->selectedRoleId);
+    public function updateRole(): void
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
+            abort(403);
+        }
 
-    if ($role->is_system) {
-        $this->message = 'System roles cannot be edited.';
-        return;
+        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->editRoleId);
+
+        if ($role->is_system) {
+            abort(403);
+        }
+
+        $this->validate([
+            'editRoleDisplayName' => 'required|string|max:100',
+            'editRoleDescription' => 'nullable|string|max:255',
+        ]);
+
+        $role->update([
+            'display_name' => $this->editRoleDisplayName,
+            'description' => $this->editRoleDescription,
+        ]);
+
+        Audit::log(
+            action: 'update_role',
+            module: 'uac.roles',
+            targetType: 'roles',
+            targetId: $role->id,
+            metadata: ['role' => $role->name]
+        );
+
+        $this->showEditRole = false;
+        $this->message = 'Role updated successfully.';
     }
 
-    $this->editRoleId = $role->id;
-    $this->editRoleDisplayName = $role->display_name;
-    $this->editRoleDescription = $role->description ?? '';
+    public function openDeleteRole(): void
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRoles('super_admin')) {
+            abort(403);
+        }
 
-    $this->showEditRole = true;
-}
+        $role = Role::where('name', '!=', 'super_admin')->withCount('users')->findOrFail($this->selectedRoleId);
 
-public function updateRole(): void
-{
-    $user = auth()->user();
-    if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-        abort(403);
+        if ($role->is_system) {
+            $this->message = 'System roles cannot be deleted.';
+
+            return;
+        }
+
+        if ($role->users_count > 0) {
+            $this->message = 'Remove this role from users before deleting.';
+
+            return;
+        }
+
+        $this->deleteRoleId = $role->id;
+        $this->deleteConfirmText = '';
+        $this->showDeleteRole = true;
     }
 
-    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->editRoleId);
+    public function deleteRole(): void
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRoles('super_admin')) {
+            abort(403);
+        }
 
-    if ($role->is_system) {
-        abort(403);
+        if (trim($this->deleteConfirmText) !== 'DELETE') {
+            $this->addError('deleteConfirmText', 'Type DELETE to confirm.');
+
+            return;
+        }
+
+        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->deleteRoleId);
+
+        \DB::transaction(function () use ($role) {
+            $role->permissions()->detach();
+            $role->users()->detach();
+            ModuleAccess::where('role_id', $role->id)->delete();
+            $role->delete();
+        });
+
+        Audit::log(
+            action: 'delete_role',
+            module: 'uac.roles',
+            targetType: 'roles',
+            targetId: $this->deleteRoleId
+        );
+
+        $this->showDeleteRole = false;
+        $this->selectedRoleId = null;
+        $this->message = 'Role deleted successfully.';
     }
-
-    $this->validate([
-        'editRoleDisplayName' => 'required|string|max:100',
-        'editRoleDescription' => 'nullable|string|max:255',
-    ]);
-
-    $role->update([
-        'display_name' => $this->editRoleDisplayName,
-        'description' => $this->editRoleDescription,
-    ]);
-
-    Audit::log(
-        action: 'update_role',
-        module: 'uac.roles',
-        targetType: 'roles',
-        targetId: $role->id,
-        metadata: ['role' => $role->name]
-    );
-
-    $this->showEditRole = false;
-    $this->message = 'Role updated successfully.';
-}
-
-
-public function openDeleteRole(): void
-{
-    $user = auth()->user();
-    if (! $user || ! $user->hasRoles('super_admin')) {
-        abort(403);
-    }
-
-    $role = Role::where('name', '!=', 'super_admin')->withCount('users')->findOrFail($this->selectedRoleId);
-
-    if ($role->is_system) {
-        $this->message = 'System roles cannot be deleted.';
-        return;
-    }
-
-    if ($role->users_count > 0) {
-        $this->message = 'Remove this role from users before deleting.';
-        return;
-    }
-
-    $this->deleteRoleId = $role->id;
-    $this->deleteConfirmText = '';
-    $this->showDeleteRole = true;
-}
-
-public function deleteRole(): void
-{
-    $user = auth()->user();
-    if (! $user || ! $user->hasRoles('super_admin')) {
-        abort(403);
-    }
-
-    if (trim($this->deleteConfirmText) !== 'DELETE') {
-        $this->addError('deleteConfirmText', 'Type DELETE to confirm.');
-        return;
-    }
-
-    $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->deleteRoleId);
-
-    \DB::transaction(function () use ($role) {
-        $role->permissions()->detach();
-        $role->users()->detach();
-        \App\Models\ModuleAccess::where('role_id', $role->id)->delete();
-        $role->delete();
-    });
-
-    Audit::log(
-        action: 'delete_role',
-        module: 'uac.roles',
-        targetType: 'roles',
-        targetId: $this->deleteRoleId
-    );
-
-    $this->showDeleteRole = false;
-    $this->selectedRoleId = null;
-    $this->message = 'Role deleted successfully.';
-}
-
 
     public function render()
     {

@@ -13,8 +13,11 @@ class TodayLog extends Component
     use WithPagination;
 
     public string $search = '';
+
     public string $status = '';
+
     public ?int $signatureVisitorId = null;
+
     public int $perPage = 15;
 
     public function mount(): void
@@ -40,6 +43,8 @@ class TodayLog extends Component
             'check_out_at' => now(),
             'checked_out_by' => 'receptionist',
         ]);
+
+        $this->dispatch('toast', type: 'success', message: $visitor->visitor_name.' has been checked out.');
     }
 
     public function showSignature(int $visitorId): void
@@ -61,8 +66,8 @@ class TodayLog extends Component
             ->when($this->search, function ($query) {
                 $query->where(function ($searchQuery) {
                     $searchQuery
-                        ->where('visitor_name', 'like', '%' . $this->search . '%')
-                        ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('full_name', 'like', '%' . $this->search . '%'));
+                        ->where('visitor_name', 'like', '%'.$this->search.'%')
+                        ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('full_name', 'like', '%'.$this->search.'%'));
                 });
             })
             ->when($this->status === 'inside', fn ($query) => $query->inside())
@@ -75,7 +80,7 @@ class TodayLog extends Component
                 'total' => (clone $base)->count(),
                 'inside' => (clone $base)->inside()->count(),
                 'out' => (clone $base)->checkedOut()->count(),
-                'autoTime' => config('gwcl.visitors_auto_checkout_time', '18:00'),
+                'autoTime' => config('gwl.auto_checkout_time', config('gwcl.visitors_auto_checkout_time', '18:00')),
             ],
             'visitors' => $visitors,
             'signatureVisitor' => $this->signatureVisitorId ? Visitor::find($this->signatureVisitorId) : null,
