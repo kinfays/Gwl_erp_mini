@@ -25,6 +25,7 @@
                             name="password"
                             required autocomplete="new-password" />
 
+            <p class="mt-1 text-xs text-gray-500">{{ __('At least 5 characters, including one letter and one number.') }}</p>
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 

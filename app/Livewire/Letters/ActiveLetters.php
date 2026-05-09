@@ -33,9 +33,21 @@ class ActiveLetters extends Component
 
     public string $remarkContent = '';
 
+    public int|string $remarkManagerId = '';
+
+    public int|string $remarkChiefManagerId = '';
+
+    public string $secretaryRemarkContent = '';
+
     public ?int $editingRemarkId = null;
 
     public string $editingRemarkContent = '';
+
+    public int|string $editingRemarkManagerId = '';
+
+    public int|string $editingRemarkChiefManagerId = '';
+
+    public string $editingSecretaryRemarkContent = '';
 
     public string $secretarySearch = '';
 
@@ -126,7 +138,7 @@ class ActiveLetters extends Component
         $this->fillEditForm($letter->fresh());
     }
 
-    public function dispatch(LetterWorkflowService $workflow): void
+    public function dispatchLetter(LetterWorkflowService $workflow): void
     {
         abort_if(! $this->canForward(), 403);
 
@@ -166,12 +178,30 @@ class ActiveLetters extends Component
     {
         abort_if(! $this->canRemark(), 403);
 
+        $employee = $this->requireEmployee();
+
         $this->validate([
+            'remarkManagerId' => ['required', 'exists:employees,id'],
+            'remarkChiefManagerId' => ['required', 'exists:employees,id'],
             'remarkContent' => ['required', 'string', 'max:4000'],
+            'secretaryRemarkContent' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $workflow->addRemark($this->selectedLetter($workflow), $this->requireEmployee(), $this->remarkContent);
-        $this->remarkContent = '';
+        $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkManagerId, 'remarkManagerId', 'manager');
+        $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkChiefManagerId, 'remarkChiefManagerId', 'chief');
+
+        if (! $manager || ! $chiefManager) {
+            return;
+        }
+
+        $workflow->addRemark($this->selectedLetter($workflow), $employee, [
+            'manager_id' => $manager->id,
+            'chief_manager_id' => $chiefManager->id,
+            'remark_content' => $this->remarkContent,
+            'secretary_remark_content' => $this->secretaryRemarkContent,
+        ]);
+
+        $this->resetRemarkForm();
         $this->flashMessage = 'Remark added.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
@@ -183,19 +213,40 @@ class ActiveLetters extends Component
 
         $this->editingRemarkId = $remark->id;
         $this->editingRemarkContent = $remark->remark_content;
+        $this->editingRemarkManagerId = $remark->manager_id ?: '';
+        $this->editingRemarkChiefManagerId = $remark->chief_manager_id ?: '';
+        $this->editingSecretaryRemarkContent = $remark->secretary_remark_content ?? '';
     }
 
     public function updateRemark(LetterWorkflowService $workflow): void
     {
+        abort_if(! $this->editingRemarkId, 404);
+
+        $employee = $this->requireEmployee();
+
         $this->validate([
+            'editingRemarkManagerId' => ['required', 'exists:employees,id'],
+            'editingRemarkChiefManagerId' => ['required', 'exists:employees,id'],
             'editingRemarkContent' => ['required', 'string', 'max:4000'],
+            'editingSecretaryRemarkContent' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $remark = LetterRemark::query()->findOrFail($this->editingRemarkId);
-        $workflow->updateRemark($remark, $this->requireEmployee(), $this->editingRemarkContent);
+        $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkManagerId, 'editingRemarkManagerId', 'manager');
+        $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkChiefManagerId, 'editingRemarkChiefManagerId', 'chief');
 
-        $this->editingRemarkId = null;
-        $this->editingRemarkContent = '';
+        if (! $manager || ! $chiefManager) {
+            return;
+        }
+
+        $remark = LetterRemark::query()->findOrFail($this->editingRemarkId);
+        $workflow->updateRemark($remark, $employee, [
+            'manager_id' => $manager->id,
+            'chief_manager_id' => $chiefManager->id,
+            'remark_content' => $this->editingRemarkContent,
+            'secretary_remark_content' => $this->editingSecretaryRemarkContent,
+        ]);
+
+        $this->resetEditingRemarkForm();
         $this->flashMessage = 'Remark updated.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
@@ -238,6 +289,8 @@ class ActiveLetters extends Component
                 'selectedLetter' => null,
                 'secretaries' => collect(),
                 'senders' => collect(),
+                'managerOptions' => [],
+                'chiefManagerOptions' => [],
                 'canRemark' => false,
                 'canForward' => false,
             ]);
@@ -286,6 +339,8 @@ class ActiveLetters extends Component
                     'routingHistories.fromSecretariat',
                     'routingHistories.toSecretariat',
                     'remarks.author',
+                    'remarks.manager',
+                    'remarks.chiefManager',
                 ])
                 ->find($this->selectedLetterId)
             : null;
@@ -295,6 +350,8 @@ class ActiveLetters extends Component
             'letters' => $letters,
             'selectedLetter' => $selectedLetter,
             'secretaries' => $workflow->secretaryQuery($this->secretarySearch)->limit(30)->get(),
+            'managerOptions' => $this->employeeOptions($workflow->regionalManagersQuery($employee)->with(['department', 'region'])->get()),
+            'chiefManagerOptions' => $this->employeeOptions($workflow->regionalChiefManagersQuery($employee)->with(['department', 'region'])->get()),
             'senders' => Employee::query()
                 ->active()
                 ->visibleInErp()
@@ -338,11 +395,27 @@ class ActiveLetters extends Component
         $this->editSenderSearch = $letter->memoSender?->full_name ?? '';
     }
 
+    protected function resetRemarkForm(): void
+    {
+        $this->remarkManagerId = '';
+        $this->remarkChiefManagerId = '';
+        $this->remarkContent = '';
+        $this->secretaryRemarkContent = '';
+    }
+
+    protected function resetEditingRemarkForm(): void
+    {
+        $this->editingRemarkId = null;
+        $this->editingRemarkManagerId = '';
+        $this->editingRemarkChiefManagerId = '';
+        $this->editingRemarkContent = '';
+        $this->editingSecretaryRemarkContent = '';
+    }
+
     protected function resetDetailInputs(): void
     {
-        $this->remarkContent = '';
-        $this->editingRemarkId = null;
-        $this->editingRemarkContent = '';
+        $this->resetRemarkForm();
+        $this->resetEditingRemarkForm();
         $this->dispatchToId = '';
         $this->secretarySearch = '';
         $this->flashMessage = '';
@@ -376,5 +449,40 @@ class ActiveLetters extends Component
         $user = auth()->user();
 
         return $user && ($user->hasRoles('super_admin') || $user->hasPermission('letters.forward'));
+    }
+
+    protected function resolveRegionalRemarkReviewer(
+        LetterWorkflowService $workflow,
+        Employee $employee,
+        int|string $reviewerId,
+        string $field,
+        string $type
+    ): ?Employee {
+        $reviewer = $type === 'chief'
+            ? $workflow->regionalChiefManagersQuery($employee)->find($reviewerId)
+            : $workflow->regionalManagersQuery($employee)->find($reviewerId);
+
+        if (! $reviewer) {
+            $this->addError($field, $type === 'chief'
+                ? 'Select a chief manager in your region.'
+                : 'Select a manager in your region.');
+        }
+
+        return $reviewer;
+    }
+
+    protected function employeeOptions($employees): array
+    {
+        return $employees
+            ->map(fn (Employee $employee) => [
+                'value' => $employee->id,
+                'label' => $employee->full_name,
+                'description' => collect([
+                    $employee->staff_id,
+                    $employee->department?->department_name,
+                    $employee->region?->region_name,
+                ])->filter()->join(' / '),
+            ])
+            ->all();
     }
 }

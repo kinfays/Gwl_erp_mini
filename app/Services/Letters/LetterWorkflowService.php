@@ -165,13 +165,18 @@ class LetterWorkflowService
         AuditLog::record('update_letter', 'letters', 'mail_letters', $letter->id, $old, $letter->fresh()->toArray());
     }
 
-    public function addRemark(MailLetter $letter, Employee $actor, string $content): LetterRemark
+    public function addRemark(MailLetter $letter, Employee $actor, array $data): LetterRemark
     {
         $remark = LetterRemark::create([
             'letter_id' => $letter->id,
             'author_id' => $actor->id,
             'remark_secretariat_id' => $actor->id,
-            'remark_content' => $content,
+            'manager_id' => $data['manager_id'] ?? null,
+            'chief_manager_id' => $data['chief_manager_id'] ?? null,
+            'remark_content' => trim($data['remark_content']),
+            'secretary_remark_content' => filled($data['secretary_remark_content'] ?? null)
+                ? trim($data['secretary_remark_content'])
+                : null,
             'created_by_id' => $actor->id,
         ]);
 
@@ -182,13 +187,20 @@ class LetterWorkflowService
         return $remark;
     }
 
-    public function updateRemark(LetterRemark $remark, Employee $actor, string $content): void
+    public function updateRemark(LetterRemark $remark, Employee $actor, array $data): void
     {
         if ($remark->author_id !== $actor->id) {
             throw new \RuntimeException('Only the remark creator can edit it.');
         }
 
-        $remark->update(['remark_content' => $content]);
+        $remark->update([
+            'manager_id' => $data['manager_id'] ?? null,
+            'chief_manager_id' => $data['chief_manager_id'] ?? null,
+            'remark_content' => trim($data['remark_content']),
+            'secretary_remark_content' => filled($data['secretary_remark_content'] ?? null)
+                ? trim($data['secretary_remark_content'])
+                : null,
+        ]);
     }
 
     public function canDispatch(MailLetter $letter, Employee $actor): bool
@@ -231,11 +243,7 @@ class LetterWorkflowService
         return Employee::query()
             ->active()
             ->visibleInErp()
-            ->where(function (Builder $query) {
-                $query
-                    ->whereHas('user.roles', fn (Builder $roleQuery) => $roleQuery->where('name', 'secretary'))
-                    ->orWhereHas('userByStaffId.roles', fn (Builder $roleQuery) => $roleQuery->where('name', 'secretary'));
-            })
+            ->where(fn (Builder $query) => $this->whereHasAnyUserRole($query, ['secretary']))
             ->when($search, function (Builder $query) use ($search) {
                 $query->where(function (Builder $searchQuery) use ($search) {
                     $searchQuery
@@ -245,6 +253,23 @@ class LetterWorkflowService
                 });
             })
             ->orderBy('full_name');
+    }
+
+    public function regionalManagersQuery(Employee $actor): Builder
+    {
+        return $this->regionalRoleQuery($actor, [
+            'manager',
+            'departmental_manager',
+            'district_manager',
+        ]);
+    }
+
+    public function regionalChiefManagersQuery(Employee $actor): Builder
+    {
+        return $this->regionalRoleQuery($actor, [
+            'chief_manager',
+            'regional_chief_manager',
+        ]);
     }
 
     protected function nextSnNumber(int $regionId): string
@@ -273,5 +298,26 @@ class LetterWorkflowService
             ->join('');
 
         return $words ?: 'REG';
+    }
+
+    protected function regionalRoleQuery(Employee $actor, array $roles): Builder
+    {
+        return Employee::query()
+            ->active()
+            ->visibleInErp()
+            ->when(
+                $actor->region_id,
+                fn (Builder $query) => $query->where('region_id', $actor->region_id),
+                fn (Builder $query) => $query->whereNull('region_id')
+            )
+            ->where(fn (Builder $query) => $this->whereHasAnyUserRole($query, $roles))
+            ->orderBy('full_name');
+    }
+
+    protected function whereHasAnyUserRole(Builder $query, array $roles): Builder
+    {
+        return $query
+            ->whereHas('user.roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles))
+            ->orWhereHas('userByStaffId.roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles));
     }
 }

@@ -21,6 +21,14 @@
                 <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
             </select>
 
+            <select name="per_page" class="border rounded px-3 py-2 text-sm" onchange="this.form.submit()">
+                @foreach ($perPageOptions as $option)
+                    <option value="{{ $option }}" {{ (int) $perPage === $option ? 'selected' : '' }}>
+                        {{ $option }} per page
+                    </option>
+                @endforeach
+            </select>
+
             <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700">
                 Filter
             </button>
@@ -163,8 +171,16 @@
     </table>
 </div>
 
-<div class="mt-6">
-    {{ $users->links() }}
+<div class="mt-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="text-sm text-slate-500">
+        Showing {{ $users->firstItem() ?? 0 }} - {{ $users->lastItem() ?? 0 }} of {{ $users->total() }} users
+    </div>
+
+    @if ($users->hasPages())
+        <div>
+            {{ $users->links() }}
+        </div>
+    @endif
 </div>
 
 <div

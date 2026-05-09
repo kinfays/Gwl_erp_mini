@@ -9,7 +9,6 @@ use App\Notifications\InviteUserNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 class EmployeeObserver
 {
@@ -34,7 +33,11 @@ class EmployeeObserver
             $user = new User([
                 'staff_id' => $employee->staff_id,
             ]);
-            $user->password = Hash::make(Str::random(20));
+            $user->password = Hash::make(User::DEFAULT_PASSWORD);
+
+            if (Schema::hasColumn('users', 'must_change_password')) {
+                $user->must_change_password = true;
+            }
         }
 
         $payload = [
@@ -71,6 +74,8 @@ class EmployeeObserver
         $url = url(route('password.reset', [
             'token' => $token,
             'email' => $user->email,
+            'staff_id' => $user->staff_id,
+            'set_password' => true,
         ], false));
 
         $user->notify(new InviteUserNotification(

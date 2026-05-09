@@ -58,7 +58,7 @@
                         View
                     </button>
 
-                    @if(in_array($r->leave_status, ['Planned','Pending Approval']))
+                    @if($r->canBeEditedByRequester())
                         <button wire:click="editRequest({{ $r->id }})"
                                 class="px-3 py-1.5 rounded bg-blue-50 text-blue-700 text-xs border border-blue-200">
                             Edit
@@ -157,7 +157,7 @@
                     @endif
 
                 <div class="mt-6 flex flex-wrap gap-2">
-                    @if(in_array($selectedRequest->leave_status, ['Planned','Pending Approval']))
+                    @if($selectedRequest->canBeEditedByRequester())
                         <button wire:click="editRequest({{ $selectedRequest->id }})"
                                 class="px-4 py-2 rounded bg-blue-600 text-white text-sm">
                             Edit

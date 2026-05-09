@@ -19,6 +19,7 @@ class EmployeeDirectory
                 'jobTitle',
                 'region',
                 'district.region',
+                'user',
                 'leaveBalances' => fn ($balanceQuery) => $balanceQuery
                     ->where('leave_type', 'Annual')
                     ->where('current_year', now()->year),

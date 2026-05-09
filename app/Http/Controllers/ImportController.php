@@ -109,6 +109,15 @@ class ImportController extends Controller
         ));
     }
 
+    public function clear(Request $request): RedirectResponse
+    {
+        $context = $this->resolveContext($request);
+
+        session()->forget($this->previewKey($context));
+
+        return back()->with('success', 'Upload error cleared.');
+    }
+
     protected function previewKey(string $context): string
     {
         return 'import_preview.'.$context;

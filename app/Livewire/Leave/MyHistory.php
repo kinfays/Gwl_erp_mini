@@ -73,9 +73,9 @@ class MyHistory extends Component
             ->where('requester_id', $this->requesterId())
             ->findOrFail($id);
 
-        if (! in_array($req->leave_status, ['Planned', 'Pending Approval'], true)) {
-            $this->addError('action', 'Only Planned or Pending Approval requests can be edited.');
-            $this->dispatch('toast', type: 'error', message: 'Only Planned or Pending Approval requests can be edited.');
+        if (! $req->canBeEditedByRequester()) {
+            $this->addError('action', 'Only Planned requests and unrecommended Pending Approval requests can be edited.');
+            $this->dispatch('toast', type: 'error', message: 'This request can no longer be edited.');
 
             return;
         }

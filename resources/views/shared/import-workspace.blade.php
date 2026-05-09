@@ -4,7 +4,32 @@
     $types = $availableImportTypes ?? app(\App\Services\Import\DataImportService::class)->availableTypes($showUsersType ?? true);
 @endphp
 
-<div x-data="{ selectedType: '{{ $defaultType ?? ($types[0]['type'] ?? 'employees') }}' }">
+<div x-data="{
+    selectedType: '{{ $defaultType ?? ($types[0]['type'] ?? 'employees') }}',
+    fileName: '',
+    isDragging: false,
+    chooseFile() {
+        this.$refs.fileInput.click();
+    },
+    handleDrop(event) {
+        this.isDragging = false;
+
+        const files = event.dataTransfer?.files;
+        if (! files || ! files.length) {
+            return;
+        }
+
+        try {
+            const transfer = new DataTransfer();
+            transfer.items.add(files[0]);
+            this.$refs.fileInput.files = transfer.files;
+        } catch (error) {
+            this.$refs.fileInput.files = files;
+        }
+
+        this.fileName = files[0].name;
+    },
+}">
     <div class="page-head" style="padding-left:0;padding-right:0;background:transparent;border:0">
         <div class="ph-left">
             <h2>{{ $title }}</h2>
@@ -18,9 +43,16 @@
         </div>
     @endif
 
-    @if ($errors->has('import'))
+    @if ($errors->any())
         <div class="erp-card" style="margin-bottom:14px;background:#fef2f2;border-color:#fecaca;color:#991b1b;">
-            {{ $errors->first('import') }}
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                <span>{{ $errors->first() }}</span>
+
+                <form action="{{ route($routePrefix . '.import.clear') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="actn actn-r">Clear Upload Error</button>
+                </form>
+            </div>
         </div>
     @endif
 
@@ -58,12 +90,23 @@
                     </select>
                 </div>
 
-                <div class="import-zone">
-                    <div style="font-size:24px;color:var(--color-text-tertiary);margin-bottom:6px">↑</div>
+                <div
+                    class="import-zone"
+                    :class="{ 'is-dragging': isDragging }"
+                    role="button"
+                    tabindex="0"
+                    x-on:click="if (! $event.target.closest('a, button')) chooseFile()"
+                    x-on:keydown.enter.prevent="chooseFile()"
+                    x-on:keydown.space.prevent="chooseFile()"
+                    x-on:dragover.prevent="isDragging = true"
+                    x-on:dragleave.prevent="isDragging = false"
+                    x-on:drop.prevent="handleDrop($event)"
+                >
+                    <div style="font-size:24px;color:var(--color-text-tertiary);margin-bottom:6px">&uarr;</div>
                     <div style="font-size:12px;color:var(--color-text-secondary)">Drop Excel or CSV here</div>
-                    <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;margin-bottom:8px">Accepts .xlsx and .csv</div>
+                    <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;margin-bottom:8px" x-text="fileName || 'Accepts .xlsx and .csv'"></div>
                     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                        <a :href="`{{ url($routePrefix . '/import/template') }}/${selectedType}`" class="btn">Download Template</a>
+                        <a :href="`{{ url($routePrefix . '/import/template') }}/${selectedType}`" class="btn" x-on:click.stop>Download Template</a>
                     </div>
                 </div>
 
@@ -73,7 +116,7 @@
 
                     <div class="form-field">
                         <label class="form-label">Upload File</label>
-                        <input type="file" name="file" class="form-input" accept=".xlsx,.csv,.txt">
+                        <input x-ref="fileInput" x-on:change="fileName = $event.target.files[0]?.name || ''" type="file" name="file" class="form-input" accept=".xlsx,.csv,.txt">
                     </div>
 
                     <button type="submit" class="btn btn-primary" style="justify-content:center">Preview Import</button>
@@ -110,25 +153,34 @@
             <div class="pg-head">
                 <span class="pg-title">Preview Results</span>
 
-                @if (! empty($preview['valid_rows']))
-                    <form action="{{ route($routePrefix . '.import.run') }}" method="POST" x-data>
-                        @csrf
-                        <button
-                            type="submit"
-                            class="btn btn-primary"
-                            @if (! empty($preview['blocked'])) disabled @endif
-                            x-on:click.prevent="$dispatch('confirm-action', {
-                                title: 'Run bulk import?',
-                                message: 'Validated rows will be written to the database and audited.',
-                                confirmLabel: 'Run Import',
-                                variant: 'primary',
-                                action: () => $root.submit()
-                            })"
-                        >
-                            Run Import
-                        </button>
-                    </form>
-                @endif
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    @if (! empty($preview['errors']))
+                        <form action="{{ route($routePrefix . '.import.clear') }}" method="POST">
+                            @csrf
+                            <button type="submit" class="actn actn-r">Clear Upload Error</button>
+                        </form>
+                    @endif
+
+                    @if (! empty($preview['valid_rows']))
+                        <form action="{{ route($routePrefix . '.import.run') }}" method="POST" x-data>
+                            @csrf
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                @if (! empty($preview['blocked'])) disabled @endif
+                                x-on:click.prevent="$dispatch('confirm-action', {
+                                    title: 'Run bulk import?',
+                                    message: 'Validated rows will be written to the database and audited.',
+                                    confirmLabel: 'Run Import',
+                                    variant: 'primary',
+                                    action: () => $root.submit()
+                                })"
+                            >
+                                Run Import
+                            </button>
+                        </form>
+                    @endif
+                </div>
             </div>
 
             @if (! empty($preview['blocked']))

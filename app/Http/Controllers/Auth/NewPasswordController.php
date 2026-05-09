@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\PasswordRules;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -21,7 +22,15 @@ class NewPasswordController extends Controller
      */
     public function create(Request $request): View
     {
-        return view('auth.reset-password', ['request' => $request]);
+        $user = $request->email
+            ? User::query()->where('email', $request->email)->first()
+            : null;
+
+        return view('auth.reset-password', [
+            'request' => $request,
+            'isSetPassword' => $request->boolean('set_password') || $request->query('mode') === 'set',
+            'staffId' => $user?->staff_id ?? $request->query('staff_id'),
+        ]);
     }
 
     /**
@@ -34,7 +43,7 @@ class NewPasswordController extends Controller
         $request->validate([
             'token' => ['required'],
             'email' => ['required', 'email'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'password' => ['required', 'confirmed', PasswordRules::account()],
         ]);
 
         // Here we will attempt to reset the user's password. If it is successful we
@@ -43,10 +52,16 @@ class NewPasswordController extends Controller
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user) use ($request) {
-                $user->forceFill([
+                $payload = [
                     'password' => Hash::make($request->password),
                     'remember_token' => Str::random(60),
-                ])->save();
+                ];
+
+                if (Schema::hasColumn('users', 'must_change_password')) {
+                    $payload['must_change_password'] = false;
+                }
+
+                $user->forceFill($payload)->save();
 
                 event(new PasswordReset($user));
             }

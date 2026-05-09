@@ -90,7 +90,7 @@ class EmployeeDashboard extends Component
         return LeaveRequest::query()
             ->with('requester')
             ->where('requester_id', '!=', $employee->id)
-            ->where('leave_status', 'Approved')
+            ->whereIn('leave_status', ['Approved', 'Planned'])
             ->whereDate('end_date', '>=', $today)
             ->whereDate('start_date', '<=', $today->copy()->addDays(45))
             ->whereHas('requester', function ($query) use ($employee) {

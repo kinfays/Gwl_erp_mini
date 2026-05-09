@@ -11,6 +11,7 @@ use App\Models\JobTitle;
 use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
+use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 class DataImportService
@@ -75,7 +77,7 @@ class DataImportService
         if (! empty($missingHeadings)) {
             $errors[] = [
                 'row' => 'Header',
-                'message' => 'Missing required columns: ' . implode(', ', $missingHeadings),
+                'message' => 'Missing required columns: '.implode(', ', $missingHeadings),
             ];
         }
 
@@ -99,6 +101,7 @@ class DataImportService
 
             if ($rowErrors !== []) {
                 $errors = [...$errors, ...$rowErrors];
+
                 continue;
             }
 
@@ -173,6 +176,18 @@ class DataImportService
             ->mapWithKeys(fn ($value, $key) => [$key => is_string($value) ? trim($value) : $value])
             ->all();
 
+        if (in_array($type, ['employees', 'users'], true)) {
+            $normalized['staff_id'] = $this->normalizeCellText($normalized['staff_id'] ?? null);
+        }
+
+        if ($type === 'employees') {
+            foreach (['full_name', 'gender', 'category', 'email', 'job_title_name', 'department_name', 'district_name', 'region_name', 'unit', 'present_appointment'] as $field) {
+                if (array_key_exists($field, $normalized)) {
+                    $normalized[$field] = $this->normalizeCellText($normalized[$field]);
+                }
+            }
+        }
+
         if ($type === 'users') {
             $normalized['role_slugs'] = collect(explode(',', (string) ($normalized['role_slugs'] ?? '')))
                 ->map(fn (string $role) => trim($role))
@@ -208,20 +223,64 @@ class DataImportService
                 'gender' => ['required', 'in:Male,Female'],
                 'category' => ['required', 'in:Senior Staff,Junior Staff,Management,Senior Management,Charwoman'],
                 'email' => ['required', 'email', 'max:255'],
-                'job_title_name' => ['required', 'string', 'max:255'],
-                'department_name' => ['required', 'string', 'max:255'],
-                'district_name' => ['required', 'string', 'max:255'],
-                'region_name' => ['required', 'string', 'max:255'],
+                'job_title_name' => [
+                    'required',
+                    'string',
+                    'max:255',
+                    function (string $attribute, mixed $value, Closure $fail): void {
+                        if (! $this->referenceExists(JobTitle::class, 'job_title_name', $value)) {
+                            $fail('The job title must already exist in the system.');
+                        }
+                    },
+                ],
+                'department_name' => [
+                    'required',
+                    'string',
+                    'max:255',
+                    function (string $attribute, mixed $value, Closure $fail): void {
+                        if (! $this->referenceExists(Department::class, 'department_name', $value)) {
+                            $fail('The department must already exist in the system.');
+                        }
+                    },
+                ],
+                'district_name' => [
+                    'required',
+                    'string',
+                    'max:255',
+                    function (string $attribute, mixed $value, Closure $fail) use ($row): void {
+                        if (! $this->referenceExists(District::class, 'district_name', $value)) {
+                            $fail('The district must already exist in the system.');
+
+                            return;
+                        }
+
+                        $region = $this->findReference(Region::class, 'region_name', $row['region_name'] ?? null);
+
+                        if ($region && ! $this->findDistrictForRegion($value, $region)) {
+                            $fail('The district must belong to the selected region.');
+                        }
+                    },
+                ],
+                'region_name' => [
+                    'required',
+                    'string',
+                    'max:255',
+                    function (string $attribute, mixed $value, Closure $fail): void {
+                        if (! $this->referenceExists(Region::class, 'region_name', $value)) {
+                            $fail('The region must already exist in the system.');
+                        }
+                    },
+                ],
                 'date_of_birth' => ['required', 'date'],
                 'date_joined' => ['nullable', 'date'],
                 'unit' => ['nullable', 'string', 'max:255'],
-                'present_appointment' => ['nullable', 'string', 'max:255'],
+                'present_appointment' => ['nullable', 'date'],
             ],
             'users' => [
                 'staff_id' => [
                     'required',
                     'string',
-                    function (string $attribute, mixed $value, \Closure $fail): void {
+                    function (string $attribute, mixed $value, Closure $fail): void {
                         if (! Employee::visibleInErp()->where('staff_id', $value)->exists()) {
                             $fail('The selected staff ID is invalid.');
                         }
@@ -238,7 +297,15 @@ class DataImportService
     protected function attributesFor(string $type): array
     {
         return match ($type) {
+            'employees' => [
+                'staff_id' => 'staff ID',
+                'job_title_name' => 'job title',
+                'department_name' => 'department',
+                'district_name' => 'district',
+                'region_name' => 'region',
+            ],
             'users' => [
+                'staff_id' => 'staff ID',
                 'role_slugs' => 'roles',
             ],
             default => [],
@@ -247,7 +314,7 @@ class DataImportService
 
     protected function readRows(UploadedFile $file): Collection
     {
-        $import = new RawRowsImport();
+        $import = new RawRowsImport;
         Excel::import($import, $file);
 
         return $import->rows;
@@ -271,6 +338,55 @@ class DataImportService
         }
 
         return $mapped;
+    }
+
+    protected function normalizeCellText(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_float($value) && floor($value) === $value) {
+            return (string) (int) $value;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        return trim((string) $value);
+    }
+
+    protected function referenceExists(string $model, string $column, mixed $value): bool
+    {
+        return (bool) $this->findReference($model, $column, $value);
+    }
+
+    protected function findReference(string $model, string $column, mixed $value): mixed
+    {
+        $value = $this->normalizeCellText($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return $model::query()
+            ->whereRaw('LOWER('.$column.') = ?', [Str::lower($value)])
+            ->first();
+    }
+
+    protected function findDistrictForRegion(mixed $districtName, Region $region): ?District
+    {
+        $districtName = $this->normalizeCellText($districtName);
+
+        if ($districtName === '') {
+            return null;
+        }
+
+        return District::query()
+            ->where('region_id', $region->id)
+            ->whereRaw('LOWER(district_name) = ?', [Str::lower($districtName)])
+            ->first();
     }
 
     protected function normalizeHeading($value): string
@@ -334,22 +450,16 @@ class DataImportService
 
     protected function upsertEmployee(array $row): bool
     {
-        $region = Region::firstOrCreate([
-            'region_name' => $row['region_name'],
-        ]);
+        $region = $this->findReference(Region::class, 'region_name', $row['region_name']);
+        $district = $region ? $this->findDistrictForRegion($row['district_name'], $region) : null;
+        $department = $this->findReference(Department::class, 'department_name', $row['department_name']);
+        $jobTitle = $this->findReference(JobTitle::class, 'job_title_name', $row['job_title_name']);
 
-        $district = District::firstOrCreate([
-            'district_name' => $row['district_name'],
-            'region_id' => $region->id,
-        ]);
-
-        $department = Department::firstOrCreate([
-            'department_name' => $row['department_name'],
-        ]);
-
-        $jobTitle = JobTitle::firstOrCreate([
-            'job_title_name' => $row['job_title_name'],
-        ]);
+        if (! $region || ! $district || ! $department || ! $jobTitle) {
+            throw ValidationException::withMessages([
+                'import' => 'Employee import reference data changed. Please preview the file again.',
+            ]);
+        }
 
         $employee = Employee::updateOrCreate(
             ['staff_id' => $row['staff_id']],
@@ -394,7 +504,11 @@ class DataImportService
         $user->fill($payload);
 
         if (! $user->exists) {
-            $user->password = Hash::make(Str::random(20));
+            $user->password = Hash::make(User::DEFAULT_PASSWORD);
+
+            if (Schema::hasColumn('users', 'must_change_password')) {
+                $user->must_change_password = true;
+            }
         }
 
         $user->save();
@@ -442,7 +556,7 @@ class DataImportService
                     'present_appointment',
                 ],
                 'sample_rows' => [
-                    ['EMP001', 'Akosua Mensah', 'Female', 'Management', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', 'Human Resource Officer'],
+                    ['EMP001', 'Akosua Mensah', 'Female', 'Management', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
                 ],
             ],
             'departments' => [

@@ -11,9 +11,9 @@ use App\Notifications\InviteUserNotification;
 use App\Http\Requests\Uac\StoreUserRequest;
 use App\Http\Requests\Uac\UpdateUserRequest;
 use App\Support\Audit;
+use App\Support\UserProfilePayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 
@@ -53,6 +53,12 @@ class UacController extends Controller
         $search = $request->string('search')->toString();
         $roleId = $request->integer('role_id') ?: null;
         $status = $request->string('status')->toString();
+        $perPageOptions = [10, 15, 20, 50, 100];
+        $perPage = $request->integer('per_page', 15);
+
+        if (! in_array($perPage, $perPageOptions, true)) {
+            $perPage = 15;
+        }
 
 
        
@@ -79,7 +85,7 @@ $users = User::query()
         ->when($status === 'active', fn ($query) => $query->where('is_active', true))
         ->when($status === 'inactive', fn ($query) => $query->where('is_active', false))
         ->latest()
-        ->paginate(15)
+        ->paginate($perPage)
         ->withQueryString();
 
     return view('uac.users.index', [
@@ -88,6 +94,8 @@ $users = User::query()
         'roles' => Role::where('name', '!=', 'super_admin')->orderBy('display_name')->get(),
         'roleId' => $roleId,
         'status' => $status,
+        'perPage' => $perPage,
+        'perPageOptions' => $perPageOptions,
     ])
     ->with($this->sharedLayoutData($request, 'User Management'));
     }
@@ -118,13 +126,19 @@ if (User::where('staff_id', $employee->staff_id)->exists()) {
     return back()->withErrors(['employee_id' => 'A user already exists for this employee.'])->withInput();
 }
 
-$user = User::create([
+$payload = [
     'staff_id'    => $employee->staff_id,
     'employee_id' => $employee->id,
     'email'       => $employee->email,
-    'password'    => Hash::make(Str::random(12)),
+    'password'    => Hash::make(User::DEFAULT_PASSWORD),
     'is_active'   => true,
-]);
+];
+
+if (Schema::hasColumn('users', 'must_change_password')) {
+    $payload['must_change_password'] = true;
+}
+
+$user = User::create($payload);
 
 if (Schema::hasColumn('users', 'full_name')) {
     $user->update(['full_name' => $employee->full_name]);
@@ -179,11 +193,12 @@ protected function sendInviteEmail(User $user): void
     // Create a reset token for the user
     $token = Password::broker()->createToken($user);
 
-    // Breeze standard password reset route:
-    // /reset-password/{token}?email=user@email.com
+    // Breeze standard password reset route with first-time password setup context.
     $url = url(route('password.reset', [
         'token' => $token,
         'email' => $user->email,
+        'staff_id' => $user->staff_id,
+        'set_password' => true,
     ], false));
 
     $user->notify(new InviteUserNotification($url, $user->staff_id));
@@ -226,61 +241,11 @@ public function resendInvite(User $user)
 }
 
 
-public function show(Request $request, User $user)
+public function show(Request $request, User $user, UserProfilePayload $profiles)
 {
     abort_if($user->hasRoles('super_admin'), 404);
 
-    // UAC protection already handled by middleware.
-    // Load relationships used in the drawer.
-    $user->load([
-        'roles:id,name,display_name',
-        'employee.jobTitle:id,job_title_name',
-        'employee.department:id,department_name',
-        'employee.region:id,region_name',
-        'employee.district:id,district_name',
-    ]);
-
-    // If user has no employee linked, we still return user info
-    $employee = $user->employee;
-
-    return response()->json([
-        'user' => [
-            'id' => $user->id,
-            'staff_id' => $user->staff_id,
-            'full_name' => $user->full_name ?? ($employee?->full_name),
-            'email' => $user->email,
-            'is_active' => (bool) $user->is_active,
-            'last_login_at' => optional($user->last_login_at)->toDateTimeString(),
-            'roles' => $user->roles->map(fn ($r) => [
-                'id' => $r->id,
-                'name' => $r->name,
-                'display_name' => $r->display_name,
-            ]),
-        ],
-        'employee' => $employee ? [
-            'staff_id' => $employee->staff_id,
-            'full_name' => $employee->full_name,
-            'email' => $employee->email,
-            'gender' => $employee->gender,
-            'category' => $employee->category,
-            'location_type' => $employee->location_type,
-            'unit' => $employee->unit,
-            'present_appointment' => $employee->present_appointment,
-            'date_of_birth' => optional($employee->date_of_birth)->toDateString(),
-            'age' => $employee->age,
-            'date_joined' => optional($employee->date_joined)->toDateString(),
-
-            'job_title' => $employee->jobTitle?->job_title_name,
-            'department' => $employee->department?->department_name,
-            'region' => $employee->region?->region_name,
-            'district' => $employee->district?->district_name,
-
-            // Leave entitlements from accessors
-            'annual_leave_days' => $employee->annual_leave_days,
-            'casual_leave_days' => $employee->casual_leave_days,
-            'parental_days' => $employee->parental_days,
-        ] : null,
-    ]);
+    return response()->json($profiles->for($user));
 }
 
 

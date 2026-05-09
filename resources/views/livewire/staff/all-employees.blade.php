@@ -23,6 +23,12 @@
         </div>
     @endif
 
+    @if ($errors->any())
+        <div class="erp-card" style="margin-bottom:14px;background:#fef2f2;border-color:#fecaca;color:#991b1b;">
+            {{ $errors->first() }}
+        </div>
+    @endif
+
     <div class="pg">
         <div class="pg-head">
             <div style="display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap">
@@ -52,8 +58,14 @@
                 <select wire:model.live="status" class="form-input" style="min-width:130px">
                     <option value="">All statuses</option>
                     <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
+                    <option value="inactive">Deactivated</option>
                     <option value="on_leave">On Leave</option>
+                </select>
+
+                <select wire:model.live="perPage" class="form-input" style="min-width:120px">
+                    @foreach ($perPageOptions as $option)
+                        <option value="{{ $option }}">{{ $option }} per page</option>
+                    @endforeach
                 </select>
             </div>
         </div>
@@ -75,7 +87,7 @@
                 @forelse ($employees as $employee)
                     @php
                         $statusLabel = ! $employee->is_active
-                            ? 'Inactive'
+                            ? 'Deactivated'
                             : ((int) $employee->on_leave_count > 0 ? 'On Leave' : 'Active');
                         $statusClass = match ($statusLabel) {
                             'Active' => 'p-g',
@@ -122,7 +134,14 @@
                         <td style="font-size:11px;color:{{ $annualBalance !== null ? '#3B6D11' : 'var(--color-text-secondary)' }}">
                             {{ $annualBalance !== null ? $annualBalance . ' days' : '-' }}
                         </td>
-                        <td><span class="pill {{ $statusClass }}">{{ $statusLabel }}</span></td>
+                        <td>
+                            <span class="pill {{ $statusClass }}">{{ $statusLabel }}</span>
+                            @if (! $employee->is_active && $employee->deactivation_reason_label)
+                                <div style="font-size:10px;color:var(--color-text-secondary);margin-top:4px">
+                                    Reason: {{ $employee->deactivation_reason_label }}
+                                </div>
+                            @endif
+                        </td>
                         <td>
                             <div style="display:flex;gap:6px;flex-wrap:wrap">
                                 @if ($employee->user)
@@ -148,6 +167,7 @@
                                     <form method="POST" action="{{ route('staff.toggle-status', $employee) }}" x-data>
                                         @csrf
                                         @method('PATCH')
+                                        <input type="hidden" name="deactivation_reason" x-ref="deactivationReason">
                                         <button
                                             type="submit"
                                             class="actn {{ $employee->is_active ? 'actn-r' : 'actn-g' }}"
@@ -156,7 +176,22 @@
                                                 message: @js(($employee->is_active ? 'This will deactivate ' : 'This will activate ') . $employee->full_name . '.'),
                                                 confirmLabel: @js($employee->is_active ? 'Deactivate' : 'Activate'),
                                                 variant: @js($employee->is_active ? 'danger' : 'primary'),
-                                                action: () => $root.submit()
+                                                input: @js($employee->is_active ? [
+                                                    'label' => 'Reason for deactivation',
+                                                    'placeholder' => 'Select reason',
+                                                    'required' => true,
+                                                    'error' => 'Select why this employee is being deactivated.',
+                                                    'options' => collect($deactivationReasons)->map(fn ($label, $value) => [
+                                                        'value' => $value,
+                                                        'label' => $label,
+                                                    ])->values()->all(),
+                                                ] : null),
+                                                action: (reason) => {
+                                                    if ($refs.deactivationReason) {
+                                                        $refs.deactivationReason.value = reason || '';
+                                                    }
+                                                    $root.submit();
+                                                }
                                             })"
                                         >
                                             {{ $employee->is_active ? 'Deactivate' : 'Activate' }}
@@ -186,9 +221,11 @@
             <div style="font-size:11px;color:var(--color-text-secondary)">
                 Showing {{ $employees->firstItem() ?? 0 }} - {{ $employees->lastItem() ?? 0 }} of {{ $employees->total() }} employees
             </div>
-            <div>
-                {{ $employees->links() }}
-            </div>
+            @if ($employees->hasPages())
+                <div>
+                    {{ $employees->links() }}
+                </div>
+            @endif
         </div>
     </div>
 </div>

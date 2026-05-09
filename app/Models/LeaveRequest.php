@@ -56,18 +56,24 @@ class LeaveRequest extends Model
         return $this->belongsTo(Region::class);
     }
 
-    public function scopeVisibleForApprovals($query, Employee $actor, User $actorUser)
-{
-    // Manager queue: direct recommender
-    $query->where(function ($q) use ($actor) {
-        $q->where('manager_id', $actor->id);
-    });
+    public function canBeEditedByRequester(): bool
+    {
+        return $this->leave_status === 'Planned'
+            || ($this->leave_status === 'Pending Approval' && $this->manager_recommendation === 'Pending');
+    }
 
-    // Chief queue: only those where the resolved chief == actor
-    // We resolve by matching current chain rules using stored manager_id and region/location data.
-    // For correctness, we filter by "recommended & pending" and then match approver in service layer
-    // (efficient enough for pagination-size lists).
-    return $query;
-}
+    public function scopeVisibleForApprovals($query, Employee $actor, User $actorUser)
+    {
+        // Manager queue: direct recommender
+        $query->where(function ($q) use ($actor) {
+            $q->where('manager_id', $actor->id);
+        });
+
+        // Chief queue: only those where the resolved chief == actor
+        // We resolve by matching current chain rules using stored manager_id and region/location data.
+        // For correctness, we filter by "recommended & pending" and then match approver in service layer
+        // (efficient enough for pagination-size lists).
+        return $query;
+    }
 
 }

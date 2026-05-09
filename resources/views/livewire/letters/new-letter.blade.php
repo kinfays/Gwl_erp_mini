@@ -54,20 +54,14 @@
 
                 @if ($type === 'Internal')
                     <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Search Employee Sender</label>
-                            <input type="text" wire:model.live="senderSearch" class="form-input" placeholder="Name or staff ID">
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Memo Sender</label>
-                            <select wire:model="memo_sender_id" class="form-input">
-                                <option value="">Select employee</option>
-                                @foreach ($senders as $sender)
-                                    <option value="{{ $sender->id }}">{{ $sender->full_name }} · {{ $sender->staff_id }}</option>
-                                @endforeach
-                            </select>
-                            @error('memo_sender_id') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                        </div>
+                        <x-form.combobox
+                            style="grid-column:1 / -1"
+                            label="Memo Sender"
+                            model="memo_sender_id"
+                            :options="$senderOptions"
+                            placeholder="Type to search employee"
+                            empty-text="No matching employees"
+                        />
                     </div>
                 @else
                     <div class="form-field" style="margin-bottom:10px">

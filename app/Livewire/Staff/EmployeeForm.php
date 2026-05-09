@@ -30,13 +30,13 @@ class EmployeeForm extends Component
 
     public string $category = 'Senior Staff';
 
-    public int|string $job_title_id = '';
+    public ?int $job_title_id = null;
 
-    public int|string $department_id = '';
+    public ?int $department_id = null;
 
     public string $unit = '';
 
-    public int|string $district_id = '';
+    public ?int $district_id = null;
 
     public ?int $region_id = null;
 
@@ -63,10 +63,10 @@ class EmployeeForm extends Component
         $this->date_of_birth = optional($this->employee->date_of_birth)->toDateString() ?? '';
         $this->date_joined = optional($this->employee->date_joined)->toDateString() ?? '';
         $this->category = $this->employee->category;
-        $this->job_title_id = $this->employee->job_title_id ?? '';
-        $this->department_id = $this->employee->department_id ?? '';
+        $this->job_title_id = $this->employee->job_title_id;
+        $this->department_id = $this->employee->department_id;
         $this->unit = $this->employee->unit ?? '';
-        $this->district_id = $this->employee->district_id ?? '';
+        $this->district_id = $this->employee->district_id;
         $this->region_id = $this->employee->region_id;
         $this->present_appointment = $this->employee->present_appointment ?? '';
         $this->email = $this->employee->email;
@@ -74,13 +74,15 @@ class EmployeeForm extends Component
 
     public function updatedDistrictId($value): void
     {
-        if (! $value) {
+        $this->district_id = $value ? (int) $value : null;
+
+        if (! $this->district_id) {
             $this->region_id = null;
 
             return;
         }
 
-        $this->region_id = District::query()->whereKey($value)->value('region_id');
+        $this->region_id = District::query()->whereKey($this->district_id)->value('region_id');
     }
 
     public function save()
@@ -179,7 +181,7 @@ class EmployeeForm extends Component
             'department_id' => ['required', 'exists:departments,id'],
             'unit' => ['nullable', 'string', 'max:255'],
             'district_id' => ['required', 'exists:districts,id'],
-            'present_appointment' => ['nullable', 'string', 'max:255'],
+            'present_appointment' => ['nullable', 'date'],
             'email' => ['required', 'email', 'max:255', 'unique:employees,email,'.$employeeId],
         ];
     }

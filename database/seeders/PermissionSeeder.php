@@ -29,7 +29,9 @@ class PermissionSeeder extends Seeder
                 'staff.import',
                 'staff.export',
                 'staff.manage_departments',
+                'staff.manage_regions',
                 'staff.manage_locations',
+                'staff.manage_job_titles',
             ],
             'letters' => [
                 'letters.view',

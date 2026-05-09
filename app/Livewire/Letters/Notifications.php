@@ -12,14 +12,40 @@ class Notifications extends Component
 
     public string $tab = 'unread';
 
+    public int $lastUnreadCount = 0;
+
+    public function mount(): void
+    {
+        $this->syncUnreadBaseline();
+    }
+
     public function toggle(): void
     {
         $this->open = ! $this->open;
+        $this->syncUnreadBaseline();
+    }
+
+    public function close(): void
+    {
+        $this->open = false;
+        $this->syncUnreadBaseline();
     }
 
     public function setTab(string $tab): void
     {
         $this->tab = $tab === 'all' ? 'all' : 'unread';
+        $this->syncUnreadBaseline();
+    }
+
+    public function pollForNewNotifications(): void
+    {
+        $unreadCount = $this->currentUnreadCount();
+
+        if ($unreadCount > $this->lastUnreadCount) {
+            $this->dispatch('notification-sound');
+        }
+
+        $this->lastUnreadCount = $unreadCount;
     }
 
     public function markAllRead(): void
@@ -34,6 +60,8 @@ class Notifications extends Component
             ->where('secretariat_id', $employee->id)
             ->where('is_read', false)
             ->update(['is_read' => true]);
+
+        $this->syncUnreadBaseline();
 
         $this->dispatch('toast', type: 'success', message: 'Letter notifications marked as read.');
     }
@@ -96,5 +124,24 @@ class Notifications extends Component
         $user = auth()->user();
 
         return $user?->employee ?? $user?->employeeByStaffId;
+    }
+
+    protected function currentUnreadCount(): int
+    {
+        $employee = $this->employee();
+
+        if (! $employee) {
+            return 0;
+        }
+
+        return LetterNotification::query()
+            ->where('secretariat_id', $employee->id)
+            ->where('is_read', false)
+            ->count();
+    }
+
+    protected function syncUnreadBaseline(): void
+    {
+        $this->lastUnreadCount = $this->currentUnreadCount();
     }
 }

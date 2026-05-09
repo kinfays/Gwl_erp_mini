@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -30,11 +31,13 @@ class EmployeeUserSyncTest extends TestCase
         $this->assertSame($employee->id, $user->employee_id);
         $this->assertSame($employee->email, $user->email);
         $this->assertTrue($user->is_active);
+        $this->assertTrue($user->must_change_password);
+        $this->assertTrue(Hash::check(User::DEFAULT_PASSWORD, $user->password));
         $this->assertDatabaseHas('user_roles', [
             'user_id' => $user->id,
             'role_id' => $employeeRole->id,
         ]);
-        Notification::assertSentTo($user, InviteUserNotification::class);
+        $this->assertInviteUsesSetPasswordMode($user);
     }
 
     public function test_updating_an_employee_repairs_a_missing_user(): void
@@ -56,11 +59,13 @@ class EmployeeUserSyncTest extends TestCase
         $this->assertSame($employee->id, $user->employee_id);
         $this->assertSame('Existing Employee Updated', $user->full_name);
         $this->assertTrue($user->is_active);
+        $this->assertTrue($user->must_change_password);
+        $this->assertTrue(Hash::check(User::DEFAULT_PASSWORD, $user->password));
         $this->assertDatabaseHas('user_roles', [
             'user_id' => $user->id,
             'role_id' => $employeeRole->id,
         ]);
-        Notification::assertSentTo($user, InviteUserNotification::class);
+        $this->assertInviteUsesSetPasswordMode($user);
     }
 
     protected function createEmployeeRole(): Role
@@ -95,5 +100,13 @@ class EmployeeUserSyncTest extends TestCase
             'date_of_birth' => '1990-01-01',
             'date_joined' => '2026-05-04',
         ], $overrides));
+    }
+
+    protected function assertInviteUsesSetPasswordMode(User $user): void
+    {
+        Notification::assertSentTo($user, InviteUserNotification::class, function (InviteUserNotification $notification) use ($user) {
+            return str_contains($notification->setPasswordUrl, 'set_password=1')
+                && str_contains($notification->setPasswordUrl, 'staff_id='.$user->staff_id);
+        });
     }
 }

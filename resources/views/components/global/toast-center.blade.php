@@ -40,3 +40,47 @@
         </div>
     </template>
 </div>
+
+@once
+    <audio id="gwl-notification-sound" src="{{ asset('sound/waterdrop.mp3') }}" preload="auto"></audio>
+
+    <script>
+        (() => {
+            if (window.gwlNotificationSoundReady) {
+                return;
+            }
+
+            window.gwlNotificationSoundReady = true;
+
+            let lastPlayedAt = 0;
+
+            window.addEventListener('notification-sound', () => {
+                const now = Date.now();
+
+                if (now - lastPlayedAt < 900) {
+                    return;
+                }
+
+                const audio = document.getElementById('gwl-notification-sound');
+
+                if (! audio) {
+                    return;
+                }
+
+                lastPlayedAt = now;
+
+                try {
+                    audio.currentTime = 0;
+                } catch (error) {
+                    // Browsers can reject seeking before metadata is ready.
+                }
+
+                const playPromise = audio.play();
+
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+            });
+        })();
+    </script>
+@endonce

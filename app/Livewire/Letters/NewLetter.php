@@ -19,7 +19,6 @@ class NewLetter extends Component
     public string $company_sender = '';
     public string $date_on_letter = '';
     public int|string $region_id = '';
-    public string $senderSearch = '';
 
     public function mount(): void
     {
@@ -58,19 +57,12 @@ class NewLetter extends Component
     {
         return view('livewire.letters.new-letter', [
             'regions' => Region::query()->orderBy('region_name')->get(),
-            'senders' => Employee::query()
-                ->visibleInErp()
+            'senderOptions' => $this->employeeOptions(Employee::query()
+                ->with(['department', 'region'])
                 ->active()
-                ->when($this->senderSearch, function ($query) {
-                    $query->where(function ($searchQuery) {
-                        $searchQuery
-                            ->where('full_name', 'like', '%' . $this->senderSearch . '%')
-                            ->orWhere('staff_id', 'like', '%' . $this->senderSearch . '%');
-                    });
-                })
+                ->visibleInErp()
                 ->orderBy('full_name')
-                ->limit(30)
-                ->get(),
+                ->get()),
             'missingEmployee' => ! $this->employee(),
             'canCreate' => $this->canCreate(),
         ]);
@@ -88,5 +80,20 @@ class NewLetter extends Component
         $user = auth()->user();
 
         return $user && ($user->hasRoles('super_admin') || $user->hasPermission('letters.create'));
+    }
+
+    protected function employeeOptions($employees): array
+    {
+        return $employees
+            ->map(fn (Employee $employee) => [
+                'value' => $employee->id,
+                'label' => $employee->full_name,
+                'description' => collect([
+                    $employee->staff_id,
+                    $employee->department?->department_name,
+                    $employee->region?->region_name,
+                ])->filter()->join(' / '),
+            ])
+            ->all();
     }
 }

@@ -44,7 +44,7 @@ class ApplyForm extends Component
                 ->where('requester_id', $this->requester()->id)
                 ->findOrFail($this->editId);
 
-            if (! in_array($req->leave_status, ['Planned', 'Pending Approval'], true)) {
+            if (! $req->canBeEditedByRequester()) {
                 abort(403, 'This request cannot be edited.');
             }
 
@@ -92,17 +92,15 @@ class ApplyForm extends Component
                 ->where('requester_id', $this->requester()->id)
                 ->findOrFail($this->editId);
 
-            if (! in_array($req->leave_status, ['Planned', 'Pending Approval'], true)) {
+            if (! $req->canBeEditedByRequester()) {
                 abort(403, 'This request cannot be edited.');
             }
 
-            $req->update([
+            $workflow->updatePlanned($this->requester(), $req, [
                 'leave_type' => $this->leave_type,
                 'start_date' => $this->start_date,
                 'end_date' => $this->end_date,
-                'total_days_applied' => $this->calculateWorkingDays(),
                 'leave_details' => $this->leave_details,
-                'leave_status' => 'Planned',
                 'file_attachment' => $path ?? $req->file_attachment,
             ]);
 
@@ -141,26 +139,17 @@ class ApplyForm extends Component
                 ->where('requester_id', $this->requester()->id)
                 ->findOrFail($this->editId);
 
-            if (! in_array($req->leave_status, ['Planned', 'Pending Approval'], true)) {
+            if (! $req->canBeEditedByRequester()) {
                 abort(403, 'This request cannot be submitted.');
             }
 
             try {
-                $req->update([
+                $workflow->submitExisting($this->requester(), $req, [
                     'leave_type' => $this->leave_type,
                     'start_date' => $this->start_date,
                     'end_date' => $this->end_date,
-                    'total_days_applied' => $this->calculateWorkingDays(),
                     'leave_details' => $this->leave_details,
                     'file_attachment' => $path ?? $req->file_attachment,
-                ]);
-
-                $workflow->submit($this->requester(), [
-                    'leave_type' => $req->leave_type,
-                    'start_date' => $req->start_date,
-                    'end_date' => $req->end_date,
-                    'leave_details' => $req->leave_details,
-                    'file_attachment' => $req->file_attachment,
                 ]);
             } catch (\RuntimeException $e) {
                 $this->addError('leave_type', $e->getMessage());

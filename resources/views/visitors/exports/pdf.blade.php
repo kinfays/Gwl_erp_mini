@@ -2,7 +2,7 @@
 <html>
     <head>
         <meta charset="utf-8">
-        <title>Visitors Log {{ $date }}</title>
+        <title>Visitors Log {{ $dateLabel }}</title>
         <style>
             body { font-family: DejaVu Sans, Arial, sans-serif; color:#172234; font-size:12px; }
             h1 { font-size:18px; margin:0 0 4px; }
@@ -21,7 +21,7 @@
         @endisset
 
         <h1>Visitors Log</h1>
-        <p>{{ \Carbon\Carbon::parse($date)->format('l, d F Y') }}</p>
+        <p>{{ $dateLabel }}</p>
 
         <table>
             <thead>
@@ -41,8 +41,8 @@
                         <td>{{ $visitor->visitor_name }}<br>{{ $visitor->phone }}</td>
                         <td>{{ $visitor->staff?->full_name }}<br>{{ $visitor->staff?->department?->department_name }}</td>
                         <td>{{ $visitor->purpose }}</td>
-                        <td>{{ $visitor->check_in_at?->format('h:i A') }}</td>
-                        <td>{{ $visitor->check_out_at?->format('h:i A') ?: '-' }}</td>
+                        <td>{{ $visitor->check_in_at?->format('d M Y h:i A') }}</td>
+                        <td>{{ $visitor->check_out_at?->format('d M Y h:i A') ?: '-' }}</td>
                         <td>{{ $visitor->checkout_code }}</td>
                         <td><span class="badge {{ $visitor->check_out_at ? 'out' : '' }}">{{ $visitor->status }}</span></td>
                     </tr>

@@ -13,6 +13,8 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    public const DEFAULT_PASSWORD = '12345';
+
     protected $fillable = [
         'full_name',
         'email',
@@ -21,6 +23,7 @@ class User extends Authenticatable
         'employee_id',
         'is_active',
         'last_login_at',
+        'must_change_password',
     ];
 
     protected $attributes = [
@@ -40,6 +43,7 @@ class User extends Authenticatable
             'employee_id' => 'integer',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'must_change_password' => 'boolean',
         ];
     }
 

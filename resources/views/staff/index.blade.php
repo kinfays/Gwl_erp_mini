@@ -3,4 +3,4 @@
         <livewire:staff.all-employees />
     </div>
 </x-erp-layout>
-<x-uac.user-drawer />
+<x-uac.user-drawer :url-base="url('/staff/users')" />

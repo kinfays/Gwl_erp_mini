@@ -5,15 +5,16 @@
             <p>Read-only visitor activity by date.</p>
         </div>
         <div class="ph-right">
-            <a href="{{ route('visitors.export.excel', ['date' => $exportDate]) }}" class="btn">Export Excel</a>
-            <a href="{{ route('visitors.export.pdf', ['date' => $exportDate]) }}" class="btn">Export PDF</a>
+            <a href="{{ route('visitors.export.excel', ['start_date' => $exportStartDate, 'end_date' => $exportEndDate]) }}" class="btn">Export Excel</a>
+            <a href="{{ route('visitors.export.pdf', ['start_date' => $exportStartDate, 'end_date' => $exportEndDate]) }}" class="btn">Export PDF</a>
         </div>
     </div>
 
     <div class="pg" style="margin-top:14px">
         <div class="pg-head">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="date" wire:model.live="date" class="form-input">
+                <input type="date" wire:model.live="startDate" class="form-input" aria-label="Start date">
+                <input type="date" wire:model.live="endDate" class="form-input" aria-label="End date">
                 <input type="text" wire:model.live="search" class="form-input" placeholder="Search visitor or staff">
                 <select wire:model.live="status" class="form-input">
                     <option value="">All statuses</option>
@@ -56,7 +57,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" style="text-align:center;color:var(--color-text-secondary);padding:20px">No visitors found for this day.</td>
+                        <td colspan="8" style="text-align:center;color:var(--color-text-secondary);padding:20px">No visitors found for this date range.</td>
                     </tr>
                 @endforelse
             </tbody>

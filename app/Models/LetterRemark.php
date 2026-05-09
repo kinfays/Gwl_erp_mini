@@ -14,7 +14,10 @@ class LetterRemark extends Model
         'letter_id',
         'author_id',
         'remark_secretariat_id',
+        'manager_id',
+        'chief_manager_id',
         'remark_content',
+        'secretary_remark_content',
         'created_by_id',
     ];
 
@@ -22,6 +25,8 @@ class LetterRemark extends Model
         'letter_id' => 'integer',
         'author_id' => 'integer',
         'remark_secretariat_id' => 'integer',
+        'manager_id' => 'integer',
+        'chief_manager_id' => 'integer',
         'created_by_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -40,6 +45,16 @@ class LetterRemark extends Model
     public function remarkSecretariat(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'remark_secretariat_id');
+    }
+
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'manager_id');
+    }
+
+    public function chiefManager(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'chief_manager_id');
     }
 
     public function createdBy(): BelongsTo

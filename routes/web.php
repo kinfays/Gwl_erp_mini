@@ -47,6 +47,9 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
         Route::post('/import/run', [ImportController::class, 'run'])
             ->defaults('context', 'uac')
             ->name('import.run');
+        Route::post('/import/clear', [ImportController::class, 'clear'])
+            ->defaults('context', 'uac')
+            ->name('import.clear');
 
         Route::middleware(['role:super_admin'])->group(function () {
             Route::get('/audit-log', [UacController::class, 'auditLog'])->name('audit-log');
@@ -94,6 +97,7 @@ Route::middleware([
     ->group(function () {
         Route::get('/', [StaffController::class, 'index'])->name('index');
         Route::get('/export', [StaffController::class, 'export'])->name('export');
+        Route::get('/users/{user}', [StaffController::class, 'showUser'])->name('users.show');
 
         Route::middleware(['role:hr_headoffice,hr_region,admin,super_admin'])->group(function () {
             Route::get('/create', [StaffController::class, 'create'])->name('create');
@@ -110,13 +114,22 @@ Route::middleware([
             Route::post('/import/run', [ImportController::class, 'run'])
                 ->defaults('context', 'staff')
                 ->name('import.run');
+            Route::post('/import/clear', [ImportController::class, 'clear'])
+                ->defaults('context', 'staff')
+                ->name('import.clear');
 
             Route::get('/departments', [StaffController::class, 'departments'])
                 ->middleware('permission:staff.manage_departments')
                 ->name('departments');
+            Route::get('/regions', [StaffController::class, 'regions'])
+                ->middleware('permission:staff.manage_regions')
+                ->name('regions');
             Route::get('/locations', [StaffController::class, 'locations'])
                 ->middleware('permission:staff.manage_locations')
                 ->name('locations');
+            Route::get('/job-titles', [StaffController::class, 'jobTitles'])
+                ->middleware('permission:staff.manage_job_titles')
+                ->name('job-titles');
         });
     });
 

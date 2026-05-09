@@ -63,7 +63,7 @@
                         {{-- Logo image with performance optimizations --}}
                         <img
                             src="{{ asset('images/gwlnew.png') }}"
-                            alt="{{ __('GWL ERP Logo') }}"
+                            alt="{{ __('GWL Logo') }}"
                             class="tb-logo-img"
                             loading="lazy"
                             decoding="async"
@@ -71,7 +71,7 @@
                             height="32"
                         >
                     </a>
-                    <span class="tb-title">{{ __('GWL ERP Portal') }}</span>
+                    <span class="tb-title">{{ __('GWL Staff Portal') }}</span>
                     <span class="tb-sep" aria-hidden="true">/</span>
                     <span class="tb-page">{{ $currentModule['title'] ?? '' }}</span>
                 </div>
@@ -196,7 +196,19 @@
                 <main class="erp-main" role="main" tabindex="-1">
                     @if (session('status'))
                         <div class="alert alert-success" role="alert">
-                            {{ session('status') }}
+                            @switch (session('status'))
+                                @case('profile-updated')
+                                    {{ __('Profile updated.') }}
+                                    @break
+                                @case('password-updated')
+                                    {{ __('Password updated.') }}
+                                    @break
+                                @case('verification-link-sent')
+                                    {{ __('A new verification link has been sent.') }}
+                                    @break
+                                @default
+                                    {{ session('status') }}
+                            @endswitch
                         </div>
                     @endif
 

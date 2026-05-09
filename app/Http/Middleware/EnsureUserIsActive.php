@@ -14,17 +14,37 @@ class EnsureUserIsActive
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (Auth::check() && !Auth::user()->is_active) {
+        $user = Auth::user();
+        $employee = $user?->employee ?? $user?->employeeByStaffId;
+
+        if ($user && (! $user->is_active || ($employee && ! $employee->is_active))) {
             Auth::logout();
 
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
             return redirect()->route('login')->withErrors([
-                'staff_id' => "You don't have access. Please contact your Administrator.",
+                'staff_id' => "You don't have access, contact Administrator.",
             ]);
         }
 
+        if ($user && $user->must_change_password && ! $this->isPasswordChangeRoute($request)) {
+            return redirect()
+                ->route('profile.edit')
+                ->with('status', 'Please change your default password before continuing.');
+        }
+
         return $next($request);
+    }
+
+    protected function isPasswordChangeRoute(Request $request): bool
+    {
+        return $request->routeIs(
+            'profile.edit',
+            'profile.update',
+            'password.update',
+            'logout',
+            'verification.send'
+        );
     }
 }

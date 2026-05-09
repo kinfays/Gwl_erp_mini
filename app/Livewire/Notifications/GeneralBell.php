@@ -12,14 +12,40 @@ class GeneralBell extends Component
 
     public string $tab = 'unread';
 
+    public int $lastUnreadCount = 0;
+
+    public function mount(): void
+    {
+        $this->syncUnreadBaseline();
+    }
+
     public function toggle(): void
     {
         $this->open = ! $this->open;
+        $this->syncUnreadBaseline();
+    }
+
+    public function close(): void
+    {
+        $this->open = false;
+        $this->syncUnreadBaseline();
     }
 
     public function setTab(string $tab): void
     {
         $this->tab = $tab === 'all' ? 'all' : 'unread';
+        $this->syncUnreadBaseline();
+    }
+
+    public function pollForNewNotifications(): void
+    {
+        $unreadCount = $this->currentUnreadCount();
+
+        if ($unreadCount > $this->lastUnreadCount) {
+            $this->dispatch('notification-sound');
+        }
+
+        $this->lastUnreadCount = $unreadCount;
     }
 
     public function markAllRead(): void
@@ -36,6 +62,8 @@ class GeneralBell extends Component
                     ->orWhereNull('data->module');
             })
             ->update(['read_at' => now()]);
+
+        $this->syncUnreadBaseline();
 
         $this->dispatch('toast', type: 'success', message: 'Notifications marked as read.');
     }
@@ -92,5 +120,26 @@ class GeneralBell extends Component
             'unreadCount' => $unreadCount,
             'pollSeconds' => max(10, (int) config('gwl.leave_notification_poll_seconds', 90)),
         ]);
+    }
+
+    protected function currentUnreadCount(): int
+    {
+        $user = auth()->user();
+
+        if (! $user || ! Schema::hasTable('notifications')) {
+            return 0;
+        }
+
+        return $user->unreadNotifications()
+            ->where(function ($query) {
+                $query->where('data->module', '!=', 'letters')
+                    ->orWhereNull('data->module');
+            })
+            ->count();
+    }
+
+    protected function syncUnreadBaseline(): void
+    {
+        $this->lastUnreadCount = $this->currentUnreadCount();
     }
 }

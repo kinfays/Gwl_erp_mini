@@ -6,7 +6,9 @@ use App\Exports\Staff\EmployeesExport;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Employee;
+use App\Models\User;
 use App\Services\Staff\EmployeeDirectory;
+use App\Support\UserProfilePayload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -43,19 +45,37 @@ class StaffController extends Controller
         return view('staff.departments');
     }
 
+    public function regions(): View
+    {
+        return view('staff.regions');
+    }
+
     public function locations(): View
     {
         return view('staff.locations');
     }
 
-    public function toggleStatus(Employee $employee): RedirectResponse
+    public function jobTitles(): View
+    {
+        return view('staff.job-titles');
+    }
+
+    public function toggleStatus(Request $request, Employee $employee): RedirectResponse
     {
         abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
 
         $old = $employee->toArray();
+        $activating = ! $employee->is_active;
+        $reasonRule = ['in:'.implode(',', array_keys(Employee::DEACTIVATION_REASONS))];
+        $validated = $request->validate([
+            'deactivation_reason' => $activating
+                ? ['nullable', ...$reasonRule]
+                : ['required', ...$reasonRule],
+        ]);
 
         $employee->update([
-            'is_active' => ! $employee->is_active,
+            'is_active' => $activating,
+            'deactivation_reason' => $activating ? null : $validated['deactivation_reason'],
         ]);
 
         AuditLog::record(
@@ -67,7 +87,21 @@ class StaffController extends Controller
             $employee->fresh()->toArray()
         );
 
-        return back()->with('success', 'Employee status updated successfully.');
+        return back()->with('success', $employee->is_active
+            ? 'Employee activated successfully.'
+            : 'Employee deactivated successfully.');
+    }
+
+    public function showUser(Request $request, User $user, EmployeeDirectory $directory, UserProfilePayload $profiles)
+    {
+        abort_if($user->hasRoles('super_admin'), 404);
+
+        $employee = $user->employee ?? $user->employeeByStaffId;
+
+        abort_if(! $employee, 404);
+        abort_if(! $directory->queryFor($request->user())->whereKey($employee->id)->exists(), 403);
+
+        return response()->json($profiles->for($user));
     }
 
     public function export(Request $request, EmployeeDirectory $directory)

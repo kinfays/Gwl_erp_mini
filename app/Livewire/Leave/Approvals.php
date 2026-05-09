@@ -15,98 +15,103 @@ class Approvals extends Component
 {
     use WithPagination;
 
-    public string $tab = 'pending'; // pending | approved | denied
+    public string $tab = 'pending';
 
     public string $search = '';
 
+    public array $comments = [];
+
+    public bool $showDrawer = false;
+
+    public ?int $selectedRequestId = null;
+
+    public ?LeaveRequest $selectedRequest = null;
+
     public function setTab(string $tab): void
     {
-        $this->tab = $tab;
+        $this->tab = 'pending';
         $this->resetPage();
+    }
+
+    public function viewRequest(int $requestId): void
+    {
+        $req = LeaveRequest::query()
+            ->with(['requester.region', 'requester.district', 'department', 'manager', 'approvedBy'])
+            ->findOrFail($requestId);
+
+        abort_unless($this->canSeeRequest($req), 403, 'You are not allowed to view this leave request.');
+
+        $this->selectedRequestId = $req->id;
+        $this->selectedRequest = $req;
+        $this->comments[$req->id] ??= '';
+        $this->showDrawer = true;
+    }
+
+    public function closeDrawer(): void
+    {
+        $this->showDrawer = false;
+        $this->selectedRequestId = null;
+        $this->selectedRequest = null;
+    }
+
+    public function approveRequest(int $requestId, LeaveWorkflowService $workflow): void
+    {
+        $req = $this->actionableRequest($requestId);
+        $employee = $this->employee();
+        $comment = $this->commentFor($requestId);
+
+        if ($req->manager_recommendation === 'Pending') {
+            $workflow->recommend($employee, $req, $comment, true);
+            $message = 'Request approved for final review.';
+        } else {
+            $workflow->finalDecision($employee, $req, $comment, true);
+            $message = 'Request approved.';
+        }
+
+        unset($this->comments[$requestId]);
+        $this->closeDrawer();
+
+        session()->flash('success', $message);
+        $this->dispatch('toast', type: 'success', message: $message);
+    }
+
+    public function denyRequest(int $requestId, LeaveWorkflowService $workflow): void
+    {
+        $req = $this->actionableRequest($requestId);
+        $employee = $this->employee();
+        $comment = $this->commentFor($requestId);
+
+        if ($req->manager_recommendation === 'Pending') {
+            $workflow->recommend($employee, $req, $comment, false);
+        } else {
+            $workflow->finalDecision($employee, $req, $comment, false);
+        }
+
+        unset($this->comments[$requestId]);
+        $this->closeDrawer();
+
+        session()->flash('success', 'Request denied.');
+        $this->dispatch('toast', type: 'success', message: 'Request denied.');
     }
 
     public function recommend(int $requestId, LeaveWorkflowService $workflow): void
     {
-        /** @var User $user */
-        $user = Auth::user();
-
-        if ($user->isHrUser()) {
-            abort(403, 'HR users are read-only for approvals.');
-        }
-
-        $employee = $this->employee();
-
-        abort_if(! $employee, 403, 'Employee profile is required for leave approvals.');
-
-        $req = LeaveRequest::with('requester')->findOrFail($requestId);
-
-        $workflow->recommend($employee, $req, 'Recommended', true);
-
-        session()->flash('success', 'Recommendation sent.');
-        $this->dispatch('toast', type: 'success', message: 'Recommendation sent.');
+        $this->approveRequest($requestId, $workflow);
     }
 
     public function reject(int $requestId, LeaveWorkflowService $workflow): void
     {
-        /** @var User $user */
-        $user = Auth::user();
-
-        if ($user->isHrUser()) {
-            abort(403, 'HR users are read-only for approvals.');
-        }
-
-        $employee = $this->employee();
-
-        abort_if(! $employee, 403, 'Employee profile is required for leave approvals.');
-
-        $req = LeaveRequest::with('requester')->findOrFail($requestId);
-
-        $workflow->recommend($employee, $req, 'Rejected', false);
-
-        session()->flash('success', 'Request rejected.');
-        $this->dispatch('toast', type: 'success', message: 'Request rejected.');
+        $this->denyRequest($requestId, $workflow);
     }
 
     public function approve(int $requestId, LeaveWorkflowService $workflow): void
     {
-        /** @var User $user */
-        $user = Auth::user();
-
-        if ($user->isHrUser()) {
-            abort(403, 'HR users are read-only for approvals.');
-        }
-
-        $employee = $this->employee();
-
-        abort_if(! $employee, 403, 'Employee profile is required for leave approvals.');
-
-        $req = LeaveRequest::with('requester')->findOrFail($requestId);
-
-        $workflow->finalDecision($employee, $req, 'Approved', true);
-
-        session()->flash('success', 'Request approved.');
-        $this->dispatch('toast', type: 'success', message: 'Request approved.');
+        $this->approveRequest($requestId, $workflow);
     }
 
     public function deny(int $requestId, LeaveWorkflowService $workflow): void
     {
-        /** @var User $user */
-        $user = Auth::user();
-
-        if ($user->isHrUser()) {
-            abort(403, 'HR users are read-only for approvals.');
-        }
-
-        $employee = $this->employee();
-
-        abort_if(! $employee, 403, 'Employee profile is required for leave approvals.');
-
-        $req = LeaveRequest::with('requester')->findOrFail($requestId);
-
-        $workflow->finalDecision($employee, $req, 'Denied', false);
-
-        session()->flash('success', 'Request denied.');
-        $this->dispatch('toast', type: 'success', message: 'Request denied.');
+        $this->denyRequest($requestId, $workflow);
     }
 
     public function render()
@@ -119,35 +124,23 @@ class Approvals extends Component
 
         // Base query: load required relations
         $base = LeaveRequest::query()
-            ->with(['requester.region', 'requester.district', 'department'])
+            ->with(['requester.region', 'requester.district', 'department', 'manager', 'approvedBy'])
             ->when($this->search, function ($q) {
                 $q->whereHas('requester', fn ($qq) => $qq->where('full_name', 'like', "%{$this->search}%"));
-            });
-
-        // Tabs filter
-        if ($this->tab === 'pending') {
-            $base->where('leave_status', 'Pending Approval');
-        } elseif ($this->tab === 'approved') {
-            $base->where('leave_status', 'Approved');
-        } elseif ($this->tab === 'denied') {
-            $base->where('leave_status', 'Denied');
-        }
+            })
+            ->where('leave_status', 'Pending Approval');
 
         /**
          * Visibility rules:
          * - Managers/chiefs: see only items in their chain.
-         * - HR users: read-only view, region scoped (HO HR sees all). [1](https://ghanawater-my.sharepoint.com/personal/fewuntomah_gwcl_com_gh/Documents/Microsoft%20Copilot%20Chat%20Files/PHASE%203.txt)
+         * - HR users: read-only pending view, region scoped (HO HR sees all).
          */
         if ($user->hasRoles('super_admin', 'admin') || $user->isHrUser()) {
-            // HR: can view pending/approved/denied requests in scope
             if ($user->isHrUser() && ! $user->isHeadOfficeHr()) {
                 abort_if(! $actor, 403, 'Employee profile is required for regional leave access.');
 
                 $base->where('region_id', $actor->region_id);
             }
-            // HR should not see planned requests on approvals page
-            $base->where('leave_status', '!=', 'Planned');
-
             $requests = $base->latest()->paginate(12);
 
             return view('livewire.leave.approvals', [
@@ -166,7 +159,6 @@ class Approvals extends Component
         abort_if(! $actor, 403, 'Employee profile is required for leave approvals.');
 
         $candidate = (clone $base)
-            ->where('leave_status', 'Pending Approval')
             ->where(function ($q) use ($actor) {
                 $q->where(function ($m) use ($actor) {
                     $m->where('manager_id', $actor->id)
@@ -196,7 +188,7 @@ class Approvals extends Component
         })->pluck('id')->toArray();
 
         $requests = LeaveRequest::query()
-            ->with(['requester.region', 'requester.district', 'department'])
+            ->with(['requester.region', 'requester.district', 'department', 'manager', 'approvedBy'])
             ->whereIn('id', $filteredIds)
             ->latest()
             ->paginate(12);
@@ -215,44 +207,81 @@ class Approvals extends Component
         return $user?->employee ?? $user?->employeeByStaffId;
     }
 
-    /* public function render()
-     {
-         $employee = auth()->user()->employee;
+    protected function actionableRequest(int $requestId): LeaveRequest
+    {
+        /** @var User $user */
+        $user = Auth::user();
 
-         // Requests where current user is the recommending manager
-         $managerQueue = LeaveRequest::query()
-             ->where('manager_id', $employee->id);
+        if ($user->isHrUser()) {
+            abort(403, 'HR users are read-only for approvals.');
+        }
 
-         // Requests awaiting final approval: manager recommended AND still pending approval
-         // NOTE: This assumes your LeaveWorkflowService sets leave_status and manager_recommendation as in Phase 3 design. [1](https://ghanawater-my.sharepoint.com/personal/fewuntomah_gwcl_com_gh/Documents/Microsoft%20Copilot%20Chat%20Files/PHASE%203.txt)
-         $chiefQueue = LeaveRequest::query()
-             ->where('manager_recommendation', 'Recommended')
-             ->where('leave_status', 'Pending Approval');
+        abort_if(! $this->employee(), 403, 'Employee profile is required for leave approvals.');
 
-         // Combine queues: if the user can be both, show union
-         $query = LeaveRequest::query()
-             ->where(function ($q) use ($employee) {
-                 $q->where('manager_id', $employee->id)
-                   ->orWhere(function ($qq) {
-                       $qq->where('manager_recommendation', 'Recommended')
-                          ->where('leave_status', 'Pending Approval');
-                   });
-             })
-             ->with(['requester', 'department'])
-             ->when($this->search, function ($q) {
-                 $q->whereHas('requester', fn ($qq) => $qq->where('full_name', 'like', "%{$this->search}%"));
-             });
+        $req = LeaveRequest::query()
+            ->with('requester')
+            ->where('leave_status', 'Pending Approval')
+            ->findOrFail($requestId);
 
-         if ($this->tab === 'pending') {
-             $query->whereIn('leave_status', ['Pending Approval']);
-         } elseif ($this->tab === 'approved') {
-             $query->where('leave_status', 'Approved');
-         } elseif ($this->tab === 'denied') {
-             $query->where('leave_status', 'Denied');
-         }
+        abort_unless($this->canSeeRequest($req), 403, 'You are not allowed to act on this leave request.');
 
-         $requests = $query->latest()->paginate(12);
+        if (! in_array($req->manager_recommendation, ['Pending', 'Recommended'], true)) {
+            abort(422, 'This request is not waiting for approval.');
+        }
 
-         return view('livewire.leave.approvals', compact('requests'));
-     } */
+        return $req;
+    }
+
+    protected function commentFor(int $requestId): ?string
+    {
+        $this->validate([
+            "comments.{$requestId}" => 'nullable|string|max:2000',
+        ], [
+            "comments.{$requestId}.max" => 'Comments must not exceed 2000 characters.',
+        ]);
+
+        $comment = trim((string) ($this->comments[$requestId] ?? ''));
+
+        return $comment !== '' ? $comment : null;
+    }
+
+    protected function canSeeRequest(LeaveRequest $request): bool
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $actor = $this->employee();
+
+        if ($request->leave_status !== 'Pending Approval') {
+            return false;
+        }
+
+        if ($user->hasRoles('super_admin', 'admin')) {
+            return true;
+        }
+
+        if ($user->isHrUser()) {
+            return $user->isHeadOfficeHr()
+                || ($actor && $request->region_id === $actor->region_id);
+        }
+
+        if (! $actor) {
+            return false;
+        }
+
+        if ($request->manager_recommendation === 'Pending') {
+            return $request->manager_id === $actor->id;
+        }
+
+        if ($request->manager_recommendation === 'Recommended') {
+            try {
+                [$mgr, $chief] = app(LeaveApprovalChainResolver::class)->resolve($request->requester);
+
+                return $chief->id === $actor->id;
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        return false;
+    }
 }

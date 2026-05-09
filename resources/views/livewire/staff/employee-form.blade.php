@@ -123,7 +123,7 @@
 
                     <div class="form-field">
                         <label class="form-label">Present Appointment</label>
-                        <input type="text" wire:model.defer="present_appointment" class="form-input" placeholder="Optional">
+                        <input type="date" wire:model.defer="present_appointment" class="form-input">
                     </div>
                 </div>
 

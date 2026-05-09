@@ -37,7 +37,7 @@ class LeaveWorkflowService
         $request = $this->createOrUpdate($requester, $data, 'Pending Approval');
         $this->notifyEmployee(
             $request->manager,
-            'Leave approval needed',
+            $request->manager_recommendation === 'Recommended' ? 'Final leave approval needed' : 'Leave approval needed',
             $requester->full_name.' submitted a '.$request->leave_type.' leave request.',
             route('leave.approvals'),
             ['type' => 'leave_submitted', 'leave_request_id' => $request->id]
@@ -47,9 +47,36 @@ class LeaveWorkflowService
 
     }
 
+    public function updatePlanned(Employee $requester, LeaveRequest $request, array $data): LeaveRequest
+    {
+        return $this->updateExisting($requester, $request, $data, 'Planned');
+    }
+
+    public function submitExisting(Employee $requester, LeaveRequest $request, array $data): LeaveRequest
+    {
+        if (($data['leave_type'] ?? '') === 'Casual') {
+            $annualRemaining = $this->balances->getVirtualRemaining($requester, 'Annual', (int) now()->format('Y'));
+            if ($annualRemaining > 0) {
+                throw new \RuntimeException('Casual leave is not allowed while Annual leave balance is greater than 0.');
+            }
+        }
+
+        $request = $this->updateExisting($requester, $request, $data, 'Pending Approval');
+
+        $this->notifyEmployee(
+            $request->manager,
+            $request->manager_recommendation === 'Recommended' ? 'Final leave approval needed' : 'Leave approval needed',
+            $requester->full_name.' submitted a '.$request->leave_type.' leave request.',
+            route('leave.approvals'),
+            ['type' => 'leave_submitted', 'leave_request_id' => $request->id]
+        );
+
+        return $request;
+    }
+
     protected function createOrUpdate(Employee $requester, array $data, string $status): LeaveRequest
     {
-        [$manager, $chief] = $this->chain->resolve($requester);
+        [$manager, $recommendation] = $this->approvalRouting($requester, $status);
 
         $start = $data['start_date'];
         $end = $data['end_date'];
@@ -70,7 +97,7 @@ class LeaveWorkflowService
             'leave_details' => $data['leave_details'] ?? null,
             'manager_id' => $manager->id,
             'manager_comments' => null,
-            'manager_recommendation' => 'Pending',
+            'manager_recommendation' => $recommendation,
             'leave_status' => $status,
             'approved_by_id' => null,
             'chiefManager_comments' => null,
@@ -81,14 +108,73 @@ class LeaveWorkflowService
         ]);
     }
 
-    public function recommend(Employee $managerActor, LeaveRequest $req, string $comments, bool $recommended): LeaveRequest
+    protected function updateExisting(Employee $requester, LeaveRequest $request, array $data, string $status): LeaveRequest
+    {
+        if ($request->requester_id !== $requester->id) {
+            throw new \RuntimeException('Only the requester can edit this request.');
+        }
+
+        if (! $request->canBeEditedByRequester()) {
+            throw new \RuntimeException('This request can no longer be edited because a recommendation has already been given.');
+        }
+
+        [$manager, $recommendation] = $this->approvalRouting($requester, $status);
+
+        $start = $data['start_date'];
+        $end = $data['end_date'];
+
+        $total = $this->daysCalc->workingDays(
+            Carbon::parse($start),
+            Carbon::parse($end)
+        );
+
+        $request->update([
+            'leave_type' => $data['leave_type'],
+            'start_date' => $start,
+            'end_date' => $end,
+            'total_days_applied' => $total,
+            'leave_details' => $data['leave_details'] ?? null,
+            'manager_id' => $manager->id,
+            'manager_comments' => null,
+            'manager_recommendation' => $recommendation,
+            'leave_status' => $status,
+            'approved_by_id' => null,
+            'chiefManager_comments' => null,
+            'request_year' => (int) Carbon::parse($start)->format('Y'),
+            'department_id' => $requester->department_id,
+            'region_id' => $requester->region_id,
+            'file_attachment' => $data['file_attachment'] ?? $request->file_attachment,
+        ]);
+
+        return $request->refresh();
+    }
+
+    protected function approvalRouting(Employee $requester, string $status): array
+    {
+        [$manager, $chief] = $this->chain->resolve($requester);
+
+        if ($status === 'Pending Approval' && $this->skipsManagerRecommendation($requester)) {
+            return [$chief, 'Recommended'];
+        }
+
+        return [$manager, 'Pending'];
+    }
+
+    protected function skipsManagerRecommendation(Employee $requester): bool
+    {
+        $user = $requester->user ?? $requester->userByStaffId;
+
+        return (bool) $user?->hasRoles('manager', 'departmental_manager', 'district_manager');
+    }
+
+    public function recommend(Employee $managerActor, LeaveRequest $req, ?string $comments, bool $recommended): LeaveRequest
     {
         // Only the assigned manager can recommend
         if ($req->manager_id !== $managerActor->id) {
             throw new \RuntimeException('You are not allowed to recommend this request.');
         }
 
-        $req->manager_comments = $comments;
+        $req->manager_comments = filled($comments) ? trim($comments) : null;
         $req->manager_recommendation = $recommended ? 'Recommended' : 'Rejected';
         if ($recommended) {
             [$mgr, $chief] = $this->chain->resolve($req->requester);
@@ -121,7 +207,7 @@ class LeaveWorkflowService
         return $req;
     }
 
-    public function finalDecision(Employee $chiefActor, LeaveRequest $req, string $comments, bool $approve): LeaveRequest
+    public function finalDecision(Employee $chiefActor, LeaveRequest $req, ?string $comments, bool $approve): LeaveRequest
     {
         // Determine expected chief approver for requester
         [$mgr, $chief] = $this->chain->resolve($req->requester);
@@ -135,7 +221,7 @@ class LeaveWorkflowService
         }
 
         return DB::transaction(function () use ($approve, $comments, $req, $chiefActor) {
-            $req->chiefManager_comments = $comments;
+            $req->chiefManager_comments = filled($comments) ? trim($comments) : null;
             $req->approved_by_id = $chiefActor->id;
 
             if (! $approve) {

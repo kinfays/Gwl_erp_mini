@@ -20,7 +20,7 @@
 
     @if ($regions->isEmpty())
         <div class="erp-card" style="margin-bottom:14px;background:#faeeda;border-color:#fac775;color:#854f0b;">
-            Add regions through import before creating locations.
+            Add regions before creating locations.
         </div>
     @endif
 

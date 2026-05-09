@@ -52,6 +52,7 @@
                             <tr>
                                 <th>Employee</th>
                                 <th>Type</th>
+                                <th>Details</th>
                                 <th>Ends</th>
                             </tr>
                         </thead>
@@ -60,11 +61,12 @@
                                 <tr>
                                     <td>{{ $r->requester->full_name }}</td>
                                     <td>{{ $r->leave_type }}</td>
+                                    <td>{{ $r->leave_details ?: 'No details provided.' }}</td>
                                     <td>{{ $r->end_date->format('d M') }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="3">None</td>
+                                    <td colspan="4">None</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -81,6 +83,7 @@
                             <tr>
                                 <th>Employee</th>
                                 <th>Type</th>
+                                <th>Details</th>
                                 <th>Starts</th>
                             </tr>
                         </thead>
@@ -89,11 +92,12 @@
                                 <tr>
                                     <td>{{ $r->requester->full_name }}</td>
                                     <td>{{ $r->leave_type }}</td>
+                                    <td>{{ $r->leave_details ?: 'No details provided.' }}</td>
                                     <td>{{ $r->start_date->format('d M') }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="3">None</td>
+                                    <td colspan="4">None</td>
                                 </tr>
                             @endforelse
                         </tbody>

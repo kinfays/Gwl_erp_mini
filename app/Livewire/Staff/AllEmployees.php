@@ -4,6 +4,7 @@ namespace App\Livewire\Staff;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Department;
+use App\Models\Employee;
 use App\Services\Staff\EmployeeDirectory;
 use App\Support\ErpNavigation;
 use Livewire\Component;
@@ -15,11 +16,18 @@ class AllEmployees extends Component
     use WithPagination;
 
     public string $search = '';
+
     public int|string $department_id = '';
+
     public string $category = '';
+
     public string $location_type = '';
+
     public string $status = '';
+
     public int $perPage = 20;
+
+    public array $perPageOptions = [10, 20, 50, 100];
 
     public function mount(): void
     {
@@ -28,9 +36,16 @@ class AllEmployees extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'department_id', 'category', 'location_type', 'status'], true)) {
+        if (in_array($name, ['search', 'department_id', 'category', 'location_type', 'status', 'perPage'], true)) {
             $this->resetPage();
         }
+    }
+
+    public function updatedPerPage($value): void
+    {
+        $this->perPage = in_array((int) $value, $this->perPageOptions, true)
+            ? (int) $value
+            : 20;
     }
 
     public function render(EmployeeDirectory $directory, ErpNavigation $navigation)
@@ -54,6 +69,8 @@ class AllEmployees extends Component
             ],
             'canManage' => $navigation->canManageStaff($user),
             'exportUrl' => route('staff.export', $this->filters()),
+            'perPageOptions' => $this->perPageOptions,
+            'deactivationReasons' => Employee::DEACTIVATION_REASONS,
         ]);
     }
 

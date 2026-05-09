@@ -101,9 +101,15 @@
                                 <span>{{ $request->requester?->present_appointment ?? $request->requester?->unit ?? 'Team member' }}</span>
                             </div>
 
-                            <div class="team-dates">
+                            <div class="team-dates {{ \Illuminate\Support\Str::slug($request->leave_status) }}">
                                 <strong>{{ $request->start_date->format('M d') }} - {{ $request->end_date->format('M d') }}</strong>
-                                <span>{{ $request->start_date->isPast() ? 'On leave' : 'Upcoming' }}</span>
+                                <span>
+                                    @if($request->leave_status === 'Planned')
+                                        Planned
+                                    @else
+                                        {{ $request->start_date->isPast() ? 'On leave' : 'Upcoming' }}
+                                    @endif
+                                </span>
                             </div>
                         </div>
                     @empty

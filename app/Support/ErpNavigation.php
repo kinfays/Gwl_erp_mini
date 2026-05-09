@@ -207,7 +207,9 @@ class ErpNavigation
     {
         $canManage = fn (User $currentUser) => $this->canManageStaff($currentUser);
         $canManageDepartments = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_departments');
+        $canManageRegions = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_regions');
         $canManageLocations = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_locations');
+        $canManageJobTitles = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_job_titles');
 
         return [
             [
@@ -242,11 +244,25 @@ class ErpNavigation
                 'can' => $canManageDepartments,
             ],
             [
+                'label' => 'Regions',
+                'route' => 'staff.regions',
+                'active' => ['staff.regions'],
+                'icon' => $this->icon('grid'),
+                'can' => $canManageRegions,
+            ],
+            [
                 'label' => 'Locations',
                 'route' => 'staff.locations',
                 'active' => ['staff.locations'],
                 'icon' => $this->icon('grid'),
                 'can' => $canManageLocations,
+            ],
+            [
+                'label' => 'Job Titles',
+                'route' => 'staff.job-titles',
+                'active' => ['staff.job-titles'],
+                'icon' => $this->icon('grid'),
+                'can' => $canManageJobTitles,
             ],
         ];
     }

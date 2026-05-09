@@ -239,10 +239,56 @@
                                                     <small>{{ $remark->created_at?->format('d M Y H:i') }}</small>
                                                 </div>
                                                 @if ($editingRemarkId === $remark->id)
-                                                    <textarea wire:model="editingRemarkContent" class="form-input" rows="3" style="width:100%;margin-top:8px"></textarea>
+                                                    <div class="form-row" style="margin-top:8px">
+                                                        <x-form.combobox
+                                                            label="Manager"
+                                                            model="editingRemarkManagerId"
+                                                            :options="$managerOptions"
+                                                            placeholder="Type to search manager"
+                                                            empty-text="No managers in your region"
+                                                        />
+                                                        <x-form.combobox
+                                                            label="Chief Manager"
+                                                            model="editingRemarkChiefManagerId"
+                                                            :options="$chiefManagerOptions"
+                                                            placeholder="Type to search chief manager"
+                                                            empty-text="No chief managers in your region"
+                                                        />
+                                                    </div>
+                                                    <div class="form-field" style="margin-top:8px">
+                                                        <label class="form-label">Manager remarks</label>
+                                                        <textarea wire:model="editingRemarkContent" class="form-input" rows="3" style="width:100%"></textarea>
+                                                        @error('editingRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                    </div>
+                                                    <div class="form-field" style="margin-top:8px">
+                                                        <label class="form-label">Secretary remarks</label>
+                                                        <textarea wire:model="editingSecretaryRemarkContent" class="form-input" rows="2" style="width:100%" placeholder="Optional"></textarea>
+                                                        @error('editingSecretaryRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                    </div>
                                                     <button type="button" wire:click="updateRemark" class="actn actn-p" style="margin-top:8px">Save</button>
                                                 @else
-                                                    <p>{{ $remark->remark_content }}</p>
+                                                    @if ($remark->manager_id || $remark->chief_manager_id)
+                                                        <div class="remark-people">
+                                                            <div>
+                                                                <span>Manager</span>
+                                                                <strong>{{ $remark->manager?->full_name ?? '-' }}</strong>
+                                                            </div>
+                                                            <div>
+                                                                <span>Chief Manager</span>
+                                                                <strong>{{ $remark->chiefManager?->full_name ?? '-' }}</strong>
+                                                            </div>
+                                                        </div>
+                                                    @endif
+                                                    <div class="remark-section">
+                                                        <span>{{ $remark->manager_id || $remark->chief_manager_id ? 'Manager remarks' : 'Remark' }}</span>
+                                                        <p>{{ $remark->remark_content }}</p>
+                                                    </div>
+                                                    @if ($remark->secretary_remark_content)
+                                                        <div class="remark-section">
+                                                            <span>Secretary remarks</span>
+                                                            <p>{{ $remark->secretary_remark_content }}</p>
+                                                        </div>
+                                                    @endif
                                                     @if ($remark->author_id === $employee->id)
                                                         <button type="button" wire:click="startEditRemark({{ $remark->id }})" class="actn">Edit</button>
                                                     @endif
@@ -254,8 +300,32 @@
 
                                         @if ($canRemark)
                                             <div style="margin-top:12px">
-                                                <textarea wire:model="remarkContent" class="form-input" rows="3" style="width:100%" placeholder="Add remark"></textarea>
-                                                @error('remarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                <div class="form-row">
+                                                    <x-form.combobox
+                                                        label="Manager"
+                                                        model="remarkManagerId"
+                                                        :options="$managerOptions"
+                                                        placeholder="Type to search manager"
+                                                        empty-text="No managers in your region"
+                                                    />
+                                                    <x-form.combobox
+                                                        label="Chief Manager"
+                                                        model="remarkChiefManagerId"
+                                                        :options="$chiefManagerOptions"
+                                                        placeholder="Type to search chief manager"
+                                                        empty-text="No chief managers in your region"
+                                                    />
+                                                </div>
+                                                <div class="form-field" style="margin-bottom:8px">
+                                                    <label class="form-label">Manager remarks</label>
+                                                    <textarea wire:model="remarkContent" class="form-input" rows="3" style="width:100%" placeholder="Add remark"></textarea>
+                                                    @error('remarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                </div>
+                                                <div class="form-field">
+                                                    <label class="form-label">Secretary remarks</label>
+                                                    <textarea wire:model="secretaryRemarkContent" class="form-input" rows="2" style="width:100%" placeholder="Optional"></textarea>
+                                                    @error('secretaryRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                </div>
                                                 <button type="button" wire:click="addRemark" class="btn btn-primary" style="margin-top:8px">Add Remark</button>
                                             </div>
                                         @endif
@@ -292,7 +362,7 @@
                                                     @error('dispatchToId') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
                                                 </div>
                                             </div>
-                                            <button type="button" wire:click="dispatch" class="btn btn-primary">Dispatch</button>
+                                            <button type="button" wire:click="dispatchLetter" class="btn btn-primary">Dispatch</button>
                                         @endif
                                     </div>
                                 </div>

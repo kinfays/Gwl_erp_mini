@@ -13,6 +13,12 @@ class Employee extends Model
 {
     use HasFactory;
 
+    public const DEACTIVATION_REASONS = [
+        'left' => 'Left',
+        'retired' => 'Retired',
+        'dead' => 'Dead',
+    ];
+
     protected $fillable = [
         'staff_id',
         'full_name',
@@ -29,6 +35,7 @@ class Employee extends Model
         'department_id',
         'unit',
         'is_active',
+        'deactivation_reason',
     ];
 
     protected $attributes = [
@@ -148,6 +155,11 @@ class Employee extends Model
             ->take(2)
             ->map(fn (string $part) => strtoupper(substr($part, 0, 1)))
             ->join('') ?: 'NA';
+    }
+
+    public function getDeactivationReasonLabelAttribute(): ?string
+    {
+        return self::DEACTIVATION_REASONS[$this->deactivation_reason] ?? null;
     }
 
     public function scopeActive($query)

@@ -1,8 +1,11 @@
-@props(['triggerClass' => ''])
+@props([
+    'triggerClass' => '',
+    'urlBase' => url('/uac/users'),
+])
 
 <div
     x-data="userDrawer()"
-    x-on:open-user-drawer.window="open($event.detail.id)"
+    x-on:open-user-drawer.window="open($event.detail.id, $event.detail.url)"
     x-show="isOpen"
     x-cloak
     class="fixed inset-0 z-50"
@@ -157,6 +160,8 @@ function userDrawer() {
                 { label: 'Region', value: employee.region ?? '-' },
                 { label: 'Location', value: employee.district ?? '-' },
                 { label: 'Category', value: employee.category ?? '-' },
+                { label: 'Employee Status', value: employee.status ?? '-' },
+                { label: 'Deactivation Reason', value: employee.deactivation_reason_label ?? '-' },
                 { label: 'Gender', value: employee.gender ?? '-' },
                 { label: 'Location Type', value: employee.location_type ?? '-' },
                 { label: 'Unit', value: employee.unit ?? '-' },
@@ -166,13 +171,13 @@ function userDrawer() {
             ];
         },
 
-        open(id) {
+        open(id, url = null) {
             this.isOpen = true;
             this.loading = true;
             this.error = '';
             this.data = null;
 
-            fetch(`{{ url('/uac/users') }}/${id}`, {
+            fetch(url || `{{ rtrim($urlBase, '/') }}/${id}`, {
                 headers: {
                     'Accept': 'application/json'
                 }
