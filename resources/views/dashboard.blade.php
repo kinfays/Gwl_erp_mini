@@ -41,7 +41,7 @@
                         <span class="tb-av">{{ $initials }}</span>
                         <span class="tb-meta">
                             <span class="tb-name">{{ $employee?->full_name ?? $user?->full_name ?? 'User' }}</span>
-                            <span class="tb-sub">{{ $roleName ?? $user?->roles?->pluck('display_name')->join(', ') }}</span>
+                            <span class="tb-sub">{{ $roleName ?? $user?->displayRoleNames() }}</span>
                         </span>
                     </button>
 
@@ -65,7 +65,7 @@
                 <p>
                     {{ $today ?? now()->format('l, j F Y') }}
                     <span>{{ $location ?? trim(($employee?->district?->district_name ?? '') . ', ' . ($employee?->region?->region_name ?? ''), ', ') }}</span>
-                    <span>{{ $roleName ?? $user?->roles?->pluck('display_name')->join(', ') }}</span>
+                    <span>{{ $roleName ?? $user?->displayRoleNames() }}</span>
                 </p>
             </section>
 

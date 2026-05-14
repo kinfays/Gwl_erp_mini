@@ -12,6 +12,7 @@ use App\Http\Requests\Uac\StoreUserRequest;
 use App\Http\Requests\Uac\UpdateUserRequest;
 use App\Support\Audit;
 use App\Support\UserProfilePayload;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -23,15 +24,22 @@ class UacController extends Controller
     
  public function index(Request $request)
     {
+        $usersQuery = $this->usersQueryFor($request->user());
+        $recentLogsQuery = AuditLog::query()->with('user.roles');
+
+        if ($this->isRegionScopedIct($request->user())) {
+            $recentLogsQuery->whereIn('user_id', (clone $usersQuery)->select('users.id'));
+        }
+
         return view('uac.index', [
             'stats' => [
-                'users' => User::visibleInErp()->count(),
-                'roles' => Role::where('name', '!=', 'super_admin')->count(),
+                'users' => (clone $usersQuery)->count(),
+                'roles' => Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->count(),
                 'permissions' => Permission::count(),
-                'audit_logs' => AuditLog::count(),
+                'audit_logs' => (clone $recentLogsQuery)->count(),
             ],
-            'recentUsers' => User::visibleInErp()->with('roles')->latest()->take(5)->get(),
-            'recentLogs'  => AuditLog::with('user.roles')->latest()->take(6)->get(),
+            'recentUsers' => (clone $usersQuery)->with('roles')->latest()->take(5)->get(),
+            'recentLogs'  => $recentLogsQuery->latest()->take(6)->get(),
         ]);
     }
 
@@ -43,7 +51,7 @@ class UacController extends Controller
         return [
             'pageTitle' => $pageTitle,
             'currentUser' => $user,
-            'currentRoleName' => $user->roles->first()?->display_name ?? 'Staff'
+            'currentRoleName' => $user->displayRoleNames('Staff')
         ];
     }
 
@@ -62,8 +70,7 @@ class UacController extends Controller
 
 
        
-$users = User::query()
-        ->visibleInErp()
+$users = $this->usersQueryFor($request->user())
         ->with([
             'roles',
             'employee.region',
@@ -91,7 +98,7 @@ $users = User::query()
     return view('uac.users.index', [
         'users' => $users,
         'search' => $search,
-        'roles' => Role::where('name', '!=', 'super_admin')->orderBy('display_name')->get(),
+        'roles' => $this->assignableRolesFor($request->user()),
         'roleId' => $roleId,
         'status' => $status,
         'perPage' => $perPage,
@@ -121,6 +128,7 @@ public function store(StoreUserRequest $request)
     $user->roles()->sync($request->roles); */
 
 $employee = Employee::visibleInErp()->findOrFail($request->employee_id);
+$this->ensureEmployeeVisibleToActor($request->user(), $employee);
 
 if (User::where('staff_id', $employee->staff_id)->exists()) {
     return back()->withErrors(['employee_id' => 'A user already exists for this employee.'])->withInput();
@@ -144,7 +152,7 @@ if (Schema::hasColumn('users', 'full_name')) {
     $user->update(['full_name' => $employee->full_name]);
 }
 
-$user->roles()->sync($request->roles);
+$user->roles()->sync($this->roleIdsAllowedFor($request->user(), (array) $request->input('roles', [])));
 
 
 
@@ -171,8 +179,9 @@ $user->roles()->sync($request->roles);
 public function update(UpdateUserRequest $request, User $user)
 {
     abort_if($user->hasRoles('super_admin'), 404);
+    $this->ensureUserVisibleToActor($request->user(), $user);
 
-    $user->roles()->sync($request->roles);
+    $user->roles()->sync($this->roleIdsAllowedFor($request->user(), (array) $request->input('roles', [])));
 
     Audit::log(
         action: 'update_user',
@@ -207,6 +216,7 @@ protected function sendInviteEmail(User $user): void
 public function resendInvite(User $user)
 {
     abort_if($user->hasRoles('super_admin'), 404);
+    $this->ensureUserVisibleToActor(request()->user(), $user);
 
     // only allow resend if user never logged in
     if ($user->last_login_at) abort(403);
@@ -222,6 +232,8 @@ public function resendInvite(User $user)
          if ($user->roles()->where('name', 'super_admin')->exists()) {
         abort(404);
     }
+
+    $this->ensureUserVisibleToActor(request()->user(), $user);
 
     $user->update([
         'is_active' => ! $user->is_active,
@@ -244,6 +256,7 @@ public function resendInvite(User $user)
 public function show(Request $request, User $user, UserProfilePayload $profiles)
 {
     abort_if($user->hasRoles('super_admin'), 404);
+    $this->ensureUserVisibleToActor($request->user(), $user);
 
     return response()->json($profiles->for($user));
 }
@@ -253,12 +266,15 @@ public function searchEmployees(Request $request)
 {
     $q = $request->string('q')->toString();
 
-    $employees = Employee::query()
+    $employees = $this->employeesQueryFor($request->user())
         ->visibleInErp()
         ->when($q, function ($query) use ($q) {
-            $query->where('staff_id', 'like', "%{$q}%")
-                ->orWhere('full_name', 'like', "%{$q}%")
-                ->orWhere('email', 'like', "%{$q}%");
+            $query->where(function (Builder $searchQuery) use ($q) {
+                $searchQuery
+                    ->where('staff_id', 'like', "%{$q}%")
+                    ->orWhere('full_name', 'like', "%{$q}%")
+                    ->orWhere('email', 'like', "%{$q}%");
+            });
         })
         ->orderBy('staff_id')
         ->limit(10)
@@ -267,11 +283,109 @@ public function searchEmployees(Request $request)
     return response()->json($employees);
 }
 
+protected function usersQueryFor(User $actor): Builder
+{
+    return $this->scopeUsersToActor(
+        User::query()->visibleInErp(),
+        $actor
+    );
+}
+
+protected function employeesQueryFor(User $actor): Builder
+{
+    return $this->scopeEmployeesToActor(
+        Employee::query(),
+        $actor
+    );
+}
+
+protected function scopeUsersToActor(Builder $query, User $actor): Builder
+{
+    if (! $this->isRegionScopedIct($actor)) {
+        return $query;
+    }
+
+    $regionId = $this->actorRegionId($actor);
+
+    if (! $regionId) {
+        return $query->whereRaw('1 = 0');
+    }
+
+    return $query->where(function (Builder $scoped) use ($regionId) {
+        $scoped
+            ->whereHas('employee', fn (Builder $employee) => $employee->where('region_id', $regionId))
+            ->orWhereHas('employeeByStaffId', fn (Builder $employee) => $employee->where('region_id', $regionId));
+    });
+}
+
+protected function scopeEmployeesToActor(Builder $query, User $actor): Builder
+{
+    if (! $this->isRegionScopedIct($actor)) {
+        return $query;
+    }
+
+    $regionId = $this->actorRegionId($actor);
+
+    return $regionId
+        ? $query->where('region_id', $regionId)
+        : $query->whereRaw('1 = 0');
+}
+
+protected function ensureUserVisibleToActor(User $actor, User $target): void
+{
+    if (! $this->usersQueryFor($actor)->whereKey($target->id)->exists()) {
+        abort(403, 'You can only manage users in your region.');
+    }
+}
+
+protected function ensureEmployeeVisibleToActor(User $actor, Employee $employee): void
+{
+    if (! $this->employeesQueryFor($actor)->whereKey($employee->id)->exists()) {
+        abort(403, 'You can only manage employees in your region.');
+    }
+}
+
+protected function isRegionScopedIct(User $actor): bool
+{
+    return $actor->hasRoles(User::ROLE_ICT_TEAM)
+        && ! $actor->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN);
+}
+
+protected function actorRegionId(User $actor): ?int
+{
+    $employee = $actor->employee ?? $actor->employeeByStaffId;
+
+    return $employee?->region_id;
+}
+
+protected function assignableRolesFor(User $actor)
+{
+    $query = Role::query()
+        ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE]);
+
+    if (! $actor->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN)) {
+        $query->whereNotIn('name', [User::ROLE_ADMIN, User::ROLE_ICT_TEAM]);
+    }
+
+    return $query->orderBy('display_name')->get();
+}
+
+protected function roleIdsAllowedFor(User $actor, array $submittedRoleIds): array
+{
+    $allowedRoleIds = $this->assignableRolesFor($actor)->pluck('id')->all();
+
+    return collect($submittedRoleIds)
+        ->map(fn ($roleId) => (int) $roleId)
+        ->intersect($allowedRoleIds)
+        ->values()
+        ->all();
+}
+
     public function roles()
     
 {
         return view('uac.roles.index', [
-            'roles' => Role::with(['permissions', 'moduleAccesses'])->where('name', '!=', 'super_admin')->orderBy('display_name')->get(),
+            'roles' => Role::with(['permissions', 'moduleAccesses'])->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->orderBy('display_name')->get(),
             'permissions' => Permission::orderBy('module')->orderBy('display_name')->get()->groupBy('module'),
         ]);
     }

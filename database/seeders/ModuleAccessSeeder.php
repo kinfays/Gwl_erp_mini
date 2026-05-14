@@ -14,6 +14,7 @@ class ModuleAccessSeeder extends Seeder
         $accessMap = [
             'super_admin' => Permission::MODULES,
             'admin' => [Permission::MODULE_UAC],
+            'ict_team' => [Permission::MODULE_UAC],
             'hr_headoffice' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF],
             'hr_region' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF],
             'secretary' => [Permission::MODULE_LETTERS],

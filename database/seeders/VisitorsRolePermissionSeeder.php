@@ -16,7 +16,6 @@ class VisitorsRolePermissionSeeder extends Seeder
 
         $map = [
             'receptionist' => ['visitors.kiosk', 'visitors.receptionist_view', 'visitors.checkout', 'visitors.export'],
-            'admin' => ['visitors.receptionist_view', 'visitors.checkout', 'visitors.export'],
         ];
 
         foreach ($map as $roleName => $slugs) {

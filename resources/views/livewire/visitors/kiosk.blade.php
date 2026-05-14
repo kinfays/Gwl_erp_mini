@@ -10,11 +10,60 @@
     <div class="vk-main">
         <div class="vk-card">
             @if ($success)
-                <div class="vk-success" x-data="{ count: {{ (int) config('gwl.visitor_kiosk_reset_seconds', 5) }} }" x-init="setInterval(() => { count--; if (count <= 0) $wire.resetKiosk() }, 1000)">
+                <div
+                    class="vk-success"
+                    x-data="{
+                        count: {{ (int) config('gwl.visitor_kiosk_reset_seconds', 5) }},
+                        timer: null,
+                        init() {
+                            this.timer = setInterval(() => {
+                                this.count -= 1;
+
+                                if (this.count <= 0) {
+                                    clearInterval(this.timer);
+                                    this.timer = null;
+                                    $wire.resetKiosk();
+                                }
+                            }, 1000);
+                        },
+                        destroy() {
+                            if (this.timer !== null) {
+                                clearInterval(this.timer);
+                                this.timer = null;
+                            }
+                        }
+                    }"
+                >
                     <div class="vk-success-mark">OK</div>
                     <h1>Welcome {{ $successName }}!</h1>
                     <p>Your visit has been recorded. Please proceed to reception.</p>
-                    <div class="vk-code" x-data="{ show: true, count: 30 }" x-init="setInterval(() => { if (count > 0) count-- }, 1000)" x-show="show">
+                    <div
+                        class="vk-code"
+                        x-data="{
+                            show: true,
+                            count: 20,
+                            timer: null,
+                            init() {
+                                this.timer = setInterval(() => {
+                                    if (this.count > 0) {
+                                        this.count -= 1;
+
+                                        return;
+                                    }
+
+                                    clearInterval(this.timer);
+                                    this.timer = null;
+                                }, 1000);
+                            },
+                            destroy() {
+                                if (this.timer !== null) {
+                                    clearInterval(this.timer);
+                                    this.timer = null;
+                                }
+                            }
+                        }"
+                        x-show="show"
+                    >
                         <span>Your checkout code</span>
                         <strong>{{ $checkoutCode }}</strong>
                         <small>Visible for <span x-text="count"></span>s</small>

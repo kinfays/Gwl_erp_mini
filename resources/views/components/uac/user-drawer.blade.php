@@ -90,7 +90,7 @@
                                 </template>
 
                                 <template x-if="!data.user.roles || data.user.roles.length === 0">
-                                    <span class="text-sm text-slate-500 dark:text-slate-400">No roles</span>
+                                    <span class="text-sm text-slate-500 dark:text-slate-400">No additional roles</span>
                                 </template>
                             </div>
                         </div>

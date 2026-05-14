@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             StaffRolePermissionSeeder::class,
             LettersRolePermissionSeeder::class,
             VisitorsRolePermissionSeeder::class,
+            UacRolePermissionSeeder::class,
             HolidaySeeder::class,
             SuperAdminSeeder::class,
         ]);

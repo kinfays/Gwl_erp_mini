@@ -1,3 +1,9 @@
+<!--Bismillah
+    Developed by
+    FaisalEwuntomah (Faysysgh)
+    GWL -->
+
+    <!--ERP Portal Layout-->
 <!DOCTYPE html>
 <html
     lang="{{ str_replace('_', '-', app()->getLocale()) }}"
@@ -17,6 +23,7 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
         <title>{{ $title ?? 'GWL ERP Portal' }}</title>
+        @include('partials.favicon')
 
         <script>
             (() => {

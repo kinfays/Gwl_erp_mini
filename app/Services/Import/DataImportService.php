@@ -288,7 +288,7 @@ class DataImportService
                 ],
                 'email' => ['required', 'email', 'max:255'],
                 'role_slugs' => ['required', 'array', 'min:1'],
-                'role_slugs.*' => [Rule::exists('roles', 'name')->where(fn ($query) => $query->where('name', '!=', 'super_admin'))],
+                'role_slugs.*' => [Rule::exists('roles', 'name')->where(fn ($query) => $query->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE]))],
             ],
             default => [],
         };
@@ -596,7 +596,7 @@ class DataImportService
                 'description' => 'Attach roles and account state to existing employees.',
                 'headings' => ['staff_id', 'email', 'role_slugs', 'is_active'],
                 'sample_rows' => [
-                    ['EMP001', 'akosua.mensah@example.com', 'employee,hr_region', '1'],
+                    ['EMP001', 'akosua.mensah@example.com', 'hr_region', '1'],
                 ],
             ],
         ];

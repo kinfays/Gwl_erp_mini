@@ -80,6 +80,7 @@
             @forelse ($users as $user)
                 @php
                     $employee = $user->employee ?? $user->employeeByStaffId;
+                    $visibleRoles = $user->visibleRoles();
                     $location = collect([$employee?->district?->district_name, $employee?->region?->region_name])->filter()->implode(' • ');
                 @endphp
                 <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors duration-100">
@@ -93,10 +94,10 @@
                     <td class="px-4 py-3.5 text-sm text-slate-700">{{ $location ?: 'Not assigned' }}</td>
                     <td class="px-4 py-3.5 text-sm text-slate-700">
                         <div class="flex flex-wrap gap-2">
-                            @forelse ($user->roles as $role)
+                            @forelse ($visibleRoles as $role)
                                 <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-xs font-medium">{{ $role->display_name }}</span>
                             @empty
-                                <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-xs font-medium">No role</span>
+                                <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-xs font-medium">No additional role</span>
                             @endforelse
                         </div>
                     </td>
@@ -129,7 +130,7 @@
                                         id: '{{ $user->id }}',
                                         name: '{{ $user->full_name ?? $user->name }}',
                                         email: '{{ $user->email }}',
-                                        roles: {{ $user->roles->pluck('id') }}
+                                        roles: {{ $visibleRoles->pluck('id') }}
                                     })
                                 "
                                 class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all"
@@ -405,7 +406,6 @@ function employeePicker() {
                 <select
                     name="roles[]"
                     multiple
-                    required
                     class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm h-32"
                 >
                     @foreach ($roles as $role)

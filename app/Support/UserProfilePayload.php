@@ -30,11 +30,11 @@ class UserProfilePayload
                 'email' => $user->email,
                 'is_active' => (bool) $user->is_active,
                 'last_login_at' => optional($user->last_login_at)->toDateTimeString(),
-                'roles' => $user->roles->map(fn ($role) => [
+                'roles' => $user->visibleRoles()->map(fn ($role) => [
                     'id' => $role->id,
                     'name' => $role->name,
                     'display_name' => $role->display_name,
-                ]),
+                ])->values(),
             ],
             'employee' => $employee ? [
                 'staff_id' => $employee->staff_id,

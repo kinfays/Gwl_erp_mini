@@ -35,7 +35,7 @@ class EmployeeDirectory
             return $query;
         }
 
-        if ($user->hasRoles('admin', 'hr_region')) {
+        if ($user->hasRoles('hr_region')) {
             return $employee?->region_id
                 ? $query->where('region_id', $employee->region_id)
                 : $query;

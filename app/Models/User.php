@@ -14,6 +14,10 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     public const DEFAULT_PASSWORD = '12345';
+    public const ROLE_SUPER_ADMIN = 'super_admin';
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_EMPLOYEE = 'employee';
+    public const ROLE_ICT_TEAM = 'ict_team';
 
     protected $fillable = [
         'full_name',
@@ -119,16 +123,44 @@ class User extends Authenticatable
 
     public function getAccessibleModules(): array
     {
-        return $this->roles()
+        $modules = $this->roles()
             ->with('moduleAccess')
             ->get()
-            ->pluck('moduleAccess')
-            ->flatten()
-            ->where('can_access', true)
-            ->pluck('module')
+            ->flatMap(function (Role $role) {
+                if ($role->name === self::ROLE_ADMIN) {
+                    return [Permission::MODULE_UAC];
+                }
+
+                return $role->moduleAccess
+                    ->where('can_access', true)
+                    ->pluck('module');
+            })
             ->unique()
             ->values()
             ->toArray();
+
+        if (! in_array(Permission::MODULE_LEAVE, $modules, true)) {
+            $modules[] = Permission::MODULE_LEAVE;
+        }
+
+        return array_values(array_unique($modules));
+    }
+
+    public function visibleRoles()
+    {
+        $roles = $this->relationLoaded('roles') ? $this->roles : $this->roles()->get();
+
+        return $roles
+            ->reject(fn (Role $role) => $role->name === self::ROLE_EMPLOYEE)
+            ->values();
+    }
+
+    public function displayRoleNames(string $fallback = 'Employee'): string
+    {
+        return $this->visibleRoles()
+            ->pluck('display_name')
+            ->filter()
+            ->join(', ') ?: $fallback;
     }
 
     public function scopeActive($query)

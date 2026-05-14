@@ -22,6 +22,14 @@ class CheckPermission
 
         // Must have at least ONE of the permissions provided
         foreach ($permissions as $perm) {
+            if (
+                method_exists($user, 'hasRoles')
+                && $user->hasRoles('admin')
+                && (str_starts_with($perm, 'leave.') || str_starts_with($perm, 'uac.'))
+            ) {
+                return $next($request);
+            }
+
             if (method_exists($user, 'hasPermission') && $user->hasPermission($perm)) {
                 return $next($request);
             }

@@ -181,24 +181,61 @@ class ActiveLetters extends Component
         $employee = $this->requireEmployee();
 
         $this->validate([
-            'remarkManagerId' => ['required', 'exists:employees,id'],
-            'remarkChiefManagerId' => ['required', 'exists:employees,id'],
-            'remarkContent' => ['required', 'string', 'max:4000'],
+            'remarkManagerId' => ['nullable', 'exists:employees,id'],
+            'remarkChiefManagerId' => ['nullable', 'exists:employees,id'],
+            'remarkContent' => ['nullable', 'string', 'max:4000'],
             'secretaryRemarkContent' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkManagerId, 'remarkManagerId', 'manager');
-        $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkChiefManagerId, 'remarkChiefManagerId', 'chief');
+        $remarkContent = trim($this->remarkContent);
+        $secretaryRemarkContent = trim($this->secretaryRemarkContent);
+        $hasManagerRemark = $remarkContent !== '';
+        $hasSecretaryRemark = $secretaryRemarkContent !== '';
+        $hasManager = filled($this->remarkManagerId);
+        $hasChiefManager = filled($this->remarkChiefManagerId);
 
-        if (! $manager || ! $chiefManager) {
+        if (! $hasManagerRemark && ! $hasSecretaryRemark) {
+            $this->addError('remarkContent', 'Enter manager/chief manager remarks or secretary remarks.');
+            $this->addError('secretaryRemarkContent', 'Enter manager/chief manager remarks or secretary remarks.');
+        }
+
+        if ($hasManagerRemark && $hasManager && $hasChiefManager) {
+            $this->addError('remarkManagerId', 'Select either a manager or a chief manager, not both.');
+            $this->addError('remarkChiefManagerId', 'Select either a manager or a chief manager, not both.');
+        }
+
+        if ($hasManagerRemark && ! $hasManager && ! $hasChiefManager) {
+            $this->addError('remarkManagerId', 'Select a manager or a chief manager before adding manager remarks.');
+        }
+
+        if (! $hasManagerRemark && ($hasManager || $hasChiefManager)) {
+            $this->addError('remarkContent', 'Enter manager/chief manager remarks for the selected reviewer.');
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
+
+        $manager = null;
+        $chiefManager = null;
+
+        if ($hasManager) {
+            $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkManagerId, 'remarkManagerId', 'manager');
+        }
+
+        if ($hasChiefManager) {
+            $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkChiefManagerId, 'remarkChiefManagerId', 'chief');
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
 
         $workflow->addRemark($this->selectedLetter($workflow), $employee, [
-            'manager_id' => $manager->id,
-            'chief_manager_id' => $chiefManager->id,
-            'remark_content' => $this->remarkContent,
-            'secretary_remark_content' => $this->secretaryRemarkContent,
+            'manager_id' => $manager?->id,
+            'chief_manager_id' => $chiefManager?->id,
+            'remark_content' => $hasManagerRemark ? $remarkContent : '',
+            'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
         ]);
 
         $this->resetRemarkForm();
@@ -225,25 +262,62 @@ class ActiveLetters extends Component
         $employee = $this->requireEmployee();
 
         $this->validate([
-            'editingRemarkManagerId' => ['required', 'exists:employees,id'],
-            'editingRemarkChiefManagerId' => ['required', 'exists:employees,id'],
-            'editingRemarkContent' => ['required', 'string', 'max:4000'],
+            'editingRemarkManagerId' => ['nullable', 'exists:employees,id'],
+            'editingRemarkChiefManagerId' => ['nullable', 'exists:employees,id'],
+            'editingRemarkContent' => ['nullable', 'string', 'max:4000'],
             'editingSecretaryRemarkContent' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkManagerId, 'editingRemarkManagerId', 'manager');
-        $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkChiefManagerId, 'editingRemarkChiefManagerId', 'chief');
+        $remarkContent = trim($this->editingRemarkContent);
+        $secretaryRemarkContent = trim($this->editingSecretaryRemarkContent);
+        $hasManagerRemark = $remarkContent !== '';
+        $hasSecretaryRemark = $secretaryRemarkContent !== '';
+        $hasManager = filled($this->editingRemarkManagerId);
+        $hasChiefManager = filled($this->editingRemarkChiefManagerId);
 
-        if (! $manager || ! $chiefManager) {
+        if (! $hasManagerRemark && ! $hasSecretaryRemark) {
+            $this->addError('editingRemarkContent', 'Enter manager/chief manager remarks or secretary remarks.');
+            $this->addError('editingSecretaryRemarkContent', 'Enter manager/chief manager remarks or secretary remarks.');
+        }
+
+        if ($hasManagerRemark && $hasManager && $hasChiefManager) {
+            $this->addError('editingRemarkManagerId', 'Select either a manager or a chief manager, not both.');
+            $this->addError('editingRemarkChiefManagerId', 'Select either a manager or a chief manager, not both.');
+        }
+
+        if ($hasManagerRemark && ! $hasManager && ! $hasChiefManager) {
+            $this->addError('editingRemarkManagerId', 'Select a manager or a chief manager before adding manager remarks.');
+        }
+
+        if (! $hasManagerRemark && ($hasManager || $hasChiefManager)) {
+            $this->addError('editingRemarkContent', 'Enter manager/chief manager remarks for the selected reviewer.');
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
+
+        $manager = null;
+        $chiefManager = null;
+
+        if ($hasManager) {
+            $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkManagerId, 'editingRemarkManagerId', 'manager');
+        }
+
+        if ($hasChiefManager) {
+            $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkChiefManagerId, 'editingRemarkChiefManagerId', 'chief');
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
 
         $remark = LetterRemark::query()->findOrFail($this->editingRemarkId);
         $workflow->updateRemark($remark, $employee, [
-            'manager_id' => $manager->id,
-            'chief_manager_id' => $chiefManager->id,
-            'remark_content' => $this->editingRemarkContent,
-            'secretary_remark_content' => $this->editingSecretaryRemarkContent,
+            'manager_id' => $manager?->id,
+            'chief_manager_id' => $chiefManager?->id,
+            'remark_content' => $hasManagerRemark ? $remarkContent : '',
+            'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
         ]);
 
         $this->resetEditingRemarkForm();

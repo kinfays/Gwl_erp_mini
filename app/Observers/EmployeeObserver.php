@@ -3,7 +3,6 @@
 namespace App\Observers;
 
 use App\Models\Employee;
-use App\Models\Role;
 use App\Models\User;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Support\Facades\Hash;
@@ -54,11 +53,6 @@ class EmployeeObserver
         $user->fill($payload);
         $wasNewUser = ! $user->exists;
         $user->save();
-
-        $employeeRole = Role::where('name', 'employee')->first();
-        if ($employeeRole) {
-            $user->roles()->syncWithoutDetaching([$employeeRole->id]);
-        }
 
         if ($wasNewUser && $sendInviteForNewUser) {
             $this->sendInvite($user);

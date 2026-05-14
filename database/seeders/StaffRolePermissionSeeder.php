@@ -27,18 +27,6 @@ class StaffRolePermissionSeeder extends Seeder
                 'staff.manage_locations',
                 'staff.manage_job_titles',
             ],
-            'admin' => [
-                'staff.view',
-                'staff.create',
-                'staff.edit',
-                'staff.deactivate',
-                'staff.import',
-                'staff.export',
-                'staff.manage_departments',
-                'staff.manage_regions',
-                'staff.manage_locations',
-                'staff.manage_job_titles',
-            ],
             'hr_headoffice' => [
                 'staff.view',
                 'staff.create',

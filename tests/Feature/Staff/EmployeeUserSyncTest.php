@@ -7,7 +7,6 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\JobTitle;
 use App\Models\Region;
-use App\Models\Role;
 use App\Models\User;
 use App\Notifications\InviteUserNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +21,6 @@ class EmployeeUserSyncTest extends TestCase
     public function test_creating_employee_automatically_creates_an_active_user(): void
     {
         Notification::fake();
-        $employeeRole = $this->createEmployeeRole();
         $employee = $this->createEmployee();
 
         $user = User::query()->where('staff_id', $employee->staff_id)->first();
@@ -33,17 +31,13 @@ class EmployeeUserSyncTest extends TestCase
         $this->assertTrue($user->is_active);
         $this->assertTrue($user->must_change_password);
         $this->assertTrue(Hash::check(User::DEFAULT_PASSWORD, $user->password));
-        $this->assertDatabaseHas('user_roles', [
-            'user_id' => $user->id,
-            'role_id' => $employeeRole->id,
-        ]);
+        $this->assertTrue($user->roles()->doesntExist());
         $this->assertInviteUsesSetPasswordMode($user);
     }
 
     public function test_updating_an_employee_repairs_a_missing_user(): void
     {
         Notification::fake();
-        $employeeRole = $this->createEmployeeRole();
         $employee = Employee::withoutEvents(fn () => $this->createEmployee([
             'staff_id' => '654321',
             'email' => 'existing.employee@example.com',
@@ -61,19 +55,8 @@ class EmployeeUserSyncTest extends TestCase
         $this->assertTrue($user->is_active);
         $this->assertTrue($user->must_change_password);
         $this->assertTrue(Hash::check(User::DEFAULT_PASSWORD, $user->password));
-        $this->assertDatabaseHas('user_roles', [
-            'user_id' => $user->id,
-            'role_id' => $employeeRole->id,
-        ]);
+        $this->assertTrue($user->roles()->doesntExist());
         $this->assertInviteUsesSetPasswordMode($user);
-    }
-
-    protected function createEmployeeRole(): Role
-    {
-        return Role::query()->firstOrCreate(
-            ['name' => 'employee'],
-            ['display_name' => 'Employee', 'is_system' => true]
-        );
     }
 
     protected function createEmployee(array $overrides = []): Employee

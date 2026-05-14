@@ -19,7 +19,7 @@ class DashboardController extends Controller
         ]);
 
         $employee = $user->employee ?? $user->employeeByStaffId;
-        $role = $user->roles->first();
+        $roleName = $user->displayRoleNames();
 
         $modules = collect([
             [
@@ -38,7 +38,7 @@ class DashboardController extends Controller
                 'title' => 'Staff Management',
                 'description' => 'Manage employee records, import staff data, update profiles',
                 'route' => route('staff.index'),
-                'badge' => $role?->display_name ?? 'Authorized',
+                'badge' => $roleName,
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-sky-50',
                 'icon_color' => 'text-sky-700',
@@ -49,7 +49,7 @@ class DashboardController extends Controller
                 'title' => 'Letters & Documents',
                 'description' => 'Receive, review, forward and close official correspondence',
                 'route' => route('letters.home'),
-                'badge' => $role?->display_name ?? 'Authorized',
+                'badge' => $roleName,
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-amber-50',
                 'icon_color' => 'text-amber-700',
@@ -60,7 +60,7 @@ class DashboardController extends Controller
                 'title' => 'Visitors Log',
                 'description' => 'Monitor visitor sign-ins, manage check-ins and check-outs',
                 'route' => route('visitors.home'),
-                'badge' => $role?->display_name ?? 'Authorized',
+                'badge' => $roleName,
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-emerald-50',
                 'icon_color' => 'text-emerald-700',
@@ -71,7 +71,7 @@ class DashboardController extends Controller
                 'title' => 'User Access Control',
                 'description' => 'Manage users, roles, permissions, and bulk data imports',
                 'route' => route('uac.index'),
-                'badge' => $role?->display_name ?? 'Authorized',
+                'badge' => $roleName,
                 'accent' => 'border-t-4 border-slate-200',
                 'icon_bg' => 'bg-indigo-50',
                 'icon_color' => 'text-indigo-700',
@@ -99,7 +99,7 @@ class DashboardController extends Controller
             'location' => $location ?: 'Location not assigned',
             'greeting' => $greeting,
             'firstName' => strtok($user->full_name ?? $user->name ?? 'User', ' '),
-            'roleName' => $role?->display_name ?? 'Employee',
+            'roleName' => $roleName,
             'today' => now()->format('l, d F Y'),
             'unreadNotifications' => 3,
         ]);

@@ -279,10 +279,12 @@
                                                             </div>
                                                         </div>
                                                     @endif
-                                                    <div class="remark-section">
-                                                        <span>{{ $remark->manager_id || $remark->chief_manager_id ? 'Manager remarks' : 'Remark' }}</span>
-                                                        <p>{{ $remark->remark_content }}</p>
-                                                    </div>
+                                                    @if (filled($remark->remark_content))
+                                                        <div class="remark-section">
+                                                            <span>{{ $remark->manager_id || $remark->chief_manager_id ? 'Manager remarks' : 'Remark' }}</span>
+                                                            <p>{{ $remark->remark_content }}</p>
+                                                        </div>
+                                                    @endif
                                                     @if ($remark->secretary_remark_content)
                                                         <div class="remark-section">
                                                             <span>Secretary remarks</span>

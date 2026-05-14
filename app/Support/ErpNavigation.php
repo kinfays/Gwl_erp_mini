@@ -58,7 +58,7 @@ class ErpNavigation
             'identity' => [
                 'name' => $user->full_name ?? $employee?->full_name ?? $user->email,
                 'initials' => $this->initials($user->full_name ?? $employee?->full_name ?? 'User'),
-                'role' => $user->roles->pluck('display_name')->filter()->join(', ') ?: 'Employee',
+                'role' => $user->displayRoleNames(),
                 'location' => collect([
                     $employee?->district?->district_name,
                     $employee?->region?->region_name,
@@ -281,12 +281,14 @@ class ErpNavigation
                 'route' => 'uac.roles',
                 'active' => ['uac.roles'],
                 'icon' => $this->icon('shield'),
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
             ],
             [
                 'label' => 'Bulk Import',
                 'route' => 'uac.import',
                 'active' => ['uac.import'],
                 'icon' => $this->icon('stack'),
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
             ],
             [
                 'label' => 'Audit Log',
@@ -377,7 +379,7 @@ class ErpNavigation
 
     public function canManageStaff(User $user): bool
     {
-        return $user->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
+        return $user->hasRoles('super_admin', 'hr_headoffice', 'hr_region');
     }
 
     public function canViewStaff(User $user): bool

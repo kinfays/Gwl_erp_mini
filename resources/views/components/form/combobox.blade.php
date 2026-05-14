@@ -1,3 +1,5 @@
+<!-- component is inspired by the Combobox component from Tailwind UI, used for all search selects in the app-->
+
 @props([
     'label',
     'model',

@@ -5,6 +5,7 @@ namespace App\Livewire\Uac;
 use App\Models\ModuleAccess;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Models\User;
 use App\Support\Audit;
 use Livewire\Component;
 
@@ -51,7 +52,7 @@ class RoleAccessManager extends Component
     {
 
         $this->roles = Role::query()
-                   ->where('name', '!=', 'super_admin')  // ✅ hide from list
+                   ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
                    ->orderBy('display_name')
                    ->get()
                    ->map(fn ($r) => [
@@ -113,7 +114,7 @@ class RoleAccessManager extends Component
 
         // Refresh roles list (still hiding super_admin)
         $this->roles = Role::query()
-            ->where('name', '!=', 'super_admin')
+            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
             ->orderBy('display_name')
             ->get()
             ->map(fn ($r) => [
@@ -139,7 +140,7 @@ class RoleAccessManager extends Component
     {
         $this->selectedRoleId = $roleId;
         $role = Role::with(['permissions', 'moduleAccesses'])
-            ->where('name', '!=', 'super_admin')
+            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
             ->findOrFail($roleId);
 
         $this->selectedPermissionIds = $role->permissions->pluck('id')->toArray();
@@ -181,36 +182,26 @@ class RoleAccessManager extends Component
     public function getCanEditProperty(): bool
     {
         $selectedRole = $this->selectedRoleId
-            ? Role::where('name', '!=', 'super_admin')->find($this->selectedRoleId)
+            ? Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->find($this->selectedRoleId)
             : null;
 
-        $locked = $selectedRole
-            ? ($selectedRole->is_system && in_array($selectedRole->name, ['super_admin', 'employee'], true))
-            : false;
-
-        return auth()->check() && auth()->user()->hasRoles('super_admin') && ! $locked;
+        return auth()->check() && $this->canEditRole(auth()->user(), $selectedRole);
     }
 
     public function save(): void
     {
         $user = auth()->user();
 
-        // Only super_admin can save changes
-        if (! $user || ! $user->hasRoles('super_admin')) {
-            abort(403, 'Only Super Admin can modify roles.');
-        }
-
         if (! $this->selectedRoleId) {
             return;
         }
 
         $role = Role::with(['permissions', 'moduleAccesses'])
-            ->where('name', '!=', 'super_admin')
+            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
             ->findOrFail($this->selectedRoleId);
 
-        // Lock system roles like super_admin and employee
-        if ($role->is_system && in_array($role->name, ['super_admin', 'employee'], true)) {
-            abort(403, 'This role is locked.');
+        if (! $user || ! $this->canEditRole($user, $role)) {
+            abort(403, 'You cannot modify this role.');
         }
 
         $oldPermissions = $role->permissions->pluck('name')->toArray();
@@ -251,7 +242,7 @@ class RoleAccessManager extends Component
             abort(403);
         }
 
-        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->selectedRoleId);
+        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->selectedRoleId);
 
         if ($role->is_system) {
             $this->message = 'System roles cannot be edited.';
@@ -273,7 +264,7 @@ class RoleAccessManager extends Component
             abort(403);
         }
 
-        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->editRoleId);
+        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->editRoleId);
 
         if ($role->is_system) {
             abort(403);
@@ -308,7 +299,7 @@ class RoleAccessManager extends Component
             abort(403);
         }
 
-        $role = Role::where('name', '!=', 'super_admin')->withCount('users')->findOrFail($this->selectedRoleId);
+        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->withCount('users')->findOrFail($this->selectedRoleId);
 
         if ($role->is_system) {
             $this->message = 'System roles cannot be deleted.';
@@ -340,7 +331,7 @@ class RoleAccessManager extends Component
             return;
         }
 
-        $role = Role::where('name', '!=', 'super_admin')->findOrFail($this->deleteRoleId);
+        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->deleteRoleId);
 
         \DB::transaction(function () use ($role) {
             $role->permissions()->detach();
@@ -364,19 +355,36 @@ class RoleAccessManager extends Component
     public function render()
     {
         $selectedRole = $this->selectedRoleId
-            ? Role::where('name', '!=', 'super_admin')->find($this->selectedRoleId)
+            ? Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->find($this->selectedRoleId)
             : null;
 
-        $locked = $selectedRole
-            ? ($selectedRole->is_system && in_array($selectedRole->name, ['super_admin', 'employee'], true))
-            : false;
-
-        $canEdit = auth()->check() && auth()->user()->hasRoles('super_admin') && ! $locked;
+        $locked = $selectedRole ? $this->isLockedRole($selectedRole) : false;
+        $canEdit = auth()->check() && $this->canEditRole(auth()->user(), $selectedRole);
 
         return view('components.uac.role-access-manager', [
             'locked' => $locked,
             'canEdit' => $canEdit,
             'selectedRole' => $selectedRole,
         ]);
+    }
+
+    protected function isLockedRole(?Role $role): bool
+    {
+        return $role
+            && $role->is_system
+            && in_array($role->name, [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_EMPLOYEE], true);
+    }
+
+    protected function canEditRole(?User $user, ?Role $role): bool
+    {
+        if (! $user || ! $role || $this->isLockedRole($role)) {
+            return false;
+        }
+
+        if ($role->name === User::ROLE_ICT_TEAM) {
+            return $user->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN);
+        }
+
+        return $user->hasRoles(User::ROLE_SUPER_ADMIN);
     }
 }

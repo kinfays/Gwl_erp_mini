@@ -197,7 +197,7 @@
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
                         </svg>
-                        Only Super Admin can modify permissions and module access.
+                        Only authorized administrators can modify permissions and module access for this role.
                     </div>
                 @endif
             </div>

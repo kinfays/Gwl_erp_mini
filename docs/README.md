@@ -1,0 +1,25 @@
+# Documentation Index
+
+This folder contains split documentation pages for easier maintenance.
+
+## Start Here
+
+- Setup and runbook: [02-setup-and-runbook.md](02-setup-and-runbook.md)
+- Architecture and access control: [03-architecture-access-control.md](03-architecture-access-control.md)
+
+## Module Pages
+
+- UAC: [04-module-uac.md](04-module-uac.md)
+- Staff: [05-module-staff.md](05-module-staff.md)
+- Leave: [06-module-leave.md](06-module-leave.md)
+- Letters: [07-module-letters.md](07-module-letters.md)
+- Visitors: [08-module-visitors.md](08-module-visitors.md)
+
+## Reference Pages
+
+- Data model: [09-data-model.md](09-data-model.md)
+- Routes and tests: [10-routes-and-testing.md](10-routes-and-testing.md)
+
+## Full Single-File Guide
+
+- [../APP_DOCUMENTATION.md](../APP_DOCUMENTATION.md)

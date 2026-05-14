@@ -50,7 +50,7 @@
                         <p class="text-sm font-semibold text-slate-900">{{ $user->full_name ?? $user->name }}</p>
                         <p class="text-sm text-slate-600">{{ $user->email }}</p>
                     </div>
-                    <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-xs font-medium">{{ $user->roles->pluck('display_name')->join(', ') ?: 'No Role' }}</span>
+                    <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-xs font-medium">{{ $user->displayRoleNames('No additional role') }}</span>
                 </div>
             @empty
                 <p class="text-sm text-slate-600">No users available.</p>

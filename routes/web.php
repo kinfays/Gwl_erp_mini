@@ -21,7 +21,7 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'active'])
     ->name('dashboard');
 
-Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
+Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin,ict_team'])
     ->prefix('uac')
     ->name('uac.')
     ->group(function () {
@@ -35,19 +35,27 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin'])
         Route::post('/users/{user}/invite', [UacController::class, 'resendInvite'])->name('users.invite');
         Route::get('/employees/search', [UacController::class, 'searchEmployees'])->name('employees.search');
 
-        Route::get('/roles', [UacController::class, 'rolesPermissions'])->name('roles');
+        Route::get('/roles', [UacController::class, 'rolesPermissions'])
+            ->middleware('role:admin,super_admin')
+            ->name('roles');
 
-        Route::get('/import', [ImportController::class, 'uac'])->name('import');
+        Route::get('/import', [ImportController::class, 'uac'])
+            ->middleware('role:admin,super_admin')
+            ->name('import');
         Route::get('/import/template/{type}', [ImportController::class, 'downloadTemplate'])
+            ->middleware('role:admin,super_admin')
             ->defaults('context', 'uac')
             ->name('import.template');
         Route::post('/import/preview', [ImportController::class, 'preview'])
+            ->middleware('role:admin,super_admin')
             ->defaults('context', 'uac')
             ->name('import.preview');
         Route::post('/import/run', [ImportController::class, 'run'])
+            ->middleware('role:admin,super_admin')
             ->defaults('context', 'uac')
             ->name('import.run');
         Route::post('/import/clear', [ImportController::class, 'clear'])
+            ->middleware('role:admin,super_admin')
             ->defaults('context', 'uac')
             ->name('import.clear');
 
@@ -91,7 +99,7 @@ Route::middleware([
     'auth',
     'active',
     'module:staff',
-    'role:hr_headoffice,hr_region,admin,super_admin,manager,departmental_manager,district_manager,chief_manager,regional_chief_manager',
+    'role:hr_headoffice,hr_region,super_admin,manager,departmental_manager,district_manager,chief_manager,regional_chief_manager',
 ])->prefix('staff')
     ->name('staff.')
     ->group(function () {
@@ -99,7 +107,7 @@ Route::middleware([
         Route::get('/export', [StaffController::class, 'export'])->name('export');
         Route::get('/users/{user}', [StaffController::class, 'showUser'])->name('users.show');
 
-        Route::middleware(['role:hr_headoffice,hr_region,admin,super_admin'])->group(function () {
+        Route::middleware(['role:hr_headoffice,hr_region,super_admin'])->group(function () {
             Route::get('/create', [StaffController::class, 'create'])->name('create');
             Route::get('/{employee}/edit', [StaffController::class, 'edit'])->name('edit');
             Route::patch('/{employee}/status', [StaffController::class, 'toggleStatus'])->name('toggle-status');

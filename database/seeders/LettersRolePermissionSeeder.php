@@ -21,7 +21,6 @@ class LettersRolePermissionSeeder extends Seeder
             'district_manager' => ['letters.view', 'letters.forward', 'letters.remark'],
             'chief_manager' => ['letters.view', 'letters.forward', 'letters.remark', 'letters.close'],
             'regional_chief_manager' => ['letters.view', 'letters.forward', 'letters.remark', 'letters.close'],
-            'admin' => ['letters.view', 'letters.create', 'letters.forward', 'letters.remark', 'letters.close', 'letters.export'],
         ];
 
         foreach ($map as $roleName => $slugs) {
