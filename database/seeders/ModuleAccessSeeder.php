@@ -11,19 +11,26 @@ class ModuleAccessSeeder extends Seeder
 {
     public function run(): void
     {
+        $hrModules = array_values(array_filter(
+            Permission::MODULES,
+            fn (string $module) => ! in_array($module, [Permission::MODULE_UAC, Permission::MODULE_ASSETS, Permission::MODULE_TRANSPORT], true)
+        ));
+
         $accessMap = [
             'super_admin' => Permission::MODULES,
             'admin' => [Permission::MODULE_UAC],
-            'ict_team' => [Permission::MODULE_UAC],
-            'hr_headoffice' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF],
-            'hr_region' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF],
+            'ict_team' => [Permission::MODULE_UAC, Permission::MODULE_ASSETS],
+            'transport_manager' => [Permission::MODULE_TRANSPORT],
+            'driver' => [Permission::MODULE_TRANSPORT],
+            'hr_headoffice' => $hrModules,
+            'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],
             'manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'departmental_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'district_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
-            'employee' => [Permission::MODULE_LEAVE],
+            'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT],
             'receptionist' => [Permission::MODULE_VISITORS],
         ];
 

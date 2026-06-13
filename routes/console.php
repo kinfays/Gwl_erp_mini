@@ -1,5 +1,7 @@
 <?php
 
+use App\Events\Transport\DocumentExpiryDetected;
+use App\Models\Vehicle;
 use App\Models\Visitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -24,3 +26,30 @@ Artisan::command('gwcl:auto-checkout-visitors', function () {
 
 Schedule::command('gwcl:auto-checkout-visitors')
     ->dailyAt(config('gwl.auto_checkout_time', config('gwcl.visitors_auto_checkout_time', '18:00')));
+
+Artisan::command('transport:check-expiries', function () {
+    $count = 0;
+
+    Vehicle::query()
+        ->where('status', '!=', Vehicle::STATUS_RETIRED)
+        ->where(function ($query): void {
+            $query->whereBetween('insurance_expiry_date', [today()->toDateString(), today()->addDays(90)->toDateString()])
+                ->orWhereBetween('road_worthiness_expiry_date', [today()->toDateString(), today()->addDays(90)->toDateString()]);
+        })
+        ->chunkById(100, function ($vehicles) use (&$count): void {
+            foreach ($vehicles as $vehicle) {
+                foreach (['insurance' => $vehicle->insurance_expiry_date, 'road_worthiness' => $vehicle->road_worthiness_expiry_date] as $type => $date) {
+                    if (! $date || $date->lt(today()) || $date->greaterThan(today()->addDays(90))) {
+                        continue;
+                    }
+
+                    event(new DocumentExpiryDetected($vehicle, $type, (int) today()->diffInDays($date)));
+                    $count++;
+                }
+            }
+        });
+
+    $this->info($count.' transport document expiry alert(s) checked.');
+})->purpose('Check vehicle insurance and road-worthiness expiries');
+
+Schedule::command('transport:check-expiries')->dailyAt('07:30');

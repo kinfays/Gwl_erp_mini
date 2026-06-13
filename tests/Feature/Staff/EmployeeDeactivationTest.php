@@ -97,6 +97,7 @@ class EmployeeDeactivationTest extends TestCase
             ->getJson(route('staff.users.show', $employee->user()->first()))
             ->assertOk()
             ->assertJsonPath('employee.full_name', $employee->full_name)
+            ->assertJsonPath('employee.retirement_date', '2050-01-01')
             ->assertJsonPath('user.staff_id', $employee->staff_id);
     }
 

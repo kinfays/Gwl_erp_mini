@@ -45,6 +45,16 @@ class EmployeeFormTest extends TestCase
             ->assertSee('Auto-filled from district');
     }
 
+    public function test_retirement_date_is_calculated_from_date_of_birth(): void
+    {
+        $this->actingAs($this->createSuperAdmin());
+
+        Livewire::test(EmployeeForm::class)
+            ->set('date_of_birth', '1990-01-01')
+            ->assertSee('Retirement Date')
+            ->assertSee('2050-01-01');
+    }
+
     protected function createSuperAdmin(): User
     {
         $role = Role::query()->create([

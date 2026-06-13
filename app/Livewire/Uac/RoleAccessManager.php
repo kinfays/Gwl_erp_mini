@@ -24,7 +24,7 @@ class RoleAccessManager extends Component
 
     public string $message = '';
 
-    public array $modules = ['uac', 'leave', 'staff', 'letters', 'visitors'];
+    public array $modules = Permission::MODULES;
 
     public bool $showCreateRole = false;
 

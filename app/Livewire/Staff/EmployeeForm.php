@@ -162,6 +162,8 @@ class EmployeeForm extends Component
                 ? optional(District::query()->with('region')->find($this->district_id)?->region)->region_name
                 : null,
             'age' => $this->date_of_birth ? Carbon::parse($this->date_of_birth)->age : null,
+            'retirementAge' => Employee::RETIREMENT_AGE,
+            'retirementDate' => optional(Employee::retirementDateFromBirthDate($this->date_of_birth))->toDateString(),
             'leaveBalances' => $this->employee?->leaveBalances ?? collect(),
         ]);
     }

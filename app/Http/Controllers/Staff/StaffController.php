@@ -40,6 +40,11 @@ class StaffController extends Controller
         return view('staff.import');
     }
 
+    public function reports(): View
+    {
+        return view('staff.reports');
+    }
+
     public function departments(): View
     {
         return view('staff.departments');

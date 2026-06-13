@@ -101,6 +101,28 @@ class IctTeamAccessTest extends TestCase
         $this->assertTrue($target->fresh()->hasRoles(User::ROLE_ADMIN));
     }
 
+    public function test_admin_can_unassign_all_roles_from_a_user(): void
+    {
+        $admin = $this->createRole(User::ROLE_ADMIN, [Permission::MODULE_UAC]);
+        $manager = $this->createRole('manager', [Permission::MODULE_LEAVE]);
+        $region = Region::query()->create(['region_name' => 'Greater Accra']);
+
+        $adminActor = $this->createUserForEmployee($this->createEmployee($region, 'ADM001', 'admin@example.com'));
+        $adminActor->roles()->attach($admin);
+
+        $target = $this->createUserForEmployee($this->createEmployee($region, 'MGR001', 'manager@example.com'));
+        $target->roles()->attach($manager);
+
+        $this
+            ->actingAs($adminActor)
+            ->from(route('uac.users'))
+            ->patch(route('uac.users.update', $target), [])
+            ->assertRedirect(route('uac.users'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(0, $target->fresh()->roles()->count());
+    }
+
     public function test_employee_role_is_not_returned_as_a_visible_role_tag(): void
     {
         $admin = $this->createRole(User::ROLE_ADMIN, [Permission::MODULE_UAC]);

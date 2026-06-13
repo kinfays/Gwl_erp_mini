@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
+use App\Http\Controllers\Transport\TransportExpenseExportController;
+use App\Http\Controllers\Transport\TransportModuleController;
 use App\Http\Controllers\UacController;
 use App\Http\Controllers\Visitors\VisitorExportController;
 use Illuminate\Support\Facades\Route;
@@ -111,6 +114,9 @@ Route::middleware([
             Route::get('/create', [StaffController::class, 'create'])->name('create');
             Route::get('/{employee}/edit', [StaffController::class, 'edit'])->name('edit');
             Route::patch('/{employee}/status', [StaffController::class, 'toggleStatus'])->name('toggle-status');
+            Route::get('/reports', [StaffController::class, 'reports'])
+                ->middleware('permission:staff.view_reports')
+                ->name('reports');
 
             Route::get('/import', [ImportController::class, 'staff'])->name('import');
             Route::get('/import/template/{type}', [ImportController::class, 'downloadTemplate'])
@@ -151,6 +157,76 @@ Route::middleware(['auth', 'active', 'module:letters'])
             ->middleware('permission:letters.create')
             ->name('create');
         Route::get('/closed', fn () => view('letters.active', ['closed' => true]))->name('closed');
+    });
+
+Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team'])
+    ->prefix('assets')
+    ->name('assets.')
+    ->group(function () {
+        Route::get('/', [AssetModuleController::class, 'home'])
+            ->middleware('permission:assets.view_dashboard')
+            ->name('home');
+
+        Route::get('/inventory', [AssetModuleController::class, 'inventory'])
+            ->middleware('permission:assets.view_inventory')
+            ->name('inventory');
+
+        Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
+            ->middleware('permission:assets.manage_maintenance')
+            ->name('maintenance');
+
+        Route::get('/reports', [AssetModuleController::class, 'reports'])
+            ->middleware('permission:assets.manage_reports')
+            ->name('reports');
+
+        Route::get('/agent', [AssetModuleController::class, 'agent'])
+            ->middleware('role:super_admin')
+            ->name('agent');
+    });
+
+Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager,driver,employee'])
+    ->prefix('transport')
+    ->name('transport.')
+    ->group(function () {
+        Route::get('/', [TransportModuleController::class, 'home'])
+            ->middleware('permission:transport.view_dashboard,transport.view_own_vehicle')
+            ->name('home');
+
+        Route::get('/vehicles', [TransportModuleController::class, 'vehicles'])
+            ->middleware('permission:transport.view_vehicles,transport.view_own_vehicle')
+            ->name('vehicles');
+
+        Route::get('/mileage', [TransportModuleController::class, 'mileage'])
+            ->middleware('permission:transport.log_mileage,transport.view_vehicles')
+            ->name('mileage');
+
+        Route::get('/issues', [TransportModuleController::class, 'issues'])
+            ->middleware('permission:transport.report_issues,transport.manage_issues')
+            ->name('issues');
+
+        Route::get('/maintenance', [TransportModuleController::class, 'maintenance'])
+            ->middleware('permission:transport.manage_maintenance')
+            ->name('maintenance');
+
+        Route::get('/expenses', [TransportModuleController::class, 'expenses'])
+            ->middleware('permission:transport.manage_expenses')
+            ->name('expenses');
+
+        Route::get('/expenses/export', TransportExpenseExportController::class)
+            ->middleware('permission:transport.export_expenses')
+            ->name('expenses.export');
+
+        Route::get('/reports', [TransportModuleController::class, 'reports'])
+            ->middleware('permission:transport.view_reports')
+            ->name('reports');
+
+        Route::get('/reports/export/pdf', [TransportModuleController::class, 'reportPdf'])
+            ->middleware('permission:transport.view_reports')
+            ->name('reports.export.pdf');
+
+        Route::get('/reports/export/excel', [TransportModuleController::class, 'reportExcel'])
+            ->middleware('permission:transport.view_reports')
+            ->name('reports.export.excel');
     });
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])

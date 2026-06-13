@@ -16,6 +16,8 @@ class Permission extends Model
     public const MODULE_STAFF = 'staff';
     public const MODULE_LETTERS = 'letters';
     public const MODULE_VISITORS = 'visitors';
+    public const MODULE_ASSETS = 'assets';
+    public const MODULE_TRANSPORT = 'transport';
 
     public const MODULES = [
         self::MODULE_UAC,
@@ -23,6 +25,8 @@ class Permission extends Model
         self::MODULE_STAFF,
         self::MODULE_LETTERS,
         self::MODULE_VISITORS,
+        self::MODULE_ASSETS,
+        self::MODULE_TRANSPORT,
     ];
 
     protected $fillable = [

@@ -58,6 +58,20 @@ if (! function_exists('dashboardModules')) {
                 'route' => route('visitors.home'),
             ],
             [
+                'slug' => 'assets',
+                'title' => 'ICT Assets',
+                'description' => 'Track inventory, maintenance, and device telemetry',
+                'icon' => 'AS',
+                'route' => route('assets.home'),
+            ],
+            [
+                'slug' => 'transport',
+                'title' => 'Transport',
+                'description' => 'Manage fleet assignments, mileage, issues, and expenses',
+                'icon' => 'TR',
+                'route' => route('transport.home'),
+            ],
+            [
                 'slug' => 'uac',
                 'title' => 'User Access Control',
                 'description' => 'Manage users, roles, permissions, and bulk data imports',

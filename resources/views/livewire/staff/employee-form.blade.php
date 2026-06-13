@@ -67,6 +67,16 @@
                     </div>
                 </div>
 
+                <div class="day-counter" style="background:#f7fafc">
+                    <div>
+                        <div class="day-label" style="margin-bottom:2px;color:var(--color-text-primary)">Retirement Date</div>
+                        <div style="font-size:10px;color:var(--color-text-secondary)">Auto-calculated at age {{ $retirementAge }}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div class="day-num" style="color:var(--color-text-primary);font-size:18px">{{ $retirementDate ?? '-' }}</div>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <div class="form-field">
                         <label class="form-label">Date Joined</label>

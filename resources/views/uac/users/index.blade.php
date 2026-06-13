@@ -130,7 +130,7 @@
                                         id: '{{ $user->id }}',
                                         name: '{{ $user->full_name ?? $user->name }}',
                                         email: '{{ $user->email }}',
-                                        roles: {{ $visibleRoles->pluck('id') }}
+                                        roles: @js($visibleRoles->pluck('id')->map(fn ($id) => (string) $id)->values())
                                     })
                                 "
                                 class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all"
@@ -190,14 +190,18 @@
         userId: null,
         name: '',
         email: '',
-        roles: []
+        roles: [],
+        roleOptions: @js($roles->map(fn ($role) => ['id' => (string) $role->id, 'name' => $role->display_name])->values()),
+        removeRole(roleId) {
+            this.roles = this.roles.filter((id) => id !== String(roleId));
+        }
     }"
     x-on:edit-user.window="
         open = true;
         userId = $event.detail.id;
         name = $event.detail.name;
         email = $event.detail.email;
-        roles = $event.detail.roles;
+        roles = ($event.detail.roles || []).map((id) => String(id));
     "
     x-show="open"
     x-cloak
@@ -250,23 +254,41 @@
 
             {{-- Roles --}}
             <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Roles
-                </label>
-                <select
-                    name="roles[]"
-                    multiple
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm h-32"
-                >
-                    @foreach ($roles as $role)
-                        <option
-                            value="{{ $role->id }}"
-                            x-bind:selected="roles.includes({{ $role->id }})"
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-sm font-medium text-slate-700">
+                        Roles
+                    </label>
+                    <span class="text-xs text-slate-500" x-text="`${roles.length} selected`"></span>
+                </div>
+
+                <div class="mb-2 flex flex-wrap gap-2" x-show="roles.length > 0">
+                    <template x-for="role in roleOptions.filter((option) => roles.includes(String(option.id)))" :key="`edit-role-chip-${role.id}`">
+                        <button
+                            type="button"
+                            x-on:click="removeRole(role.id)"
+                            class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
                         >
-                            {{ $role->display_name }}
-                        </option>
+                            <span x-text="role.name"></span>
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="max-h-40 overflow-auto rounded-lg border border-slate-300 px-3 py-2 space-y-2">
+                    @foreach ($roles as $role)
+                        <label class="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="roles[]"
+                                value="{{ $role->id }}"
+                                x-model="roles"
+                                class="rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
+                            />
+                            <span>{{ $role->display_name }}</span>
+                        </label>
                     @endforeach
-                </select>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Uncheck all roles to remove all assigned roles.</p>
             </div>
 
             {{-- Actions --}}
@@ -296,7 +318,11 @@
         staffId: '',
         name: '',
         email: '',
-        roles: []
+        roles: [],
+        roleOptions: @js($roles->map(fn ($role) => ['id' => (string) $role->id, 'name' => $role->display_name])->values()),
+        removeRole(roleId) {
+            this.roles = this.roles.filter((id) => id !== String(roleId));
+        }
     }"
     x-on:create-user.window="
         open = true;
@@ -400,20 +426,40 @@ function employeePicker() {
 
             {{-- Roles --}}
             <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Roles
-                </label>
-                <select
-                    name="roles[]"
-                    multiple
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm h-32"
-                >
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-sm font-medium text-slate-700">
+                        Roles
+                    </label>
+                    <span class="text-xs text-slate-500" x-text="`${roles.length} selected`"></span>
+                </div>
+
+                <div class="mb-2 flex flex-wrap gap-2" x-show="roles.length > 0">
+                    <template x-for="role in roleOptions.filter((option) => roles.includes(String(option.id)))" :key="`create-role-chip-${role.id}`">
+                        <button
+                            type="button"
+                            x-on:click="removeRole(role.id)"
+                            class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                        >
+                            <span x-text="role.name"></span>
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="max-h-40 overflow-auto rounded-lg border border-slate-300 px-3 py-2 space-y-2">
                     @foreach ($roles as $role)
-                        <option value="{{ $role->id }}">
-                            {{ $role->display_name }}
-                        </option>
+                        <label class="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="roles[]"
+                                value="{{ $role->id }}"
+                                x-model="roles"
+                                class="rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
+                            />
+                            <span>{{ $role->display_name }}</span>
+                        </label>
                     @endforeach
-                </select>
+                </div>
             </div>
 
             {{-- Actions --}}

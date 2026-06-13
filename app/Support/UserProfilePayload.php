@@ -47,6 +47,7 @@ class UserProfilePayload
                 'present_appointment' => $employee->present_appointment,
                 'date_of_birth' => optional($employee->date_of_birth)->toDateString(),
                 'age' => $employee->age,
+                'retirement_date' => optional($employee->retirement_date)->toDateString(),
                 'date_joined' => optional($employee->date_joined)->toDateString(),
                 'status' => $employee->is_active ? 'Active' : 'Inactive',
                 'deactivation_reason' => $employee->deactivation_reason,

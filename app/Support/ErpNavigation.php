@@ -91,6 +91,16 @@ class ErpNavigation
                 'route' => $this->safeRoute('visitors.home'),
             ],
             [
+                'slug' => Permission::MODULE_ASSETS,
+                'title' => 'ICT Assets',
+                'route' => $this->safeRoute('assets.home'),
+            ],
+            [
+                'slug' => Permission::MODULE_TRANSPORT,
+                'title' => 'Transport',
+                'route' => $this->safeRoute('transport.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'route' => $this->safeRoute('uac.index'),
@@ -106,6 +116,8 @@ class ErpNavigation
             Permission::MODULE_UAC => $this->uacSidebar($user),
             Permission::MODULE_LETTERS => $this->lettersSidebar($user),
             Permission::MODULE_VISITORS => $this->visitorsSidebar($user),
+            Permission::MODULE_ASSETS => $this->assetsSidebar($user),
+            Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
             default => [],
         };
 
@@ -210,6 +222,7 @@ class ErpNavigation
         $canManageRegions = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_regions');
         $canManageLocations = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_locations');
         $canManageJobTitles = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_job_titles');
+        $canViewReports = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.view_reports');
 
         return [
             [
@@ -228,6 +241,13 @@ class ErpNavigation
             [
                 'type' => 'section',
                 'label' => 'Data',
+            ],
+            [
+                'label' => 'Reports',
+                'route' => 'staff.reports',
+                'active' => ['staff.reports'],
+                'icon' => $this->icon('report'),
+                'can' => $canViewReports,
             ],
             [
                 'label' => 'Import / Export',
@@ -352,6 +372,125 @@ class ErpNavigation
                 'active' => ['visitors.kiosk'],
                 'icon' => $this->icon('grid'),
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'receptionist') || $currentUser->hasPermission('visitors.kiosk'),
+            ],
+        ];
+    }
+
+    protected function assetsSidebar(User $user): array
+    {
+        return [
+            [
+                'label' => 'Dashboard',
+                'route' => 'assets.home',
+                'active' => ['assets.home'],
+                'icon' => $this->icon('dashboard'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_dashboard') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'label' => 'All Assets',
+                'route' => 'assets.inventory',
+                'active' => ['assets.inventory'],
+                'icon' => $this->icon('list'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_inventory') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Operations',
+            ],
+            [
+                'label' => 'Maintenance',
+                'route' => 'assets.maintenance',
+                'active' => ['assets.maintenance'],
+                'icon' => $this->icon('spark'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_maintenance') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'label' => 'Issue Reporting',
+                'route' => 'assets.reports',
+                'active' => ['assets.reports'],
+                'icon' => $this->icon('report'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_reports') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Agent',
+            ],
+            [
+                'label' => 'Agent Reports',
+                'route' => 'assets.agent',
+                'active' => ['assets.agent'],
+                'icon' => $this->icon('bars'),
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin'),
+            ],
+        ];
+    }
+
+    protected function transportSidebar(User $user): array
+    {
+        $canManageVehicles = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'transport_manager')
+            || $currentUser->hasPermission('transport.view_vehicles');
+        $canOperate = fn (User $currentUser) => $currentUser->hasPermission('transport.log_mileage')
+            || $currentUser->hasPermission('transport.report_issues')
+            || $currentUser->hasRoles('super_admin', 'transport_manager');
+        $canManageMaintenance = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'transport_manager')
+            || $currentUser->hasPermission('transport.manage_maintenance');
+        $canManageExpenses = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'transport_manager')
+            || $currentUser->hasPermission('transport.manage_expenses');
+        $canViewReports = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'transport_manager')
+            || $currentUser->hasPermission('transport.view_reports');
+
+        return [
+            [
+                'label' => 'Dashboard',
+                'route' => 'transport.home',
+                'active' => ['transport.home'],
+                'icon' => $this->icon('dashboard'),
+            ],
+            [
+                'label' => 'Vehicles',
+                'route' => 'transport.vehicles',
+                'active' => ['transport.vehicles'],
+                'icon' => $this->icon('list'),
+                'can' => $canManageVehicles,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Operations',
+            ],
+            [
+                'label' => 'Mileage',
+                'route' => 'transport.mileage',
+                'active' => ['transport.mileage'],
+                'icon' => $this->icon('grid'),
+                'can' => $canOperate,
+            ],
+            [
+                'label' => 'Issues',
+                'route' => 'transport.issues',
+                'active' => ['transport.issues'],
+                'icon' => $this->icon('report'),
+                'can' => $canOperate,
+            ],
+            [
+                'label' => 'Maintenance',
+                'route' => 'transport.maintenance',
+                'active' => ['transport.maintenance'],
+                'icon' => $this->icon('spark'),
+                'can' => $canManageMaintenance,
+            ],
+            [
+                'label' => 'Expenses',
+                'route' => 'transport.expenses',
+                'active' => ['transport.expenses'],
+                'icon' => $this->icon('bars'),
+                'can' => $canManageExpenses,
+            ],
+            [
+                'label' => 'Reports',
+                'route' => 'transport.reports',
+                'active' => ['transport.reports'],
+                'icon' => $this->icon('report'),
+                'can' => $canViewReports,
             ],
         ];
     }

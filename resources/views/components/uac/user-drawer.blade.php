@@ -167,6 +167,7 @@ function userDrawer() {
                 { label: 'Unit', value: employee.unit ?? '-' },
                 { label: 'Appointment', value: employee.present_appointment ?? '-' },
                 { label: 'DOB / Age', value: `${employee.date_of_birth ?? '-'}${employee.age ? ` (Age ${employee.age})` : ''}` },
+                { label: 'Retirement Date', value: employee.retirement_date ?? '-' },
                 { label: 'Date Joined', value: employee.date_joined ?? '-' },
             ];
         },

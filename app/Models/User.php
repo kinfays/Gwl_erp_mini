@@ -18,6 +18,8 @@ class User extends Authenticatable
     public const ROLE_ADMIN = 'admin';
     public const ROLE_EMPLOYEE = 'employee';
     public const ROLE_ICT_TEAM = 'ict_team';
+    public const ROLE_TRANSPORT_MANAGER = 'transport_manager';
+    public const ROLE_DRIVER = 'driver';
 
     protected $fillable = [
         'full_name',
@@ -28,6 +30,7 @@ class User extends Authenticatable
         'is_active',
         'last_login_at',
         'must_change_password',
+        'api_token',
     ];
 
     protected $attributes = [
@@ -37,6 +40,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'api_token',
     ];
 
     protected function casts(): array
@@ -128,7 +132,15 @@ class User extends Authenticatable
             ->get()
             ->flatMap(function (Role $role) {
                 if ($role->name === self::ROLE_ADMIN) {
-                    return [Permission::MODULE_UAC];
+                    $adminModules = $role->moduleAccess
+                        ->where('can_access', true)
+                        ->pluck('module')
+                        ->intersect([Permission::MODULE_UAC, Permission::MODULE_ASSETS])
+                        ->all();
+
+                    $adminModules[] = Permission::MODULE_UAC;
+
+                    return $adminModules;
                 }
 
                 return $role->moduleAccess

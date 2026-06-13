@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class GeneralDatabaseNotification extends Notification
@@ -14,12 +15,13 @@ class GeneralDatabaseNotification extends Notification
         protected string $message,
         protected ?string $url = null,
         protected string $module = 'general',
-        protected array $meta = []
+        protected array $meta = [],
+        protected bool $sendMail = false
     ) {}
 
     public function via($notifiable): array
     {
-        return ['database'];
+        return $this->sendMail ? ['database', 'mail'] : ['database'];
     }
 
     public function toArray($notifiable): array
@@ -31,5 +33,18 @@ class GeneralDatabaseNotification extends Notification
             'module' => $this->module,
             ...$this->meta,
         ];
+    }
+
+    public function toMail($notifiable): MailMessage
+    {
+        $mail = (new MailMessage)
+            ->subject($this->title)
+            ->line($this->message);
+
+        if ($this->url) {
+            $mail->action('Open in portal', $this->url);
+        }
+
+        return $mail;
     }
 }

@@ -27,11 +27,11 @@
 
         <div class="stat">
             <div class="stat-lbl">On leave now</div>
-            <div class="stat-val">{{ $pendingCount }}</div>
+            <div class="stat-val">{{ $onLeaveNowCount }}</div>
         </div>
         <div class="stat">
             <div class="stat-lbl">Pending Request</div>
-            <div class="stat-val">{{ $approvedThisMonth }}</div>
+            <div class="stat-val">{{ $pendingCount }}</div>
         </div>
         
 

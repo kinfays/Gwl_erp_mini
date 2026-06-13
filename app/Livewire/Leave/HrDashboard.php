@@ -12,6 +12,10 @@ class HrDashboard extends Component
 {
     use EnforcesModuleAccess;
 
+    public int $zoneStaffCount = 0;
+
+    public int $onLeaveNowCount = 0;
+
     public int $pendingCount = 0;
 
     public int $approvedThisMonth = 0;
@@ -43,6 +47,7 @@ class HrDashboard extends Component
         $this->loadPendingApprovals();
         $this->loadLeaveByType();
         $this->loadGenderBreakdown();
+        $this->loadZoneStaffCount();
         $this->loadStats();
         $this->loadSlaStats();
         $this->loadSlowApprovals();
@@ -65,6 +70,15 @@ class HrDashboard extends Component
             $q->where('region_id', $employee->region_id);
         }
 
+        $today = today();
+
+        $this->onLeaveNowCount = (clone $q)
+            ->where('leave_status', 'Approved')
+            ->whereDate('start_date', '<=', $today)
+            ->whereDate('end_date', '>=', $today)
+            ->distinct('requester_id')
+            ->count('requester_id');
+
         $this->pendingCount = (clone $q)->where('leave_status', 'Pending Approval')->count();
 
         $this->approvedThisMonth = (clone $q)
@@ -78,6 +92,25 @@ class HrDashboard extends Component
             ->whereYear('updated_at', now()->year)
             ->whereMonth('updated_at', now()->month)
             ->count();
+    }
+
+    protected function loadZoneStaffCount(): void
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $employee = $this->employee();
+
+        $query = Employee::query()
+            ->visibleInErp()
+            ->where('is_active', true);
+
+        if ($user->isHrUser() && ! $user->isHeadOfficeHr()) {
+            abort_if(! $employee, 403, 'Employee profile is required for regional leave access.');
+
+            $query->where('region_id', $employee->region_id);
+        }
+
+        $this->zoneStaffCount = (int) $query->count();
     }
 
     protected function loadSlaStats(): void

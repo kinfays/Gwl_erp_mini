@@ -13,6 +13,8 @@ class Employee extends Model
 {
     use HasFactory;
 
+    public const RETIREMENT_AGE = 60;
+
     public const DEACTIVATION_REASONS = [
         'left' => 'Left',
         'retired' => 'Retired',
@@ -131,6 +133,20 @@ class Employee extends Model
         }
 
         return Carbon::parse($this->date_of_birth)->age;
+    }
+
+    public function getRetirementDateAttribute(): ?Carbon
+    {
+        return self::retirementDateFromBirthDate($this->date_of_birth);
+    }
+
+    public static function retirementDateFromBirthDate(mixed $dateOfBirth): ?Carbon
+    {
+        if (! $dateOfBirth) {
+            return null;
+        }
+
+        return Carbon::parse($dateOfBirth)->addYearsNoOverflow(self::RETIREMENT_AGE);
     }
 
     public function getAnnualLeaveDaysAttribute(): int

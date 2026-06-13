@@ -22,14 +22,18 @@ class RoleSeeder extends Seeder
             'regional_chief_manager',
             'employee',
             'ict_team',
+            'transport_manager',
+            'driver',
             'secretary',
             'receptionist',
         ];
 
         foreach ($roles as $role) {
-            $displayName = $role === 'ict_team'
-                ? 'ICT Team'
-                : Str::of($role)->replace('_', ' ')->title()->toString();
+            $displayName = match ($role) {
+                'ict_team' => 'ICT Team',
+                'transport_manager' => 'Transport Manager',
+                default => Str::of($role)->replace('_', ' ')->title()->toString(),
+            };
 
             Role::query()->updateOrCreate(
                 ['name' => $role],
