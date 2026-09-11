@@ -9,6 +9,13 @@
         </div>
     </div>
 
+    @if ($dueCount > 0)
+        <div class="erp-card" style="margin-top:14px;background:#faeeda;border-color:#fac775;color:#854f0b;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>{{ $dueCount }} {{ \Illuminate\Support\Str::plural('device', $dueCount) }} due for maintenance (open tickets).</span>
+            <button type="button" wire:click="$set('dueOnly', true)" class="btn">View due</button>
+        </div>
+    @endif
+
     <div class="pg" style="margin-top:14px">
         <div class="pg-head">
             <span class="pg-title">Maintenance Log</span>
@@ -26,6 +33,9 @@
                         <option value="{{ $option }}">{{ $option }}</option>
                     @endforeach
                 </select>
+                <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary)">
+                    <input type="checkbox" wire:model.live="dueOnly"> Due only
+                </label>
             </div>
         </div>
 
@@ -52,7 +62,7 @@
                         <td>{{ $row->technician ?: '-' }}</td>
                         <td>{{ $row->location ?: '-' }}</td>
                         <td>
-                            <span class="pill {{ $row->status === 'Completed' ? 'p-g' : ($row->status === 'In Progress' ? 'p-w' : 'p-d') }}">
+                            <span class="pill {{ $row->status === 'Completed' ? 'p-g' : ($row->status === 'In Progress' ? 'p-a' : 'p-d') }}">
                                 {{ $row->status }}
                             </span>
                         </td>

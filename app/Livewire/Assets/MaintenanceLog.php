@@ -21,6 +21,14 @@ class MaintenanceLog extends Component
 
     public string $type = '';
 
+    /**
+     * "Due for maintenance" = an open ticket (status='Open'), the closest
+     * existing signal since there's no due-date field on this table today.
+     * This surfaces what the dashboard's old "Maintenance Check" panel used
+     * to show.
+     */
+    public bool $dueOnly = false;
+
     public int $perPage = 15;
 
     public bool $showForm = false;
@@ -44,7 +52,7 @@ class MaintenanceLog extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'type', 'perPage'], true)) {
+        if (in_array($name, ['search', 'status', 'type', 'dueOnly', 'perPage'], true)) {
             $this->resetPage();
         }
     }
@@ -168,6 +176,7 @@ class MaintenanceLog extends Component
             })
             ->when($this->status, fn ($query) => $query->where('status', $this->status))
             ->when($this->type, fn ($query) => $query->where('maintenance_type', $this->type))
+            ->when($this->dueOnly, fn ($query) => $query->where('status', 'Open'))
             ->latest()
             ->paginate($this->perPage);
 
@@ -178,11 +187,17 @@ class MaintenanceLog extends Component
         $statusOptions = IctAssetMaintenance::query()->select('status')->distinct()->orderBy('status')->pluck('status');
         $typeOptions = IctAssetMaintenance::query()->select('maintenance_type')->distinct()->orderBy('maintenance_type')->pluck('maintenance_type');
 
+        $dueCount = IctAssetMaintenance::query()
+            ->whereHas('asset', fn ($assetQuery) => $this->scopeAssetsForActor($assetQuery))
+            ->where('status', 'Open')
+            ->count();
+
         return view('livewire.assets.maintenance-log', [
             'maintenance' => $maintenance,
             'assets' => $assets,
             'statusOptions' => $statusOptions,
             'typeOptions' => $typeOptions,
+            'dueCount' => $dueCount,
         ]);
     }
 }

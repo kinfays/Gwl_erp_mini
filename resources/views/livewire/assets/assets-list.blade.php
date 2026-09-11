@@ -1,8 +1,8 @@
 <div>
     <div class="page-head">
         <div class="ph-left">
-            <h2>Asset Inventory</h2>
-            <p>Unified ICT assets list with region-aware filtering and live health signals.</p>
+            <h2>Assets</h2>
+            <p>Computers, laptops, printers, photocopiers, all-in-ones and servers.</p>
         </div>
         <div class="ph-right">
             @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.create'))
@@ -15,7 +15,7 @@
         <div class="pg-head">
             <span class="pg-title">Filters</span>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search name, serial, host, MAC, assignee">
+                <input type="text" wire:model.live="search" class="form-input" placeholder="Search name, serial, assignee">
                 <select wire:model.live="status" class="form-input">
                     <option value="">All statuses</option>
                     @foreach ($statusOptions as $option)
@@ -23,9 +23,9 @@
                     @endforeach
                 </select>
                 <select wire:model.live="assetType" class="form-input">
-                    <option value="">All categories</option>
-                    @foreach ($assetTypeOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
+                    <option value="">All types</option>
+                    @foreach ($assetTypes as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="districtId" class="form-input">
@@ -46,31 +46,24 @@
             <thead>
                 <tr>
                     <th>Asset</th>
-                    <th>Category / Model</th>
+                    <th>Type / Model</th>
                     <th>Location</th>
                     <th>Assigned To</th>
                     <th>Status</th>
-                    <th>Last Seen</th>
                     <th style="width: 90px;">Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($assets as $asset)
-                    @php($seen = $this->lastSeenState($asset->agent_last_report_at))
                     <tr>
                         <td>
                             <div>{{ $asset->asset_name }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $asset->serial_number ?: 'No serial' }}
-                                @if ($asset->hostname)
-                                    | {{ $asset->hostname }}
-                                @endif
-                            </div>
+                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $asset->serial_number ?: 'No serial' }}</div>
                         </td>
                         <td>
-                            <div>{{ $asset->asset_type }}</div>
+                            <div>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</div>
                             <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $asset->assetModel?->name ?: ($asset->model_name ?: 'No model') }}
+                                {{ $asset->assetModel?->name ?: 'No model' }}
                             </div>
                         </td>
                         <td>
@@ -79,15 +72,9 @@
                         </td>
                         <td>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
                         <td>
-                            <span class="pill {{ $asset->status === 'Active' ? 'p-g' : ($asset->status === 'In Repair' ? 'p-w' : 'p-d') }}">
+                            <span class="pill {{ $asset->status === 'Active' ? 'p-g' : ($asset->status === 'In Repair' ? 'p-a' : 'p-d') }}">
                                 {{ $asset->status }}
                             </span>
-                        </td>
-                        <td>
-                            <div>{{ $seen['dot'] }} {{ $seen['label'] }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $asset->agent_last_report_at?->diffForHumans() ?: 'No agent report' }}
-                            </div>
                         </td>
                         <td>
                             @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.edit'))
@@ -99,7 +86,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" style="text-align:center;color:var(--color-text-secondary);padding:20px">
+                        <td colspan="6" style="text-align:center;color:var(--color-text-secondary);padding:20px">
                             No assets found for your filters.
                         </td>
                     </tr>
@@ -117,30 +104,38 @@
 
     @if ($showForm)
         <div class="letter-panel-backdrop">
-            <div class="visitor-signature-modal" style="max-width: 980px;">
+            <div class="visitor-signature-modal" style="max-width: 780px;">
                 <div class="pg-head">
-                    <span class="pg-title">{{ $editingAssetId ? 'Edit Asset' : 'New Asset' }}</span>
+                    <span class="pg-title">{{ $editingAssetId ? 'Edit Asset' : 'Add Asset' }}</span>
                     <button type="button" wire:click="closeForm" class="actn">Close</button>
                 </div>
 
                 <div style="padding:14px">
-                    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-                        <div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-label">Asset Type</label>
+                            <select wire:model.defer="form.asset_type" class="form-input">
+                                <option value="">Select type</option>
+                                @foreach ($assetTypes as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('form.asset_type') <div class="txt-err">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="form-field">
                             <label class="form-label">Asset Name</label>
                             <input type="text" wire:model.defer="form.asset_name" class="form-input">
                             @error('form.asset_name') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
                             <label class="form-label">Serial Number</label>
                             <input type="text" wire:model.defer="form.serial_number" class="form-input">
                             @error('form.serial_number') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
-                            <label class="form-label">Category</label>
-                            <input type="text" wire:model.defer="form.asset_type" class="form-input" placeholder="Laptop, Desktop, Router, ...">
-                            @error('form.asset_type') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
+                        <div class="form-field">
                             <label class="form-label">Model</label>
                             <select wire:model.defer="form.ict_asset_model_id" class="form-input">
                                 <option value="">Select model</option>
@@ -150,17 +145,10 @@
                             </select>
                             @error('form.ict_asset_model_id') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
-                            <label class="form-label">Status</label>
-                            <select wire:model.defer="form.status" class="form-input">
-                                <option value="Active">Active</option>
-                                <option value="In Repair">In Repair</option>
-                                <option value="Retired">Retired</option>
-                                <option value="Lost">Lost</option>
-                            </select>
-                            @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
                             <label class="form-label">Assigned To</label>
                             <select wire:model.defer="form.assigned_to_employee_id" class="form-input">
                                 <option value="">Unassigned</option>
@@ -170,7 +158,36 @@
                             </select>
                             @error('form.assigned_to_employee_id') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
+                        <div class="form-field">
+                            <label class="form-label">Previous Assigned</label>
+                            <input type="text" class="form-input" value="{{ $previousAssignedLabel ?: 'None' }}" disabled>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-label">Status</label>
+                            <select wire:model.defer="form.status" class="form-input">
+                                @foreach ($statusOptions as $option)
+                                    <option value="{{ $option }}">{{ $option }}</option>
+                                @endforeach
+                            </select>
+                            @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Location (District)</label>
+                            <select wire:model.defer="form.district_id" class="form-input">
+                                <option value="">Select location</option>
+                                @foreach ($districts as $district)
+                                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                                @endforeach
+                            </select>
+                            @error('form.district_id') <div class="txt-err">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
                             <label class="form-label">Department</label>
                             <select wire:model.defer="form.department_id" class="form-input">
                                 <option value="">Select department</option>
@@ -180,7 +197,15 @@
                             </select>
                             @error('form.department_id') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
+                        <div class="form-field">
+                            <label class="form-label">Date</label>
+                            <input type="date" wire:model.defer="form.purchased_at" class="form-input">
+                            @error('form.purchased_at') <div class="txt-err">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
                             <label class="form-label">Region</label>
                             <select wire:model.defer="form.region_id" class="form-input" @if ($regionLocked) disabled @endif>
                                 <option value="">Select region</option>
@@ -190,31 +215,7 @@
                             </select>
                             @error('form.region_id') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div>
-                            <label class="form-label">District</label>
-                            <select wire:model.defer="form.district_id" class="form-input">
-                                <option value="">Select district</option>
-                                @foreach ($districts as $district)
-                                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.district_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Hostname</label>
-                            <input type="text" wire:model.defer="form.hostname" class="form-input">
-                            @error('form.hostname') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">MAC Address</label>
-                            <input type="text" wire:model.defer="form.mac_address" class="form-input">
-                            @error('form.mac_address') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Device IP</label>
-                            <input type="text" wire:model.defer="form.device_ip" class="form-input">
-                            @error('form.device_ip') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
+                        <div class="form-field"></div>
                     </div>
 
                     <div style="margin-top:10px">

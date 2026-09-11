@@ -16,12 +16,52 @@ class IctAsset extends Model
     public const STATUS_RETIRED = 'Retired';
     public const STATUS_LOST = 'Lost';
 
+    public const DEVICE_CATEGORY_ASSET = 'asset';
+    public const DEVICE_CATEGORY_PHONE = 'phone';
+    public const DEVICE_CATEGORY_NETWORK = 'network';
+
+    public const DEVICE_CATEGORIES = [
+        self::DEVICE_CATEGORY_ASSET,
+        self::DEVICE_CATEGORY_PHONE,
+        self::DEVICE_CATEGORY_NETWORK,
+    ];
+
+    /**
+     * Canonical asset_type vocabulary per device_category. Used to populate
+     * every form's AssetType/DeviceType dropdown and to bucket dashboard
+     * KPI cards (e.g. the "Computers" card = PC + AIO).
+     */
+    public const ASSET_TYPES = [
+        self::DEVICE_CATEGORY_ASSET => [
+            'PC' => 'Computer (PC)',
+            'AIO' => 'All-in-One',
+            'Laptop' => 'Laptop',
+            'Server' => 'Server',
+            'PRT' => 'Printer',
+            'PTC' => 'Photocopier',
+        ],
+        self::DEVICE_CATEGORY_PHONE => [
+            'POS' => 'POS Terminal',
+            'SIM' => 'SIM Card',
+            'Ph' => 'Phone',
+        ],
+        self::DEVICE_CATEGORY_NETWORK => [
+            'RT' => 'Router',
+            'SW' => 'Switch',
+            'AP' => 'Access Point',
+            'MiFi' => 'MiFi',
+            'P2P' => 'P2P Radio',
+            '4GRT' => '4G Router',
+        ],
+    ];
+
     protected $table = 'ict_assets';
 
     protected $fillable = [
         'asset_name',
         'serial_number',
         'asset_type',
+        'device_category',
         'ict_asset_model_id',
         'status',
         'assigned_to_employee_id',
@@ -45,6 +85,14 @@ class IctAsset extends Model
         'notes',
         'last_seen_at',
         'agent_last_report_at',
+        'imei',
+        'user_phone_number',
+        'device_phone_number',
+        'device_username',
+        'login_password',
+        'ssid',
+        'ssid_password',
+        'actual_location',
     ];
 
     protected $casts = [
@@ -60,6 +108,8 @@ class IctAsset extends Model
         'warranty_expires_at' => 'date',
         'last_seen_at' => 'datetime',
         'agent_last_report_at' => 'datetime',
+        'login_password' => 'encrypted',
+        'ssid_password' => 'encrypted',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

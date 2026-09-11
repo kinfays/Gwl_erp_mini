@@ -1690,6 +1690,11 @@ tr:hover td {
     color: #a32d2d;
 }
 
+.form-hint {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+
 .day-counter {
     background: #e6f1fb;
     border-radius: var(--border-radius-md);

@@ -4,30 +4,29 @@ namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
-use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
 use App\Models\Region;
-use Carbon\Carbon;
+use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Livewire\WithPagination;
 
-class Inventory extends Component
+class PhonesList extends Component
 {
     use EnforcesModuleAccess;
     use ScopesAssetsByActor;
     use WithPagination;
+
+    public const CATEGORY = IctAsset::DEVICE_CATEGORY_PHONE;
 
     public string $search = '';
 
     public string $status = '';
 
     public string $assetType = '';
-
-    public string $districtId = '';
 
     public int $perPage = 15;
 
@@ -37,20 +36,20 @@ class Inventory extends Component
 
     public bool $regionLocked = false;
 
+    public ?string $previousAssignedLabel = null;
+
     public array $form = [
         'asset_name' => '',
         'serial_number' => '',
         'asset_type' => '',
+        'imei' => '',
         'ict_asset_model_id' => null,
         'status' => 'Active',
         'assigned_to_employee_id' => null,
-        'department_id' => null,
         'region_id' => null,
         'district_id' => null,
-        'device_ip' => '',
-        'hostname' => '',
-        'mac_address' => '',
-        'notes' => '',
+        'user_phone_number' => '',
+        'device_phone_number' => '',
     ];
 
     public function mount(): void
@@ -66,7 +65,7 @@ class Inventory extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'districtId', 'perPage'], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'perPage'], true)) {
             $this->resetPage();
         }
     }
@@ -84,24 +83,26 @@ class Inventory extends Component
     {
         $this->authorizeAction('assets.edit');
 
-        $asset = $this->scopeAssetsForActor(IctAsset::query())->findOrFail($assetId);
+        $asset = $this->scopeAssetsForActor(IctAsset::query())
+            ->where('device_category', self::CATEGORY)
+            ->with('previousAssignedTo')
+            ->findOrFail($assetId);
 
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
+        $this->previousAssignedLabel = $asset->previousAssignedTo?->full_name;
         $this->form = [
             'asset_name' => (string) $asset->asset_name,
             'serial_number' => (string) $asset->serial_number,
             'asset_type' => (string) $asset->asset_type,
+            'imei' => (string) $asset->imei,
             'ict_asset_model_id' => $asset->ict_asset_model_id,
             'status' => (string) $asset->status,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
-            'department_id' => $asset->department_id,
             'region_id' => $asset->region_id,
             'district_id' => $asset->district_id,
-            'device_ip' => (string) $asset->device_ip,
-            'hostname' => (string) $asset->hostname,
-            'mac_address' => (string) $asset->mac_address,
-            'notes' => (string) $asset->notes,
+            'user_phone_number' => (string) $asset->user_phone_number,
+            'device_phone_number' => (string) $asset->device_phone_number,
         ];
     }
 
@@ -117,8 +118,7 @@ class Inventory extends Component
         $permission = $this->editingAssetId ? 'assets.edit' : 'assets.create';
         $this->authorizeAction($permission);
 
-        $validated = $this->validate($this->rules());
-        $validated = $validated['form'];
+        $validated = $this->validate($this->rules())['form'];
 
         if ($this->actorIsRegionScopedIct()) {
             $validated['region_id'] = $this->actorRegionId();
@@ -128,50 +128,19 @@ class Inventory extends Component
             $employee = Employee::query()->find($validated['assigned_to_employee_id']);
 
             if ($employee) {
-                $validated['department_id'] = $validated['department_id'] ?: $employee->department_id;
                 $validated['district_id'] = $validated['district_id'] ?: $employee->district_id;
                 $validated['region_id'] = $validated['region_id'] ?: $employee->region_id;
             }
         }
 
-        if ($this->editingAssetId) {
-            $asset = $this->scopeAssetsForActor(IctAsset::query())->findOrFail($this->editingAssetId);
-            $oldAssigned = $asset->assigned_to_employee_id;
-            $newAssigned = $validated['assigned_to_employee_id'] ?? null;
+        $existing = $this->editingAssetId
+            ? $this->scopeAssetsForActor(IctAsset::query())->where('device_category', self::CATEGORY)->findOrFail($this->editingAssetId)
+            : null;
 
-            if ($oldAssigned && $oldAssigned !== $newAssigned) {
-                $validated['previous_assigned_to_employee_id'] = $oldAssigned;
-            }
+        app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing);
 
-            $asset->update($validated);
-            $message = 'Asset updated successfully.';
-        } else {
-            IctAsset::query()->create($validated);
-            $message = 'Asset created successfully.';
-        }
-
-        $this->dispatch('toast', type: 'success', message: $message);
+        $this->dispatch('toast', type: 'success', message: $existing ? 'Phone device updated successfully.' : 'Phone device created successfully.');
         $this->closeForm();
-    }
-
-    public function lastSeenState($timestamp): array
-    {
-        if (! $timestamp) {
-            return ['dot' => '🔴', 'label' => 'Never'];
-        }
-
-        $seenAt = Carbon::parse($timestamp);
-        $hours = $seenAt->diffInHours(now());
-
-        if ($hours < 24) {
-            return ['dot' => '🟢', 'label' => 'Active < 24h'];
-        }
-
-        if ($hours <= 24 * 7) {
-            return ['dot' => '🟡', 'label' => 'Seen this week'];
-        }
-
-        return ['dot' => '🔴', 'label' => 'Stale > 7 days'];
     }
 
     protected function rules(): array
@@ -184,17 +153,15 @@ class Inventory extends Component
                 'max:255',
                 Rule::unique('ict_assets', 'serial_number')->ignore($this->editingAssetId),
             ],
-            'form.asset_type' => ['required', 'string', 'max:120'],
+            'form.asset_type' => ['required', Rule::in(array_keys(IctAsset::ASSET_TYPES[self::CATEGORY]))],
+            'form.imei' => ['nullable', 'string', 'max:50'],
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
-            'form.department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'form.region_id' => ['nullable', 'integer', 'exists:regions,id'],
             'form.district_id' => ['nullable', 'integer', 'exists:districts,id'],
-            'form.device_ip' => ['nullable', 'string', 'max:255'],
-            'form.hostname' => ['nullable', 'string', 'max:255'],
-            'form.mac_address' => ['nullable', 'string', 'max:255'],
-            'form.notes' => ['nullable', 'string'],
+            'form.user_phone_number' => ['nullable', 'string', 'max:30'],
+            'form.device_phone_number' => ['nullable', 'string', 'max:30'],
         ];
     }
 
@@ -209,20 +176,19 @@ class Inventory extends Component
 
     protected function resetForm(): void
     {
+        $this->previousAssignedLabel = null;
         $this->form = [
             'asset_name' => '',
             'serial_number' => '',
             'asset_type' => '',
+            'imei' => '',
             'ict_asset_model_id' => null,
             'status' => 'Active',
             'assigned_to_employee_id' => null,
-            'department_id' => null,
             'region_id' => $this->regionLocked ? $this->actorRegionId() : null,
             'district_id' => null,
-            'device_ip' => '',
-            'hostname' => '',
-            'mac_address' => '',
-            'notes' => '',
+            'user_phone_number' => '',
+            'device_phone_number' => '',
         ];
     }
 
@@ -231,36 +197,22 @@ class Inventory extends Component
         $assets = $this->scopeAssetsForActor(
             IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region'])
         )
+            ->where('device_category', self::CATEGORY)
             ->when($this->search, function ($query) {
                 $term = '%'.$this->search.'%';
                 $query->where(function ($inner) use ($term) {
                     $inner
                         ->where('asset_name', 'like', $term)
                         ->orWhere('serial_number', 'like', $term)
-                        ->orWhere('hostname', 'like', $term)
-                        ->orWhere('mac_address', 'like', $term)
+                        ->orWhere('imei', 'like', $term)
+                        ->orWhere('device_phone_number', 'like', $term)
                         ->orWhereHas('assignedTo', fn ($employee) => $employee->where('full_name', 'like', $term));
                 });
             })
             ->when($this->status, fn ($query) => $query->where('status', $this->status))
             ->when($this->assetType, fn ($query) => $query->where('asset_type', $this->assetType))
-            ->when($this->districtId !== '', fn ($query) => $query->where('district_id', (int) $this->districtId))
             ->latest()
             ->paginate($this->perPage);
-
-        $statusOptions = $this->scopeAssetsForActor(IctAsset::query())
-            ->select('status')
-            ->whereNotNull('status')
-            ->distinct()
-            ->orderBy('status')
-            ->pluck('status');
-
-        $assetTypeOptions = $this->scopeAssetsForActor(IctAsset::query())
-            ->select('asset_type')
-            ->whereNotNull('asset_type')
-            ->distinct()
-            ->orderBy('asset_type')
-            ->pluck('asset_type');
 
         $districts = District::query()
             ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
@@ -274,6 +226,7 @@ class Inventory extends Component
 
         $models = IctAssetModel::query()
             ->where('is_active', true)
+            ->when($this->form['asset_type'], fn ($query) => $query->where('category', $this->form['asset_type']))
             ->orderBy('name')
             ->get();
 
@@ -283,14 +236,13 @@ class Inventory extends Component
             ->limit(500)
             ->get();
 
-        return view('livewire.assets.inventory', [
+        return view('livewire.assets.phones-list', [
             'assets' => $assets,
-            'statusOptions' => $statusOptions,
-            'assetTypeOptions' => $assetTypeOptions,
+            'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
+            'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
             'districts' => $districts,
             'regions' => $regions,
             'models' => $models,
-            'departments' => Department::query()->orderBy('department_name')->get(),
             'employees' => $employees,
         ]);
     }

@@ -10,6 +10,15 @@ class IctAssetIssueReport extends Model
 {
     use HasFactory;
 
+    public const ISSUE_TYPES = [
+        'Network',
+        'Password Reset',
+        'BitLocker',
+        'Hardware Fault',
+        'Software',
+        'Other',
+    ];
+
     protected $table = 'ict_asset_issue_reports';
 
     protected $fillable = [

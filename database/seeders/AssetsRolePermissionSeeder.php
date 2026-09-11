@@ -26,6 +26,8 @@ class AssetsRolePermissionSeeder extends Seeder
                 'assets.view_agent_reports',
                 'assets.link_agent_reports',
                 'assets.agent_ingest',
+                'assets.manage_ip_ranges',
+                'assets.view_network_secrets',
             ],
             'ict_team' => [
                 'assets.view_dashboard',
@@ -35,6 +37,7 @@ class AssetsRolePermissionSeeder extends Seeder
                 'assets.manage_maintenance',
                 'assets.manage_reports',
                 'assets.agent_ingest',
+                'assets.view_network_secrets',
             ],
         ];
 

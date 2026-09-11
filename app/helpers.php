@@ -72,6 +72,13 @@ if (! function_exists('dashboardModules')) {
                 'route' => route('transport.home'),
             ],
             [
+                'slug' => 'credit_union',
+                'title' => 'Credit Union',
+                'description' => 'Register members, post shares and savings, and issue statements',
+                'icon' => 'CU',
+                'route' => route('credit-union.home'),
+            ],
+            [
                 'slug' => 'uac',
                 'title' => 'User Access Control',
                 'description' => 'Manage users, roles, permissions, and bulk data imports',

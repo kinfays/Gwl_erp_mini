@@ -24,6 +24,8 @@ class RoleSeeder extends Seeder
             'ict_team',
             'transport_manager',
             'driver',
+            'credit_union_officer',
+            'credit_union_committee',
             'secretary',
             'receptionist',
         ];
@@ -32,6 +34,8 @@ class RoleSeeder extends Seeder
             $displayName = match ($role) {
                 'ict_team' => 'ICT Team',
                 'transport_manager' => 'Transport Manager',
+                'credit_union_officer' => 'Credit Union Officer',
+                'credit_union_committee' => 'Credit Union Committee',
                 default => Str::of($role)->replace('_', ' ')->title()->toString(),
             };
 

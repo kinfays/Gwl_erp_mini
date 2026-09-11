@@ -14,7 +14,7 @@ class HrRegionModuleAccessTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_hr_region_role_gets_all_modules_except_uac_assets_and_transport_by_default(): void
+    public function test_hr_region_role_gets_all_modules_except_the_non_hr_ones_by_default(): void
     {
         $this->seed([
             RoleSeeder::class,
@@ -24,7 +24,7 @@ class HrRegionModuleAccessTest extends TestCase
         $this->assertRoleHasExpectedHrModules('hr_region');
     }
 
-    public function test_hr_headoffice_role_gets_all_modules_except_uac_assets_and_transport_by_default(): void
+    public function test_hr_headoffice_role_gets_all_modules_except_the_non_hr_ones_by_default(): void
     {
         $this->seed([
             RoleSeeder::class,
@@ -44,14 +44,22 @@ class HrRegionModuleAccessTest extends TestCase
             ->pluck('module')
             ->all();
 
+        $nonHrModules = [
+            Permission::MODULE_UAC,
+            Permission::MODULE_ASSETS,
+            Permission::MODULE_TRANSPORT,
+            Permission::MODULE_CREDIT_UNION,
+        ];
+
         $expectedModules = array_values(array_filter(
             Permission::MODULES,
-            fn (string $module) => ! in_array($module, [Permission::MODULE_UAC, Permission::MODULE_ASSETS, Permission::MODULE_TRANSPORT], true)
+            fn (string $module) => ! in_array($module, $nonHrModules, true)
         ));
 
         $this->assertEqualsCanonicalizing($expectedModules, $accessibleModules);
-        $this->assertNotContains(Permission::MODULE_UAC, $accessibleModules);
-        $this->assertNotContains(Permission::MODULE_ASSETS, $accessibleModules);
-        $this->assertNotContains(Permission::MODULE_TRANSPORT, $accessibleModules);
+
+        foreach ($nonHrModules as $module) {
+            $this->assertNotContains($module, $accessibleModules);
+        }
     }
 }

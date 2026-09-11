@@ -8,6 +8,7 @@ use App\Models\District;
 use App\Models\IctAsset;
 use App\Models\IctAssetIssueReport;
 use App\Models\Region;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -131,7 +132,7 @@ class IssueReports extends Component
     {
         return [
             'form.title' => ['required', 'string', 'max:255'],
-            'form.issue_type' => ['required', 'string', 'max:120'],
+            'form.issue_type' => ['required', Rule::in(IctAssetIssueReport::ISSUE_TYPES)],
             'form.reason' => ['nullable', 'string'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.linked_asset_id' => ['nullable', 'integer', 'exists:ict_assets,id'],
@@ -184,11 +185,7 @@ class IssueReports extends Component
             ->latest()
             ->paginate($this->perPage);
 
-        $typeOptions = IctAssetIssueReport::query()
-            ->select('issue_type')
-            ->distinct()
-            ->orderBy('issue_type')
-            ->pluck('issue_type');
+        $typeOptions = IctAssetIssueReport::ISSUE_TYPES;
 
         $statusOptions = IctAssetIssueReport::query()
             ->select('status')

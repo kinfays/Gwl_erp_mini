@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             UacRolePermissionSeeder::class,
             AssetsRolePermissionSeeder::class,
             TransportRolePermissionSeeder::class,
+            CreditUnionRolePermissionSeeder::class,
             TransportSeeder::class,
             HolidaySeeder::class,
             SuperAdminSeeder::class,

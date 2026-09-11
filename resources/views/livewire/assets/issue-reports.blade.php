@@ -55,7 +55,7 @@
                             <div style="font-size:10px;color:var(--color-text-secondary)">{{ $report->region?->region_name ?: '-' }}</div>
                         </td>
                         <td>
-                            <span class="pill {{ $report->status === 'Resolved' ? 'p-g' : ($report->status === 'In Progress' ? 'p-w' : 'p-d') }}">
+                            <span class="pill {{ $report->status === 'Resolved' ? 'p-g' : ($report->status === 'In Progress' ? 'p-a' : 'p-d') }}">
                                 {{ $report->status }}
                             </span>
                         </td>
@@ -94,7 +94,12 @@
                         </div>
                         <div>
                             <label class="form-label">Issue Type</label>
-                            <input type="text" wire:model.defer="form.issue_type" class="form-input" placeholder="Connectivity, Hardware, Security">
+                            <select wire:model.defer="form.issue_type" class="form-input">
+                                <option value="">Select type</option>
+                                @foreach ($typeOptions as $option)
+                                    <option value="{{ $option }}">{{ $option }}</option>
+                                @endforeach
+                            </select>
                             @error('form.issue_type') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
                         <div>

@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Assets\AssetModuleController;
+use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
@@ -167,9 +168,17 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.view_dashboard')
             ->name('home');
 
-        Route::get('/inventory', [AssetModuleController::class, 'inventory'])
+        Route::get('/assets', [AssetModuleController::class, 'assets'])
             ->middleware('permission:assets.view_inventory')
-            ->name('inventory');
+            ->name('assets');
+
+        Route::get('/phones', [AssetModuleController::class, 'phones'])
+            ->middleware('permission:assets.view_inventory')
+            ->name('phones');
+
+        Route::get('/network', [AssetModuleController::class, 'network'])
+            ->middleware('permission:assets.view_inventory')
+            ->name('network');
 
         Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
             ->middleware('permission:assets.manage_maintenance')
@@ -182,6 +191,14 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/agent', [AssetModuleController::class, 'agent'])
             ->middleware('role:super_admin')
             ->name('agent');
+
+        Route::get('/settings/models', [AssetModuleController::class, 'settingsModels'])
+            ->middleware('permission:assets.manage_models')
+            ->name('settings.models');
+
+        Route::get('/settings/ip-ranges', [AssetModuleController::class, 'settingsIpRanges'])
+            ->middleware('permission:assets.manage_ip_ranges')
+            ->name('settings.ip-ranges');
     });
 
 Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager,driver,employee'])
@@ -227,6 +244,39 @@ Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager
         Route::get('/reports/export/excel', [TransportModuleController::class, 'reportExcel'])
             ->middleware('permission:transport.view_reports')
             ->name('reports.export.excel');
+    });
+
+Route::middleware(['auth', 'active', 'module:credit_union'])
+    ->prefix('credit-union')
+    ->name('credit-union.')
+    ->group(function () {
+        Route::get('/', [CreditUnionModuleController::class, 'home'])
+            ->middleware('permission:credit_union.manage_members,credit_union.apply_membership')
+            ->name('home');
+
+        Route::get('/apply', [CreditUnionModuleController::class, 'apply'])
+            ->middleware('permission:credit_union.apply_membership')
+            ->name('apply');
+
+        Route::post('/apply', [CreditUnionModuleController::class, 'submitApplication'])
+            ->middleware('permission:credit_union.apply_membership')
+            ->name('apply.store');
+
+        Route::get('/members', [CreditUnionModuleController::class, 'members'])
+            ->middleware('permission:credit_union.manage_members')
+            ->name('members');
+
+        Route::get('/members/applications', [CreditUnionModuleController::class, 'applications'])
+            ->middleware('permission:credit_union.manage_members,credit_union.approve_membership')
+            ->name('members.applications');
+
+        Route::get('/members/{member}', [CreditUnionModuleController::class, 'memberShow'])
+            ->middleware('permission:credit_union.manage_members')
+            ->name('members.show');
+
+        Route::get('/members/{member}/statement/pdf', [CreditUnionModuleController::class, 'memberStatementPdf'])
+            ->middleware('permission:credit_union.manage_members')
+            ->name('members.statement.pdf');
     });
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])

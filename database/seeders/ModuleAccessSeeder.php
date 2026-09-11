@@ -13,7 +13,12 @@ class ModuleAccessSeeder extends Seeder
     {
         $hrModules = array_values(array_filter(
             Permission::MODULES,
-            fn (string $module) => ! in_array($module, [Permission::MODULE_UAC, Permission::MODULE_ASSETS, Permission::MODULE_TRANSPORT], true)
+            fn (string $module) => ! in_array($module, [
+                Permission::MODULE_UAC,
+                Permission::MODULE_ASSETS,
+                Permission::MODULE_TRANSPORT,
+                Permission::MODULE_CREDIT_UNION,
+            ], true)
         ));
 
         $accessMap = [
@@ -22,6 +27,8 @@ class ModuleAccessSeeder extends Seeder
             'ict_team' => [Permission::MODULE_UAC, Permission::MODULE_ASSETS],
             'transport_manager' => [Permission::MODULE_TRANSPORT],
             'driver' => [Permission::MODULE_TRANSPORT],
+            'credit_union_officer' => [Permission::MODULE_CREDIT_UNION],
+            'credit_union_committee' => [Permission::MODULE_CREDIT_UNION],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],
@@ -30,7 +37,7 @@ class ModuleAccessSeeder extends Seeder
             'district_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
-            'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT],
+            'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT, Permission::MODULE_CREDIT_UNION],
             'receptionist' => [Permission::MODULE_VISITORS],
         ];
 

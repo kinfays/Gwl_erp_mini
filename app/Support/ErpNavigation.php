@@ -101,6 +101,11 @@ class ErpNavigation
                 'route' => $this->safeRoute('transport.home'),
             ],
             [
+                'slug' => Permission::MODULE_CREDIT_UNION,
+                'title' => 'Credit Union',
+                'route' => $this->safeRoute('credit-union.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'route' => $this->safeRoute('uac.index'),
@@ -118,6 +123,7 @@ class ErpNavigation
             Permission::MODULE_VISITORS => $this->visitorsSidebar($user),
             Permission::MODULE_ASSETS => $this->assetsSidebar($user),
             Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
+            Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
             default => [],
         };
 
@@ -378,6 +384,8 @@ class ErpNavigation
 
     protected function assetsSidebar(User $user): array
     {
+        $canViewInventory = fn (User $currentUser) => $currentUser->hasPermission('assets.view_inventory') || $currentUser->hasRoles('super_admin');
+
         return [
             [
                 'label' => 'Dashboard',
@@ -387,15 +395,29 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_dashboard') || $currentUser->hasRoles('super_admin'),
             ],
             [
+                'type' => 'section',
                 'label' => 'All Assets',
-                'route' => 'assets.inventory',
-                'active' => ['assets.inventory'],
-                'icon' => $this->icon('list'),
-                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_inventory') || $currentUser->hasRoles('super_admin'),
             ],
             [
-                'type' => 'section',
-                'label' => 'Operations',
+                'label' => 'Assets',
+                'route' => 'assets.assets',
+                'active' => ['assets.assets'],
+                'icon' => $this->icon('list'),
+                'can' => $canViewInventory,
+            ],
+            [
+                'label' => 'Phones',
+                'route' => 'assets.phones',
+                'active' => ['assets.phones'],
+                'icon' => $this->icon('grid'),
+                'can' => $canViewInventory,
+            ],
+            [
+                'label' => 'Network',
+                'route' => 'assets.network',
+                'active' => ['assets.network'],
+                'icon' => $this->icon('stack'),
+                'can' => $canViewInventory,
             ],
             [
                 'label' => 'Maintenance',
@@ -405,11 +427,29 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_maintenance') || $currentUser->hasRoles('super_admin'),
             ],
             [
-                'label' => 'Issue Reporting',
+                'label' => 'Reporting',
                 'route' => 'assets.reports',
                 'active' => ['assets.reports'],
                 'icon' => $this->icon('report'),
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_reports') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Settings',
+            ],
+            [
+                'label' => 'Models',
+                'route' => 'assets.settings.models',
+                'active' => ['assets.settings.models'],
+                'icon' => $this->icon('grid'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_models') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'label' => 'IP Ranges',
+                'route' => 'assets.settings.ip-ranges',
+                'active' => ['assets.settings.ip-ranges'],
+                'icon' => $this->icon('shield'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_ip_ranges') || $currentUser->hasRoles('super_admin'),
             ],
             [
                 'type' => 'section',
@@ -491,6 +531,45 @@ class ErpNavigation
                 'active' => ['transport.reports'],
                 'icon' => $this->icon('report'),
                 'can' => $canViewReports,
+            ],
+        ];
+    }
+
+    protected function creditUnionSidebar(User $user): array
+    {
+        $canManageMembers = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_members');
+        $canSeeApplications = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_members')
+            || $currentUser->hasPermission('credit_union.approve_membership');
+        $canApply = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.apply_membership');
+
+        return [
+            [
+                'label' => 'Members',
+                'route' => 'credit-union.members',
+                'active' => ['credit-union.members', 'credit-union.members.show'],
+                'icon' => $this->icon('list'),
+                'can' => $canManageMembers,
+            ],
+            [
+                'label' => 'Applications',
+                'route' => 'credit-union.members.applications',
+                'active' => ['credit-union.members.applications'],
+                'icon' => $this->icon('check'),
+                'can' => $canSeeApplications,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Self Service',
+            ],
+            [
+                'label' => 'Apply for Membership',
+                'route' => 'credit-union.apply',
+                'active' => ['credit-union.apply'],
+                'icon' => $this->icon('user-plus'),
+                'can' => $canApply,
             ],
         ];
     }
