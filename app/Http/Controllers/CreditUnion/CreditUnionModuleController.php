@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreditUnion\SubmitMembershipApplicationRequest;
 use App\Models\CreditUnionDeductionBatch;
+use App\Models\CreditUnionLoan;
 use App\Models\CreditUnionMember;
 use App\Models\Permission;
 use App\Services\CreditUnion\DeductionImportService;
@@ -86,6 +87,20 @@ class CreditUnionModuleController extends Controller
         $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
 
         return view('credit-union.deduction-batch-show', ['batch' => $batch]);
+    }
+
+    public function loans(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.loans');
+    }
+
+    public function loanShow(Request $request, CreditUnionLoan $loan): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.loan-show', ['loan' => $loan]);
     }
 
     public function deductionTemplate(Request $request, DeductionImportService $imports)

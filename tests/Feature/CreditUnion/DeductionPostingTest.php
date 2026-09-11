@@ -7,10 +7,11 @@ use App\Models\AuditLog;
 use App\Models\CreditUnionDeductionBatch;
 use App\Models\CreditUnionDeductionBatchLine;
 use App\Models\CreditUnionLedgerEntry;
+use App\Models\CreditUnionLoan;
+use App\Models\CreditUnionLoanRepayment;
 use App\Models\CreditUnionMember;
 use App\Models\Permission;
 use App\Models\User;
-use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 
 class DeductionPostingTest extends CreditUnionTestCase
@@ -127,9 +128,10 @@ class DeductionPostingTest extends CreditUnionTestCase
         $this->assertSame(0, CreditUnionLedgerEntry::query()->where('amount', 85)->count());
         $this->assertSame(170.0, (float) CreditUnionLedgerEntry::query()->where('deduction_batch_id', $batch->id)->sum('amount'));
 
-        // Loans are a later phase; nothing in this one may depend on their tables.
-        $this->assertFalse(Schema::hasTable('credit_union_loans'));
-        $this->assertFalse(Schema::hasTable('credit_union_loan_repayments'));
+        // Posting a deduction batch never touches loans: the captured loan repayment waits
+        // on the line until a loan exists for LoanService to post it against.
+        $this->assertSame(0, CreditUnionLoanRepayment::query()->count());
+        $this->assertSame(0, CreditUnionLoan::query()->where('member_id', $member->id)->count());
     }
 
     public function test_unmatched_and_associate_lines_are_never_posted(): void

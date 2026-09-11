@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\CreditUnion;
 
+use App\Models\CreditUnionLedgerEntry;
+use App\Models\CreditUnionMember;
 use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
@@ -87,6 +89,72 @@ abstract class CreditUnionTestCase extends TestCase
             'must_change_password' => false,
             ...$overrides,
         ]);
+    }
+
+    /**
+     * A member carrying an opening shares/savings position, written straight to the ledger
+     * so tests can set an exact balance without walking the registration flow.
+     */
+    protected function memberWithBalance(string $staffId, float $savings, float $shares = 0, array $overrides = []): CreditUnionMember
+    {
+        $member = CreditUnionMember::factory()->shareIssued()->create([
+            'member_number' => $staffId,
+            'staff_id' => $staffId,
+            'full_name' => 'Member '.$staffId,
+            ...$overrides,
+        ]);
+
+        foreach ([
+            CreditUnionLedgerEntry::ACCOUNT_SAVINGS => $savings,
+            CreditUnionLedgerEntry::ACCOUNT_SHARES => $shares,
+        ] as $accountType => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $member->ledgerEntries()->create([
+                'account_type' => $accountType,
+                'entry_type' => CreditUnionLedgerEntry::ENTRY_CONTRIBUTION,
+                'amount' => $amount,
+                'balance_after' => $amount,
+                'transaction_date' => today()->subMonth()->toDateString(),
+                'source' => CreditUnionLedgerEntry::SOURCE_CASH,
+            ]);
+        }
+
+        return $member->fresh();
+    }
+
+    protected function associateMemberWithBalance(string $memberNumber, float $savings, float $shares = 0): CreditUnionMember
+    {
+        $member = CreditUnionMember::factory()->associate()->shareIssued()->create([
+            'member_number' => $memberNumber,
+            'full_name' => 'Associate '.$memberNumber,
+        ]);
+
+        if ($savings > 0) {
+            $member->ledgerEntries()->create([
+                'account_type' => CreditUnionLedgerEntry::ACCOUNT_SAVINGS,
+                'entry_type' => CreditUnionLedgerEntry::ENTRY_CONTRIBUTION,
+                'amount' => $savings,
+                'balance_after' => $savings,
+                'transaction_date' => today()->subMonth()->toDateString(),
+                'source' => CreditUnionLedgerEntry::SOURCE_CASH,
+            ]);
+        }
+
+        if ($shares > 0) {
+            $member->ledgerEntries()->create([
+                'account_type' => CreditUnionLedgerEntry::ACCOUNT_SHARES,
+                'entry_type' => CreditUnionLedgerEntry::ENTRY_CONTRIBUTION,
+                'amount' => $shares,
+                'balance_after' => $shares,
+                'transaction_date' => today()->subMonth()->toDateString(),
+                'source' => CreditUnionLedgerEntry::SOURCE_CASH,
+            ]);
+        }
+
+        return $member->fresh();
     }
 
     protected function createEmployee(string $staffId, string $fullName): Employee

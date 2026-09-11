@@ -1,8 +1,10 @@
 <?php
 
 use App\Events\Transport\DocumentExpiryDetected;
+use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
 use App\Models\Visitor;
+use App\Services\CreditUnion\LoanService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -53,3 +55,19 @@ Artisan::command('transport:check-expiries', function () {
 })->purpose('Check vehicle insurance and road-worthiness expiries');
 
 Schedule::command('transport:check-expiries')->dailyAt('07:30');
+
+Artisan::command('credit-union:post-deferred-loan-repayments', function (LoanService $loans) {
+    $posted = 0;
+
+    CreditUnionLoan::query()
+        ->outstanding()
+        ->with('member')
+        ->orderBy('id')
+        ->chunkById(100, function ($chunk) use ($loans, &$posted): void {
+            foreach ($chunk as $loan) {
+                $posted += $loans->postDeferredDeductionRepayments($loan);
+            }
+        });
+
+    $this->info($posted.' deferred payroll loan repayment(s) posted.');
+})->purpose('Post payroll loan repayments captured on deduction batches before their loan existed');

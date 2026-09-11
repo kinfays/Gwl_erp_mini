@@ -289,6 +289,14 @@ Route::middleware(['auth', 'active', 'module:credit_union'])
         Route::get('/deductions/{batch}', [CreditUnionModuleController::class, 'deductionBatchShow'])
             ->middleware('permission:credit_union.manage_deductions')
             ->name('deductions.show');
+
+        Route::get('/loans', [CreditUnionModuleController::class, 'loans'])
+            ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
+            ->name('loans');
+
+        Route::get('/loans/{loan}', [CreditUnionModuleController::class, 'loanShow'])
+            ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
+            ->name('loans.show');
     });
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])
