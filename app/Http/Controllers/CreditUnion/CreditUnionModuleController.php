@@ -5,8 +5,10 @@ namespace App\Http\Controllers\CreditUnion;
 use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreditUnion\SubmitMembershipApplicationRequest;
+use App\Models\CreditUnionDeductionBatch;
 use App\Models\CreditUnionMember;
 use App\Models\Permission;
+use App\Services\CreditUnion\DeductionImportService;
 use App\Services\CreditUnion\MemberRegistrationService;
 use App\Services\CreditUnion\StatementService;
 use Dompdf\Dompdf;
@@ -14,6 +16,7 @@ use Dompdf\Options;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Maatwebsite\Excel\Facades\Excel;
 
 class CreditUnionModuleController extends Controller
 {
@@ -69,6 +72,27 @@ class CreditUnionModuleController extends Controller
         $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
 
         return view('credit-union.member-show', ['member' => $member]);
+    }
+
+    public function deductions(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.deductions');
+    }
+
+    public function deductionBatchShow(Request $request, CreditUnionDeductionBatch $batch): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.deduction-batch-show', ['batch' => $batch]);
+    }
+
+    public function deductionTemplate(Request $request, DeductionImportService $imports)
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return Excel::download($imports->templateExport(), 'credit_union_deductions_template.xlsx');
     }
 
     public function memberStatementPdf(Request $request, CreditUnionMember $member, StatementService $statements)

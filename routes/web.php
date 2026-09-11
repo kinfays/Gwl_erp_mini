@@ -277,6 +277,18 @@ Route::middleware(['auth', 'active', 'module:credit_union'])
         Route::get('/members/{member}/statement/pdf', [CreditUnionModuleController::class, 'memberStatementPdf'])
             ->middleware('permission:credit_union.manage_members')
             ->name('members.statement.pdf');
+
+        Route::get('/deductions', [CreditUnionModuleController::class, 'deductions'])
+            ->middleware('permission:credit_union.manage_deductions')
+            ->name('deductions');
+
+        Route::get('/deductions/template', [CreditUnionModuleController::class, 'deductionTemplate'])
+            ->middleware('permission:credit_union.manage_deductions')
+            ->name('deductions.template');
+
+        Route::get('/deductions/{batch}', [CreditUnionModuleController::class, 'deductionBatchShow'])
+            ->middleware('permission:credit_union.manage_deductions')
+            ->name('deductions.show');
     });
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])

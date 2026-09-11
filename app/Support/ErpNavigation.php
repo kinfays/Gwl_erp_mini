@@ -544,6 +544,8 @@ class ErpNavigation
             || $currentUser->hasPermission('credit_union.approve_membership');
         $canApply = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
             || $currentUser->hasPermission('credit_union.apply_membership');
+        $canManageDeductions = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_deductions');
 
         return [
             [
@@ -559,6 +561,17 @@ class ErpNavigation
                 'active' => ['credit-union.members.applications'],
                 'icon' => $this->icon('check'),
                 'can' => $canSeeApplications,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Contributions',
+            ],
+            [
+                'label' => 'Deductions',
+                'route' => 'credit-union.deductions',
+                'active' => ['credit-union.deductions', 'credit-union.deductions.show'],
+                'icon' => $this->icon('stack'),
+                'can' => $canManageDeductions,
             ],
             [
                 'type' => 'section',

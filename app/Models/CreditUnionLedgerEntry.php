@@ -52,6 +52,7 @@ class CreditUnionLedgerEntry extends Model
         'balance_after',
         'transaction_date',
         'source',
+        'deduction_batch_id',
         'reference_no',
         'remarks',
         'recorded_by',
@@ -59,6 +60,7 @@ class CreditUnionLedgerEntry extends Model
 
     protected $casts = [
         'member_id' => 'integer',
+        'deduction_batch_id' => 'integer',
         'recorded_by' => 'integer',
         'amount' => 'decimal:2',
         'balance_after' => 'decimal:2',
@@ -75,6 +77,11 @@ class CreditUnionLedgerEntry extends Model
     public function recorder(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function deductionBatch(): BelongsTo
+    {
+        return $this->belongsTo(CreditUnionDeductionBatch::class, 'deduction_batch_id');
     }
 
     /**

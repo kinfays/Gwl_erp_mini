@@ -85,6 +85,7 @@ class LedgerService
                 'balance_after' => $balanceAfter,
                 'transaction_date' => Carbon::parse($transactionDate)->toDateString(),
                 'source' => $source,
+                'deduction_batch_id' => $payload['deduction_batch_id'] ?? null,
                 'reference_no' => $payload['reference_no'] ?? null,
                 'remarks' => $payload['remarks'] ?? null,
                 'recorded_by' => $recordedBy ?? auth()->id(),
