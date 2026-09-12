@@ -6,8 +6,10 @@ use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreditUnion\SubmitMembershipApplicationRequest;
 use App\Models\CreditUnionDeductionBatch;
+use App\Models\CreditUnionInterestDistribution;
 use App\Models\CreditUnionLoan;
 use App\Models\CreditUnionMember;
+use App\Models\CreditUnionWithdrawalRequest;
 use App\Models\Permission;
 use App\Services\CreditUnion\DeductionImportService;
 use App\Services\CreditUnion\MemberRegistrationService;
@@ -101,6 +103,48 @@ class CreditUnionModuleController extends Controller
         $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
 
         return view('credit-union.loan-show', ['loan' => $loan]);
+    }
+
+    public function withdrawals(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.withdrawals');
+    }
+
+    public function withdrawalShow(Request $request, CreditUnionWithdrawalRequest $withdrawal): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.withdrawal-show', ['withdrawal' => $withdrawal]);
+    }
+
+    public function refunds(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.refunds');
+    }
+
+    public function receipts(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.receipts');
+    }
+
+    public function interestDistributions(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.interest-distributions');
+    }
+
+    public function interestDistributionShow(Request $request, CreditUnionInterestDistribution $distribution): View
+    {
+        $this->enforceModule($request, Permission::MODULE_CREDIT_UNION);
+
+        return view('credit-union.interest-distribution-show', ['distribution' => $distribution]);
     }
 
     public function deductionTemplate(Request $request, DeductionImportService $imports)

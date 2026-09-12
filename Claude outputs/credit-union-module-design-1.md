@@ -628,4 +628,204 @@ Do not build withdrawals, refunds, manual receipts, or interest distribution yet
 
 ---
 
-*Prepared from a direct read of `app/Models/Permission.php`, `app/Models/ModuleAccess.php`, `app/Models/AuditLog.php`, `app/Support/Audit.php`, both `EnforcesModuleAccess` traits, `config/gwl.php`/`gwcl.php`, `routes/web.php`, `app/Models/Employee.php`, and the Transport module's two migrations, via the linked device bridge into `C:\laragon\www\erp_project`.*
+## 8. Phase 4 kickoff prompt — withdrawals, refunds, manual receipts
+
+Phases 1–3 are already built (confirmed by reading the actual code on disk, not just the design doc — `app/Models/CreditUnionMember.php`, `CreditUnionLedgerEntry.php`, `app/Services/CreditUnion/LedgerService.php`, `LoanService.php`, the `credit-union.` route group in `routes/web.php`, and the phase-by-phase migrations through `2026_09_12_000002_seed_credit_union_loan_permissions.php`). Two implementation patterns from that real code matter for this prompt and weren't fully spelled out in §2:
+
+- **Deferred FK columns.** The Phase 1 migration deliberately left `withdrawal_id`/`refund_id` off `credit_union_ledger_entries` because those parent tables didn't exist yet, with a comment saying so. `deduction_batch_id` was added back later in its own `add_deduction_batch_id_to_credit_union_ledger_entries_table.php` migration once `credit_union_deduction_batches` existed. Phase 4 needs to do the same for `withdrawal_id` and `refund_id`.
+- **Self-approval guard style.** `LoanService` enforces it as `abort(403, 'You cannot decide on your own loan application.')`, not a `ValidationException` (those are reserved for form-validation-style errors like "amount must be positive"). Match that split.
+
+```
+Implement Phase 4 of the Credit Union module — withdrawals, refunds, and manual
+(cash/cheque) receipts — per credit-union-module-design.md §2.1 (manage_withdrawals/
+approve_withdrawals/manage_refunds/manage_receipts permissions), §2.2 (credit_union_
+withdrawal_requests, credit_union_refunds, credit_union_manual_receipts), §2.3
+(WithdrawalService, RefundService), and CLAUDE.md conventions. Ground every file on
+the actual Phase 1-3 code already in the repo, not just the design doc prose:
+
+- New migration (next date/sequence after 2026_09_12_000002) creating
+  credit_union_withdrawal_requests, credit_union_refunds, and
+  credit_union_manual_receipts, Schema::hasTable-guarded, FKs per §2.2
+  (member_id restrictOnDelete on all three; nullable/nullOnDelete member_id
+  specifically on manual_receipts per the design note on bulk vs. per-member
+  entries).
+- A second migration, modeled EXACTLY on
+  database/migrations/2026_09_11_000002_add_deduction_batch_id_to_credit_union_
+  ledger_entries_table.php (read it first): add nullable, nullOnDelete
+  withdrawal_id (constrained to credit_union_withdrawal_requests) and refund_id
+  (constrained to credit_union_refunds) columns to credit_union_ledger_entries,
+  guarded by Schema::hasTable/hasColumn checks so it's a no-op if already applied.
+- A third migration seeding credit_union.manage_withdrawals, approve_withdrawals,
+  manage_refunds, manage_receipts — copy database/migrations/2026_09_12_000002_
+  seed_credit_union_loan_permissions.php's structure verbatim (updateOrInsert into
+  permissions, role_permissions via insertOrIgnore). credit_union_officer gets
+  manage_withdrawals/manage_refunds/manage_receipts; credit_union_committee gets
+  approve_withdrawals; super_admin gets all four.
+- Flat models app/Models/CreditUnionWithdrawalRequest.php, CreditUnionRefund.php,
+  CreditUnionManualReceipt.php, following CreditUnionMember.php's style exactly:
+  public const groups for status/method/purpose enums (mirror ACCOUNT_TYPES/
+  ENTRY_TYPES/SOURCES on CreditUnionLedgerEntry.php for the const-array pattern),
+  $fillable, $casts, BelongsTo relations to CreditUnionMember (member_id) and User
+  (requested_by/decided_by/recorded_by as applicable).
+- app/Services/CreditUnion/WithdrawalService.php: request() validates
+  savings_amount/shares_amount against $member->balanceFor('savings')/
+  balanceFor('shares') (read LedgerService.php first — reuse its locking pattern,
+  don't re-derive balance calculation logic); approve()/reject() enforce the
+  self-approval guard via abort(403) exactly like LoanService::decide() does
+  (read that method first); markPaid() calls LedgerService::post() with
+  entry_type=withdrawal, source=payment_method, and sets ledger entries'
+  withdrawal_id via the new column from this phase's second migration.
+- app/Services/CreditUnion/RefundService.php: record() calls LedgerService::post()
+  with entry_type=refund crediting the member, sets refund_id on the resulting
+  ledger entry. No approval step — refunds are a direct officer action per §2.1
+  (manage_refunds only, no approve_refunds permission exists).
+- app/Services/CreditUnion/ManualReceiptService.php: record() logs a cash/cheque
+  receipt; on purpose=savings or purpose=shares, once banked=true, posts via
+  LedgerService::post() (source=cash|cheque); on purpose=loan_repayment, calls
+  app(LoanService::class)->recordRepayment($loan, [...], $actorId) — read
+  LoanService::recordRepayment()'s exact signature first and match it rather than
+  guessing; on purpose=membership_form_fee, do NOT post to the ledger (matches
+  credit_union_members.membership_form_fee_amount being a recorded-not-ledgered
+  charge, same as at registration).
+- Extend app/Http/Controllers/CreditUnion/CreditUnionModuleController.php with
+  withdrawals(), withdrawalShow(), refunds(), receipts() methods matching its
+  existing one-method-per-screen, enforceModule()-then-return-view style (read
+  the file first — do not restructure its existing methods).
+- Add /withdrawals, /withdrawals/{withdrawal}, /refunds, /receipts routes to the
+  EXISTING credit-union route group in routes/web.php (the group already starts
+  at line ~249 — add to it, don't create a second group), matching the existing
+  permission-middleware-per-route style in that block.
+- New Livewire components app/Livewire/CreditUnion/Withdrawals.php,
+  WithdrawalShow.php (mirror the existing Loans.php/LoanShow.php split — list+
+  request in one, approve/reject/mark-paid detail in the other), Refunds.php,
+  Receipts.php.
+- Audit::log(...) (module: Permission::MODULE_CREDIT_UNION, matching
+  LedgerService.php's exact call shape) on every withdrawal request/decision/
+  payout, refund, and manual receipt.
+- tests/Feature/CreditUnion/WithdrawalRequestTest.php, RefundTest.php,
+  ManualReceiptTest.php using Livewire::test() + RefreshDatabase + factories.
+  Cover: a withdrawal request exceeding the member's actual ledger balance being
+  rejected (this is the control Excel couldn't enforce — make sure it's real);
+  a committee member blocked from approving their own withdrawal request
+  (abort 403, matching LoanService's pattern); a refund correctly crediting the
+  member's ledger with entry_type=refund and no approval step required; a
+  manual cash receipt with purpose=loan_repayment correctly calling into
+  LoanService and reducing outstanding_balance; a purpose=membership_form_fee
+  receipt NOT creating any ledger entry; an associate member's manual receipt
+  working normally (cash is their only path) vs. a staff member's withdrawal
+  payment_method allowing bank_transfer too.
+
+Do not build interest distribution yet — that's Phase 5, still ahead.
+```
+
+---
+
+## 9. Phase 5 kickoff prompt — interest distribution
+
+Phases 1–4 are already built (confirmed by reading the actual code on disk: Phase 4 shipped `credit_union_withdrawal_requests`, `credit_union_refunds`, `credit_union_manual_receipts`, added `withdrawal_id`/`refund_id` to `credit_union_ledger_entries` in its own follow-up migration exactly per the pattern documented in §8, and seeded its four permissions through `2026_09_13_000003_seed_credit_union_withdrawal_refund_receipt_permissions.php`). This is the last phase in the roadmap. Two things the real code confirms that matter here:
+
+- `CreditUnionLoan` has real `interest_amount` and `disbursed_at` columns with an `OUTSTANDING_STATUSES`/`scopeOutstanding()` pattern already established — the accrued-interest pool for a period can be computed directly as `sum(interest_amount)` for loans whose `disbursed_at` falls within the period, no new loan-side work needed.
+- `CreditUnionMember::balanceFor()` only ever returns the *latest* balance, not a balance as of a given date — there is no "as of" query anywhere in the codebase yet. This phase is the first to need a historical snapshot (year-end), so it has to add that capability rather than reuse an existing one.
+
+```
+Implement Phase 5 of the Credit Union module — annual interest distribution — the
+final phase, per credit-union-module-design.md §2.1 (manage_interest_distribution/
+approve_interest_distribution), §2.2 (credit_union_interest_distributions,
+credit_union_interest_distribution_lines), §2.3 (InterestDistributionService), and
+CLAUDE.md conventions. Ground every file on the actual Phase 1-4 code already in
+the repo:
+
+- New migration (next date/sequence after 2026_09_13_000003) creating
+  credit_union_interest_distributions and credit_union_interest_distribution_lines,
+  Schema::hasTable-guarded, FKs per §2.2 (interest_distribution_id cascadeOnDelete
+  on lines; member_id cascadeOnDelete; ledger_entry_id nullable/nullOnDelete on
+  lines, set once posted).
+- A second migration seeding credit_union.manage_interest_distribution and
+  credit_union.approve_interest_distribution, copying the structure of
+  database/migrations/2026_09_13_000003_seed_credit_union_withdrawal_refund_
+  receipt_permissions.php verbatim (read it first). credit_union_officer gets
+  manage_interest_distribution; credit_union_committee gets
+  approve_interest_distribution; super_admin gets both. Unlike the Phase 3/4
+  approvals, there's no individual "applicant" on a distribution run (it's a
+  union-wide batch, not one member's request) — no self-approval guard is needed
+  here, any credit_union_committee holder can approve/post it.
+- Add a balance-as-of-date capability, since none exists yet: either a method on
+  CreditUnionMember — balanceAsOf(string $accountType, string $asOfDate): float —
+  mirroring balanceFor()'s query shape (read app/Models/CreditUnionMember.php and
+  app/Services/CreditUnion/LedgerService.php first) but adding
+  ->where('transaction_date', '<=', $asOfDate) before ordering, or an equivalent
+  method on LedgerService if that fits the codebase's balance-logic-lives-in-the-
+  service convention better on reflection. Whichever you pick, keep it in ONE
+  place — don't duplicate the balance query a third time.
+- app/Services/CreditUnion/InterestDistributionService.php:
+  - compute(string $periodLabel, string $periodEndDate, ?string $periodStartDate
+    = null, ?int $actorId = null): total_interest_pool = sum of
+    credit_union_loans.interest_amount for loans with disbursed_at between
+    periodStartDate (default: one year before periodEndDate) and periodEndDate.
+    For every active (CreditUnionMember::STATUS_ACTIVE) member, compute
+    asset_balance_at_computation = balanceAsOf('shares', periodEndDate) +
+    balanceAsOf('savings', periodEndDate); share_of_pool_percent = that balance
+    divided by the sum across all active members (skip/zero out members whose
+    combined balance is 0 — they get no line, not a divide-by-zero); amount =
+    total_interest_pool * share_of_pool_percent. IMPORTANT: naive per-line
+    rounding will make sum(line.amount) drift a cent or two from
+    total_interest_pool — after computing all lines, adjust the single largest
+    line by whatever remainder (total_interest_pool - sum(rounded amounts))
+    remains, so the lines always sum exactly. Write credit_union_interest_
+    distribution_lines, set the distribution's status to computed.
+  - approve(CreditUnionInterestDistribution $distribution, User $approver): status
+    computed -> approved, approved_by/approved_at set. Reject with a
+    ValidationException (not abort(403) — there's no self-approval case here) if
+    status isn't computed.
+  - post(CreditUnionInterestDistribution $distribution, ?int $actorId = null):
+    status approved -> posted; for each line with amount > 0, call
+    app(LedgerService::class)->post($line->member, ['account_type' =>
+    $distribution->credit_account_type, 'entry_type' =>
+    CreditUnionLedgerEntry::ENTRY_INTEREST, 'source' =>
+    CreditUnionLedgerEntry::SOURCE_MANUAL_ADJUSTMENT, 'amount' => $line->amount,
+    'transaction_date' => $distribution->period_end_date, 'remarks' =>
+    "Interest distribution {$distribution->period_label}"], $actorId), then set
+    the line's ledger_entry_id to the created entry's id. Wrap the whole posting
+    loop in DB::transaction.
+- Flat models app/Models/CreditUnionInterestDistribution.php and
+  CreditUnionInterestDistributionLine.php, following CreditUnionLoan.php's style
+  (public const STATUS_DRAFT/COMPUTED/APPROVED/POSTED group + STATUSES array,
+  $fillable, $casts, BelongsTo/HasMany relations).
+- Extend app/Http/Controllers/CreditUnion/CreditUnionModuleController.php with
+  interestDistributions() and interestDistributionShow() methods matching its
+  existing one-method-per-screen style (read the file first).
+- Add /interest-distributions and /interest-distributions/{distribution} routes
+  to the EXISTING credit-union route group in routes/web.php (currently ends
+  around line 316 after the /receipts route — add to it, don't create a second
+  group), using permission:credit_union.manage_interest_distribution,
+  credit_union.approve_interest_distribution for the list/detail views, matching
+  the existing style in that block.
+- New Livewire components app/Livewire/CreditUnion/InterestDistributions.php
+  (list + trigger compute()) and InterestDistributionShow.php (line breakdown,
+  approve/post actions), mirroring the Loans.php/LoanShow.php split already used
+  for the other approval workflows.
+- Audit::log(...) (module: Permission::MODULE_CREDIT_UNION) on compute, approve,
+  and post.
+- tests/Feature/CreditUnion/InterestDistributionTest.php using Livewire::test() +
+  RefreshDatabase + factories. Cover: total_interest_pool correctly summing only
+  loans disbursed within the period; a member with zero combined balance getting
+  no line rather than a divide-by-zero error; proportional amounts across at
+  least three members with meaningfully different balances; the rounding-
+  remainder fix actually making sum(line.amount) === total_interest_pool exactly
+  (assert this with real fractional-cent numbers, not round ones, to catch the
+  bug this is meant to prevent); posting correctly creating
+  entry_type=interest/account_type=savings ledger entries and updating each
+  member's savings balance; and the full draft -> computed -> approved -> posted
+  status progression rejecting out-of-order transitions (e.g. posting a
+  merely-computed, not-yet-approved distribution).
+
+This is the last phase in the roadmap (§4). Once it's built, the whole module —
+member registration (all three paths), ledger entries, payroll deduction import
+and reconciliation, loans with guarantors, withdrawals, refunds, manual receipts,
+and annual interest distribution — replaces everything the two source workbooks
+were doing by hand.
+```
+
+---
+
+*Prepared from a direct read of `app/Models/Permission.php`, `app/Models/ModuleAccess.php`, `app/Models/AuditLog.php`, `app/Support/Audit.php`, both `EnforcesModuleAccess` traits, `config/gwl.php`/`gwcl.php`, `routes/web.php`, `app/Models/Employee.php`, the Transport module's two migrations, and — for §8/§9 — the actual Phase 1–4 implementation already on disk (`CreditUnionMember.php`, `CreditUnionLedgerEntry.php`, `CreditUnionLoan.php`, `LedgerService.php`, `LoanService.php`, the live `credit-union.` route group, and every phased migration through `2026_09_13_000003`), via the linked device bridge into `C:\laragon\www\erp_project`.*

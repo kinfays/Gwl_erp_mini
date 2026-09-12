@@ -70,10 +70,17 @@ abstract class CreditUnionTestCase extends TestCase
         return $user->fresh();
     }
 
+    /**
+     * Idempotent: asking for the same staff ID twice in one test returns the same user
+     * rather than tripping the users.email unique index.
+     */
     protected function userWithRole(string $staffId, string $role): User
     {
-        $user = $this->user($staffId);
-        $user->roles()->attach(Role::query()->where('name', $role)->firstOrFail());
+        $user = User::query()->where('staff_id', $staffId)->first() ?? $this->user($staffId);
+
+        $user->roles()->syncWithoutDetaching(
+            Role::query()->where('name', $role)->firstOrFail()
+        );
 
         return $user->fresh();
     }

@@ -153,13 +153,36 @@ class CreditUnionMember extends Model
 
     public function balanceFor(string $accountType): float
     {
+        return $this->balanceAsOf($accountType);
+    }
+
+    /**
+     * The running balance on an account, optionally as it stood at the end of a given
+     * date - the year-end snapshot an interest distribution is computed from.
+     */
+    public function balanceAsOf(string $accountType, ?string $asOfDate = null): float
+    {
         $latest = $this->ledgerEntries()
             ->where('account_type', $accountType)
+            ->when($asOfDate, fn ($query) => $query->whereDate('transaction_date', '<=', $asOfDate))
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->value('balance_after');
 
         return (float) ($latest ?? 0);
+    }
+
+    /**
+     * Combined shares + savings holdings, which is what an interest distribution is
+     * shared out in proportion to.
+     */
+    public function assetBalanceAsOf(?string $asOfDate = null): float
+    {
+        return round(
+            $this->balanceAsOf(CreditUnionLedgerEntry::ACCOUNT_SHARES, $asOfDate)
+                + $this->balanceAsOf(CreditUnionLedgerEntry::ACCOUNT_SAVINGS, $asOfDate),
+            2
+        );
     }
 
     public function scopeActive($query)

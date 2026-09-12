@@ -35,12 +35,14 @@ class CreditUnionLedgerEntry extends Model
     public const SOURCE_PAYROLL_DEDUCTION = 'payroll_deduction';
     public const SOURCE_CASH = 'cash';
     public const SOURCE_CHEQUE = 'cheque';
+    public const SOURCE_BANK_TRANSFER = 'bank_transfer';
     public const SOURCE_MANUAL_ADJUSTMENT = 'manual_adjustment';
 
     public const SOURCES = [
         self::SOURCE_PAYROLL_DEDUCTION,
         self::SOURCE_CASH,
         self::SOURCE_CHEQUE,
+        self::SOURCE_BANK_TRANSFER,
         self::SOURCE_MANUAL_ADJUSTMENT,
     ];
 
@@ -53,6 +55,8 @@ class CreditUnionLedgerEntry extends Model
         'transaction_date',
         'source',
         'deduction_batch_id',
+        'withdrawal_id',
+        'refund_id',
         'reference_no',
         'remarks',
         'recorded_by',
@@ -61,6 +65,8 @@ class CreditUnionLedgerEntry extends Model
     protected $casts = [
         'member_id' => 'integer',
         'deduction_batch_id' => 'integer',
+        'withdrawal_id' => 'integer',
+        'refund_id' => 'integer',
         'recorded_by' => 'integer',
         'amount' => 'decimal:2',
         'balance_after' => 'decimal:2',
@@ -82,6 +88,16 @@ class CreditUnionLedgerEntry extends Model
     public function deductionBatch(): BelongsTo
     {
         return $this->belongsTo(CreditUnionDeductionBatch::class, 'deduction_batch_id');
+    }
+
+    public function withdrawal(): BelongsTo
+    {
+        return $this->belongsTo(CreditUnionWithdrawalRequest::class, 'withdrawal_id');
+    }
+
+    public function refund(): BelongsTo
+    {
+        return $this->belongsTo(CreditUnionRefund::class, 'refund_id');
     }
 
     /**

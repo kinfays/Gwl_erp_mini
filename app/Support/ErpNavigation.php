@@ -549,6 +549,16 @@ class ErpNavigation
         $canSeeLoans = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
             || $currentUser->hasPermission('credit_union.manage_loans')
             || $currentUser->hasPermission('credit_union.approve_loans');
+        $canSeeWithdrawals = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_withdrawals')
+            || $currentUser->hasPermission('credit_union.approve_withdrawals');
+        $canManageRefunds = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_refunds');
+        $canManageReceipts = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_receipts');
+        $canSeeInterestDistributions = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('credit_union.manage_interest_distribution')
+            || $currentUser->hasPermission('credit_union.approve_interest_distribution');
 
         return [
             [
@@ -582,6 +592,38 @@ class ErpNavigation
                 'active' => ['credit-union.loans', 'credit-union.loans.show'],
                 'icon' => $this->icon('bars'),
                 'can' => $canSeeLoans,
+            ],
+            [
+                'label' => 'Receipts',
+                'route' => 'credit-union.receipts',
+                'active' => ['credit-union.receipts'],
+                'icon' => $this->icon('plus-circle'),
+                'can' => $canManageReceipts,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Payouts',
+            ],
+            [
+                'label' => 'Withdrawals',
+                'route' => 'credit-union.withdrawals',
+                'active' => ['credit-union.withdrawals', 'credit-union.withdrawals.show'],
+                'icon' => $this->icon('report'),
+                'can' => $canSeeWithdrawals,
+            ],
+            [
+                'label' => 'Refunds',
+                'route' => 'credit-union.refunds',
+                'active' => ['credit-union.refunds'],
+                'icon' => $this->icon('spark'),
+                'can' => $canManageRefunds,
+            ],
+            [
+                'label' => 'Interest Distribution',
+                'route' => 'credit-union.interest-distributions',
+                'active' => ['credit-union.interest-distributions', 'credit-union.interest-distributions.show'],
+                'icon' => $this->icon('grid'),
+                'can' => $canSeeInterestDistributions,
             ],
             [
                 'type' => 'section',

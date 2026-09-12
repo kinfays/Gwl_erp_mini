@@ -297,6 +297,30 @@ Route::middleware(['auth', 'active', 'module:credit_union'])
         Route::get('/loans/{loan}', [CreditUnionModuleController::class, 'loanShow'])
             ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
             ->name('loans.show');
+
+        Route::get('/withdrawals', [CreditUnionModuleController::class, 'withdrawals'])
+            ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
+            ->name('withdrawals');
+
+        Route::get('/withdrawals/{withdrawal}', [CreditUnionModuleController::class, 'withdrawalShow'])
+            ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
+            ->name('withdrawals.show');
+
+        Route::get('/refunds', [CreditUnionModuleController::class, 'refunds'])
+            ->middleware('permission:credit_union.manage_refunds')
+            ->name('refunds');
+
+        Route::get('/receipts', [CreditUnionModuleController::class, 'receipts'])
+            ->middleware('permission:credit_union.manage_receipts')
+            ->name('receipts');
+
+        Route::get('/interest-distributions', [CreditUnionModuleController::class, 'interestDistributions'])
+            ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
+            ->name('interest-distributions');
+
+        Route::get('/interest-distributions/{distribution}', [CreditUnionModuleController::class, 'interestDistributionShow'])
+            ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
+            ->name('interest-distributions.show');
     });
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])
