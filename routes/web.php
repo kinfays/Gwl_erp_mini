@@ -192,6 +192,10 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('role:super_admin')
             ->name('agent');
 
+        Route::get('/settings/manufacturers', [AssetModuleController::class, 'settingsManufacturers'])
+            ->middleware('permission:assets.manage_manufacturers')
+            ->name('settings.manufacturers');
+
         Route::get('/settings/models', [AssetModuleController::class, 'settingsModels'])
             ->middleware('permission:assets.manage_models')
             ->name('settings.models');
@@ -246,82 +250,84 @@ Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager
             ->name('reports.export.excel');
     });
 
-Route::middleware(['auth', 'active', 'module:credit_union'])
-    ->prefix('credit-union')
-    ->name('credit-union.')
-    ->group(function () {
-        Route::get('/', [CreditUnionModuleController::class, 'home'])
-            ->middleware('permission:credit_union.manage_members,credit_union.apply_membership')
-            ->name('home');
+if (config('gwl.credit_union_module_enabled')) {
+    Route::middleware(['auth', 'active', 'module:credit_union'])
+        ->prefix('credit-union')
+        ->name('credit-union.')
+        ->group(function () {
+            Route::get('/', [CreditUnionModuleController::class, 'home'])
+                ->middleware('permission:credit_union.manage_members,credit_union.apply_membership')
+                ->name('home');
 
-        Route::get('/apply', [CreditUnionModuleController::class, 'apply'])
-            ->middleware('permission:credit_union.apply_membership')
-            ->name('apply');
+            Route::get('/apply', [CreditUnionModuleController::class, 'apply'])
+                ->middleware('permission:credit_union.apply_membership')
+                ->name('apply');
 
-        Route::post('/apply', [CreditUnionModuleController::class, 'submitApplication'])
-            ->middleware('permission:credit_union.apply_membership')
-            ->name('apply.store');
+            Route::post('/apply', [CreditUnionModuleController::class, 'submitApplication'])
+                ->middleware('permission:credit_union.apply_membership')
+                ->name('apply.store');
 
-        Route::get('/members', [CreditUnionModuleController::class, 'members'])
-            ->middleware('permission:credit_union.manage_members')
-            ->name('members');
+            Route::get('/members', [CreditUnionModuleController::class, 'members'])
+                ->middleware('permission:credit_union.manage_members')
+                ->name('members');
 
-        Route::get('/members/applications', [CreditUnionModuleController::class, 'applications'])
-            ->middleware('permission:credit_union.manage_members,credit_union.approve_membership')
-            ->name('members.applications');
+            Route::get('/members/applications', [CreditUnionModuleController::class, 'applications'])
+                ->middleware('permission:credit_union.manage_members,credit_union.approve_membership')
+                ->name('members.applications');
 
-        Route::get('/members/{member}', [CreditUnionModuleController::class, 'memberShow'])
-            ->middleware('permission:credit_union.manage_members')
-            ->name('members.show');
+            Route::get('/members/{member}', [CreditUnionModuleController::class, 'memberShow'])
+                ->middleware('permission:credit_union.manage_members')
+                ->name('members.show');
 
-        Route::get('/members/{member}/statement/pdf', [CreditUnionModuleController::class, 'memberStatementPdf'])
-            ->middleware('permission:credit_union.manage_members')
-            ->name('members.statement.pdf');
+            Route::get('/members/{member}/statement/pdf', [CreditUnionModuleController::class, 'memberStatementPdf'])
+                ->middleware('permission:credit_union.manage_members')
+                ->name('members.statement.pdf');
 
-        Route::get('/deductions', [CreditUnionModuleController::class, 'deductions'])
-            ->middleware('permission:credit_union.manage_deductions')
-            ->name('deductions');
+            Route::get('/deductions', [CreditUnionModuleController::class, 'deductions'])
+                ->middleware('permission:credit_union.manage_deductions')
+                ->name('deductions');
 
-        Route::get('/deductions/template', [CreditUnionModuleController::class, 'deductionTemplate'])
-            ->middleware('permission:credit_union.manage_deductions')
-            ->name('deductions.template');
+            Route::get('/deductions/template', [CreditUnionModuleController::class, 'deductionTemplate'])
+                ->middleware('permission:credit_union.manage_deductions')
+                ->name('deductions.template');
 
-        Route::get('/deductions/{batch}', [CreditUnionModuleController::class, 'deductionBatchShow'])
-            ->middleware('permission:credit_union.manage_deductions')
-            ->name('deductions.show');
+            Route::get('/deductions/{batch}', [CreditUnionModuleController::class, 'deductionBatchShow'])
+                ->middleware('permission:credit_union.manage_deductions')
+                ->name('deductions.show');
 
-        Route::get('/loans', [CreditUnionModuleController::class, 'loans'])
-            ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
-            ->name('loans');
+            Route::get('/loans', [CreditUnionModuleController::class, 'loans'])
+                ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
+                ->name('loans');
 
-        Route::get('/loans/{loan}', [CreditUnionModuleController::class, 'loanShow'])
-            ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
-            ->name('loans.show');
+            Route::get('/loans/{loan}', [CreditUnionModuleController::class, 'loanShow'])
+                ->middleware('permission:credit_union.manage_loans,credit_union.approve_loans')
+                ->name('loans.show');
 
-        Route::get('/withdrawals', [CreditUnionModuleController::class, 'withdrawals'])
-            ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
-            ->name('withdrawals');
+            Route::get('/withdrawals', [CreditUnionModuleController::class, 'withdrawals'])
+                ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
+                ->name('withdrawals');
 
-        Route::get('/withdrawals/{withdrawal}', [CreditUnionModuleController::class, 'withdrawalShow'])
-            ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
-            ->name('withdrawals.show');
+            Route::get('/withdrawals/{withdrawal}', [CreditUnionModuleController::class, 'withdrawalShow'])
+                ->middleware('permission:credit_union.manage_withdrawals,credit_union.approve_withdrawals')
+                ->name('withdrawals.show');
 
-        Route::get('/refunds', [CreditUnionModuleController::class, 'refunds'])
-            ->middleware('permission:credit_union.manage_refunds')
-            ->name('refunds');
+            Route::get('/refunds', [CreditUnionModuleController::class, 'refunds'])
+                ->middleware('permission:credit_union.manage_refunds')
+                ->name('refunds');
 
-        Route::get('/receipts', [CreditUnionModuleController::class, 'receipts'])
-            ->middleware('permission:credit_union.manage_receipts')
-            ->name('receipts');
+            Route::get('/receipts', [CreditUnionModuleController::class, 'receipts'])
+                ->middleware('permission:credit_union.manage_receipts')
+                ->name('receipts');
 
-        Route::get('/interest-distributions', [CreditUnionModuleController::class, 'interestDistributions'])
-            ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
-            ->name('interest-distributions');
+            Route::get('/interest-distributions', [CreditUnionModuleController::class, 'interestDistributions'])
+                ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
+                ->name('interest-distributions');
 
-        Route::get('/interest-distributions/{distribution}', [CreditUnionModuleController::class, 'interestDistributionShow'])
-            ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
-            ->name('interest-distributions.show');
-    });
+            Route::get('/interest-distributions/{distribution}', [CreditUnionModuleController::class, 'interestDistributionShow'])
+                ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
+                ->name('interest-distributions.show');
+        });
+}
 
 Route::middleware(['auth', 'active', 'module:visitors', 'role:receptionist'])
     ->prefix('visitors')

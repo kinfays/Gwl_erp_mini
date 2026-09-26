@@ -4,6 +4,7 @@ namespace App\Livewire\Visitors;
 
 use App\Models\Employee;
 use App\Models\Visitor;
+use App\Services\Visitors\VisitorService;
 use Livewire\Component;
 
 class Kiosk extends Component
@@ -97,11 +98,7 @@ class Kiosk extends Component
             'signature' => ['required', 'string'],
         ]);
 
-        $visitor = Visitor::create([
-            ...$validated,
-            'checkout_code' => $this->makeCheckoutCode(),
-            'check_in_at' => now(),
-        ]);
+        $visitor = app(VisitorService::class)->checkIn($validated);
 
         $this->checkoutCode = $visitor->checkout_code;
         $this->successName = $visitor->visitor_name;
@@ -180,11 +177,7 @@ class Kiosk extends Component
             ->inside()
             ->findOrFail($this->selfCheckoutVisitorId);
 
-        $visitor->update([
-            'signature' => $this->selfCheckoutSignature ?: $visitor->signature,
-            'check_out_at' => now(),
-            'checked_out_by' => 'self',
-        ]);
+        app(VisitorService::class)->checkOut($visitor, VisitorService::CHECKOUT_SELF, $this->selfCheckoutSignature);
 
         $this->selfCheckoutCode = '';
         $this->selfCheckoutVisitorId = null;
@@ -227,25 +220,5 @@ class Kiosk extends Component
             'staff_id.required' => 'Please select the employee you are visiting.',
             'signature.required' => 'Signature is required.',
         ];
-    }
-
-    protected function makeCheckoutCode(): string
-    {
-        for ($attempt = 0; $attempt < 10; $attempt++) {
-            $digits = random_int(1, 3);
-            $code = (string) random_int(10 ** ($digits - 1), (10 ** $digits) - 1);
-
-            $exists = Visitor::query()
-                ->today()
-                ->inside()
-                ->where('checkout_code', $code)
-                ->exists();
-
-            if (! $exists) {
-                return $code;
-            }
-        }
-
-        return (string) random_int(100, 999);
     }
 }

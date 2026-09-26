@@ -10,9 +10,23 @@ class HolidaySeeder extends Seeder
 {
     public function run(): void
     {
-        $year = (int) now()->format('Y');
+        foreach ($this->holidaysFor((int) now()->format('Y')) as $holiday) {
+            Holiday::query()->updateOrCreate(
+                ['holiday_name' => $holiday['holiday_name']],
+                ['holiday_date' => $holiday['holiday_date']]
+            );
+        }
+    }
 
-        $holidays = [
+    /**
+     * Ghana's statutory holiday calendar for one year (weekend dates already
+     * shifted to Monday).
+     *
+     * @return array<int, array{holiday_name: string, holiday_date: string}>
+     */
+    public function holidaysFor(int $year): array
+    {
+        return [
             [
                 'holiday_name' => "New Year's Day",
                 'holiday_date' => $this->shiftWeekendHoliday(Carbon::create($year, 1, 1)),
@@ -74,13 +88,6 @@ class HolidaySeeder extends Seeder
                 'holiday_date' => $this->shiftWeekendHoliday(Carbon::create($year, 12, 26)),
             ],
         ];
-
-        foreach ($holidays as $holiday) {
-            Holiday::query()->updateOrCreate(
-                ['holiday_name' => $holiday['holiday_name']],
-                ['holiday_date' => $holiday['holiday_date']]
-            );
-        }
     }
 
     protected function shiftWeekendHoliday(Carbon $date): string
@@ -117,7 +124,8 @@ class HolidaySeeder extends Seeder
         $known = Carbon::create(2025, 3, 31);
         $shiftDays = (int) round(($year - 2025) * 10.875);
 
-        return $known->copy()->subDays($shiftDays);
+        // The lunar calendar drifts ~10.875 days earlier per solar year.
+        return $known->copy()->addYears($year - 2025)->subDays($shiftDays);
     }
 
     protected function approximateEidAlAdha(int $year): Carbon
@@ -125,6 +133,6 @@ class HolidaySeeder extends Seeder
         $known = Carbon::create(2025, 6, 6);
         $shiftDays = (int) round(($year - 2025) * 10.875);
 
-        return $known->copy()->subDays($shiftDays);
+        return $known->copy()->addYears($year - 2025)->subDays($shiftDays);
     }
 }

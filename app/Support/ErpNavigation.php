@@ -69,7 +69,7 @@ class ErpNavigation
 
     protected function moduleDefinitions(): array
     {
-        return [
+        $definitions = [
             [
                 'slug' => Permission::MODULE_LEAVE,
                 'title' => 'Leave Management',
@@ -111,6 +111,11 @@ class ErpNavigation
                 'route' => $this->safeRoute('uac.index'),
             ],
         ];
+
+        return array_values(array_filter(
+            $definitions,
+            fn (array $def) => $def['slug'] !== Permission::MODULE_CREDIT_UNION || config('gwl.credit_union_module_enabled')
+        ));
     }
 
     protected function sidebarFor(User $user, string $currentModule): array
@@ -436,6 +441,13 @@ class ErpNavigation
             [
                 'type' => 'section',
                 'label' => 'Settings',
+            ],
+            [
+                'label' => 'Manufacturers',
+                'route' => 'assets.settings.manufacturers',
+                'active' => ['assets.settings.manufacturers'],
+                'icon' => $this->icon('stack'),
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_manufacturers') || $currentUser->hasRoles('super_admin'),
             ],
             [
                 'label' => 'Models',

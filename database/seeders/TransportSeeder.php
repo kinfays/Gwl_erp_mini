@@ -11,12 +11,31 @@ use App\Models\Vehicle;
 use App\Models\VehicleAssignmentHistory;
 use App\Models\VehicleExpense;
 use App\Models\VehicleIssue;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 class TransportSeeder extends Seeder
 {
+    /**
+     * DatabaseSeeder mutes model events (WithoutModelEvents), but the transport
+     * models derive columns in theirs: HasUuid fills `uuid`, MileageLog computes
+     * `distance_driven`, VehicleIssue defaults `reported_at`/`status`. Seed with
+     * the real dispatcher, exactly as when this seeder runs on its own.
+     */
     public function run(): void
+    {
+        $dispatcher = Model::getEventDispatcher();
+        Model::setEventDispatcher(app('events'));
+
+        try {
+            $this->seedFleet();
+        } finally {
+            $dispatcher ? Model::setEventDispatcher($dispatcher) : Model::unsetEventDispatcher();
+        }
+    }
+
+    protected function seedFleet(): void
     {
         $departments = collect(['Transport', 'Operations', 'Commercial', 'Finance', 'Administration'])
             ->mapWithKeys(fn (string $name) => [$name => Department::query()->firstOrCreate(['department_name' => $name])]);

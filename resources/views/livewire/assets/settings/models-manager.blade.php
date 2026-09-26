@@ -1,8 +1,14 @@
 <div>
+    @php
+        $thumbStyle = 'display:block;width:36px;height:36px;object-fit:cover;border-radius:6px;border:0.5px solid var(--color-border-tertiary)';
+        $imageField = $editingId ? 'editingImage' : 'image';
+        $pendingImage = $editingId ? $editingImage : $image;
+    @endphp
+
     <div class="page-head">
         <div class="ph-left">
             <h2>Asset Models</h2>
-            <p>Manage the model catalogue used by the Assets, Phones and Network add/edit forms.</p>
+            <p>Manage the model catalogue used by the Assets, Phones and Network add/edit forms. Models are shared across all regions.</p>
         </div>
     </div>
 
@@ -14,6 +20,7 @@
             <table>
                 <thead>
                     <tr>
+                        <th style="width:52px">Image</th>
                         <th>Model</th>
                         <th>Category</th>
                         <th>Manufacturer</th>
@@ -24,10 +31,17 @@
                 </thead>
                 <tbody>
                     @forelse ($models as $model)
-                        <tr>
+                        <tr wire:key="model-{{ $model->id }}">
+                            <td>
+                                @if ($model->image_path)
+                                    <img src="{{ $model->imageUrl() }}" alt="{{ $model->name }}" style="{{ $thumbStyle }}" loading="lazy">
+                                @else
+                                    <div style="{{ $thumbStyle }};border-style:dashed" title="No image"></div>
+                                @endif
+                            </td>
                             <td>{{ $model->name }}</td>
                             <td>{{ $model->category }}</td>
-                            <td>{{ $model->manufacturer ?: '-' }}</td>
+                            <td>{{ $model->manufacturer?->name ?: '-' }}</td>
                             <td>{{ $model->assets_count }}</td>
                             <td>
                                 <span class="pill {{ $model->is_active ? 'p-g' : 'p-d' }}">{{ $model->is_active ? 'Active' : 'Inactive' }}</span>
@@ -44,7 +58,7 @@
                                         x-data
                                         x-on:click.prevent="$dispatch('confirm-action', {
                                             title: 'Delete model?',
-                                            message: @js('This will delete ' . $model->name . ' if no assets use it.'),
+                                            message: @js('This will delete ' . $model->name . ' and its image if no assets use it.'),
                                             confirmLabel: 'Delete',
                                             variant: 'danger',
                                             action: () => $wire.delete({{ $model->id }})
@@ -57,7 +71,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" style="text-align:center;color:var(--color-text-secondary)">No models found.</td>
+                            <td colspan="7" style="text-align:center;color:var(--color-text-secondary)">No models found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -97,10 +111,51 @@
 
                 <div class="form-field" style="margin-bottom:12px">
                     <label class="form-label">Manufacturer</label>
-                    <input type="text" wire:model="{{ $editingId ? 'editingManufacturer' : 'manufacturer' }}" class="form-input">
-                    @error($editingId ? 'editingManufacturer' : 'manufacturer')
+                    <select wire:model="{{ $editingId ? 'editingManufacturerId' : 'manufacturer_id' }}" class="form-input">
+                        <option value="">Select manufacturer</option>
+                        @foreach ($manufacturers as $manufacturer)
+                            <option value="{{ $manufacturer->id }}">{{ $manufacturer->name }}{{ $manufacturer->is_active ? '' : ' (inactive)' }}</option>
+                        @endforeach
+                    </select>
+                    @if ($manufacturers->isEmpty())
+                        <span class="form-label" style="color:var(--color-text-secondary)">
+                            No manufacturers yet.
+                            @if ($canManageManufacturers)
+                                <a href="{{ route('assets.settings.manufacturers') }}">Add one under Settings &rsaquo; Manufacturers.</a>
+                            @endif
+                        </span>
+                    @endif
+                    @error($editingId ? 'editingManufacturerId' : 'manufacturer_id')
                         <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
                     @enderror
+                </div>
+
+                <div class="form-field" style="margin-bottom:12px">
+                    <label class="form-label">Image</label>
+                    <div style="display:flex;gap:10px;align-items:center">
+                        @if ($pendingImage && ! $errors->has($imageField) && $pendingImage->isPreviewable())
+                            <img src="{{ $pendingImage->temporaryUrl() }}" alt="New image preview" style="{{ $thumbStyle }};width:56px;height:56px">
+                        @elseif ($editingModel?->image_path)
+                            <img src="{{ $editingModel->imageUrl() }}" alt="{{ $editingModel->name }}" style="{{ $thumbStyle }};width:56px;height:56px">
+                        @endif
+                        <input
+                            type="file"
+                            wire:model="{{ $imageField }}"
+                            wire:key="model-image-input-{{ $editingId ?? 'new' }}"
+                            class="form-input"
+                            accept=".jpg,.jpeg,.png,.webp"
+                        >
+                    </div>
+                    <span wire:loading wire:target="{{ $imageField }}" class="form-label">Uploading…</span>
+                    <span class="form-label" style="color:var(--color-text-secondary)">JPG, PNG or WebP, up to 2MB.</span>
+                    @error($imageField)
+                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
+                    @enderror
+                    @if ($editingModel?->image_path)
+                        <div style="margin-top:6px">
+                            <button type="button" wire:click="removeImage({{ $editingModel->id }})" class="actn actn-r">Remove image</button>
+                        </div>
+                    @endif
                 </div>
 
                 <div class="form-field" style="margin-bottom:12px">
@@ -116,10 +171,10 @@
 
                 <div style="display:flex;gap:8px;justify-content:flex-end">
                     @if ($editingId)
-                        <button wire:click="update" class="btn btn-primary">Save</button>
+                        <button wire:click="update" wire:loading.attr="disabled" wire:target="editingImage" class="btn btn-primary">Save</button>
                         <button wire:click="cancelEdit" class="btn">Cancel</button>
                     @else
-                        <button wire:click="save" class="btn btn-primary">Add Model</button>
+                        <button wire:click="save" wire:loading.attr="disabled" wire:target="image" class="btn btn-primary">Add Model</button>
                     @endif
                 </div>
             </div>

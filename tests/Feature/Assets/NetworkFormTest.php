@@ -3,9 +3,12 @@
 namespace Tests\Feature\Assets;
 
 use App\Livewire\Assets\NetworkList;
+use App\Models\Department;
 use App\Models\District;
+use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctIpRange;
+use App\Models\JobTitle;
 use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
@@ -26,7 +29,8 @@ class NetworkFormTest extends TestCase
     public function test_creating_a_network_device_persists_it_under_the_network_category(): void
     {
         $this->seedCoreAssetsAccess();
-        $this->actingAs($this->superAdmin());
+        $district = $this->district('Accra Central District', 'Greater Accra');
+        $this->actingAs($this->superAdmin($district));
 
         Livewire::test(NetworkList::class)
             ->call('openCreate')
@@ -40,12 +44,72 @@ class NetworkFormTest extends TestCase
 
         $asset = IctAsset::query()->where('serial_number', 'RT-0001')->firstOrFail();
         $this->assertSame(IctAsset::DEVICE_CATEGORY_NETWORK, $asset->device_category);
+        $this->assertSame($district->region_id, $asset->region_id);
+    }
+
+    public function test_network_region_is_forced_to_the_actor_region_and_never_accepted_from_form_input(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $homeDistrict = $this->district('Accra Central District', 'Greater Accra');
+        $otherDistrict = $this->district('Kumasi Central District', 'Ashanti');
+        $this->actingAs($this->superAdmin($homeDistrict));
+
+        Livewire::test(NetworkList::class)
+            ->assertSet('form.region_id', $homeDistrict->region_id)
+            ->call('openCreate')
+            ->set('form.asset_name', 'Branch Switch 01')
+            ->set('form.asset_type', 'SW')
+            ->set('form.region_id', $otherDistrict->region_id)
+            ->set('form.status', IctAsset::STATUS_ACTIVE)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = IctAsset::query()->where('asset_name', 'Branch Switch 01')->firstOrFail();
+        $this->assertSame($homeDistrict->region_id, $asset->region_id);
+    }
+
+    public function test_network_district_outside_the_actor_region_is_rejected(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $homeDistrict = $this->district('Accra Central District', 'Greater Accra');
+        $otherDistrict = $this->district('Kumasi Central District', 'Ashanti');
+        $this->actingAs($this->superAdmin($homeDistrict));
+
+        $component = Livewire::test(NetworkList::class);
+        $this->assertSame([$homeDistrict->id], $component->viewData('formDistricts')->pluck('id')->all());
+
+        $component
+            ->call('openCreate')
+            ->set('form.asset_name', 'Branch Switch 02')
+            ->set('form.asset_type', 'SW')
+            ->set('form.district_id', $otherDistrict->id)
+            ->set('form.status', IctAsset::STATUS_ACTIVE)
+            ->call('save')
+            ->assertHasErrors(['form.district_id' => 'exists']);
+
+        $this->assertSame(0, IctAsset::query()->count());
+    }
+
+    public function test_actor_without_a_region_on_file_cannot_save_a_network_device(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+
+        Livewire::test(NetworkList::class)
+            ->call('openCreate')
+            ->set('form.asset_name', 'Branch Switch 03')
+            ->set('form.asset_type', 'SW')
+            ->set('form.status', IctAsset::STATUS_ACTIVE)
+            ->call('save')
+            ->assertHasErrors(['form.region_id']);
+
+        $this->assertSame(0, IctAsset::query()->count());
     }
 
     public function test_login_and_ssid_passwords_are_encrypted_at_rest(): void
     {
         $this->seedCoreAssetsAccess();
-        $this->actingAs($this->superAdmin());
+        $this->actingAs($this->superAdmin($this->district('Accra Central District', 'Greater Accra')));
 
         Livewire::test(NetworkList::class)
             ->call('openCreate')
@@ -71,7 +135,7 @@ class NetworkFormTest extends TestCase
     public function test_leaving_password_fields_blank_on_edit_keeps_the_existing_secret(): void
     {
         $this->seedCoreAssetsAccess();
-        $this->actingAs($this->superAdmin());
+        $this->actingAs($this->superAdmin($this->district('Accra Central District', 'Greater Accra')));
 
         $asset = IctAsset::query()->create([
             'asset_name' => 'Office AP',
@@ -123,8 +187,7 @@ class NetworkFormTest extends TestCase
     public function test_device_ip_outside_configured_range_is_rejected(): void
     {
         $this->seedCoreAssetsAccess();
-        $region = Region::query()->create(['region_name' => 'Greater Accra']);
-        $district = District::query()->create(['district_name' => 'Accra Central District', 'region_id' => $region->id]);
+        $district = $this->district('Accra Central District', 'Greater Accra');
 
         IctIpRange::query()->create([
             'label' => 'HQ LAN',
@@ -134,7 +197,7 @@ class NetworkFormTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($this->superAdmin());
+        $this->actingAs($this->superAdmin($district));
 
         Livewire::test(NetworkList::class)
             ->call('openCreate')
@@ -157,10 +220,18 @@ class NetworkFormTest extends TestCase
         ]);
     }
 
-    protected function superAdmin(): User
+    /**
+     * Region is derived from the actor's employee record, so pass a district
+     * to give the super admin one; omit it for an account with no region.
+     */
+    protected function superAdmin(?District $homeDistrict = null): User
     {
         $user = $this->user('SA001');
         $user->roles()->attach(Role::query()->where('name', 'super_admin')->firstOrFail());
+
+        if ($homeDistrict) {
+            $this->createEmployee('SA001', 'Super Admin', $homeDistrict);
+        }
 
         return $user;
     }
@@ -175,6 +246,39 @@ class NetworkFormTest extends TestCase
             'is_active' => true,
             'must_change_password' => false,
             ...$overrides,
+        ]);
+    }
+
+    protected function district(string $districtName, string $regionName): District
+    {
+        $region = Region::query()->firstOrCreate(['region_name' => $regionName]);
+
+        return District::query()->firstOrCreate(
+            ['district_name' => $districtName],
+            ['region_id' => $region->id]
+        );
+    }
+
+    protected function createEmployee(string $staffId, string $fullName, District $district): Employee
+    {
+        $department = Department::query()->firstOrCreate(['department_name' => 'Administration']);
+        $jobTitle = JobTitle::query()->firstOrCreate(['job_title_name' => 'Officer']);
+
+        return Employee::query()->create([
+            'staff_id' => $staffId,
+            'full_name' => $fullName,
+            'gender' => 'Male',
+            'category' => 'Senior Staff',
+            'email' => strtolower($staffId).'@example.com',
+            'job_title_id' => $jobTitle->id,
+            'department_id' => $department->id,
+            'region_id' => $district->region_id,
+            'district_id' => $district->id,
+            'location_type' => 'District',
+            'date_of_birth' => '1990-01-01',
+            'date_joined' => '2026-01-01',
+            'present_appointment' => '2026-01-01',
+            'is_active' => true,
         ]);
     }
 }

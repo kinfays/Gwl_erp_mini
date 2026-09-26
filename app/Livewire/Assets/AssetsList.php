@@ -9,7 +9,6 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
-use App\Models\Region;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -37,10 +36,12 @@ class AssetsList extends Component
 
     public ?int $editingAssetId = null;
 
-    public bool $regionLocked = false;
-
     public ?string $previousAssignedLabel = null;
 
+    /**
+     * form.region_id is display-only. It has no validation rule, so it never
+     * reaches save(), which always stamps the actor's own region instead.
+     */
     public array $form = [
         'asset_name' => '',
         'serial_number' => '',
@@ -59,11 +60,7 @@ class AssetsList extends Component
     {
         $this->enforceLivewireModule('assets');
 
-        $this->regionLocked = $this->actorIsRegionScopedIct();
-
-        if ($this->regionLocked) {
-            $this->form['region_id'] = $this->actorRegionId();
-        }
+        $this->form['region_id'] = $this->actorRegionId();
     }
 
     public function updating($name): void
@@ -102,7 +99,7 @@ class AssetsList extends Component
             'status' => (string) $asset->status,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'department_id' => $asset->department_id,
-            'region_id' => $asset->region_id,
+            'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
             'purchased_at' => $asset->purchased_at?->toDateString(),
             'notes' => (string) $asset->notes,
@@ -121,20 +118,10 @@ class AssetsList extends Component
         $permission = $this->editingAssetId ? 'assets.edit' : 'assets.create';
         $this->authorizeAction($permission);
 
+        $regionId = $this->requireActorRegionId();
+
         $validated = $this->validate($this->rules())['form'];
-
-        if ($this->actorIsRegionScopedIct()) {
-            $validated['region_id'] = $this->actorRegionId();
-        }
-
-        if (! empty($validated['assigned_to_employee_id'])) {
-            $employee = Employee::query()->find($validated['assigned_to_employee_id']);
-
-            if ($employee) {
-                $validated['district_id'] = $validated['district_id'] ?: $employee->district_id;
-                $validated['region_id'] = $validated['region_id'] ?: $employee->region_id;
-            }
-        }
+        $validated['region_id'] = $regionId;
 
         $existing = $this->editingAssetId
             ? $this->scopeAssetsForActor(IctAsset::query())->where('device_category', self::CATEGORY)->findOrFail($this->editingAssetId)
@@ -157,14 +144,35 @@ class AssetsList extends Component
                 Rule::unique('ict_assets', 'serial_number')->ignore($this->editingAssetId),
             ],
             'form.asset_type' => ['required', Rule::in(array_keys(IctAsset::ASSET_TYPES[self::CATEGORY]))],
-            'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
+            'form.ict_asset_model_id' => ['required', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
-            'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'form.assigned_to_employee_id' => ['required', 'integer', 'exists:employees,id'],
             'form.department_id' => ['required', 'integer', 'exists:departments,id'],
-            'form.region_id' => ['nullable', 'integer', 'exists:regions,id'],
-            'form.district_id' => ['nullable', 'integer', 'exists:districts,id'],
+            'form.district_id' => ['required', 'integer', $this->actorRegionDistrictRule()],
             'form.purchased_at' => ['nullable', 'date'],
             'form.notes' => ['nullable', 'string'],
+        ];
+    }
+
+    protected function messages(): array
+    {
+        return [
+            'form.district_id.exists' => 'The selected location is not in your region.',
+        ];
+    }
+
+    protected function validationAttributes(): array
+    {
+        return [
+            'form.asset_name' => 'asset name',
+            'form.serial_number' => 'serial number',
+            'form.asset_type' => 'type',
+            'form.ict_asset_model_id' => 'model',
+            'form.status' => 'status',
+            'form.assigned_to_employee_id' => 'assigned to',
+            'form.department_id' => 'department',
+            'form.district_id' => 'location',
+            'form.purchased_at' => 'date',
         ];
     }
 
@@ -188,7 +196,7 @@ class AssetsList extends Component
             'status' => 'Active',
             'assigned_to_employee_id' => null,
             'department_id' => null,
-            'region_id' => $this->regionLocked ? $this->actorRegionId() : null,
+            'region_id' => $this->actorRegionId(),
             'district_id' => null,
             'purchased_at' => null,
             'notes' => '',
@@ -216,17 +224,14 @@ class AssetsList extends Component
             ->latest()
             ->paginate($this->perPage);
 
+        // List filter: follows what the actor can see, not the form's region lock.
         $districts = District::query()
             ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
             ->orderBy('district_name')
             ->get();
 
-        $regions = Region::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->whereKey($this->actorRegionId()))
-            ->orderBy('region_name')
-            ->get();
-
         $models = IctAssetModel::query()
+            ->with('manufacturer')
             ->where('is_active', true)
             ->when($this->form['asset_type'], fn ($query) => $query->where('category', $this->form['asset_type']))
             ->orderBy('name')
@@ -243,7 +248,8 @@ class AssetsList extends Component
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
             'districts' => $districts,
-            'regions' => $regions,
+            'formDistricts' => $this->actorRegionDistricts(),
+            'actorRegion' => $this->actorRegion(),
             'models' => $models,
             'departments' => Department::query()->orderBy('department_name')->get(),
             'employees' => $employees,

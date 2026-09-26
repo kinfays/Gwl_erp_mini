@@ -31,6 +31,7 @@ class AssetsSidebarAndAccessTest extends TestCase
         $this->assertContains('Network', $labels);
         $this->assertContains('Maintenance', $labels);
         $this->assertContains('Reporting', $labels);
+        $this->assertContains('Manufacturers', $labels);
         $this->assertContains('Models', $labels);
         $this->assertContains('IP Ranges', $labels);
         $this->assertContains('Agent Reports', $labels);
@@ -50,6 +51,7 @@ class AssetsSidebarAndAccessTest extends TestCase
         $this->assertContains('Network', $labels);
         $this->assertContains('Maintenance', $labels);
         $this->assertNotContains('IP Ranges', $labels, 'ict_team is not granted assets.manage_ip_ranges by default.');
+        $this->assertNotContains('Manufacturers', $labels, 'ict_team is not granted assets.manage_manufacturers by default.');
         $this->assertNotContains('Agent Reports', $labels, 'Agent Reports stays super_admin-only.');
     }
 

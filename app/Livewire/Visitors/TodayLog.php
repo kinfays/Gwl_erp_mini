@@ -4,6 +4,7 @@ namespace App\Livewire\Visitors;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Visitor;
+use App\Services\Visitors\VisitorService;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -39,10 +40,7 @@ class TodayLog extends Component
             ->inside()
             ->findOrFail($visitorId);
 
-        $visitor->update([
-            'check_out_at' => now(),
-            'checked_out_by' => 'receptionist',
-        ]);
+        app(VisitorService::class)->checkOut($visitor, VisitorService::CHECKOUT_RECEPTIONIST);
 
         $this->dispatch('toast', type: 'success', message: $visitor->visitor_name.' has been checked out.');
     }

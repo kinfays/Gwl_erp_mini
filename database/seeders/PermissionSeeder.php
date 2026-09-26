@@ -64,6 +64,7 @@ class PermissionSeeder extends Seeder
                 'assets.create',
                 'assets.edit',
                 'assets.manage_models',
+                'assets.manage_manufacturers',
                 'assets.manage_maintenance',
                 'assets.manage_reports',
                 'assets.view_agent_reports',

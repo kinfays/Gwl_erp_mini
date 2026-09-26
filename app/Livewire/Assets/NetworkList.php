@@ -4,10 +4,8 @@ namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
-use App\Models\District;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
-use App\Models\Region;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -33,8 +31,6 @@ class NetworkList extends Component
 
     public ?int $editingAssetId = null;
 
-    public bool $regionLocked = false;
-
     /**
      * Row whose LoginPW/SsidPW are currently decrypted for display. Gated by
      * assets.view_network_secrets in toggleReveal() and re-checked in
@@ -42,6 +38,10 @@ class NetworkList extends Component
      */
     public ?int $revealedAssetId = null;
 
+    /**
+     * form.region_id is display-only. It has no validation rule, so it never
+     * reaches save(), which always stamps the actor's own region instead.
+     */
     public array $form = [
         'asset_name' => '',
         'asset_type' => '',
@@ -62,11 +62,7 @@ class NetworkList extends Component
     {
         $this->enforceLivewireModule('assets');
 
-        $this->regionLocked = $this->actorIsRegionScopedIct();
-
-        if ($this->regionLocked) {
-            $this->form['region_id'] = $this->actorRegionId();
-        }
+        $this->form['region_id'] = $this->actorRegionId();
     }
 
     public function updating($name): void
@@ -118,7 +114,7 @@ class NetworkList extends Component
             'ssid_password' => '',
             'device_ip' => (string) $asset->device_ip,
             'district_id' => $asset->district_id,
-            'region_id' => $asset->region_id,
+            'region_id' => $this->actorRegionId(),
             'serial_number' => (string) $asset->serial_number,
             'actual_location' => (string) $asset->actual_location,
             'status' => (string) $asset->status,
@@ -137,11 +133,10 @@ class NetworkList extends Component
         $permission = $this->editingAssetId ? 'assets.edit' : 'assets.create';
         $this->authorizeAction($permission);
 
-        $validated = $this->validate($this->rules())['form'];
+        $regionId = $this->requireActorRegionId();
 
-        if ($this->actorIsRegionScopedIct()) {
-            $validated['region_id'] = $this->actorRegionId();
-        }
+        $validated = $this->validate($this->rules())['form'];
+        $validated['region_id'] = $regionId;
 
         // Blank password fields mean "leave unchanged" on an edit.
         if ($this->editingAssetId) {
@@ -174,8 +169,7 @@ class NetworkList extends Component
             'form.ssid' => ['nullable', 'string', 'max:255'],
             'form.ssid_password' => ['nullable', 'string', 'max:255'],
             'form.device_ip' => ['nullable', 'ip'],
-            'form.district_id' => ['nullable', 'integer', 'exists:districts,id'],
-            'form.region_id' => ['nullable', 'integer', 'exists:regions,id'],
+            'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.serial_number' => [
                 'nullable',
                 'string',
@@ -184,6 +178,13 @@ class NetworkList extends Component
             ],
             'form.actual_location' => ['nullable', 'string', 'max:255'],
             'form.status' => ['required', 'string', 'max:120'],
+        ];
+    }
+
+    protected function messages(): array
+    {
+        return [
+            'form.district_id.exists' => 'The selected district is not in your region.',
         ];
     }
 
@@ -208,7 +209,7 @@ class NetworkList extends Component
             'ssid_password' => '',
             'device_ip' => '',
             'district_id' => null,
-            'region_id' => $this->regionLocked ? $this->actorRegionId() : null,
+            'region_id' => $this->actorRegionId(),
             'serial_number' => '',
             'actual_location' => '',
             'status' => 'Active',
@@ -240,17 +241,8 @@ class NetworkList extends Component
             ->latest()
             ->paginate($this->perPage);
 
-        $districts = District::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
-            ->orderBy('district_name')
-            ->get();
-
-        $regions = Region::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->whereKey($this->actorRegionId()))
-            ->orderBy('region_name')
-            ->get();
-
         $models = IctAssetModel::query()
+            ->with('manufacturer')
             ->where('is_active', true)
             ->when($this->form['asset_type'], fn ($query) => $query->where('category', $this->form['asset_type']))
             ->orderBy('name')
@@ -260,8 +252,8 @@ class NetworkList extends Component
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
-            'districts' => $districts,
-            'regions' => $regions,
+            'formDistricts' => $this->actorRegionDistricts(),
+            'actorRegion' => $this->actorRegion(),
             'models' => $models,
             'canViewSecrets' => $canViewSecrets,
         ]);

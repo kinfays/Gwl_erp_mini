@@ -42,6 +42,11 @@ class AssetModuleController extends Controller
         return view('assets.agent');
     }
 
+    public function settingsManufacturers(): View
+    {
+        return view('assets.settings.manufacturers');
+    }
+
     public function settingsModels(): View
     {
         return view('assets.settings.models');

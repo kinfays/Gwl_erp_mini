@@ -135,23 +135,14 @@
                             <input type="text" wire:model.defer="form.serial_number" class="form-input">
                             @error('form.serial_number') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
-                        <div class="form-field">
-                            <label class="form-label">Model</label>
-                            <select wire:model.defer="form.ict_asset_model_id" class="form-input">
-                                <option value="">Select model</option>
-                                @foreach ($models as $model)
-                                    <option value="{{ $model->id }}">{{ $model->name }} ({{ $model->manufacturer ?: 'n/a' }})</option>
-                                @endforeach
-                            </select>
-                            @error('form.ict_asset_model_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
+                        <x-assets.model-select :models="$models" />
                     </div>
 
                     <div class="form-row">
                         <div class="form-field">
                             <label class="form-label">Assigned To</label>
                             <select wire:model.defer="form.assigned_to_employee_id" class="form-input">
-                                <option value="">Unassigned</option>
+                                <option value="">Select employee</option>
                                 @foreach ($employees as $employee)
                                     <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
                                 @endforeach
@@ -175,10 +166,10 @@
                             @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
                         </div>
                         <div class="form-field">
-                            <label class="form-label">Location (District)</label>
+                            <label class="form-label">Location</label>
                             <select wire:model.defer="form.district_id" class="form-input">
                                 <option value="">Select location</option>
-                                @foreach ($districts as $district)
+                                @foreach ($formDistricts as $district)
                                     <option value="{{ $district->id }}">{{ $district->district_name }}</option>
                                 @endforeach
                             </select>
@@ -205,16 +196,7 @@
                     </div>
 
                     <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Region</label>
-                            <select wire:model.defer="form.region_id" class="form-input" @if ($regionLocked) disabled @endif>
-                                <option value="">Select region</option>
-                                @foreach ($regions as $region)
-                                    <option value="{{ $region->id }}">{{ $region->region_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.region_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
+                        <x-assets.actor-region :region="$actorRegion" />
                         <div class="form-field"></div>
                     </div>
 
