@@ -1,6 +1,6 @@
 # GWL ERP Project Documentation
 
-Last updated: 2026-05-12
+Last updated: 2026-09-26
 
 ## 1. Project Overview
 
@@ -16,22 +16,26 @@ The application uses role-based access control, module-level access gating, Live
 
 ## 2. Technology Stack
 
+Versions as pinned in `composer.lock` / `package-lock.json` (dependency update of 2026-09-26).
+
 ### Backend
 
-- PHP 8.3+
-- Laravel 13
-- Laravel Breeze (authentication scaffolding)
-- Livewire 4.2
-- Maatwebsite Excel (imports/exports)
-- Dompdf (PDF export)
+- PHP 8.4.1+ (production runs PHP 8.5)
+- Laravel 13.33 (Symfony 8.1 components)
+- Laravel Breeze 2.4 (authentication scaffolding)
+- Livewire 4.4
+- Maatwebsite Excel 4.0 with PhpSpreadsheet 5 (imports/exports)
+- dompdf/dompdf 3.1 (PDF export)
+- PHPUnit 13 (tests)
 
 ### Frontend
 
 - Blade templates
 - Livewire components
-- Alpine.js
-- Tailwind CSS
-- Vite
+- Alpine.js 3
+- Tailwind CSS 4 (CSS-first configuration in `resources/css/app.css`; no `tailwind.config.js`)
+- Vite 8 with `laravel-vite-plugin` 3
+- Node.js 22+ for the build tooling
 
 ### Infrastructure and Runtime Notes
 
@@ -73,9 +77,9 @@ Modules are visible based on role + module_access records, except `leave`, which
 
 ## 4.1 Prerequisites
 
-- PHP 8.3+
+- PHP 8.4.1+ (8.5 recommended, matching production)
 - Composer
-- Node.js + npm
+- Node.js 22+ and npm
 - Database (SQLite is default in `.env.example`)
 
 ## 4.2 Quick Setup

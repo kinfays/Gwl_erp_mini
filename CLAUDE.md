@@ -19,14 +19,23 @@ docs on those two.
 
 ## Tech stack
 
-- **PHP 8.3+**, **Laravel 13**
-- **Livewire 4.2** — primary interactive UI layer (not a JSON API + SPA frontend)
-- **Laravel Breeze** — auth scaffolding (login/register/password reset views + controllers)
-- **Maatwebsite/Excel** — xlsx import and export
-- **Dompdf** — PDF export (visitor logs, transport reports)
-- **Blade + Alpine.js + Tailwind CSS + Vite** — frontend
+Versions below are what `composer.lock` / `package-lock.json` pin; those files are the source of truth.
+
+- **PHP 8.4.1+** (`composer.json` requires `^8.4.1`; production and local run 8.5, and `config.platform.php` is pinned to `8.5.0` so the lock never assumes a newer PHP than production), **Laravel 13** (13.33) on **Symfony 8.1** components
+- **Livewire 4.4** — primary interactive UI layer (not a JSON API + SPA frontend)
+- **Laravel Breeze 2.4** — auth scaffolding (login/register/password reset views + controllers)
+- **Maatwebsite/Excel 4.0** on **PhpSpreadsheet 5** — xlsx import and export. 4.x interfaces are natively typed: export/import classes need real return types (e.g. `collection(): Collection`), and a class implementing only `WithMultipleSheets` must also implement `Maatwebsite\Excel\Concerns\Export` or `Excel::download()` throws a TypeError.
+- **dompdf/dompdf 3.1** (used directly via `new Dompdf($options)`, not the barryvdh wrapper) — PDF export (visitor logs, transport reports, credit union statements)
+- **Blade + Alpine.js 3 + Tailwind CSS 4 + Vite 8** (`laravel-vite-plugin` 3) — frontend. Node **22+** is required (`concurrently` 10, used by `composer run dev`).
 - **SQLite** by default (`database/database.sqlite`); swappable via `.env`
-- **Pest is NOT used** — tests are plain PHPUnit (`php artisan test` / `phpunit`)
+- **Pest is NOT used** — tests are plain PHPUnit **13** (`php artisan test` / `phpunit`)
+
+### Tailwind v4 setup (read before touching `resources/css/app.css`)
+- There is no `tailwind.config.js`; config lives in CSS (`@theme`, `@plugin '@tailwindcss/forms'`, `@source`, `@custom-variant dark`) at the top of `resources/css/app.css`, and PostCSS uses `@tailwindcss/postcss`.
+- Tailwind is imported as three separate files and **utilities are deliberately left unlayered**. `app.css` has ~2.5k lines of unlayered custom CSS (including global `table`/`th`/`td` rules); if utilities sat in `@layer utilities` (the v4 default `@import 'tailwindcss'`), that custom CSS would silently beat every utility, e.g. `px-4` on a `<td>`. Don't "simplify" this back to `@import 'tailwindcss'`.
+- The `@layer base` block restores a few v3 behaviours the rest of the UI relies on: default border colour, native `::file-selector-button` and `<option>` padding, and `cursor: pointer` on buttons.
+- v4 `space-y-*`/`space-x-*` put margin on the *bottom/end* of earlier siblings (v3 used top/start on later ones), so a child with its own custom `margin-bottom` can shrink the gap; set the margin explicitly when that happens (see `livewire/leave/hr-dashboard.blade.php`).
+- `resources/views/welcome.blade.php` inlines its own precompiled Tailwind CSS and isn't routed; don't run class codemods over it.
 
 ## Folder structure
 

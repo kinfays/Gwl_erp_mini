@@ -1,15 +1,15 @@
 # Setup and Runbook
 
-Last updated: 2026-05-12
+Last updated: 2026-09-26
 
 ## Stack
 
-- PHP 8.3+
+- PHP 8.4.1+ (production runs 8.5)
 - Laravel 13
-- Livewire 4.2
-- Tailwind + Alpine + Vite
-- Maatwebsite Excel
-- Dompdf
+- Livewire 4.4
+- Tailwind 4 + Alpine 3 + Vite 8 (Node.js 22+)
+- Maatwebsite Excel 4 (PhpSpreadsheet 5)
+- Dompdf 3.1
 
 ## Initial Setup
 
