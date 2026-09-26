@@ -3,6 +3,7 @@
 namespace App\Exports\Transport;
 
 use App\Models\VehicleExpense;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 
@@ -10,7 +11,7 @@ class VehicleExpensesExport implements FromCollection, WithHeadings
 {
     public function __construct(protected array $filters = []) {}
 
-    public function collection()
+    public function collection(): Collection
     {
         return VehicleExpense::query()
             ->with(['vehicle', 'recorder'])

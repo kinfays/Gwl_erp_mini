@@ -3,9 +3,10 @@
 namespace App\Exports\Transport;
 
 use App\Exports\Transport\Sheets\ArrayReportSheet;
+use Maatwebsite\Excel\Concerns\Export;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
-class TransportReportExport implements WithMultipleSheets
+class TransportReportExport implements Export, WithMultipleSheets
 {
     public function __construct(
         protected array $payload,
