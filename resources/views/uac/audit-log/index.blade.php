@@ -1,19 +1,19 @@
 <x-uac-layout>
 <div x-data="auditLogViewer()" x-on:keydown.escape.window="close()">
 
-<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6 dark:bg-slate-900 dark:border-slate-700">
+<div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6 mb-6 dark:bg-slate-900 dark:border-slate-700">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <form method="GET" class="flex-1 max-w-xl">
             <label class="block text-sm font-medium text-slate-700 mb-1.5 dark:text-slate-200">Search audit log</label>
             <div class="flex gap-3">
-                <input type="text" name="search" value="{{ $search }}" placeholder="Search by action, module, target, or IP address" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#185FA5]/20 focus:border-[#185FA5] transition-all duration-150 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500">
-                <button type="submit" class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition-all duration-150">Search</button>
+                <input type="text" name="search" value="{{ $search }}" placeholder="Search by action, module, target, or IP address" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#185FA5]/20 focus:border-[#185FA5] transition-all duration-150 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500">
+                <button type="submit" class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-xs transition-all duration-150">Search</button>
             </div>
         </form>
     </div>
 </div>
 
-<div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100 dark:bg-slate-900 dark:border-slate-700">
+<div class="bg-white rounded-2xl shadow-xs overflow-hidden border border-slate-100 dark:bg-slate-900 dark:border-slate-700">
     <table class="min-w-full">
         <thead class="bg-slate-50 border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700">
             <tr>

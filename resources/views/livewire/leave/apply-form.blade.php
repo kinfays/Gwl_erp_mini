@@ -3,7 +3,7 @@
     <h2 class="text-lg font-semibold mb-4">Apply for Leave</h2>
 
     @if ($errors->any())
-      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-sm">
         <ul class="text-sm text-red-700 list-disc list-inside">
           @foreach($errors->all() as $e) <li>{{ $e }}</li> @endforeach
         </ul>
@@ -27,7 +27,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
         <label class="text-sm font-medium">Leave Type</label>
-        <select wire:model.live="leave_type" class="w-full border rounded p-2">
+        <select wire:model.live="leave_type" class="w-full border rounded-sm p-2">
           <option>Annual</option>
           <option>Casual</option>
           <option>Paternity</option>
@@ -45,19 +45,19 @@
 
       <div>
         <label class="text-sm font-medium">Start Date</label>
-        <input type="date" wire:model.live="start_date" min="{{ $minDate }}" class="w-full border rounded p-2">
+        <input type="date" wire:model.live="start_date" min="{{ $minDate }}" class="w-full border rounded-sm p-2">
         @error('start_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
       </div>
 
       <div>
         <label class="text-sm font-medium">End Date</label>
-        <input type="date" wire:model.live="end_date" min="{{ $minEndDate }}" class="w-full border rounded p-2">
+        <input type="date" wire:model.live="end_date" min="{{ $minEndDate }}" class="w-full border rounded-sm p-2">
         @error('end_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
       </div>
 
       <div class="md:col-span-2">
         <label class="text-sm font-medium">Reason (Optional)</label>
-        <textarea wire:model="leave_details" class="w-full border rounded p-2" rows="4"></textarea>
+        <textarea wire:model="leave_details" class="w-full border rounded-sm p-2" rows="4"></textarea>
       </div>
 
       <div class="md:col-span-2">
@@ -67,8 +67,8 @@
     </div>
 
     <div class="mt-5 flex gap-3">
-      <button wire:click="savePlanned" class="px-4 py-2 rounded bg-slate-200">Save as Planned</button>
-      <button wire:click="submit" class="px-4 py-2 rounded bg-blue-600 text-white">Submit Request</button>
+      <button wire:click="savePlanned" class="px-4 py-2 rounded-sm bg-slate-200">Save as Planned</button>
+      <button wire:click="submit" class="px-4 py-2 rounded-sm bg-blue-600 text-white">Submit Request</button>
     </div>
   </div>
 

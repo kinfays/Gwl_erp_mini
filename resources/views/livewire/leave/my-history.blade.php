@@ -13,20 +13,20 @@
         </div>
 
         <div class="flex gap-2">
-            <button wire:click="togglePast" class="px-4 py-2 rounded bg-slate-100 text-sm">
+            <button wire:click="togglePast" class="px-4 py-2 rounded-sm bg-slate-100 text-sm">
                 {{ $includePast36Months ? 'Show Current Year' : 'Show Past 36 Months' }}
             </button>
-            <a href="{{ route('leave.export.approved.excel') }}" class="px-4 py-2 rounded bg-slate-100 text-sm">
+            <a href="{{ route('leave.export.approved.excel') }}" class="px-4 py-2 rounded-sm bg-slate-100 text-sm">
                 Export Excel
             </a>
-            <a href="{{ route('leave.apply') }}" class="px-4 py-2 rounded bg-blue-600 text-white text-sm">
+            <a href="{{ route('leave.apply') }}" class="px-4 py-2 rounded-sm bg-blue-600 text-white text-sm">
                 + Apply
             </a>
         </div>
     </div>
 
     @if ($errors->has('action'))
-        <div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <div class="p-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
             {{ $errors->first('action') }}
         </div>
     @endif
@@ -40,7 +40,7 @@
                         <div class="text-base font-semibold">{{ $r->leave_type }}</div>
                     </div>
 
-                    <span class="text-xs px-2 py-1 rounded bg-slate-100">
+                    <span class="text-xs px-2 py-1 rounded-sm bg-slate-100">
                         {{ $r->leave_status }}
                     </span>
                 </div>
@@ -54,13 +54,13 @@
 
                 <div class="pt-2 flex flex-wrap gap-2">
                     <button wire:click="viewRequest({{ $r->id }})"
-                            class="px-3 py-1.5 rounded bg-slate-100 text-xs">
+                            class="px-3 py-1.5 rounded-sm bg-slate-100 text-xs">
                         View
                     </button>
 
                     @if($r->canBeEditedByRequester())
                         <button wire:click="editRequest({{ $r->id }})"
-                                class="px-3 py-1.5 rounded bg-blue-50 text-blue-700 text-xs border border-blue-200">
+                                class="px-3 py-1.5 rounded-sm bg-blue-50 text-blue-700 text-xs border border-blue-200">
                             Edit
                         </button>
                     @endif
@@ -76,14 +76,14 @@
                                     variant: 'danger',
                                     action: () => $wire.deletePlanned({{ $r->id }})
                                 })"
-                                class="px-3 py-1.5 rounded bg-red-50 text-red-700 text-xs border border-red-200">
+                                class="px-3 py-1.5 rounded-sm bg-red-50 text-red-700 text-xs border border-red-200">
                             Delete
                         </button>
                     @endif
 
                     @if($r->leave_status === 'Denied')
                         <button wire:click="reopenDenied({{ $r->id }})"
-                                class="px-3 py-1.5 rounded bg-amber-50 text-amber-800 text-xs border border-amber-200">
+                                class="px-3 py-1.5 rounded-sm bg-amber-50 text-amber-800 text-xs border border-amber-200">
                             Re-open
                         </button>
                     @endif
@@ -124,12 +124,12 @@
 
                     <div class="pt-2">
                         <div class="text-slate-500 mb-1">Reason</div>
-                        <div class="p-3 bg-slate-50 border rounded">{{ $selectedRequest->leave_details ?: '—' }}</div>
+                        <div class="p-3 bg-slate-50 border rounded-sm">{{ $selectedRequest->leave_details ?: '—' }}</div>
                     </div>
 
                     <div class="pt-2">
                         <div class="text-slate-500 mb-1">Manager</div>
-                        <div class="p-3 bg-slate-50 border rounded">
+                        <div class="p-3 bg-slate-50 border rounded-sm">
                             {{ $selectedRequest->manager?->full_name ?? '—' }} <br>
                             <span class="text-xs text-slate-500">Recommendation: {{ $selectedRequest->manager_recommendation }}</span><br>
                             <span class="text-xs text-slate-500">Comment: {{ $selectedRequest->manager_comments ?: '—' }}</span>
@@ -138,7 +138,7 @@
 
                     <div class="pt-2">
                         <div class="text-slate-500 mb-1">Final Approver</div>
-                        <div class="p-3 bg-slate-50 border rounded">
+                        <div class="p-3 bg-slate-50 border rounded-sm">
                             {{ $selectedRequest->approvedBy?->full_name ?? '—' }} <br>
                             <span class="text-xs text-slate-500">Comment: {{ $selectedRequest->chiefManager_comments ?: '—' }}</span>
                         </div>
@@ -159,7 +159,7 @@
                 <div class="mt-6 flex flex-wrap gap-2">
                     @if($selectedRequest->canBeEditedByRequester())
                         <button wire:click="editRequest({{ $selectedRequest->id }})"
-                                class="px-4 py-2 rounded bg-blue-600 text-white text-sm">
+                                class="px-4 py-2 rounded-sm bg-blue-600 text-white text-sm">
                             Edit
                         </button>
                     @endif
@@ -175,14 +175,14 @@
                                     variant: 'danger',
                                     action: () => $wire.deletePlanned({{ $selectedRequest->id }})
                                 })"
-                                class="px-4 py-2 rounded bg-red-600 text-white text-sm">
+                                class="px-4 py-2 rounded-sm bg-red-600 text-white text-sm">
                             Delete
                         </button>
                     @endif
 
                     @if($selectedRequest->leave_status === 'Denied')
                         <button wire:click="reopenDenied({{ $selectedRequest->id }})"
-                                class="px-4 py-2 rounded bg-amber-600 text-white text-sm">
+                                class="px-4 py-2 rounded-sm bg-amber-600 text-white text-sm">
                             Re-open
                         </button>
                     @endif

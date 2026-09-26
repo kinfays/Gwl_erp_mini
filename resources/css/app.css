@@ -1,6 +1,69 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+  Tailwind v4 puts utilities in @layer utilities, and unlayered CSS always
+  beats layered CSS. Our custom rules below are unlayered (e.g. global td/th
+  padding), so they would silently override utilities like px-4 on a <td>.
+  Importing utilities without a layer keeps the v3 cascade: utilities and our
+  rules compete on specificity and source order, exactly as before.
+*/
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+
+@plugin '@tailwindcss/forms';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans:
+    Figtree, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  /*
+    v4 preflight strips padding/border from ::file-selector-button, which v3
+    left native; revert it so file inputs keep their "Choose file" button.
+  */
+  ::file-selector-button {
+    padding: revert;
+    border: revert;
+    border-radius: revert;
+    background-color: revert;
+    color: revert;
+  }
+
+  /* v4 preflight zeroes padding on every element; restore native option padding. */
+  option {
+    padding: revert;
+  }
+
+  /* Tailwind v4 dropped cursor: pointer on buttons; keep the v3 behaviour. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 [x-cloak] { display: none !important; }
 
 :root {

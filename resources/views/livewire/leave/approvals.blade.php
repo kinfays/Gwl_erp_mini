@@ -6,16 +6,16 @@
         </div>
 
         <div class="flex flex-col sm:flex-row gap-2">
-            <span class="px-3 py-2 text-sm rounded bg-blue-600 text-white text-center">Pending</span>
+            <span class="px-3 py-2 text-sm rounded-sm bg-blue-600 text-white text-center">Pending</span>
             <input type="text"
                    wire:model.live="search"
                    placeholder="Search employee name..."
-                   class="border rounded px-3 py-2 text-sm">
+                   class="border rounded-sm px-3 py-2 text-sm">
         </div>
     </div>
 
     @if ($errors->has('action'))
-        <div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <div class="p-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
             {{ $errors->first('action') }}
         </div>
     @endif
@@ -29,7 +29,7 @@
                         <div class="text-base font-semibold">{{ $r->leave_type }}</div>
                     </div>
 
-                    <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700 text-right">
+                    <span class="text-xs px-2 py-1 rounded-sm bg-slate-100 text-slate-700 text-right">
                         {{ $r->requester->full_name }}
                     </span>
                 </div>
@@ -50,15 +50,15 @@
 
                 <div class="pt-2 flex flex-wrap gap-2">
                     <button wire:click="viewRequest({{ $r->id }})"
-                            class="px-3 py-1.5 rounded bg-slate-100 text-xs">
+                            class="px-3 py-1.5 rounded-sm bg-slate-100 text-xs">
                         View
                     </button>
 
                     @if($readOnly)
-                        <span class="px-3 py-1.5 rounded bg-slate-50 text-slate-500 text-xs border">Read-only</span>
+                        <span class="px-3 py-1.5 rounded-sm bg-slate-50 text-slate-500 text-xs border">Read-only</span>
                     @else
                         <button wire:click="approveRequest({{ $r->id }})"
-                                class="px-3 py-1.5 rounded bg-blue-600 text-white text-xs">
+                                class="px-3 py-1.5 rounded-sm bg-blue-600 text-white text-xs">
                             Approve
                         </button>
                         <button
@@ -71,7 +71,7 @@
                                     variant: 'danger',
                                     action: () => $wire.denyRequest({{ $r->id }})
                                 })"
-                                class="px-3 py-1.5 rounded bg-red-50 text-red-700 text-xs border border-red-200">
+                                class="px-3 py-1.5 rounded-sm bg-red-50 text-red-700 text-xs border border-red-200">
                             Deny
                         </button>
                     @endif
@@ -116,12 +116,12 @@
 
                     <div class="pt-2">
                         <div class="text-slate-500 mb-1">Reason</div>
-                        <div class="p-3 bg-slate-50 border rounded whitespace-pre-line">{{ $selectedRequest->leave_details ?: 'No details provided.' }}</div>
+                        <div class="p-3 bg-slate-50 border rounded-sm whitespace-pre-line">{{ $selectedRequest->leave_details ?: 'No details provided.' }}</div>
                     </div>
 
                     <div class="pt-2">
                         <div class="text-slate-500 mb-1">Manager</div>
-                        <div class="p-3 bg-slate-50 border rounded">
+                        <div class="p-3 bg-slate-50 border rounded-sm">
                             {{ $selectedRequest->manager?->full_name ?? 'N/A' }}<br>
                             <span class="text-xs text-slate-500">Recommendation: {{ $selectedRequest->manager_recommendation }}</span><br>
                             <span class="text-xs text-slate-500">Comment: {{ $selectedRequest->manager_comments ?: 'N/A' }}</span>
@@ -131,7 +131,7 @@
                     <div class="pt-2">
                         <label class="text-slate-500 mb-1 block">Comment (optional)</label>
                         <textarea wire:model.live="comments.{{ $selectedRequest->id }}"
-                                  class="w-full border rounded p-2 text-sm"
+                                  class="w-full border rounded-sm p-2 text-sm"
                                   rows="3"
                                   maxlength="2000"></textarea>
                         @error($commentKey) <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
@@ -152,10 +152,10 @@
 
                 <div class="mt-6 flex flex-wrap gap-2">
                     @if($readOnly)
-                        <span class="px-4 py-2 rounded bg-slate-50 text-slate-500 text-sm border">Read-only</span>
+                        <span class="px-4 py-2 rounded-sm bg-slate-50 text-slate-500 text-sm border">Read-only</span>
                     @else
                         <button wire:click="approveRequest({{ $selectedRequest->id }})"
-                                class="px-4 py-2 rounded bg-blue-600 text-white text-sm">
+                                class="px-4 py-2 rounded-sm bg-blue-600 text-white text-sm">
                             Approve
                         </button>
                         <button
@@ -168,7 +168,7 @@
                                     variant: 'danger',
                                     action: () => $wire.denyRequest({{ $selectedRequest->id }})
                                 })"
-                                class="px-4 py-2 rounded bg-red-600 text-white text-sm">
+                                class="px-4 py-2 rounded-sm bg-red-600 text-white text-sm">
                             Deny
                         </button>
                     @endif

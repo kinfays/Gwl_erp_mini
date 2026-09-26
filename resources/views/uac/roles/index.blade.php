@@ -6,19 +6,19 @@
 
 {{--<x-uac-layout>
 
-<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+<div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6 mb-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
             <h2 class="text-lg font-semibold text-slate-700">Role matrix</h2>
             <p class="text-sm text-slate-600">Review system roles, linked permissions, and enabled modules.</p>
         </div>
-        <button class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition-all duration-150">Add New</button>
+        <button class="bg-[#185FA5] hover:bg-[#185FA5]/90 text-white font-medium px-4 py-2 rounded-lg shadow-xs transition-all duration-150">Add New</button>
     </div>
 </div>
 
 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
     @foreach ($roles as $role)
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6">
             <div class="flex items-start justify-between gap-4 mb-4">
                 <div>
                     <h3 class="text-lg font-semibold text-slate-900">{{ $role->display_name }}</h3>
@@ -50,7 +50,7 @@
     @endforeach
 </div>
 
-<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+<div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6">
     <h2 class="text-lg font-semibold text-slate-700 mb-6">Permissions by module</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         @foreach ($permissions as $module => $items)

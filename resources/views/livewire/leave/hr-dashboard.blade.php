@@ -18,7 +18,7 @@
     </div>
 
     {{-- KPI STATS --}}
-    <div class="stats">
+    <div class="stats" style="margin-bottom:24px">
 
         <div class="stat">
             <div class="stat-lbl">Regional staff</div>

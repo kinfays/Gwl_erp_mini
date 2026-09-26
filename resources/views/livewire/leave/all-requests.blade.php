@@ -6,16 +6,16 @@
                 <p class="text-sm text-slate-600">
                     Search and filter leave requests.
                     @if($readOnly)
-                        <span class="ml-2 text-xs bg-slate-100 px-2 py-1 rounded">HR view (read-only)</span>
+                        <span class="ml-2 text-xs bg-slate-100 px-2 py-1 rounded-sm">HR view (read-only)</span>
                     @endif
                 </p>
             </div>
 
             <div class="flex flex-wrap gap-2">
                 <input type="text" wire:model.live="search" placeholder="Search employee name..."
-                       class="border rounded px-3 py-2 text-sm">
+                       class="border rounded-sm px-3 py-2 text-sm">
 
-                <select wire:model.live="leaveType" class="border rounded px-3 py-2 text-sm">
+                <select wire:model.live="leaveType" class="border rounded-sm px-3 py-2 text-sm">
                     <option value="">All Types</option>
                     <option value="Annual">Annual</option>
                     <option value="Casual">Casual</option>
@@ -24,23 +24,23 @@
                     <option value="Sick">Sick</option>
                 </select>
 
-                <select wire:model.live="departmentId" class="border rounded px-3 py-2 text-sm">
+                <select wire:model.live="departmentId" class="border rounded-sm px-3 py-2 text-sm">
                     <option value="">All Departments</option>
                     @foreach($departments as $d)
                         <option value="{{ $d->id }}">{{ $d->department_name }}</option>
                     @endforeach
                 </select>
 
-                <input type="date" wire:model.live="dateFrom" class="border rounded px-3 py-2 text-sm">
-                <input type="date" wire:model.live="dateTo" class="border rounded px-3 py-2 text-sm">
+                <input type="date" wire:model.live="dateFrom" class="border rounded-sm px-3 py-2 text-sm">
+                <input type="date" wire:model.live="dateTo" class="border rounded-sm px-3 py-2 text-sm">
             </div>
         </div>
 
         <div class="flex gap-2 mt-4">
-            <button wire:click="setTab('all')" class="px-3 py-2 text-sm rounded {{ $tab === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">All</button>
-            <button wire:click="setTab('pending')" class="px-3 py-2 text-sm rounded {{ $tab === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Pending</button>
-            <button wire:click="setTab('approved')" class="px-3 py-2 text-sm rounded {{ $tab === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Approved</button>
-            <button wire:click="setTab('denied')" class="px-3 py-2 text-sm rounded {{ $tab === 'denied' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Denied</button>
+            <button wire:click="setTab('all')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">All</button>
+            <button wire:click="setTab('pending')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Pending</button>
+            <button wire:click="setTab('approved')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Approved</button>
+            <button wire:click="setTab('denied')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'denied' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Denied</button>
         </div>
     </div>
 
@@ -69,7 +69,7 @@
                         </td>
                         <td class="px-4 py-3">{{ $r->total_days_applied }}</td>
                         <td class="px-4 py-3">
-                            <span class="px-2 py-1 text-xs rounded bg-slate-100">
+                            <span class="px-2 py-1 text-xs rounded-sm bg-slate-100">
                                 {{ $r->leave_status }}
                             </span>
                         </td>

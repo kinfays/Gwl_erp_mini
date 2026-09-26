@@ -1,12 +1,12 @@
 <x-uac-layout>
 
-<div class="bg-white rounded-lg shadow">
+<div class="bg-white rounded-lg shadow-sm">
     <div class="p-6 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
         <form action="{{ route('uac.users') }}" method="GET" class="flex flex-wrap items-center gap-3">
             <input type="text" name="search" value="{{ $search }}" placeholder="Search name, email, or staff ID..." 
-                   class="border rounded px-3 py-2 text-sm w-64">
+                   class="border rounded-sm px-3 py-2 text-sm w-64">
 
-            <select name="role_id" class="border rounded px-3 py-2 text-sm">
+            <select name="role_id" class="border rounded-sm px-3 py-2 text-sm">
                 <option value="">All Roles</option>
                 @foreach($roles as $role)
                     <option value="{{ $role->id }}" {{ $roleId == $role->id ? 'selected' : '' }}>
@@ -15,13 +15,13 @@
                 @endforeach
             </select>
 
-            <select name="status" class="border rounded px-3 py-2 text-sm">
+            <select name="status" class="border rounded-sm px-3 py-2 text-sm">
                 <option value="">All Status</option>
                 <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
                 <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
             </select>
 
-            <select name="per_page" class="border rounded px-3 py-2 text-sm" onchange="this.form.submit()">
+            <select name="per_page" class="border rounded-sm px-3 py-2 text-sm" onchange="this.form.submit()">
                 @foreach ($perPageOptions as $option)
                     <option value="{{ $option }}" {{ (int) $perPage === $option ? 'selected' : '' }}>
                         {{ $option }} per page
@@ -29,7 +29,7 @@
                 @endforeach
             </select>
 
-            <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700">
+            <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded-sm text-sm hover:bg-slate-700">
                 Filter
             </button>
         </form>
@@ -37,7 +37,7 @@
         <button
             x-data
             x-on:click.prevent="$dispatch('create-user')"
-            class="bg-[#185FA5] text-white px-4 py-2 rounded text-sm hover:bg-[#185FA5]/90"
+            class="bg-[#185FA5] text-white px-4 py-2 rounded-sm text-sm hover:bg-[#185FA5]/90"
         >
             + Add User
         </button>
@@ -63,7 +63,7 @@
     </div>
 @endif
 
-<div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+<div class="bg-white rounded-2xl shadow-xs overflow-hidden border border-slate-100">
     <table class="min-w-full">
         <thead class="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -155,7 +155,7 @@
                                 <form method="POST" action="{{ route('uac.users.invite', $user) }}">
                                     @csrf
                                     <button type="submit"
-                                        class="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700">
+                                        class="text-xs px-2 py-1 rounded-sm bg-slate-100 hover:bg-slate-200 text-slate-700">
                                         Resend Invite
                                     </button>
                                 </form>
@@ -282,7 +282,7 @@
                                 name="roles[]"
                                 value="{{ $role->id }}"
                                 x-model="roles"
-                                class="rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
+                                class="rounded-sm border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
                             />
                             <span>{{ $role->display_name }}</span>
                         </label>
@@ -454,7 +454,7 @@ function employeePicker() {
                                 name="roles[]"
                                 value="{{ $role->id }}"
                                 x-model="roles"
-                                class="rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
+                                class="rounded-sm border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30"
                             />
                             <span>{{ $role->display_name }}</span>
                         </label>

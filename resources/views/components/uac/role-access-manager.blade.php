@@ -3,7 +3,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {{-- Left: Roles list --}}
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-4">
             <h2 class="text-sm font-semibold text-slate-700 mb-3">Roles</h2>
 
             <div class="space-y-2">
@@ -30,7 +30,7 @@
         <div class="lg:col-span-2 space-y-6">
 
             {{-- Role Header Card --}}
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <div class="flex items-center gap-3">
@@ -72,7 +72,7 @@
 
                         @if ($locked)
                             <div class="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-                                <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                                 </svg>
                                 This role is locked (system role). Permissions cannot be modified.
@@ -81,7 +81,7 @@
 
                         @if ($message)
                             <div class="mt-3 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">
-                                <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                                 </svg>
                                 {{ $message }}
@@ -110,7 +110,7 @@
             </div>
 
             {{-- Module access toggles --}}
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-sm font-semibold text-slate-700">Module Access</h3>
                     <span class="text-xs text-slate-500">
@@ -135,7 +135,7 @@
                                 wire:click="toggleModuleAccess('{{ $module }}')"
                                 :checked="{{ $isModuleEnabled ? 'true' : 'false' }}"
                                 @disabled(! $canEdit)
-                                class="w-5 h-5 rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30 disabled:opacity-50"
+                                class="w-5 h-5 rounded-sm border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30 disabled:opacity-50"
                             />
                         </label>
                     @endforeach
@@ -143,7 +143,7 @@
             </div>
 
             {{-- Permissions matrix --}}
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-100 p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-sm font-semibold text-slate-700">Permissions (Grouped by Module)</h3>
                     <span class="text-xs text-slate-500">
@@ -180,7 +180,7 @@
                                             wire:click="togglePermission({{ $perm['id'] }})"
                                             :checked="{{ $isPermSelected ? 'true' : 'false' }}"
                                             @disabled(! $canEdit)
-                                            class="rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30 disabled:opacity-50"
+                                            class="rounded-sm border-slate-300 text-[#185FA5] focus:ring-[#185FA5]/30 disabled:opacity-50"
                                         />
                                         <span class="text-sm text-slate-700 {{ $isPermSelected ? 'font-medium text-[#185FA5]' : '' }}">
                                             {{ $perm['display_name'] }}
@@ -219,7 +219,7 @@
                         <label class="block text-sm font-medium text-slate-700 mb-1">Role Slug</label>
                         <input type="text" wire:model.defer="newRoleSlug"
                                placeholder="e.g. finance_manager"
-                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30">
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30">
                         @error('newRoleSlug') <p class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>
 
@@ -227,14 +227,14 @@
                         <label class="block text-sm font-medium text-slate-700 mb-1">Display Name</label>
                         <input type="text" wire:model.defer="newRoleDisplayName"
                                placeholder="Finance Manager"
-                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30">
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30">
                         @error('newRoleDisplayName') <p class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1">Description (optional)</label>
                         <textarea wire:model.defer="newRoleDescription"
-                                  class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30"
+                                  class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30"
                                   rows="3"
                                   placeholder="What this role is for..."></textarea>
                         @error('newRoleDescription') <p class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -268,13 +268,13 @@
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1">Display Name</label>
                         <input wire:model.defer="editRoleDisplayName"
-                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30" />
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30" />
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
                         <textarea wire:model.defer="editRoleDescription"
-                                  class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30"
+                                  class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/30"
                                   rows="4"></textarea>
                     </div>
 
@@ -303,7 +303,7 @@
 
                 <div class="space-y-4">
                     <div class="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <svg class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <svg class="w-5 h-5 text-red-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
                         </svg>
                         <div>
@@ -318,7 +318,7 @@
                         </label>
                         <input wire:model.defer="deleteConfirmText"
                                placeholder="Type DELETE to confirm"
-                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/30" />
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500/30" />
                         @error('deleteConfirmText') <p class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>
 
