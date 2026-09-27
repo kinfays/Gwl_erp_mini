@@ -25,6 +25,9 @@ Highlights:
 - Regional HR and regional chief manager: same region
 - District manager: same district
 - Departmental/chief/manager roles: departmental and location-based scope
+- Scoped roles whose account has no linked employee record: no one (fails closed)
+
+The same scope guards edit, deactivate/reactivate and bulk import. Regional HR can only place employees in districts of their own region.
 
 ## Employee/User Sync
 

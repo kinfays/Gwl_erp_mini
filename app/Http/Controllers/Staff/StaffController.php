@@ -28,9 +28,10 @@ class StaffController extends Controller
         ]);
     }
 
-    public function edit(Employee $employee): View
+    public function edit(Request $request, Employee $employee, EmployeeDirectory $directory): View
     {
         abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
+        abort_unless($directory->canAccess($request->user(), $employee), 403);
 
         return view('staff.form', compact('employee'));
     }
@@ -65,9 +66,10 @@ class StaffController extends Controller
         return view('staff.job-titles');
     }
 
-    public function toggleStatus(Request $request, Employee $employee): RedirectResponse
+    public function toggleStatus(Request $request, Employee $employee, EmployeeDirectory $directory): RedirectResponse
     {
         abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
+        abort_unless($directory->canAccess($request->user(), $employee), 403);
 
         $old = $employee->toArray();
         $activating = ! $employee->is_active;

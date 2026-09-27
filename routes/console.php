@@ -4,6 +4,7 @@ use App\Events\Transport\DocumentExpiryDetected;
 use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
+use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -21,6 +22,20 @@ Artisan::command('gwcl:auto-checkout-visitors', function (VisitorService $visito
 
 Schedule::command('gwcl:auto-checkout-visitors')
     ->dailyAt(config('gwl.auto_checkout_time', config('gwcl.visitors_auto_checkout_time', '18:00')));
+
+Artisan::command('leave:forfeit-expired-carry-over {--dry-run : Report what would be forfeited without changing any balance}', function (LeaveBalanceService $balances) {
+    $dryRun = (bool) $this->option('dry-run');
+    $summary = $balances->forfeitExpiredCarryOver($dryRun);
+
+    $this->info(sprintf(
+        '%s %d day(s) of expired carry-over on %d annual balance(s).',
+        $dryRun ? 'Would forfeit' : 'Forfeited',
+        $summary['days'],
+        $summary['balances']
+    ));
+})->purpose('Forfeit annual leave carry-over still unused after its expiry date');
+
+Schedule::command('leave:forfeit-expired-carry-over')->dailyAt('00:30');
 
 Artisan::command('transport:check-expiries', function () {
     $count = 0;

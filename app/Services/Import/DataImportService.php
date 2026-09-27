@@ -11,9 +11,11 @@ use App\Models\JobTitle;
 use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Staff\EmployeeDirectory;
 use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -25,6 +27,8 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class DataImportService
 {
+    public function __construct(protected EmployeeDirectory $directory) {}
+
     public function availableTypes(bool $includeUsers = true): array
     {
         return collect($this->definitions())
@@ -48,7 +52,7 @@ class DataImportService
         );
     }
 
-    public function preview(UploadedFile $file, string $type): array
+    public function preview(UploadedFile $file, string $type, ?User $actor = null): array
     {
         $definition = $this->definition($type);
         $rows = $this->readRows($file);
@@ -93,7 +97,7 @@ class DataImportService
             }
 
             $processedRows++;
-            [$normalized, $rowErrors] = $this->validateRow($type, $mapped, $index + 2);
+            [$normalized, $rowErrors] = $this->validateRow($type, $mapped, $index + 2, $actor);
 
             if (count($previewRows) < 8) {
                 $previewRows[] = $mapped;
@@ -120,19 +124,19 @@ class DataImportService
         ];
     }
 
-    public function run(string $type, array $rows): array
+    public function run(string $type, array $rows, ?User $actor = null): array
     {
         $created = 0;
         $updated = 0;
 
-        DB::transaction(function () use ($type, $rows, &$created, &$updated) {
+        DB::transaction(function () use ($type, $rows, $actor, &$created, &$updated) {
             foreach ($rows as $row) {
                 [$wasRecentlyCreated] = match ($type) {
                     'departments' => [$this->upsertDepartment($row)],
                     'regions' => [$this->upsertRegion($row)],
                     'districts' => [$this->upsertDistrict($row)],
                     'job_titles' => [$this->upsertJobTitle($row)],
-                    'employees' => [$this->upsertEmployee($row)],
+                    'employees' => [$this->upsertEmployee($row, $actor)],
                     'users' => [$this->upsertUser($row)],
                     default => [false],
                 };
@@ -152,10 +156,10 @@ class DataImportService
         ];
     }
 
-    protected function validateRow(string $type, array $row, int $rowNumber): array
+    protected function validateRow(string $type, array $row, int $rowNumber, ?User $actor = null): array
     {
         $normalized = $this->normalizeRow($type, $row);
-        $validator = Validator::make($normalized, $this->rulesFor($type, $normalized), [], $this->attributesFor($type));
+        $validator = Validator::make($normalized, $this->rulesFor($type, $normalized, $actor), [], $this->attributesFor($type));
         $errors = [];
 
         if ($validator->fails()) {
@@ -200,7 +204,7 @@ class DataImportService
         return $normalized;
     }
 
-    protected function rulesFor(string $type, array $row): array
+    protected function rulesFor(string $type, array $row, ?User $actor = null): array
     {
         return match ($type) {
             'departments' => [
@@ -218,7 +222,16 @@ class DataImportService
                 'job_title_name' => ['required', 'string', 'max:255'],
             ],
             'employees' => [
-                'staff_id' => ['required', 'string', 'max:50'],
+                'staff_id' => [
+                    'required',
+                    'string',
+                    'max:50',
+                    function (string $attribute, mixed $value, Closure $fail) use ($actor): void {
+                        if (! $this->canImportExistingEmployee($actor, $value)) {
+                            $fail('You can only import employees in your own region.');
+                        }
+                    },
+                ],
                 'full_name' => ['required', 'string', 'max:255'],
                 'gender' => ['required', 'in:Male,Female'],
                 'category' => ['required', 'in:Senior Staff,Junior Staff,Management,Senior Management,Charwoman'],
@@ -265,9 +278,17 @@ class DataImportService
                     'required',
                     'string',
                     'max:255',
-                    function (string $attribute, mixed $value, Closure $fail): void {
-                        if (! $this->referenceExists(Region::class, 'region_name', $value)) {
+                    function (string $attribute, mixed $value, Closure $fail) use ($actor): void {
+                        $region = $this->findReference(Region::class, 'region_name', $value);
+
+                        if (! $region) {
                             $fail('The region must already exist in the system.');
+
+                            return;
+                        }
+
+                        if (! $this->canPlaceEmployeeInRegion($actor, $region)) {
+                            $fail('Employees must be placed in your own region.');
                         }
                     },
                 ],
@@ -389,6 +410,29 @@ class DataImportService
             ->first();
     }
 
+    protected function canImportExistingEmployee(?User $actor, mixed $staffId): bool
+    {
+        $actor ??= Auth::user();
+
+        if (! $actor || $this->directory->assignableRegionIds($actor) === null) {
+            return true;
+        }
+
+        $existing = Employee::query()
+            ->where('staff_id', $this->normalizeCellText($staffId))
+            ->first();
+
+        return ! $existing || $this->directory->canAccess($actor, $existing);
+    }
+
+    protected function canPlaceEmployeeInRegion(?User $actor, Region $region): bool
+    {
+        $actor ??= Auth::user();
+        $regionIds = $actor ? $this->directory->assignableRegionIds($actor) : null;
+
+        return $regionIds === null || in_array((int) $region->id, $regionIds, true);
+    }
+
     protected function normalizeHeading($value): string
     {
         return Str::of((string) $value)
@@ -448,7 +492,7 @@ class DataImportService
         return $jobTitle->wasRecentlyCreated;
     }
 
-    protected function upsertEmployee(array $row): bool
+    protected function upsertEmployee(array $row, ?User $actor = null): bool
     {
         $region = $this->findReference(Region::class, 'region_name', $row['region_name']);
         $district = $region ? $this->findDistrictForRegion($row['district_name'], $region) : null;
@@ -458,6 +502,12 @@ class DataImportService
         if (! $region || ! $district || ! $department || ! $jobTitle) {
             throw ValidationException::withMessages([
                 'import' => 'Employee import reference data changed. Please preview the file again.',
+            ]);
+        }
+
+        if (! $this->canPlaceEmployeeInRegion($actor, $region) || ! $this->canImportExistingEmployee($actor, $row['staff_id'])) {
+            throw ValidationException::withMessages([
+                'import' => 'You can only import employees in your own region. Please preview the file again.',
             ]);
         }
 

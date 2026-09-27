@@ -33,7 +33,7 @@ Resolved by `LeaveApprovalChainResolver` based on `location_type`:
 
 - Casual leave submission is blocked if annual balance is still positive.
 - Working days exclude weekends and holidays.
-- Annual carry-over expires after configured days.
+- Annual carry-over expires after configured days (default 1 April). Leave dated before the expiry uses carry-over first; whatever is unused then is forfeited by the daily `leave:forfeit-expired-carry-over` job.
 - Sick leave uses effectively unlimited virtual entitlement.
 
 ## Compulsory Deductions
@@ -41,6 +41,7 @@ Resolved by `LeaveApprovalChainResolver` based on `location_type`:
 - Applies bulk annual leave deduction to selected categories.
 - Supports exclusion by location type.
 - Requires override confirmation if same-year deduction exists.
+- Deducted days are charged to `leave_balances` (no leave request is created) and count against the Annual balance everywhere, including the apply form and the casual-leave rule.
 
 ## Key Files
 

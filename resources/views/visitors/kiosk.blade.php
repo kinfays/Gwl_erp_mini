@@ -8,7 +8,7 @@
         @include('partials.favicon')
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/signature-pad.js'])
         @livewireStyles
     </head>
     <body class="visitor-kiosk-body">
@@ -18,7 +18,6 @@
         <x-global.confirm-modal />
 
         @livewireScripts
-        <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.2.0/dist/signature_pad.umd.min.js"></script>
         <script>
             function kioskClock() {
                 const target = document.querySelector('[data-kiosk-clock]');
@@ -193,6 +192,9 @@
                 window.clearKioskSignature(event.detail?.property);
             });
 
+            // Every init path runs on or after DOMContentLoaded (Livewire starts then too), by which time the
+            // deferred signature-pad module has set window.SignaturePad; initialising a canvas earlier would
+            // leave it on the plain-canvas fallback in initSignaturePads().
             document.addEventListener('DOMContentLoaded', () => {
                 kioskClock();
                 initSignaturePads();

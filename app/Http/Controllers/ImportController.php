@@ -43,7 +43,7 @@ class ImportController extends Controller
         ]);
 
         $context = $this->resolveContext($request);
-        $preview = $imports->preview($request->file('file'), $request->string('type')->toString());
+        $preview = $imports->preview($request->file('file'), $request->string('type')->toString(), $request->user());
         $maxFailurePercent = (int) config('gwl.max_import_failure_percent', 20);
         $rowCount = max(1, (int) ($preview['total_rows'] ?? 0));
         $failurePercent = round(((int) ($preview['error_count'] ?? 0) / $rowCount) * 100, 1);
@@ -78,7 +78,7 @@ class ImportController extends Controller
             ]);
         }
 
-        $result = $imports->run($preview['type'], $preview['valid_rows']);
+        $result = $imports->run($preview['type'], $preview['valid_rows'], $request->user());
 
         AuditLog::record(
             'run_import',

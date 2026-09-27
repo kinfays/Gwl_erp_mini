@@ -1,3 +1,7 @@
+@assets
+    @vite('resources/js/charts.js')
+@endassets
+
 <div class="main">
     <div class="page-head">
         <div class="ph-left">
@@ -111,8 +115,10 @@
                     <div class="pg-head">
                         <span class="pg-title">Team leave by type</span>
                     </div>
-                    <div style="padding:10px 14px">
-                        <div id="teamLeaveTypeChart" style="height:220px"></div>
+                    <div style="padding:10px 14px" wire:ignore>
+                        <div style="position:relative;height:220px">
+                            <canvas id="teamLeaveTypeChart"></canvas>
+                        </div>
                     </div>
                 </div>
 
@@ -136,18 +142,30 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('teamLeaveTypeChart');
-    if (!el) return;
+    if (!el || typeof Chart === 'undefined') return;
 
     const data = @json(array_values($leaveByType));
     const labels = @json(array_keys($leaveByType));
 
-    new ApexCharts(el, {
-        chart: { type: 'bar', height: 220, toolbar: { show: false } },
-        plotOptions: { bar: { horizontal: true } },
-        series: [{ data }],
-        xaxis: { categories: labels, max: 100 },
-        colors: ['#185FA5'],
-    }).render();
+    new Chart(el, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{ label: 'Share of approved days', data, backgroundColor: '#185FA5' }],
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: context => `${context.parsed.x}%` } },
+            },
+            scales: {
+                x: { min: 0, max: 100, ticks: { callback: value => `${value}%` } },
+            },
+        },
+    });
 });
 </script>
 </div>

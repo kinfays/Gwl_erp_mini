@@ -10,10 +10,7 @@ class EmployeeDirectory
 {
     public function queryFor(User $user): Builder
     {
-        $employee = $user->employee ?? $user->employeeByStaffId;
-
-        $query = Employee::query()
-            ->visibleInErp()
+        return $this->scopedQuery($user)
             ->with([
                 'department',
                 'jobTitle',
@@ -30,15 +27,48 @@ class EmployeeDirectory
                     ->whereDate('start_date', '<=', today())
                     ->whereDate('end_date', '>=', today()),
             ]);
+    }
+
+    public function canAccess(User $user, Employee $employee): bool
+    {
+        return $this->scopedQuery($user)->whereKey($employee->getKey())->exists();
+    }
+
+    /**
+     * Regions a user may place employees in when creating, editing or importing them:
+     * null means any region, otherwise region-level HR is limited to their own region
+     * (and to none when their account isn't linked to an employee with a region).
+     */
+    public function assignableRegionIds(User $user): ?array
+    {
+        if ($user->hasRoles('super_admin', 'hr_headoffice') || ! $user->hasRoles('hr_region')) {
+            return null;
+        }
+
+        $regionId = ($user->employee ?? $user->employeeByStaffId)?->region_id;
+
+        return $regionId ? [(int) $regionId] : [];
+    }
+
+    protected function scopedQuery(User $user): Builder
+    {
+        $employee = $user->employee ?? $user->employeeByStaffId;
+
+        $query = Employee::query()->visibleInErp();
 
         if ($user->hasRoles('super_admin', 'hr_headoffice')) {
             return $query;
         }
 
+        // Every narrower scope is relative to the user's own employee record, so fail closed without one.
+        if (! $employee) {
+            return $query->whereRaw('1 = 0');
+        }
+
         if ($user->hasRoles('hr_region')) {
             return $employee?->region_id
                 ? $query->where('region_id', $employee->region_id)
-                : $query;
+                : $query->whereRaw('1 = 0');
         }
 
         if ($user->hasRoles('regional_chief_manager')) {

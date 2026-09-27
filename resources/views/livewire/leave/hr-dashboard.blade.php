@@ -1,3 +1,7 @@
+@assets
+    @vite('resources/js/charts.js')
+@endassets
+
 <div class="space-y-6">
 
     {{-- PAGE HEADER --}}
@@ -113,13 +117,14 @@
         <span class="pg-title">Leave by Type — {{ now()->year }}</span>
     </div>
 
-    <div class="px-4 py-3">
-        <div
-            id="leaveByTypeChart"
-            data-series='@json(array_values($leaveByType))'
-            data-labels='@json(array_keys($leaveByType))'
-            style="height:240px"
-        ></div>
+    <div class="px-4 py-3" wire:ignore>
+        <div style="position:relative;height:240px">
+            <canvas
+                id="leaveByTypeChart"
+                data-series='@json(array_values($leaveByType))'
+                data-labels='@json(array_keys($leaveByType))'
+            ></canvas>
+        </div>
     </div>
 </div>
 
@@ -166,13 +171,14 @@
              <span class="pg-title">Gender Breakdown (Approved)</span>
              </div>
 
-    <div class="px-4 py-3">
-        <div
-            id="genderChart"
-            data-male="{{ $genderBreakdown['male'] ?? 0 }}"
-            data-female="{{ $genderBreakdown['female'] ?? 0 }}"
-            style="height:90px"
-        ></div>
+    <div class="px-4 py-3" wire:ignore>
+        <div style="position:relative;height:90px">
+            <canvas
+                id="genderChart"
+                data-male="{{ $genderBreakdown['male'] ?? 0 }}"
+                data-female="{{ $genderBreakdown['female'] ?? 0 }}"
+            ></canvas>
+        </div>
     </div>
 </div>
        <!--     <div class="pg">
@@ -198,97 +204,118 @@
 </div>  
 
 <script>
-    document.addEventListener('livewire:navigated', initLeaveCharts);
-    document.addEventListener('DOMContentLoaded', initLeaveCharts);
+    (() => {
+        // Chart.js has no built-in data labels, so write each segment's percentage inside the bar.
+        const segmentPercentLabels = {
+            id: 'segmentPercentLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
 
-    function initLeaveCharts() {
+                ctx.save();
+                ctx.fillStyle = '#fff';
+                ctx.font = '600 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
 
-        /* ===============================
-           LEAVE BY TYPE (Horizontal Bar)
-        =============================== */
-        const typeEl = document.getElementById('leaveByTypeChart');
-        if (typeEl) {
-            const series = JSON.parse(typeEl.dataset.series || '[]');
-            const labels = JSON.parse(typeEl.dataset.labels || '[]');
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    if (! chart.isDatasetVisible(datasetIndex)) {
+                        return;
+                    }
 
-            if (typeEl._chart) {
-                typeEl._chart.destroy();
+                    chart.getDatasetMeta(datasetIndex).data.forEach((bar, index) => {
+                        const value = dataset.data[index];
+
+                        if (value > 0) {
+                            ctx.fillText(`${value}%`, (bar.x + bar.base) / 2, bar.y);
+                        }
+                    });
+                });
+
+                ctx.restore();
+            },
+        };
+
+        function initLeaveCharts() {
+            if (typeof Chart === 'undefined') {
+                return;
             }
 
-            const options = {
-                chart: {
+            /* ===============================
+               LEAVE BY TYPE (Horizontal Bar)
+            =============================== */
+            const typeEl = document.getElementById('leaveByTypeChart');
+            if (typeEl) {
+                const series = JSON.parse(typeEl.dataset.series || '[]');
+                const labels = JSON.parse(typeEl.dataset.labels || '[]');
+
+                typeEl._chart?.destroy();
+                typeEl._chart = new Chart(typeEl, {
                     type: 'bar',
-                    height: 240,
-                    toolbar: { show: false },
-                },
-                plotOptions: {
-                    bar: {
-                        horizontal: true,
-                        borderRadius: 4,
-                    }
-                },
-                dataLabels: { enabled: false },
-                series: [{
-                    name: 'Usage %',
-                    data: series,
-                }],
-                xaxis: {
-                    categories: labels,
-                    max: 100,
-                    labels: { formatter: val => `${val}%` },
-                },
-                colors: ['#185FA5'],
-            };
-
-            typeEl._chart = new ApexCharts(typeEl, options);
-            typeEl._chart.render();
-        }
-
-        /* ===============================
-           GENDER BREAKDOWN (Stacked)
-        =============================== */
-        const genderEl = document.getElementById('genderChart');
-        if (genderEl) {
-            const male = parseInt(genderEl.dataset.male || 0);
-            const female = parseInt(genderEl.dataset.female || 0);
-
-            if (genderEl._chart) {
-                genderEl._chart.destroy();
+                    data: {
+                        labels,
+                        datasets: [{ label: 'Usage %', data: series, backgroundColor: '#185FA5', borderRadius: 4 }],
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: context => `${context.parsed.x}%` } },
+                        },
+                        scales: {
+                            x: { min: 0, max: 100, ticks: { callback: value => `${value}%` } },
+                        },
+                    },
+                });
             }
 
-            const options = {
-                chart: {
-                    type: 'bar',
-                    stacked: true,
-                    height: 90,
-                    toolbar: { show: false },
-                },
-                plotOptions: {
-                    bar: {
-                        horizontal: true,
-                        barHeight: '40%',
-                    }
-                },
-                dataLabels: {
-                    enabled: true,
-                    formatter: val => `${val}%`,
-                },
-                series: [
-                    { name: 'Male', data: [male] },
-                    { name: 'Female', data: [female] },
-                ],
-                xaxis: { categories: [''] },
-                colors: ['#185FA5', '#D4537E'],
-                legend: {
-                    position: 'bottom',
-                    labels: { colors: '#6B7280' }
-                },
-            };
+            /* ===============================
+               GENDER BREAKDOWN (Stacked)
+            =============================== */
+            const genderEl = document.getElementById('genderChart');
+            if (genderEl) {
+                // data-male/data-female are approved-request counts; chart each as a share of the total.
+                const counts = [parseInt(genderEl.dataset.male || 0), parseInt(genderEl.dataset.female || 0)];
+                const total = counts[0] + counts[1];
+                const malePercent = total ? Math.round((counts[0] / total) * 100) : 0;
+                const femalePercent = total ? 100 - malePercent : 0;
 
-            genderEl._chart = new ApexCharts(genderEl, options);
-            genderEl._chart.render();
+                genderEl._chart?.destroy();
+                genderEl._chart = new Chart(genderEl, {
+                    type: 'bar',
+                    data: {
+                        labels: [''],
+                        datasets: [
+                            { label: 'Male', data: [malePercent], backgroundColor: '#185FA5', maxBarThickness: 24 },
+                            { label: 'Female', data: [femalePercent], backgroundColor: '#D4537E', maxBarThickness: 24 },
+                        ],
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#6B7280', boxWidth: 10 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: context => `${context.dataset.label}: ${counts[context.datasetIndex]} requests (${context.parsed.x}%)`,
+                                },
+                            },
+                        },
+                        scales: {
+                            x: { stacked: true, min: 0, max: 100, ticks: { callback: value => `${value}%` } },
+                            y: { stacked: true, grid: { display: false } },
+                        },
+                    },
+                    plugins: [segmentPercentLabels],
+                });
+            }
         }
-    }
+
+        document.addEventListener('livewire:navigated', initLeaveCharts);
+        document.addEventListener('DOMContentLoaded', initLeaveCharts);
+    })();
 </script>
 
 

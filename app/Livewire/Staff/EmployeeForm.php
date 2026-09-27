@@ -8,8 +8,12 @@ use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\JobTitle;
+use App\Models\User;
+use App\Services\Staff\EmployeeDirectory;
+use App\Support\ErpNavigation;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class EmployeeForm extends Component
@@ -47,6 +51,12 @@ class EmployeeForm extends Component
     public function mount(?Employee $employee = null): void
     {
         $this->enforceLivewireModule('staff');
+
+        $user = $this->actor();
+
+        abort_unless(app(ErpNavigation::class)->canManageStaff($user), 403);
+        abort_if($employee && ! app(EmployeeDirectory::class)->canAccess($user, $employee), 403);
+        abort_if(! $employee && $this->assignableRegionIds() === [], 403, 'Your profile needs a region before you can add employees.');
 
         $this->employee = $employee?->loadMissing([
             'district.region',
@@ -87,7 +97,9 @@ class EmployeeForm extends Component
 
     public function save()
     {
-        $validated = $this->validate($this->rules());
+        abort_if($this->employee && ! app(EmployeeDirectory::class)->canAccess($this->actor(), $this->employee), 403);
+
+        $validated = $this->validate($this->rules(), $this->validationMessages());
         $validated['region_id'] = District::query()->whereKey($validated['district_id'])->value('region_id');
         $validated['date_joined'] = $validated['date_joined'] ?: null;
         $validated['present_appointment'] = $validated['present_appointment'] ?: null;
@@ -131,6 +143,8 @@ class EmployeeForm extends Component
 
     public function render()
     {
+        $regionIds = $this->assignableRegionIds();
+
         return view('livewire.staff.employee-form', [
             'departmentOptions' => Department::query()
                 ->orderBy('department_name')
@@ -150,6 +164,7 @@ class EmployeeForm extends Component
                 ->all(),
             'districtOptions' => District::query()
                 ->with('region')
+                ->when($regionIds !== null, fn ($query) => $query->whereIn('region_id', $regionIds))
                 ->orderBy('district_name')
                 ->get(['id', 'district_name', 'region_id'])
                 ->map(fn (District $district) => [
@@ -171,6 +186,12 @@ class EmployeeForm extends Component
     protected function rules(): array
     {
         $employeeId = $this->employee?->id;
+        $regionIds = $this->assignableRegionIds();
+        $districtRule = Rule::exists('districts', 'id');
+
+        if ($regionIds !== null) {
+            $districtRule->whereIn('region_id', $regionIds);
+        }
 
         return [
             'staff_id' => ['required', 'string', 'max:50', 'unique:employees,staff_id,'.$employeeId],
@@ -182,9 +203,30 @@ class EmployeeForm extends Component
             'job_title_id' => ['required', 'exists:job_titles,id'],
             'department_id' => ['required', 'exists:departments,id'],
             'unit' => ['nullable', 'string', 'max:255'],
-            'district_id' => ['required', 'exists:districts,id'],
+            'district_id' => ['required', $districtRule],
             'present_appointment' => ['nullable', 'date'],
             'email' => ['required', 'email', 'max:255', 'unique:employees,email,'.$employeeId],
         ];
+    }
+
+    protected function validationMessages(): array
+    {
+        return $this->assignableRegionIds() === null
+            ? []
+            : ['district_id.exists' => 'Choose a district in your own region.'];
+    }
+
+    protected function assignableRegionIds(): ?array
+    {
+        return app(EmployeeDirectory::class)->assignableRegionIds($this->actor());
+    }
+
+    protected function actor(): User
+    {
+        $user = auth()->user();
+
+        abort_unless($user, 403);
+
+        return $user->loadMissing(['roles', 'employee', 'employeeByStaffId']);
     }
 }

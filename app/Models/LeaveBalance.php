@@ -14,6 +14,8 @@ class LeaveBalance extends Model
         'remaining_days',
         'carry_over_days',
         'carry_over_expired_date',
+        'carry_over_forfeited_days',
+        'carry_over_forfeited_at',
         'current_year',
         'district_id',
         'region_id',
@@ -21,6 +23,8 @@ class LeaveBalance extends Model
 
     protected $casts = [
         'carry_over_expired_date' => 'date',
+        'carry_over_forfeited_days' => 'integer',
+        'carry_over_forfeited_at' => 'datetime',
         'current_year' => 'integer',
     ];
 

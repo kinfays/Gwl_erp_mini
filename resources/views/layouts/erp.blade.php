@@ -38,7 +38,6 @@
 
         {{-- Preconnect for performance --}}
         <link rel="preconnect" href="https://fonts.bunny.net">
-        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -228,8 +227,5 @@
         <x-global.confirm-modal />
 
         @livewireScripts
-
-        {{-- External Chart Library --}}
-        <script src="https://cdn.jsdelivr.net/npm/apexcharts" defer></script>
     </body>
 </html>

@@ -132,6 +132,7 @@ class CompulsoryDeductions extends Component
             'endDate' => 'required|date|after_or_equal:startDate|before_or_equal:'.$this->rangeEndLimit(),
             'deductionDays' => 'required|integer|min:1|max:62',
             'categories' => 'required|array|min:1',
+            'excludeLocationType' => 'nullable|in:HeadOffice,Region,District',
         ]);
 
         $existing = CompulsoryLeaveDeduction::where('year', $this->year)->first();
@@ -150,7 +151,8 @@ class CompulsoryDeductions extends Component
                 'deduction_days' => $this->deductionDays,
                 'applied_by_id' => (auth()->user()->employee ?? auth()->user()->employeeByStaffId)->id,
                 'applies_to_categories' => $this->categories,
-                'excludes_location_type' => $this->excludeLocationType,
+                // The "None" option posts '', which the enum column rejects.
+                'excludes_location_type' => $this->excludeLocationType ?: null,
                 'notes' => $this->notes,
                 'applied_at' => now(),
             ]);

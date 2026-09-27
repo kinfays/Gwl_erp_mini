@@ -1,3 +1,7 @@
+@assets
+    @vite('resources/js/charts.js')
+@endassets
+
 <div>
     <div class="page-head">
         <div class="ph-left">
@@ -206,7 +210,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         (() => {
             const initialPayload = @js($payload);
@@ -321,7 +324,15 @@
             }
 
             window.addEventListener('staff-leave-report-data-updated', event => render(event.detail.charts));
-            requestAnimationFrame(() => render(initialPayload));
+
+            // Chart.js arrives as a deferred module, which has run by DOMContentLoaded.
+            const renderInitial = () => requestAnimationFrame(() => render(initialPayload));
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
+            } else {
+                renderInitial();
+            }
         })();
     </script>
 </div>

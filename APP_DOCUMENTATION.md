@@ -35,11 +35,13 @@ Versions as pinned in `composer.lock` / `package-lock.json` (dependency update o
 - Alpine.js 3
 - Tailwind CSS 4 (CSS-first configuration in `resources/css/app.css`; no `tailwind.config.js`)
 - Vite 8 with `laravel-vite-plugin` 3
+- Chart.js 4.5 (npm, bundled as `resources/js/charts.js` and loaded only by chart components via Livewire `@assets`)
+- signature_pad 5.1 (npm, bundled as `resources/js/signature-pad.js` and loaded only by the visitor kiosk)
 - Node.js 22+ for the build tooling
 
 ### Infrastructure and Runtime Notes
 
-- Scheduler command configured for visitor auto-checkout
+- Scheduler commands configured for visitor auto-checkout and annual leave carry-over forfeiture
 - Queue listener included in local dev script
 - `URL::forceScheme('https')` is enabled in `AppServiceProvider`
 
@@ -123,7 +125,13 @@ Command:
 php artisan gwcl:auto-checkout-visitors
 ```
 
-Scheduler entry is defined in `routes/console.php`.
+Annual leave carry-over that is still unused after its expiry date is forfeited daily at 00:30:
+
+```bash
+php artisan leave:forfeit-expired-carry-over            # add --dry-run to preview without saving
+```
+
+Scheduler entries are defined in `routes/console.php`.
 
 Run scheduler locally with:
 
@@ -237,6 +245,9 @@ If actor is ICT Team without admin/super_admin:
 - `district_manager`: same district
 - `chief_manager`, `departmental_manager`: scoped by department + location context
 - `manager`: scoped by department + unit + location context
+- Any other role, or any scoped role whose account has no linked employee record: no employees
+
+The same scope is enforced on edit, deactivate/reactivate and bulk import, not just the list. `hr_region` can also only place employees in districts of their own region (create, edit and import); moving staff to another region is done by head office HR.
 
 ### Employee to user synchronization
 
@@ -297,7 +308,7 @@ Typical flow:
 
 - Casual leave submission is blocked while annual remaining > 0.
 - Working days exclude weekends and observed holidays.
-- Annual carry-over is available until configurable expiry window.
+- Annual carry-over (last year's unused Annual days) can be used until 1 Jan + `GWL_CARRY_OVER_EXPIRY_DAYS` (default 90, so 1 April). Annual leave dated before that uses carry-over first; carry-over still unused on the expiry date is forfeited by the `leave:forfeit-expired-carry-over` job (`leave_balances.carry_over_forfeited_days`, audit-logged).
 - Sick leave is treated as effectively unlimited (`9999` virtual entitlement).
 
 ### Compulsory deductions
@@ -306,6 +317,7 @@ Typical flow:
 - Date window constrained to Dec 1 - Jan 31 boundary logic in component.
 - Can exclude one `location_type`.
 - Requires explicit override confirmation if same-year deduction exists.
+- Deducted days are charged straight to `leave_balances` (no leave request is created) and count against the Annual balance everywhere, including the apply form and the casual-leave rule.
 
 ## 6.4 Letters and Document Routing
 

@@ -56,6 +56,9 @@ class VisitorCheckInTest extends TestCase
 
     public function test_receptionist_checkout_keeps_the_check_in_signature(): void
     {
+        // Midday, so "an hour ago" is still today (the receptionist log only checks out today's visits).
+        $this->travelTo(now()->setTime(12, 0));
+
         $this->actingAs($this->createReceptionistUser());
         $visitor = $this->createVisitor($this->createEmployee(), ['check_in_at' => now()->subHour()]);
 

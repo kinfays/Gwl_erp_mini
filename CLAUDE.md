@@ -27,6 +27,9 @@ Versions below are what `composer.lock` / `package-lock.json` pin; those files a
 - **Maatwebsite/Excel 4.0** on **PhpSpreadsheet 5** — xlsx import and export. 4.x interfaces are natively typed: export/import classes need real return types (e.g. `collection(): Collection`), and a class implementing only `WithMultipleSheets` must also implement `Maatwebsite\Excel\Concerns\Export` or `Excel::download()` throws a TypeError.
 - **dompdf/dompdf 3.1** (used directly via `new Dompdf($options)`, not the barryvdh wrapper) — PDF export (visitor logs, transport reports, credit union statements)
 - **Blade + Alpine.js 3 + Tailwind CSS 4 + Vite 8** (`laravel-vite-plugin` 3) — frontend. Node **22+** is required (`concurrently` 10, used by `composer run dev`).
+- **Chart.js 4** (npm, MIT) — the only chart library. It's a separate Vite entry (`resources/js/charts.js`, sets `window.Chart`) that each chart component loads with `@assets @vite('resources/js/charts.js') @endassets`, so it only ships on pages that draw charts; the module runs before `DOMContentLoaded`, so draw charts from that event, not immediately. Don't reintroduce ApexCharts: since v5.1 its licence needs a paid commercial licence for organisations over US$2M revenue.
+- **signature_pad 5** (npm, MIT) — likewise its own Vite entry (`resources/js/signature-pad.js`, sets `window.SignaturePad`), loaded only by the standalone visitor kiosk page through its `@vite([...])` list.
+- Front-end libraries come from npm through Vite (version-locked with integrity hashes in `package-lock.json`), never from a CDN `<script>` tag.
 - **SQLite** by default (`database/database.sqlite`); swappable via `.env`
 - **Pest is NOT used** — tests are plain PHPUnit **13** (`php artisan test` / `phpunit`)
 
@@ -67,7 +70,7 @@ routes/
   web.php                    All authenticated UI routes, grouped per module with prefix()/name()/middleware()
   api.php                    Bearer-token JSON endpoints (agent telemetry, driver mobile app) — NOT Sanctum, a raw api_token column check
   auth.php                   Breeze auth routes, required from web.php
-  console.php                Artisan commands + Schedule:: definitions (visitor auto-checkout, transport expiry checks)
+  console.php                Artisan commands + Schedule:: definitions (visitor auto-checkout, leave carry-over forfeiture, transport expiry checks)
 
 database/
   migrations/                Chronological; see "Migration conventions" below
@@ -168,7 +171,8 @@ Other useful commands:
 php artisan route:list --except-vendor    # inspect the full route table
 php artisan migrate:fresh --seed          # nuke and rebuild the local DB
 php artisan gwcl:auto-checkout-visitors   # manually run the visitor auto-checkout job
-php artisan schedule:work                 # run the scheduler locally (visitor checkout + transport expiry checks)
+php artisan leave:forfeit-expired-carry-over --dry-run   # preview annual carry-over forfeiture (drop --dry-run to apply)
+php artisan schedule:work                 # run the scheduler locally (visitor checkout, carry-over forfeiture, transport expiry checks)
 ```
 
 Seeding order matters: `DatabaseSeeder` runs `RoleSeeder` and `PermissionSeeder` before any module-specific role/permission seeder, and `SuperAdminSeeder` last. Two seeders (`LeavePermissionsSeeder`, `LeaveRolePermissionSeeder`) exist in `database/seeders/` but are **not** called by `DatabaseSeeder` — they're legacy/superseded by the migration-embedded seeding described above; don't assume they run.

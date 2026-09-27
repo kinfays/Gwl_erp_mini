@@ -62,6 +62,5 @@
         <x-global.confirm-modal />
 
         @livewireScripts
-        <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     </body>
 </html>

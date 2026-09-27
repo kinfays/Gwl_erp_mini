@@ -44,6 +44,12 @@ Visitor auto-checkout command:
 php artisan gwcl:auto-checkout-visitors
 ```
 
+Annual leave carry-over forfeiture (daily at 00:30; `--dry-run` previews without saving):
+
+```bash
+php artisan leave:forfeit-expired-carry-over
+```
+
 Scheduler setup is in `routes/console.php`:
 
 ```bash
