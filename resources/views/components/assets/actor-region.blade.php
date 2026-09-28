@@ -4,13 +4,18 @@
     'label' => 'Region',
 ])
 
-<div class="form-field">
-    <label class="form-label">{{ $label }}</label>
+<div {{ $attributes->class(['ui-field']) }}>
+    <span class="ui-label">{{ $label }}</span>
     @if ($region)
-        <div style="padding:6px 0;font-size:13px">{{ $region->region_name }}</div>
+        <p class="readonly-value">{{ $region->region_name }}</p>
     @else
-        <div class="txt-err" style="padding:6px 0">No region on file</div>
+        <p class="readonly-value is-missing">No region on file</p>
     @endif
-    <div style="font-size:10px;color:var(--color-text-secondary)">Set automatically from your staff record.</div>
-    @error('form.region_id') <div class="txt-err">{{ $message }}</div> @enderror
+    <p class="ui-hint">Set automatically from your staff record.</p>
+    @error('form.region_id')
+        <p class="ui-error">
+            <x-ui.icon name="circle-alert" class="icon-sm" />
+            <span>{{ $message }}</span>
+        </p>
+    @enderror
 </div>

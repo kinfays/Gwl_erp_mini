@@ -1,308 +1,281 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Vehicles</h2>
-            <p>Fleet records, assignments, documents, and import.</p>
-        </div>
-        <div class="ph-right">
-            @if ($canManage)
-                <button type="button" class="btn btn-secondary" wire:click="$toggle('showImport')">Import</button>
-                <button type="button" class="btn btn-primary" wire:click="openCreate">Add Vehicle</button>
-            @endif
-        </div>
-    </div>
+    <x-ui.page-header title="Vehicles" description="Fleet records, assignments, documents, and import.">
+        @if ($canManage)
+            <x-slot:actions>
+                <button type="button" class="btn btn-secondary" wire:click="$toggle('showImport')" aria-pressed="{{ $showImport ? 'true' : 'false' }}">
+                    <x-ui.icon name="upload" />
+                    Import
+                </button>
+                <button type="button" class="btn btn-primary" wire:click="openCreate">
+                    <x-ui.icon name="plus" />
+                    Add Vehicle
+                </button>
+            </x-slot:actions>
+        @endif
+    </x-ui.page-header>
 
     @if ($showImport && $canManage)
-        <div class="pg" style="margin-top:14px">
-            <div class="pg-head">
-                <span class="pg-title">Vehicle Import</span>
-            </div>
-            <div style="padding:14px">
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Excel or CSV file</label>
-                        <input type="file" class="form-input" wire:model="importFile">
-                        @error('importFile') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field" style="justify-content:end">
-                        <button type="button" class="btn btn-primary" wire:click="importVehicles" wire:loading.attr="disabled">Run Import</button>
-                    </div>
+        <x-ui.card title="Vehicle Import" description="Columns: number_plate, type, brand, model, assigned_user_email, assigned_driver_email" class="dash-row">
+            <div class="ui-stack">
+                <div class="import-type-row">
+                    <x-ui.field label="Excel or CSV file" for="f-vehicle-import" error="importFile" class="toolbar-grow">
+                        <input id="f-vehicle-import" type="file" class="form-input" wire:model="importFile">
+                    </x-ui.field>
+                    <button type="button" class="btn btn-primary" wire:click="importVehicles" wire:loading.attr="disabled">
+                        <x-ui.icon name="upload" />
+                        Run Import
+                    </button>
                 </div>
 
                 @if ($importSummary)
-                    <div class="stats" style="margin-top:10px">
-                        <div class="stat"><div class="stat-lbl">Created</div><div class="stat-val">{{ $importSummary['created'] }}</div></div>
-                        <div class="stat"><div class="stat-lbl">Updated</div><div class="stat-val">{{ $importSummary['updated'] }}</div></div>
-                        <div class="stat"><div class="stat-lbl">Failed</div><div class="stat-val">{{ $importSummary['failed'] }}</div></div>
-                        <div class="stat"><div class="stat-lbl">Columns</div><div class="stat-sub">number_plate, type, brand, model, assigned_user_email, assigned_driver_email</div></div>
+                    <div class="import-result" role="status">
+                        <x-ui.status-pill tone="success" :label="$importSummary['created'].' created'" />
+                        <x-ui.status-pill tone="info" :label="$importSummary['updated'].' updated'" />
+                        <x-ui.status-pill :tone="$importSummary['failed'] > 0 ? 'danger' : 'muted'" :label="$importSummary['failed'].' failed'" />
                     </div>
                 @endif
 
                 @if ($importErrors)
-                    <table>
-                        <thead><tr><th>Row</th><th>Error</th></tr></thead>
-                        <tbody>
-                            @foreach ($importErrors as $error)
-                                <tr><td>{{ $error['row'] }}</td><td>{{ $error['message'] }}</td></tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                    <ul class="import-issue-list">
+                        @foreach ($importErrors as $error)
+                            <li>
+                                <x-ui.icon name="circle-alert" />
+                                <span><strong>Row {{ $error['row'] }}:</strong> {{ $error['message'] }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
                 @endif
             </div>
-        </div>
+        </x-ui.card>
     @endif
 
-    @if ($showForm && $canManage)
-        <div class="pg" style="margin-top:14px">
-            <div class="pg-head">
-                <span class="pg-title">{{ $editingVehicleId ? 'Edit Vehicle' : 'Add Vehicle' }}</span>
-                <button type="button" class="btn btn-secondary" wire:click="closeForm">Close</button>
+    <x-ui.card title="Fleet Register" :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter vehicles">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input class="form-input ui-input has-icon" placeholder="Search" aria-label="Search vehicles" wire:model.live.debounce.300ms="search">
             </div>
-            <div style="padding:14px">
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Type</label>
-                        <select class="form-input" wire:model="form.type">
-                            @foreach ($types as $option)
-                                <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
-                            @endforeach
-                        </select>
-                        @error('form.type') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Number Plate</label>
-                        <input class="form-input" wire:model.defer="form.number_plate">
-                        @error('form.number_plate') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Brand</label>
-                        <input class="form-input" wire:model.defer="form.brand">
-                        @error('form.brand') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Model</label>
-                        <input class="form-input" wire:model.defer="form.model">
-                        @error('form.model') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Color</label>
-                        <input class="form-input" wire:model.defer="form.color">
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Year Purchased</label>
-                        <input type="number" class="form-input" wire:model.defer="form.year_purchased">
-                        @error('form.year_purchased') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <label class="form-field" style="flex-direction:row;align-items:center;margin-top:18px">
-                        <input type="checkbox" wire:model.live="form.is_pool_car">
-                        <span class="form-label">Pool car</span>
-                    </label>
-                    <div class="form-field">
-                        <label class="form-label">Department</label>
-                        <select class="form-input" wire:model="form.department_id">
-                            <option value="">Unassigned</option>
-                            @foreach ($departments as $department)
-                                <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                </div>
-
-                @unless ($form['is_pool_car'])
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Assigned Employee</label>
-                            <select class="form-input" wire:model="form.assigned_user_id">
-                                <option value="">Select employee</option>
-                                @foreach ($users as $user)
-                                    <option value="{{ $user->id }}">{{ $user->full_name ?? $user->email }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.assigned_user_id') <span class="form-error">{{ $message }}</span> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Driver Type</label>
-                            <select class="form-input" wire:model.live="form.driver_type">
-                                @foreach ($driverTypes as $option)
-                                    <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                @endunless
-
-                @if ($form['driver_type'] === 'assigned_driver')
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Assigned Driver</label>
-                            <select class="form-input" wire:model="form.assigned_driver_id">
-                                <option value="">Select driver</option>
-                                @foreach ($drivers as $driver)
-                                    <option value="{{ $driver->id }}">{{ $driver->full_name ?? $driver->email }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.assigned_driver_id') <span class="form-error">{{ $message }}</span> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Photo</label>
-                            <input type="file" class="form-input" wire:model="photo">
-                            @error('photo') <span class="form-error">{{ $message }}</span> @enderror
-                        </div>
-                    </div>
-                @endif
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Current Mileage</label>
-                        <input type="number" class="form-input" wire:model.defer="form.current_mileage">
-                        @error('form.current_mileage') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Maintenance Interval KM</label>
-                        <input type="number" class="form-input" wire:model.defer="form.maintenance_interval_km">
-                        @error('form.maintenance_interval_km') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Insurance Expiry</label>
-                        <input type="date" class="form-input" wire:model.defer="form.insurance_expiry_date">
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Road Worthiness Expiry</label>
-                        <input type="date" class="form-input" wire:model.defer="form.road_worthiness_expiry_date">
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Status</label>
-                        <select class="form-input" wire:model="form.status">
-                            @foreach ($statuses as $option)
-                                <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="form-field" style="justify-content:end">
-                        <button type="button" class="btn btn-primary" wire:click="save" wire:loading.attr="disabled">Save Vehicle</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @endif
-
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Fleet Register</span>
-            <div class="ph-right">
-                <input class="form-input" style="width:190px" placeholder="Search" wire:model.live.debounce.300ms="search">
-                <select class="form-input" wire:model.live="type">
-                    <option value="">All types</option>
-                    @foreach ($types as $option)
-                        <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
-                    @endforeach
-                </select>
-                <select class="form-input" wire:model.live="status">
-                    <option value="">All statuses</option>
-                    @foreach ($statuses as $option)
-                        <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
-                    @endforeach
-                </select>
-            </div>
+            <select class="form-input" wire:model.live="type" aria-label="Vehicle type">
+                <option value="">All types</option>
+                @foreach ($types as $option)
+                    <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
+                @endforeach
+            </select>
+            <select class="form-input" wire:model.live="status" aria-label="Status">
+                <option value="">All statuses</option>
+                @foreach ($statuses as $option)
+                    <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
+                @endforeach
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Vehicle</th>
-                    <th>Assigned</th>
-                    <th>Mileage</th>
-                    <th>Documents</th>
-                    <th>Status</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($vehicles as $vehicle)
+        <div class="ui-loading-host">
+            <x-ui.table label="Fleet register" pin-first>
+                <x-slot:head>
                     <tr>
+                        <th>Vehicle</th>
+                        <th>Assigned</th>
+                        <th class="num">Mileage</th>
+                        <th>Documents</th>
+                        <th>Status</th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($vehicles as $vehicle)
+                    <tr wire:key="vehicle-{{ $vehicle->id }}" @class(['is-selected' => $selectedVehicle?->id === $vehicle->id])>
                         <td>
-                            <div>{{ $vehicle->number_plate }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $vehicle->brand }} {{ $vehicle->model }} · {{ str($vehicle->type)->replace('_', ' ')->title() }}</div>
-                        </td>
-                        <td>
-                            <div>{{ $vehicle->assignedUser?->full_name ?? $vehicle->assignedUser?->email ?? ($vehicle->is_pool_car ? 'Pool car' : 'Unassigned') }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $vehicle->assignedDriver?->full_name ?? $vehicle->assignedDriver?->email ?? 'Self drive' }}</div>
-                        </td>
-                        <td>{{ number_format($vehicle->current_mileage) }} km</td>
-                        <td>
-                            <div style="font-size:10px">Insurance: {{ $vehicle->insurance_expiry_date?->format('d M Y') ?? 'Not set' }}</div>
-                            <div style="font-size:10px">Road: {{ $vehicle->road_worthiness_expiry_date?->format('d M Y') ?? 'Not set' }}</div>
-                        </td>
-                        <td>
-                            <span class="pill" style="background:{{ $vehicle->status === 'active' ? '#eaf3de' : ($vehicle->status === 'maintenance' ? '#faeeda' : '#f1f5f9') }};color:var(--color-text-primary)">
-                                {{ str($vehicle->status)->replace('_', ' ')->title() }}
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name mono">{{ $vehicle->number_plate }}</span>
+                                <span class="ui-person-sub">{{ $vehicle->brand }} {{ $vehicle->model }} · {{ str($vehicle->type)->replace('_', ' ')->title() }}</span>
                             </span>
                         </td>
-                        <td style="text-align:right">
-                            <button type="button" class="btn btn-secondary" wire:click="viewVehicle({{ $vehicle->id }})">Details</button>
-                            @if ($canManage)
-                                <button type="button" class="btn btn-primary" wire:click="openEdit({{ $vehicle->id }})">Edit</button>
-                            @endif
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span>{{ $vehicle->assignedUser?->full_name ?? $vehicle->assignedUser?->email ?? ($vehicle->is_pool_car ? 'Pool car' : 'Unassigned') }}</span>
+                                <span class="ui-person-sub">{{ $vehicle->assignedDriver?->full_name ?? $vehicle->assignedDriver?->email ?? 'Self drive' }}</span>
+                            </span>
+                        </td>
+                        <td class="num nowrap">{{ number_format($vehicle->current_mileage) }} km</td>
+                        <td>
+                            <span class="ui-cell-stack doc-lines">
+                                <span>Insurance: {{ $vehicle->insurance_expiry_date?->format('d M Y') ?? 'Not set' }}</span>
+                                <span>Road: {{ $vehicle->road_worthiness_expiry_date?->format('d M Y') ?? 'Not set' }}</span>
+                            </span>
+                        </td>
+                        <td><x-ui.status-pill domain="vehicle" :status="$vehicle->status" :label="str($vehicle->status)->replace('_', ' ')->title()" /></td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" class="btn btn-sm btn-ghost" wire:click="viewVehicle({{ $vehicle->id }})">
+                                    <x-ui.icon name="eye" class="icon-sm" />
+                                    Details
+                                </button>
+                                @if ($canManage)
+                                    <button type="button" class="btn btn-ghost btn-sm btn-icon" wire:click="openEdit({{ $vehicle->id }})" title="Edit" aria-label="Edit {{ $vehicle->number_plate }}">
+                                        <x-ui.icon name="pencil" />
+                                    </button>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="empty-state">No vehicles found.</td></tr>
+                    <x-ui.empty-row :colspan="6" icon="car" title="No vehicles found." description="Try a different search or clear the filters." />
                 @endforelse
-            </tbody>
-        </table>
-        <div style="padding:12px 14px">{{ $vehicles->links() }}</div>
-    </div>
 
-    @if ($selectedVehicle)
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">{{ $selectedVehicle->number_plate }} Details</span>
-                <button type="button" class="btn btn-secondary" wire:click="$set('selectedVehicleId', null)">Close</button>
+                <x-slot:footer>
+                    <p class="pager-summary">
+                        Showing {{ $vehicles->firstItem() ?? 0 }} - {{ $vehicles->lastItem() ?? 0 }} of {{ $vehicles->total() }} vehicles
+                    </p>
+                    <div>{{ $vehicles->links() }}</div>
+                </x-slot:footer>
+            </x-ui.table>
+
+            <div wire:loading.delay wire:target="search,type,status,gotoPage,nextPage,previousPage,setPage" class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
-            <div style="padding:14px">
-                <div class="stats">
-                    <div class="stat"><div class="stat-lbl">Age</div><div class="stat-val">{{ $selectedVehicle->age ?? 'N/A' }}</div><div class="stat-sub">years</div></div>
-                    <div class="stat"><div class="stat-lbl">Next Maintenance</div><div class="stat-val">{{ number_format($selectedVehicle->next_maintenance_mileage) }}</div></div>
-                    <div class="stat"><div class="stat-lbl">Open Issues</div><div class="stat-val">{{ $selectedVehicle->issues->where('status', '!=', 'resolved')->count() }}</div></div>
-                    <div class="stat"><div class="stat-lbl">Department</div><div class="stat-val" style="font-size:14px">{{ $selectedVehicle->department?->department_name ?? 'Unassigned' }}</div></div>
-                </div>
+        </div>
+    </x-ui.card>
 
-                @if ($selectedVehicle->maintenance_remaining_km <= 500)
-                    <div class="alert alert-warning" style="margin-bottom:12px">Maintenance is due within {{ number_format($selectedVehicle->maintenance_remaining_km) }} km.</div>
+    @if ($showForm && $canManage)
+        <x-ui.modal :title="$editingVehicleId ? 'Edit Vehicle' : 'Add Vehicle'" close="closeForm()" size="lg" icon="car">
+            <div class="ui-form-grid">
+                <x-ui.select label="Type" wire:model="form.type">
+                    @foreach ($types as $option)
+                        <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input label="Number Plate" wire:model.defer="form.number_plate" class="mono" />
+
+                <x-ui.input label="Brand" wire:model.defer="form.brand" />
+                <x-ui.input label="Model" wire:model.defer="form.model" />
+
+                <x-ui.input label="Color" wire:model.defer="form.color" />
+                <x-ui.input label="Year Purchased" type="number" wire:model.defer="form.year_purchased" inputmode="numeric" />
+
+                <div class="field-check">
+                    <x-ui.checkbox label="Pool car" description="Shared vehicle with no assigned employee" wire:model.live="form.is_pool_car" id="f-form-is-pool-car" />
+                </div>
+                <x-ui.select label="Department" wire:model="form.department_id">
+                    <option value="">Unassigned</option>
+                    @foreach ($departments as $department)
+                        <option value="{{ $department->id }}">{{ $department->department_name }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                @unless ($form['is_pool_car'])
+                    <x-ui.select label="Assigned Employee" wire:model="form.assigned_user_id">
+                        <option value="">Select employee</option>
+                        @foreach ($users as $user)
+                            <option value="{{ $user->id }}">{{ $user->full_name ?? $user->email }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.select label="Driver Type" wire:model.live="form.driver_type">
+                        @foreach ($driverTypes as $option)
+                            <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
+                        @endforeach
+                    </x-ui.select>
+                @endunless
+
+                @if ($form['driver_type'] === 'assigned_driver')
+                    <x-ui.select label="Assigned Driver" wire:model="form.assigned_driver_id">
+                        <option value="">Select driver</option>
+                        @foreach ($drivers as $driver)
+                            <option value="{{ $driver->id }}">{{ $driver->full_name ?? $driver->email }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.field label="Photo" for="f-vehicle-photo" error="photo">
+                        <input id="f-vehicle-photo" type="file" class="form-input" wire:model="photo">
+                    </x-ui.field>
                 @endif
 
-                <table>
-                    <thead><tr><th>Assigned To</th><th>Driver</th><th>Assigned At</th><th>Unassigned At</th><th>Notes</th></tr></thead>
-                    <tbody>
+                <x-ui.input label="Current Mileage" type="number" wire:model.defer="form.current_mileage" inputmode="numeric" />
+                <x-ui.input label="Maintenance Interval KM" type="number" wire:model.defer="form.maintenance_interval_km" inputmode="numeric" />
+
+                <x-ui.input label="Insurance Expiry" type="date" wire:model.defer="form.insurance_expiry_date" />
+                <x-ui.input label="Road Worthiness Expiry" type="date" wire:model.defer="form.road_worthiness_expiry_date" />
+
+                <x-ui.select label="Status" wire:model="form.status">
+                    @foreach ($statuses as $option)
+                        <option value="{{ $option }}">{{ str($option)->replace('_', ' ')->title() }}</option>
+                    @endforeach
+                </x-ui.select>
+            </div>
+
+            <x-slot:footer>
+                <button type="button" class="btn btn-secondary" wire:click="closeForm">Cancel</button>
+                <button type="button" class="btn btn-primary" wire:click="save" wire:loading.attr="disabled">Save Vehicle</button>
+            </x-slot:footer>
+        </x-ui.modal>
+    @endif
+
+    @if ($selectedVehicle)
+        <x-ui.drawer
+            :title="$selectedVehicle->number_plate.' Details'"
+            :description="trim($selectedVehicle->brand.' '.$selectedVehicle->model)"
+            show="true"
+            close="$wire.$set('selectedVehicleId', null)"
+            width="42rem"
+            wire:key="vehicle-details-{{ $selectedVehicle->id }}"
+        >
+            <div class="ui-stack">
+                <dl class="ui-dl">
+                    <div>
+                        <dt>Age</dt>
+                        <dd>{{ $selectedVehicle->age ?? 'N/A' }} <span class="ui-person-sub">years</span></dd>
+                    </div>
+                    <div>
+                        <dt>Next Maintenance</dt>
+                        <dd>{{ number_format($selectedVehicle->next_maintenance_mileage) }} km</dd>
+                    </div>
+                    <div>
+                        <dt>Open Issues</dt>
+                        <dd>{{ $selectedVehicle->issues->where('status', '!=', 'resolved')->count() }}</dd>
+                    </div>
+                    <div>
+                        <dt>Department</dt>
+                        <dd>{{ $selectedVehicle->department?->department_name ?? 'Unassigned' }}</dd>
+                    </div>
+                </dl>
+
+                @if ($selectedVehicle->maintenance_remaining_km <= 500)
+                    <x-ui.alert tone="warning">Maintenance is due within {{ number_format($selectedVehicle->maintenance_remaining_km) }} km.</x-ui.alert>
+                @endif
+
+                <section aria-labelledby="vehicle-history-title">
+                    <h3 id="vehicle-history-title" class="ui-panel-title">Assignment history</h3>
+                    <x-ui.table label="Assignment history" :sticky="false" dense>
+                        <x-slot:head>
+                            <tr>
+                                <th>Assigned To</th>
+                                <th>Driver</th>
+                                <th>Assigned At</th>
+                                <th>Unassigned At</th>
+                                <th>Notes</th>
+                            </tr>
+                        </x-slot:head>
+
                         @forelse ($selectedVehicle->assignmentHistories->sortByDesc('assigned_at') as $history)
                             <tr>
-                                <td>{{ $history->user?->full_name ?? $history->user?->email ?? 'Unassigned' }}</td>
-                                <td>{{ $history->driver?->full_name ?? $history->driver?->email ?? 'Self drive' }}</td>
-                                <td>{{ $history->assigned_at?->format('d M Y H:i') }}</td>
-                                <td>{{ $history->unassigned_at?->format('d M Y H:i') ?? 'Active' }}</td>
+                                <td class="nowrap">{{ $history->user?->full_name ?? $history->user?->email ?? 'Unassigned' }}</td>
+                                <td class="nowrap">{{ $history->driver?->full_name ?? $history->driver?->email ?? 'Self drive' }}</td>
+                                <td class="nowrap">{{ $history->assigned_at?->format('d M Y H:i') }}</td>
+                                <td class="nowrap">
+                                    @if ($history->unassigned_at)
+                                        {{ $history->unassigned_at->format('d M Y H:i') }}
+                                    @else
+                                        <x-ui.status-pill tone="success" label="Active" />
+                                    @endif
+                                </td>
                                 <td>{{ $history->notes }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="empty-state">No assignment history yet.</td></tr>
+                            <x-ui.empty-row :colspan="5" icon="history" title="No assignment history yet." />
                         @endforelse
-                    </tbody>
-                </table>
+                    </x-ui.table>
+                </section>
             </div>
-        </div>
+        </x-ui.drawer>
     @endif
 </div>

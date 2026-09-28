@@ -1,86 +1,81 @@
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  <div class="lg:col-span-2 bg-white rounded-xl border p-6">
-    <h2 class="text-lg font-semibold mb-4">Apply for Leave</h2>
+<div>
+    <x-ui.page-header
+        :title="$editId ? 'Edit Leave Request' : 'Apply for Leave'"
+        description="Save it as planned to decide later, or submit it for approval."
+    />
 
-    @if ($errors->any())
-      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-sm">
-        <ul class="text-sm text-red-700 list-disc list-inside">
-          @foreach($errors->all() as $e) <li>{{ $e }}</li> @endforeach
-        </ul>
-      </div>
-    @endif
+    <div class="ui-grid ui-grid-main">
+        <x-ui.card title="Leave details" :description="$editId ? 'You are editing a planned request.' : null">
+            @if ($errors->any())
+                <x-ui.alert tone="danger" title="Please fix the following" role="alert" class="form-summary">
+                    <ul>
+                        @foreach ($errors->all() as $e)
+                            <li>{{ $e }}</li>
+                        @endforeach
+                    </ul>
+                </x-ui.alert>
+            @endif
 
-    @if (! empty($compulsoryRanges))
-      <div class="mb-4 blocked-ranges">
-        <div class="blocked-ranges-title">Unavailable compulsory leave dates</div>
-        <div class="blocked-ranges-grid">
-          @foreach ($compulsoryRanges as $range)
-            <div class="blocked-range">
-              <span>{{ $range['label'] }}</span>
-              <strong>{{ $range['days'] }} days</strong>
+            @if (! empty($compulsoryRanges))
+                <div class="blocked-ranges apply-blocked">
+                    <div class="blocked-ranges-title">Unavailable compulsory leave dates</div>
+                    <div class="blocked-ranges-grid">
+                        @foreach ($compulsoryRanges as $range)
+                            <div class="blocked-range">
+                                <span>{{ $range['label'] }}</span>
+                                <strong>{{ $range['days'] }} days</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            <div class="ui-form-grid">
+                <x-ui.select label="Leave Type" wire:model.live="leave_type" id="leave-type">
+                    <option>Annual</option>
+                    <option>Casual</option>
+                    <option>Paternity</option>
+                    <option>Maternity</option>
+                    <option>Sick</option>
+                </x-ui.select>
+
+                <div class="day-counter apply-days" aria-live="polite">
+                    <span class="day-label">Working days</span>
+                    <span class="day-num">{{ $working_days }}</span>
+                </div>
+
+                <x-ui.input type="date" label="Start Date" wire:model.live="start_date" min="{{ $minDate }}" id="leave-start" />
+                <x-ui.input type="date" label="End Date" wire:model.live="end_date" min="{{ $minEndDate }}" id="leave-end" />
+
+                <div class="span-2">
+                    <x-ui.textarea label="Reason (Optional)" wire:model="leave_details" rows="4" id="leave-details" />
+                </div>
+
+                <div class="span-2">
+                    <x-ui.field label="Attachment (Optional)" for="leave-attachment" hint="A medical note or supporting document, if you have one." error="file_attachment">
+                        <input type="file" id="leave-attachment" wire:model="file_attachment" class="ui-file">
+                    </x-ui.field>
+                </div>
             </div>
-          @endforeach
-        </div>
-      </div>
-    @endif
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label class="text-sm font-medium">Leave Type</label>
-        <select wire:model.live="leave_type" class="w-full border rounded-sm p-2">
-          <option>Annual</option>
-          <option>Casual</option>
-          <option>Paternity</option>
-          <option>Maternity</option>
-          <option>Sick</option>
-        </select>
-      </div>
+            <x-slot:footer>
+                <div class="ui-form-actions">
+                    <x-ui.button wire:click="savePlanned" loading="savePlanned" icon="calendar-days">Save as Planned</x-ui.button>
+                    <x-ui.button variant="primary" wire:click="submit" loading="submit" icon="send">Submit Request</x-ui.button>
+                </div>
+            </x-slot:footer>
+        </x-ui.card>
 
-      <div class="flex items-end">
-        <div class="text-sm">
-          <div class="text-slate-500">Working days</div>
-          <div class="text-2xl font-bold">{{ $working_days }}</div>
-        </div>
-      </div>
-
-      <div>
-        <label class="text-sm font-medium">Start Date</label>
-        <input type="date" wire:model.live="start_date" min="{{ $minDate }}" class="w-full border rounded-sm p-2">
-        @error('start_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-      </div>
-
-      <div>
-        <label class="text-sm font-medium">End Date</label>
-        <input type="date" wire:model.live="end_date" min="{{ $minEndDate }}" class="w-full border rounded-sm p-2">
-        @error('end_date') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-      </div>
-
-      <div class="md:col-span-2">
-        <label class="text-sm font-medium">Reason (Optional)</label>
-        <textarea wire:model="leave_details" class="w-full border rounded-sm p-2" rows="4"></textarea>
-      </div>
-
-      <div class="md:col-span-2">
-        <label class="text-sm font-medium">Attachment (Optional)</label>
-        <input type="file" wire:model="file_attachment" class="w-full">
-      </div>
+        <x-ui.card title="Leave Balance (This Year)" description="Days you can still take">
+            <dl class="balance-list">
+                @foreach ($balances as $type => $remain)
+                    <div>
+                        <dt>{{ $type }}</dt>
+                        {{-- Sick leave carries a 9999-day virtual entitlement, i.e. no fixed limit. --}}
+                        <dd class="num">{{ is_numeric($remain) && $remain >= 9999 ? 'No limit' : $remain }}</dd>
+                    </div>
+                @endforeach
+            </dl>
+        </x-ui.card>
     </div>
-
-    <div class="mt-5 flex gap-3">
-      <button wire:click="savePlanned" class="px-4 py-2 rounded-sm bg-slate-200">Save as Planned</button>
-      <button wire:click="submit" class="px-4 py-2 rounded-sm bg-blue-600 text-white">Submit Request</button>
-    </div>
-  </div>
-
-  <div class="bg-white rounded-xl border p-6">
-    <h3 class="font-semibold mb-3">Leave Balance (This Year)</h3>
-    <div class="space-y-2 text-sm">
-      @foreach($balances as $type => $remain)
-        <div class="flex justify-between">
-          <span>{{ $type }}</span>
-          <span class="font-semibold">{{ $remain }}</span>
-        </div>
-      @endforeach
-    </div>
-  </div>
 </div>

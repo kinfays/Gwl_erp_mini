@@ -1,122 +1,121 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>{{ $tab === 'closed' ? 'Closed Letters' : 'Active Letters' }}</h2>
-            <p>Track received, reviewed, dispatched, and closed correspondence.</p>
-        </div>
-        <div class="ph-right">
-            @if (auth()->user()?->hasRoles('super_admin') || auth()->user()?->hasPermission('letters.create'))
-                <a href="{{ route('letters.create') }}" class="btn btn-primary">+ New Letter</a>
-            @endif
-        </div>
-    </div>
+    <x-ui.page-header :title="$tab === 'closed' ? 'Closed Letters' : 'Active Letters'" description="Track received, reviewed, dispatched, and closed correspondence.">
+        @if (auth()->user()?->hasRoles('super_admin') || auth()->user()?->hasPermission('letters.create'))
+            <x-slot:actions>
+                <a href="{{ route('letters.create') }}" class="btn btn-primary">
+                    <x-ui.icon name="file-plus" />
+                    New Letter
+                </a>
+            </x-slot:actions>
+        @endif
+    </x-ui.page-header>
 
     @if ($missingEmployee)
-        <div class="erp-card" style="margin-top:14px;background:#fcebeb;border-color:#f7c1c1;color:#a32d2d">
-            Your user account is not linked to an employee record.
-        </div>
+        <x-ui.alert tone="danger">Your user account is not linked to an employee record.</x-ui.alert>
     @else
         @if (session('success'))
-            <div class="erp-card" style="margin:14px 0;background:#eaf7ef;border-color:#b8e0c5;color:#21633c">
-                {{ session('success') }}
-            </div>
+            <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
         @endif
 
-        <div class="pg" style="margin-top:14px">
-            <div class="pg-head">
-                <div class="tabs">
-                    <button type="button" wire:click="setTab('active')" class="tab {{ $tab === 'active' ? 'active' : '' }}">Active</button>
-                    <button type="button" wire:click="setTab('closed')" class="tab {{ $tab === 'closed' ? 'active' : '' }}">Closed</button>
+        <x-ui.card :padded="false">
+            <div class="ui-toolbar">
+                <div class="tabs" role="group" aria-label="Show letters">
+                    <button type="button" wire:click="setTab('active')" @class(['tab', 'active' => $tab === 'active']) aria-pressed="{{ $tab === 'active' ? 'true' : 'false' }}">Active</button>
+                    <button type="button" wire:click="setTab('closed')" @class(['tab', 'active' => $tab === 'closed']) aria-pressed="{{ $tab === 'closed' ? 'true' : 'false' }}">Closed</button>
                 </div>
 
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <select wire:model.live="typeFilter" class="form-input">
+                <div class="toolbar-filters">
+                    <select wire:model.live="typeFilter" class="form-input" aria-label="Letter type">
                         <option value="">All types</option>
                         <option value="Internal">Internal</option>
                         <option value="External">External</option>
                     </select>
-                    <input type="text" wire:model.live="search" class="form-input" placeholder="Search subject, ref, sender">
+                    <div class="ui-input-wrap toolbar-grow">
+                        <x-ui.icon name="search" class="ui-input-icon" />
+                        <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search subject, ref, sender" aria-label="Search letters">
+                    </div>
                 </div>
             </div>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>SN#</th>
-                        <th>Subject</th>
-                        <th>Ref No</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Current Location</th>
-                        <th>Date</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div class="ui-loading-host">
+                <x-ui.table label="Letters" pin-first>
+                    <x-slot:head>
+                        <tr>
+                            <th>SN#</th>
+                            <th>Subject</th>
+                            <th>Ref No</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Current Location</th>
+                            <th>Date</th>
+                            <th class="actions"><span class="sr-only-text">Actions</span></th>
+                        </tr>
+                    </x-slot:head>
+
                     @forelse ($letters as $letter)
                         @php
                             $currentLog = $workflow->currentLog($letter, $employee);
                             $pendingRoute = $workflow->pendingIncomingRoute($letter, $employee);
                             $status = $currentLog?->status ?? 'Received';
-                            $statusClass = match ($status) {
-                                'Received' => 'p-g',
-                                'In Review' => 'p-b',
-                                'Dispatched' => 'p-d',
-                                'Closed' => 'p-v',
-                                default => 'p-d',
-                            };
                             $latestLog = $letter->statusLogs->sortByDesc('created_at')->first();
                         @endphp
-                        <tr>
-                            <td style="color:#185FA5">{{ $letter->sn_number }}</td>
+                        <tr wire:key="letter-{{ $letter->id }}" @class(['is-selected' => $selectedLetter?->id === $letter->id])>
+                            <td class="mono nowrap">{{ $letter->sn_number }}</td>
                             <td>
-                                <div>{{ $letter->subject }}</div>
-                                <div style="font-size:10px;color:var(--color-text-secondary)">{{ $letter->sender_name }}</div>
+                                <span class="ui-cell-stack">
+                                    <span class="ui-person-name">{{ $letter->subject }}</span>
+                                    <span class="ui-person-sub">{{ $letter->sender_name }}</span>
+                                </span>
                             </td>
-                            <td>{{ $letter->ref_no ?: '-' }}</td>
-                            <td><span class="pill {{ $letter->type === 'Internal' ? 'p-b' : 'p-a' }}">{{ $letter->type }}</span></td>
-                            <td><span class="pill {{ $statusClass }}">{{ $status }}</span></td>
-                            <td>{{ $latestLog?->secretariat?->full_name ?? '-' }}</td>
-                            <td>{{ $letter->date_on_letter?->format('d M Y') }}</td>
-                            <td>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <td @class(['mono', 'cell-muted' => ! $letter->ref_no])>{{ $letter->ref_no ?: '-' }}</td>
+                            <td><x-ui.badge :tone="$letter->type === 'Internal' ? 'primary' : 'lagoon'">{{ $letter->type }}</x-ui.badge></td>
+                            <td><x-ui.status-pill domain="letter" :status="$status" /></td>
+                            <td class="nowrap">{{ $latestLog?->secretariat?->full_name ?? '-' }}</td>
+                            <td class="nowrap cell-muted">{{ $letter->date_on_letter?->format('d M Y') }}</td>
+                            <td class="actions">
+                                <div class="row-actions">
                                     @if ($pendingRoute)
-                                        <button type="button" wire:click="openLetter({{ $letter->id }}, true)" class="actn actn-g">Confirm Hardcopy</button>
+                                        <button type="button" wire:click="openLetter({{ $letter->id }}, true)" class="btn btn-sm btn-primary">
+                                            <x-ui.icon name="clipboard-check" class="icon-sm" />
+                                            Confirm Hardcopy
+                                        </button>
                                     @endif
 
                                     @if ($canForward && $workflow->canDispatch($letter, $employee))
-                                        <button type="button" wire:click="openLetter({{ $letter->id }})" class="actn actn-p">Dispatch</button>
+                                        <button type="button" wire:click="openLetter({{ $letter->id }})" class="btn btn-sm">
+                                            <x-ui.icon name="send" class="icon-sm" />
+                                            Dispatch
+                                        </button>
                                     @endif
 
-                                    <button type="button" wire:click="openLetter({{ $letter->id }})" class="actn">View</button>
+                                    <button type="button" wire:click="openLetter({{ $letter->id }})" class="btn btn-sm btn-ghost" aria-label="View {{ $letter->sn_number }}">
+                                        <x-ui.icon name="eye" class="icon-sm" />
+                                        View
+                                    </button>
                                 </div>
                             </td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="8" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                                No letters found.
-                            </td>
-                        </tr>
+                        <x-ui.empty-row :colspan="8" icon="inbox" :title="$tab === 'closed' ? 'No closed letters found.' : 'No letters found.'" description="Letters routed to your desk appear here." />
                     @endforelse
-                </tbody>
-            </table>
 
-            <div wire:loading.delay class="table-skeleton">
-                <span class="skeleton-line"></span>
-                <span class="skeleton-line"></span>
-                <span class="skeleton-line short"></span>
-            </div>
+                    @if (method_exists($letters, 'links'))
+                        <x-slot:footer>
+                            <p class="pager-summary">
+                                Showing {{ $letters->firstItem() ?? 0 }} - {{ $letters->lastItem() ?? 0 }} of {{ $letters->total() }} letters
+                            </p>
+                            <div>{{ $letters->links() }}</div>
+                        </x-slot:footer>
+                    @endif
+                </x-ui.table>
 
-            @if (method_exists($letters, 'links'))
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
-                    <div style="font-size:11px;color:var(--color-text-secondary)">
-                        Showing {{ $letters->firstItem() ?? 0 }} - {{ $letters->lastItem() ?? 0 }} of {{ $letters->total() }} letters
-                    </div>
-                    <div>{{ $letters->links() }}</div>
+                <div wire:loading.delay class="table-skeleton">
+                    <span class="skeleton-line"></span>
+                    <span class="skeleton-line"></span>
+                    <span class="skeleton-line short"></span>
                 </div>
-            @endif
-        </div>
+            </div>
+        </x-ui.card>
 
         @if ($selectedLetter)
             @php
@@ -127,22 +126,26 @@
                 $isClosed = (bool) $selectedLog?->is_closed;
             @endphp
 
-            <div class="letter-panel-backdrop">
-                <div class="letter-panel">
-                    <div class="pg-head">
-                        <div>
-                            <div class="pg-title">{{ $selectedLetter->sn_number }} · {{ $selectedLetter->subject }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px">
-                                Ref: {{ $selectedLetter->ref_no ?: 'No reference' }}
-                                ·
-                                <span class="pill {{ $selectedStatus === 'Received' ? 'p-g' : ($selectedStatus === 'In Review' ? 'p-b' : ($selectedStatus === 'Closed' ? 'p-v' : 'p-d')) }}">{{ $selectedStatus }}</span>
-                            </div>
+            <x-ui.drawer
+                :title="$selectedLetter->sn_number.' · '.$selectedLetter->subject"
+                :description="'Ref: '.($selectedLetter->ref_no ?: 'No reference')"
+                show="true"
+                close="$wire.closePanel()"
+                width="46rem"
+                wire:key="letter-panel-{{ $selectedLetter->id }}"
+            >
+                <div class="ui-stack">
+                    <div class="letter-panel-bar">
+                        <div class="ui-tags">
+                            <x-ui.status-pill domain="letter" :status="$selectedStatus" />
+                            <x-ui.badge :tone="$selectedLetter->type === 'Internal' ? 'primary' : 'lagoon'">{{ $selectedLetter->type }}</x-ui.badge>
                         </div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+
+                        <div class="row-actions">
                             @if ($isCreator && ! $isClosed)
                                 <button
                                     type="button"
-                                    class="actn actn-r"
+                                    class="btn btn-sm btn-danger"
                                     x-data
                                     x-on:click.prevent="$dispatch('confirm-action', {
                                         title: 'Close letter?',
@@ -152,281 +155,258 @@
                                         action: () => $wire.closeLetter()
                                     })"
                                 >
+                                    <x-ui.icon name="archive" class="icon-sm" />
                                     Close Letter
                                 </button>
                             @endif
                             @if ($isCreator && $isClosed)
-                                <button type="button" wire:click="reopenLetter" class="actn actn-g">Re-open</button>
+                                <button type="button" wire:click="reopenLetter" class="btn btn-sm">
+                                    <x-ui.icon name="undo-2" class="icon-sm" />
+                                    Re-open
+                                </button>
                             @endif
-                            <button type="button" wire:click="closePanel" class="actn">Close Panel</button>
                         </div>
                     </div>
 
                     @if ($flashMessage)
-                        <div style="margin:12px 14px 0;padding:8px 10px;border-radius:8px;background:#eaf7ef;color:#21633c;font-size:11px">
-                            {{ $flashMessage }}
-                        </div>
+                        <x-ui.alert tone="success" role="status">{{ $flashMessage }}</x-ui.alert>
                     @endif
 
                     @if ($confirmPrompt && $selectedPendingRoute)
-                        <div style="margin:12px 14px;padding:12px;border-radius:10px;background:#faeeda;border:0.5px solid #fac775;color:#854f0b">
-                            <div style="font-size:12px;font-weight:600">Confirm hardcopy received</div>
-                            <div style="font-size:11px;margin-top:4px">This letter was dispatched to you. Confirm the physical copy before reviewing or dispatching it.</div>
-                            <button type="button" wire:click="confirmHardcopy" class="btn btn-primary" style="margin-top:10px">Confirm Hardcopy Received</button>
-                        </div>
+                        <x-ui.alert tone="warning" title="Confirm hardcopy received">
+                            This letter was dispatched to you. Confirm the physical copy before reviewing or dispatching it.
+                            <div class="alert-cta">
+                                <button type="button" wire:click="confirmHardcopy" class="btn btn-primary">
+                                    <x-ui.icon name="clipboard-check" />
+                                    Confirm Hardcopy Received
+                                </button>
+                            </div>
+                        </x-ui.alert>
                     @else
-                        <div class="letter-info">
+                        <dl class="ui-dl">
                             <div>
-                                <span>Sender</span>
-                                <strong>{{ $selectedLetter->sender_name }}</strong>
+                                <dt>Sender</dt>
+                                <dd>{{ $selectedLetter->sender_name }}</dd>
                             </div>
                             <div>
-                                <span>Date on Letter</span>
-                                <strong>{{ $selectedLetter->date_on_letter?->format('d M Y') }}</strong>
+                                <dt>Date on Letter</dt>
+                                <dd>{{ $selectedLetter->date_on_letter?->format('d M Y') }}</dd>
                             </div>
                             <div>
-                                <span>Date Received</span>
-                                <strong>{{ $selectedLog?->created_at?->format('d M Y') ?? '-' }}</strong>
+                                <dt>Date Received</dt>
+                                <dd>{{ $selectedLog?->created_at?->format('d M Y') ?? '-' }}</dd>
                             </div>
                             <div>
-                                <span>Current Location</span>
-                                <strong>{{ $selectedLetter->statusLogs->sortByDesc('created_at')->first()?->secretariat?->full_name ?? '-' }}</strong>
+                                <dt>Current Location</dt>
+                                <dd>{{ $selectedLetter->statusLogs->sortByDesc('created_at')->first()?->secretariat?->full_name ?? '-' }}</dd>
                             </div>
-                        </div>
+                        </dl>
 
-                        <div class="pg" style="margin:14px">
-                            <div class="pg-head">
-                                <span class="pg-title">Routing timeline</span>
-                            </div>
-                            <div style="padding:10px 14px">
-                                @forelse ($selectedLetter->routingHistories->sortBy('created_at') as $route)
-                                    <div class="route-row">
-                                        <div>
-                                            <strong>{{ $route->fromSecretariat?->full_name }}</strong>
-                                            <span>to</span>
-                                            <strong>{{ $route->toSecretariat?->full_name }}</strong>
-                                        </div>
-                                        <span class="pill {{ $route->received_confirm ? 'p-g' : 'p-a' }}">
-                                            {{ $route->received_confirm ? 'Confirmed' : 'Awaiting hardcopy' }}
-                                        </span>
-                                        <small>{{ $route->created_at?->format('d M Y H:i') }}</small>
-                                    </div>
-                                @empty
-                                    <div style="font-size:11px;color:var(--color-text-secondary)">No dispatch history yet.</div>
-                                @endforelse
-                            </div>
-                        </div>
-
-                        <div style="padding:0 14px 14px">
-                            <div class="tabs" style="display:inline-flex;margin-bottom:10px">
-                                <button type="button" wire:click="$set('detailTab', 'remarks')" class="tab {{ $detailTab === 'remarks' ? 'active' : '' }}">Remarks</button>
-                                <button type="button" wire:click="$set('detailTab', 'dispatch')" class="tab {{ $detailTab === 'dispatch' ? 'active' : '' }}">Dispatch</button>
-                                @if ($isCreator)
-                                    <button type="button" wire:click="$set('detailTab', 'edit')" class="tab {{ $detailTab === 'edit' ? 'active' : '' }}">Edit</button>
-                                @endif
-                            </div>
-
-                            @if ($detailTab === 'remarks')
-                                <div class="pg">
-                                    <div class="pg-head">
-                                        <span class="pg-title">Remarks</span>
-                                    </div>
-                                    <div style="padding:12px 14px">
-                                        @forelse ($selectedLetter->remarks->sortByDesc('created_at') as $remark)
-                                            <div class="remark-row">
-                                                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                                                    <strong>{{ $remark->author?->full_name }}</strong>
-                                                    <small>{{ $remark->created_at?->format('d M Y H:i') }}</small>
-                                                </div>
-                                                @if ($editingRemarkId === $remark->id)
-                                                    <div class="form-row" style="margin-top:8px">
-                                                        <x-form.combobox
-                                                            label="Manager"
-                                                            model="editingRemarkManagerId"
-                                                            :options="$managerOptions"
-                                                            placeholder="Type to search manager"
-                                                            empty-text="No managers in your region"
-                                                        />
-                                                        <x-form.combobox
-                                                            label="Chief Manager"
-                                                            model="editingRemarkChiefManagerId"
-                                                            :options="$chiefManagerOptions"
-                                                            placeholder="Type to search chief manager"
-                                                            empty-text="No chief managers in your region"
-                                                        />
-                                                    </div>
-                                                    <div class="form-field" style="margin-top:8px">
-                                                        <label class="form-label">Manager remarks</label>
-                                                        <textarea wire:model="editingRemarkContent" class="form-input" rows="3" style="width:100%"></textarea>
-                                                        @error('editingRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                                                    </div>
-                                                    <div class="form-field" style="margin-top:8px">
-                                                        <label class="form-label">Secretary remarks</label>
-                                                        <textarea wire:model="editingSecretaryRemarkContent" class="form-input" rows="2" style="width:100%" placeholder="Optional"></textarea>
-                                                        @error('editingSecretaryRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                                                    </div>
-                                                    <button type="button" wire:click="updateRemark" class="actn actn-p" style="margin-top:8px">Save</button>
-                                                @else
-                                                    @if ($remark->manager_id || $remark->chief_manager_id)
-                                                        <div class="remark-people">
-                                                            <div>
-                                                                <span>Manager</span>
-                                                                <strong>{{ $remark->manager?->full_name ?? '-' }}</strong>
-                                                            </div>
-                                                            <div>
-                                                                <span>Chief Manager</span>
-                                                                <strong>{{ $remark->chiefManager?->full_name ?? '-' }}</strong>
-                                                            </div>
-                                                        </div>
-                                                    @endif
-                                                    @if (filled($remark->remark_content))
-                                                        <div class="remark-section">
-                                                            <span>{{ $remark->manager_id || $remark->chief_manager_id ? 'Manager remarks' : 'Remark' }}</span>
-                                                            <p>{{ $remark->remark_content }}</p>
-                                                        </div>
-                                                    @endif
-                                                    @if ($remark->secretary_remark_content)
-                                                        <div class="remark-section">
-                                                            <span>Secretary remarks</span>
-                                                            <p>{{ $remark->secretary_remark_content }}</p>
-                                                        </div>
-                                                    @endif
-                                                    @if ($remark->author_id === $employee->id)
-                                                        <button type="button" wire:click="startEditRemark({{ $remark->id }})" class="actn">Edit</button>
-                                                    @endif
-                                                @endif
+                        <section aria-labelledby="letter-routing-title">
+                            <h3 id="letter-routing-title" class="ui-panel-title">Routing timeline</h3>
+                            @php($routes = $selectedLetter->routingHistories->sortBy('created_at'))
+                            @if ($routes->isEmpty())
+                                <p class="ui-hint">No dispatch history yet.</p>
+                            @else
+                                <ol class="ui-timeline">
+                                    @foreach ($routes as $route)
+                                        <li @class(['is-done' => $route->received_confirm, 'is-current' => ! $route->received_confirm])>
+                                            <div class="route-line">
+                                                <span><strong>{{ $route->fromSecretariat?->full_name }}</strong> <span class="cell-muted">to</span> <strong>{{ $route->toSecretariat?->full_name }}</strong></span>
+                                                <x-ui.status-pill :tone="$route->received_confirm ? 'success' : 'warning'" :label="$route->received_confirm ? 'Confirmed' : 'Awaiting hardcopy'" />
                                             </div>
-                                        @empty
-                                            <div style="font-size:11px;color:var(--color-text-secondary)">No remarks yet.</div>
-                                        @endforelse
+                                            <span class="ui-hint">{{ $route->created_at?->format('d M Y H:i') }}</span>
+                                        </li>
+                                    @endforeach
+                                </ol>
+                            @endif
+                        </section>
 
-                                        @if ($canRemark)
-                                            <div style="margin-top:12px">
-                                                <div class="form-row">
+                        <div class="tabs" role="group" aria-label="Letter actions">
+                            <button type="button" wire:click="$set('detailTab', 'remarks')" @class(['tab', 'active' => $detailTab === 'remarks']) aria-pressed="{{ $detailTab === 'remarks' ? 'true' : 'false' }}">Remarks</button>
+                            <button type="button" wire:click="$set('detailTab', 'dispatch')" @class(['tab', 'active' => $detailTab === 'dispatch']) aria-pressed="{{ $detailTab === 'dispatch' ? 'true' : 'false' }}">Dispatch</button>
+                            @if ($isCreator)
+                                <button type="button" wire:click="$set('detailTab', 'edit')" @class(['tab', 'active' => $detailTab === 'edit']) aria-pressed="{{ $detailTab === 'edit' ? 'true' : 'false' }}">Edit</button>
+                            @endif
+                        </div>
+
+                        @if ($detailTab === 'remarks')
+                            <section class="letter-section" aria-labelledby="letter-remarks-title">
+                                <h3 id="letter-remarks-title" class="ui-panel-title">Remarks</h3>
+
+                                @forelse ($selectedLetter->remarks->sortByDesc('created_at') as $remark)
+                                    <article class="remark-card" wire:key="remark-{{ $remark->id }}">
+                                        <header class="remark-card-head">
+                                            <span class="ui-person">
+                                                <x-ui.avatar :name="$remark->author?->full_name ?? ''" />
+                                                <span class="ui-person-name">{{ $remark->author?->full_name }}</span>
+                                            </span>
+                                            <span class="ui-hint nowrap">{{ $remark->created_at?->format('d M Y H:i') }}</span>
+                                        </header>
+
+                                        @if ($editingRemarkId === $remark->id)
+                                            <div class="ui-stack">
+                                                <div class="ui-form-grid">
                                                     <x-form.combobox
                                                         label="Manager"
-                                                        model="remarkManagerId"
+                                                        model="editingRemarkManagerId"
                                                         :options="$managerOptions"
                                                         placeholder="Type to search manager"
                                                         empty-text="No managers in your region"
                                                     />
                                                     <x-form.combobox
                                                         label="Chief Manager"
-                                                        model="remarkChiefManagerId"
+                                                        model="editingRemarkChiefManagerId"
                                                         :options="$chiefManagerOptions"
                                                         placeholder="Type to search chief manager"
                                                         empty-text="No chief managers in your region"
                                                     />
                                                 </div>
-                                                <div class="form-field" style="margin-bottom:8px">
-                                                    <label class="form-label">Manager remarks</label>
-                                                    <textarea wire:model="remarkContent" class="form-input" rows="3" style="width:100%" placeholder="Add remark"></textarea>
-                                                    @error('remarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                                <x-ui.textarea label="Manager remarks" wire:model="editingRemarkContent" rows="3" />
+                                                <x-ui.textarea label="Secretary remarks" wire:model="editingSecretaryRemarkContent" rows="2" placeholder="Optional" />
+                                                <div class="ui-form-actions">
+                                                    <button type="button" wire:click="updateRemark" class="btn btn-primary btn-sm">Save</button>
                                                 </div>
-                                                <div class="form-field">
-                                                    <label class="form-label">Secretary remarks</label>
-                                                    <textarea wire:model="secretaryRemarkContent" class="form-input" rows="2" style="width:100%" placeholder="Optional"></textarea>
-                                                    @error('secretaryRemarkContent') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                                                </div>
-                                                <button type="button" wire:click="addRemark" class="btn btn-primary" style="margin-top:8px">Add Remark</button>
-                                            </div>
-                                        @endif
-                                    </div>
-                                </div>
-                            @elseif ($detailTab === 'dispatch')
-                                <div class="pg">
-                                    <div class="pg-head">
-                                        <span class="pg-title">Dispatch letter</span>
-                                    </div>
-                                    <div style="padding:12px 14px">
-                                        @if (! $canForward)
-                                            <div style="font-size:11px;color:#854f0b;background:#faeeda;border-radius:8px;padding:10px">
-                                                You do not have permission to dispatch letters.
-                                            </div>
-                                        @elseif (! $workflow->canDispatch($selectedLetter, $employee))
-                                            <div style="font-size:11px;color:#854f0b;background:#faeeda;border-radius:8px;padding:10px">
-                                                Dispatch is disabled until hardcopy receipt is confirmed or while this letter is closed/dispatched.
                                             </div>
                                         @else
-                                            <div class="form-row">
-                                                <div class="form-field">
-                                                    <label class="form-label">Search secretariat</label>
-                                                    <input type="text" wire:model.live="secretarySearch" class="form-input" placeholder="Name or staff ID">
+                                            @if ($remark->manager_id || $remark->chief_manager_id)
+                                                <dl class="remark-people">
+                                                    <div>
+                                                        <dt>Manager</dt>
+                                                        <dd>{{ $remark->manager?->full_name ?? '-' }}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt>Chief Manager</dt>
+                                                        <dd>{{ $remark->chiefManager?->full_name ?? '-' }}</dd>
+                                                    </div>
+                                                </dl>
+                                            @endif
+                                            @if (filled($remark->remark_content))
+                                                <div class="remark-section">
+                                                    <span>{{ $remark->manager_id || $remark->chief_manager_id ? 'Manager remarks' : 'Remark' }}</span>
+                                                    <p>{{ $remark->remark_content }}</p>
                                                 </div>
-                                                <div class="form-field">
-                                                    <label class="form-label">Recipient</label>
-                                                    <select wire:model="dispatchToId" class="form-input">
-                                                        <option value="">Select secretary</option>
-                                                        @foreach ($secretaries as $secretary)
-                                                            <option value="{{ $secretary->id }}">{{ $secretary->full_name }} · {{ $secretary->staff_id }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                    @error('dispatchToId') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                                            @endif
+                                            @if ($remark->secretary_remark_content)
+                                                <div class="remark-section">
+                                                    <span>Secretary remarks</span>
+                                                    <p>{{ $remark->secretary_remark_content }}</p>
                                                 </div>
-                                            </div>
-                                            <button type="button" wire:click="dispatchLetter" class="btn btn-primary">Dispatch</button>
+                                            @endif
+                                            @if ($remark->author_id === $employee->id)
+                                                <div>
+                                                    <button type="button" wire:click="startEditRemark({{ $remark->id }})" class="btn btn-sm btn-ghost">
+                                                        <x-ui.icon name="pencil" class="icon-sm" />
+                                                        Edit
+                                                    </button>
+                                                </div>
+                                            @endif
                                         @endif
-                                    </div>
-                                </div>
-                            @elseif ($detailTab === 'edit' && $isCreator)
-                                <div class="pg">
-                                    <div class="pg-head">
-                                        <span class="pg-title">Edit letter details</span>
-                                    </div>
-                                    <div style="padding:12px 14px">
-                                        <div class="form-row">
-                                            <div class="form-field">
-                                                <label class="form-label">Subject</label>
-                                                <input type="text" wire:model="editSubject" class="form-input">
-                                            </div>
-                                            <div class="form-field">
-                                                <label class="form-label">Reference No.</label>
-                                                <input type="text" wire:model="editRefNo" class="form-input">
-                                            </div>
+                                    </article>
+                                @empty
+                                    <p class="ui-hint">No remarks yet.</p>
+                                @endforelse
+
+                                @if ($canRemark)
+                                    <div class="remark-compose ui-stack">
+                                        <h4 class="remark-compose-title">Add a remark</h4>
+                                        <div class="ui-form-grid">
+                                            <x-form.combobox
+                                                label="Manager"
+                                                model="remarkManagerId"
+                                                :options="$managerOptions"
+                                                placeholder="Type to search manager"
+                                                empty-text="No managers in your region"
+                                            />
+                                            <x-form.combobox
+                                                label="Chief Manager"
+                                                model="remarkChiefManagerId"
+                                                :options="$chiefManagerOptions"
+                                                placeholder="Type to search chief manager"
+                                                empty-text="No chief managers in your region"
+                                            />
                                         </div>
-                                        <div class="form-row">
-                                            <div class="form-field">
-                                                <label class="form-label">Type</label>
-                                                <select wire:model.live="editType" class="form-input">
-                                                    <option value="Internal">Internal</option>
-                                                    <option value="External">External</option>
-                                                </select>
-                                            </div>
-                                            <div class="form-field">
-                                                <label class="form-label">Date on Letter</label>
-                                                <input type="date" wire:model="editDateOnLetter" class="form-input">
-                                            </div>
+                                        <x-ui.textarea label="Manager remarks" wire:model="remarkContent" rows="3" placeholder="Add remark" />
+                                        <x-ui.textarea label="Secretary remarks" wire:model="secretaryRemarkContent" rows="2" placeholder="Optional" />
+                                        <div class="ui-form-actions">
+                                            <button type="button" wire:click="addRemark" class="btn btn-primary">
+                                                <x-ui.icon name="plus" />
+                                                Add Remark
+                                            </button>
                                         </div>
+                                    </div>
+                                @endif
+                            </section>
+                        @elseif ($detailTab === 'dispatch')
+                            <section class="letter-section" aria-labelledby="letter-dispatch-title">
+                                <h3 id="letter-dispatch-title" class="ui-panel-title">Dispatch letter</h3>
+
+                                @if (! $canForward)
+                                    <x-ui.alert tone="warning">You do not have permission to dispatch letters.</x-ui.alert>
+                                @elseif (! $workflow->canDispatch($selectedLetter, $employee))
+                                    <x-ui.alert tone="warning">Dispatch is disabled until hardcopy receipt is confirmed or while this letter is closed/dispatched.</x-ui.alert>
+                                @else
+                                    <div class="ui-stack">
+                                        <div class="ui-form-grid">
+                                            <x-ui.input label="Search secretariat" wire:model.live="secretarySearch" placeholder="Name or staff ID" icon="search" />
+                                            <x-ui.select label="Recipient" wire:model="dispatchToId">
+                                                <option value="">Select secretary</option>
+                                                @foreach ($secretaries as $secretary)
+                                                    <option value="{{ $secretary->id }}">{{ $secretary->full_name }} · {{ $secretary->staff_id }}</option>
+                                                @endforeach
+                                            </x-ui.select>
+                                        </div>
+                                        <div class="ui-form-actions">
+                                            <button type="button" wire:click="dispatchLetter" class="btn btn-primary">
+                                                <x-ui.icon name="send" />
+                                                Dispatch
+                                            </button>
+                                        </div>
+                                    </div>
+                                @endif
+                            </section>
+                        @elseif ($detailTab === 'edit' && $isCreator)
+                            <section class="letter-section" aria-labelledby="letter-edit-title">
+                                <h3 id="letter-edit-title" class="ui-panel-title">Edit letter details</h3>
+
+                                <div class="ui-stack">
+                                    <div class="ui-form-grid">
+                                        <x-ui.input label="Subject" wire:model="editSubject" />
+                                        <x-ui.input label="Reference No." wire:model="editRefNo" class="mono" />
+
+                                        <div class="ui-field">
+                                            <span class="ui-label" aria-hidden="true">Type</span>
+                                            <x-ui.segmented label="Type" wire:model.live="editType" :options="['Internal' => 'Internal', 'External' => 'External']" />
+                                        </div>
+                                        <x-ui.input label="Date on Letter" type="date" wire:model="editDateOnLetter" />
+
                                         @if ($editType === 'Internal')
-                                            <div class="form-row">
-                                                <div class="form-field">
-                                                    <label class="form-label">Search Employee Sender</label>
-                                                    <input type="text" wire:model.live="editSenderSearch" class="form-input">
-                                                </div>
-                                                <div class="form-field">
-                                                    <label class="form-label">Memo Sender</label>
-                                                    <select wire:model="editMemoSenderId" class="form-input">
-                                                        <option value="">Select employee</option>
-                                                        @foreach ($senders as $sender)
-                                                            <option value="{{ $sender->id }}">{{ $sender->full_name }} · {{ $sender->staff_id }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </div>
-                                            </div>
+                                            <x-ui.input label="Search Employee Sender" wire:model.live="editSenderSearch" icon="search" />
+                                            <x-ui.select label="Memo Sender" wire:model="editMemoSenderId">
+                                                <option value="">Select employee</option>
+                                                @foreach ($senders as $sender)
+                                                    <option value="{{ $sender->id }}">{{ $sender->full_name }} · {{ $sender->staff_id }}</option>
+                                                @endforeach
+                                            </x-ui.select>
                                         @else
-                                            <div class="form-field" style="margin-bottom:10px">
-                                                <label class="form-label">Company / External Sender</label>
-                                                <textarea wire:model="editCompanySender" class="form-input" rows="3"></textarea>
+                                            <div class="span-2">
+                                                <x-ui.textarea label="Company / External Sender" wire:model="editCompanySender" rows="3" />
                                             </div>
                                         @endif
-                                        <button type="button" wire:click="updateLetter" class="btn btn-primary">Save Changes</button>
+                                    </div>
+
+                                    <div class="ui-form-actions">
+                                        <button type="button" wire:click="updateLetter" class="btn btn-primary">
+                                            <x-ui.icon name="check" />
+                                            Save Changes
+                                        </button>
                                     </div>
                                 </div>
-                            @endif
-                        </div>
+                            </section>
+                        @endif
                     @endif
                 </div>
-            </div>
+            </x-ui.drawer>
         @endif
     @endif
 </div>

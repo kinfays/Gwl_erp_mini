@@ -5,8 +5,10 @@ namespace App\Livewire\Leave;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use App\Services\Leave\LeaveDashboardService;
 
 class HrDashboard extends Component
 {
@@ -115,8 +117,10 @@ class HrDashboard extends Component
 
     protected function loadSlaStats(): void
     {
+        // Every request with at least one finished stage; each average skips requests whose
+        // stage times are unknown (see LeaveRequest::managerResponseHours() and friends).
         $q = LeaveRequest::query()
-            ->whereIn('leave_status', ['Approved', 'Denied']);
+            ->where(fn ($query) => $query->whereNotNull('recommended_at')->orWhereNotNull('decided_at'));
 
         if (auth()->user()->isHrUser() && ! auth()->user()->isHeadOfficeHr()) {
             $employee = $this->employee();
@@ -128,46 +132,34 @@ class HrDashboard extends Component
 
         $requests = $q->get();
 
-        $managerTimes = [];
-        $finalTimes = [];
-        $totalTimes = [];
-
-        foreach ($requests as $r) {
-            // Time to manager recommendation
-            if ($r->manager_recommendation !== 'Pending') {
-                $managerTimes[] = $r->updated_at->diffInHours($r->created_at);
-            }
-
-            // Time to final decision
-            if ($r->approved_by_id || $r->leave_status === 'Denied') {
-                $finalTimes[] = $r->updated_at->diffInHours($r->created_at);
-            }
-
-            // Total cycle time
-            $totalTimes[] = $r->updated_at->diffInHours($r->created_at);
-        }
-
         $this->slaStats = [
-            'avg_manager_hours' => $managerTimes
-                ? round(array_sum($managerTimes) / count($managerTimes))
-                : 0,
+            // Submission to the manager's recommendation (or rejection)
+            'avg_manager_hours' => $this->averageHours($requests->map->managerResponseHours()),
 
-            'avg_final_hours' => $finalTimes
-                ? round(array_sum($finalTimes) / count($finalTimes))
-                : 0,
+            // Recommendation to the final approver's decision
+            'avg_final_hours' => $this->averageHours($requests->map->approverHours()),
 
-            'avg_total_hours' => $totalTimes
-                ? round(array_sum($totalTimes) / count($totalTimes))
-                : 0,
+            // Submission to the final decision, whoever made it
+            'avg_total_hours' => $this->averageHours($requests->map->cycleHours()),
         ];
+    }
+
+    /** Rounded mean of the known values, or null when there are none yet. */
+    protected function averageHours(Collection $hours): ?float
+    {
+        $known = $hours->reject(fn ($value) => $value === null);
+
+        return $known->isNotEmpty() ? round($known->avg()) : null;
     }
 
     protected function loadSlowApprovals(): void
     {
         $q = LeaveRequest::query()
             ->where('leave_status', 'Approved')
+            ->whereNotNull('submitted_at')
+            ->whereNotNull('decided_at')
             ->with('requester')
-            ->orderByDesc('updated_at');
+            ->orderByDesc('decided_at');
 
         if (auth()->user()->isHrUser() && ! auth()->user()->isHeadOfficeHr()) {
             $employee = $this->employee();
@@ -177,10 +169,8 @@ class HrDashboard extends Component
             $q->where('region_id', $employee->region_id);
         }
 
-        // SLA breach: > 72 hours total cycle
-        $this->slowestApprovals = $q->get()->filter(function ($r) {
-            return $r->updated_at->diffInHours($r->created_at) > 72;
-        })->take(5);
+        // SLA breach: more than 72 hours from submission to approval
+        $this->slowestApprovals = $q->get()->filter(fn (LeaveRequest $r) => $r->cycleHours() > 72)->take(5);
     }
 
     protected function loadPendingApprovals(): void
@@ -246,7 +236,16 @@ class HrDashboard extends Component
 
     public function render()
     {
-        return view('livewire.leave.hr-dashboard');
+        $dashboard = app(LeaveDashboardService::class);
+        $user = Auth::user();
+        $employee = $this->employee();
+        $year = (int) now()->format('Y');
+
+        return view('livewire.leave.hr-dashboard', [
+            'daysByMonth' => $dashboard->approvedDaysByMonth($user, $employee, $year),
+            'requestsByStatus' => $dashboard->requestsByStatus($user, $employee, $year),
+            'upcomingAbsences' => $dashboard->upcomingAbsences($user, $employee),
+        ]);
     }
 
     protected function employee(): ?Employee

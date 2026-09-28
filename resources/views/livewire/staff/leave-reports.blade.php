@@ -2,337 +2,195 @@
     @vite('resources/js/charts.js')
 @endassets
 
+@php
+    $statIcons = [
+        'Total Staff' => ['users', 'primary'],
+        'Female Staff' => ['user-round', 'primary'],
+        'Male Staff' => ['user-round', 'primary'],
+        'On Leave Now' => ['calendar-days', 'lagoon'],
+        'Pending Requests' => ['clock', 'warning'],
+    ];
+    // Colour a badge only when it reports a non-zero problem ("0 critical" stays neutral).
+    $deltaTone = fn (?string $tone, ?string $badge) => preg_match('/^0(\D|$)/', trim((string) $badge)) ? 'neutral' : match ($tone) {
+        'red' => 'bad',
+        'amber' => 'warn',
+        default => 'neutral',
+    };
+    $genderColours = ['Male' => 'series-1', 'Female' => 'series-3', 'Other / Unspecified' => 'muted'];
+    $statusColours = ['Approved' => 'success', 'Pending Approval' => 'warning', 'Denied' => 'danger', 'Planned' => 'muted'];
+@endphp
+
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Staff Leave Reports</h2>
-            <p>{{ $fromLabel }} to {{ $toLabel }} · {{ $payload['scopeLabel'] ?? 'Visible staff scope' }}</p>
-        </div>
-    </div>
+    <x-ui.page-header title="Staff Leave Reports" :description="$fromLabel.' to '.$toLabel.' · '.($payload['scopeLabel'] ?? 'Visible staff scope')" />
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Filters</span>
-        </div>
-        <div style="padding:14px">
-            <div class="form-row">
-                <div class="form-field">
-                    <label class="form-label">Date Range</label>
-                    <select class="form-input" wire:model.live="datePreset">
-                        <option value="this_month">This month</option>
-                        <option value="last_3_months">Last 3 months</option>
-                        <option value="last_6_months">Last 6 months</option>
-                        <option value="last_12_months">Last 12 months</option>
-                        <option value="custom">Custom range</option>
-                    </select>
-                </div>
-
-                <div class="form-field">
-                    <label class="form-label">Department</label>
-                    <select class="form-input" wire:model.live="departmentId">
-                        <option value="">All departments</option>
-                        @foreach ($filters['departments'] as $department)
-                            <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                @if ($filters['regions']->count() > 1)
-                    <div class="form-field">
-                        <label class="form-label">Region</label>
-                        <select class="form-input" wire:model.live="regionId">
-                            <option value="">All regions</option>
-                            @foreach ($filters['regions'] as $region)
-                                <option value="{{ $region->id }}">{{ $region->region_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                @endif
-
-                <div class="form-field">
-                    <label class="form-label">District</label>
-                    <select class="form-input" wire:model.live="districtId">
-                        <option value="">All districts</option>
-                        @foreach ($filters['districts'] as $district)
-                            <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+    <x-ui.card class="report-filters">
+        <div class="report-filter-row">
+            <div class="ui-field">
+                <span class="ui-label" aria-hidden="true">Date range</span>
+                <x-ui.segmented
+                    label="Date range"
+                    wire:model.live="datePreset"
+                    :options="[
+                        'this_month' => 'This month',
+                        'last_3_months' => 'Last 3 months',
+                        'last_6_months' => 'Last 6 months',
+                        'last_12_months' => 'Last 12 months',
+                        'custom' => 'Custom range',
+                    ]"
+                />
             </div>
+
+            <x-ui.select label="Department" wire:model.live="departmentId" class="report-filter-select">
+                <option value="">All departments</option>
+                @foreach ($filters['departments'] as $department)
+                    <option value="{{ $department->id }}">{{ $department->department_name }}</option>
+                @endforeach
+            </x-ui.select>
+
+            @if ($filters['regions']->count() > 1)
+                <x-ui.select label="Region" wire:model.live="regionId" class="report-filter-select">
+                    <option value="">All regions</option>
+                    @foreach ($filters['regions'] as $region)
+                        <option value="{{ $region->id }}">{{ $region->region_name }}</option>
+                    @endforeach
+                </x-ui.select>
+            @endif
+
+            <x-ui.select label="District" wire:model.live="districtId" class="report-filter-select">
+                <option value="">All districts</option>
+                @foreach ($filters['districts'] as $district)
+                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                @endforeach
+            </x-ui.select>
 
             @if ($datePreset === 'custom')
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">From</label>
-                        <input type="date" class="form-input" wire:model.live="customFrom">
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">To</label>
-                        <input type="date" class="form-input" wire:model.live="customTo">
-                    </div>
-                </div>
+                <x-ui.input type="date" label="From" wire:model.live="customFrom" />
+                <x-ui.input type="date" label="To" wire:model.live="customTo" />
             @endif
         </div>
-    </div>
+    </x-ui.card>
 
-    <style>
-        .staff-report-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; }
-        .staff-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-        .staff-report-table-wrap { overflow-x: auto; }
-        @media (max-width: 1100px) {
-            .staff-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .staff-report-grid { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 640px) {
-            .staff-report-stats { grid-template-columns: 1fr; }
-        }
-    </style>
-
-    <div class="stats staff-report-stats">
+    <div class="ui-stat-grid report-stats">
         @foreach (($payload['statCards'] ?? []) as $card)
             @php
-                $tone = $card['tone'] ?? 'blue';
-                $badgeBg = match ($tone) {
-                    'red' => '#fcebeb',
-                    'amber' => '#faeeda',
-                    'green' => '#eaf3de',
-                    default => '#e6f1fb',
-                };
-                $badgeColor = match ($tone) {
-                    'red' => '#a32d2d',
-                    'amber' => '#854f0b',
-                    'green' => '#3b6d11',
-                    default => '#185fa5',
-                };
+                [$icon, $tone] = $statIcons[$card['label']] ?? ['chart-column', 'primary'];
             @endphp
-            <div class="stat">
-                <div class="stat-lbl">{{ $card['label'] }}</div>
-                <div class="stat-val">{{ $card['value'] }}</div>
-                <div class="stat-sub">
-                    <span class="pill" style="background:{{ $badgeBg }};color:{{ $badgeColor }}">{{ $card['badge'] }}</span>
-                </div>
-            </div>
+            <x-ui.stat-tile
+                :label="$card['label']"
+                :value="$card['value']"
+                :icon="$icon"
+                :tone="$tone"
+                :delta="$card['badge'] ?? null"
+                :delta-tone="$deltaTone($card['tone'] ?? null, $card['badge'] ?? null)"
+            />
         @endforeach
     </div>
 
-    <div class="staff-report-grid">
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Male Vs Female Total</span></div>
-            <div style="padding:14px;height:280px"><canvas id="staffGenderChart"></canvas></div>
-        </div>
+    <div class="ui-grid ui-grid-2 report-grid">
+        <x-ui.card title="Male Vs Female Total">
+            <x-ui.chart type="doughnut" label="Male versus female staff" center center-caption="staff"
+                event="staff-leave-report-data-updated" source="genderDistribution"
+                :source-data="$payload['genderDistribution'] ?? []" :color-map="$genderColours"
+                :series="[['label' => 'Staff', 'key' => 'data']]" height="240" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Staff By District</span></div>
-            <div style="padding:14px;height:300px"><canvas id="staffDistrictChart"></canvas></div>
-        </div>
+        <x-ui.card title="Leave Status Breakdown">
+            <x-ui.chart type="doughnut" label="Leave status breakdown" center center-caption="requests"
+                event="staff-leave-report-data-updated" source="leaveStatusBreakdown"
+                :source-data="$payload['leaveStatusBreakdown'] ?? []" :color-map="$statusColours"
+                :series="[['label' => 'Requests', 'key' => 'data']]" height="240" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Staff By Department</span></div>
-            <div style="padding:14px;height:300px"><canvas id="staffDepartmentChart"></canvas></div>
-        </div>
+        <x-ui.card title="Staff By District">
+            <x-ui.chart type="hbar" label="Staff by district, with how many are on leave"
+                event="staff-leave-report-data-updated" source="staffByDistrict"
+                :source-data="$payload['staffByDistrict'] ?? []"
+                :series="[['label' => 'Total staff', 'key' => 'staff'], ['label' => 'On leave', 'key' => 'onLeave']]" height="300" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Leave Status Breakdown</span></div>
-            <div style="padding:14px;height:280px"><canvas id="staffLeaveStatusChart"></canvas></div>
-        </div>
+        <x-ui.card title="Staff By Department">
+            <x-ui.chart type="hbar" label="Staff by department"
+                event="staff-leave-report-data-updated" source="staffByDepartment"
+                :source-data="$payload['staffByDepartment'] ?? []"
+                :series="[['label' => 'Staff', 'key' => 'data']]" height="300" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Approved Leave Days By Type</span></div>
-            <div style="padding:14px;height:300px"><canvas id="staffLeaveTypeChart"></canvas></div>
-        </div>
+        <x-ui.card title="Approved Leave Days By Type">
+            <x-ui.chart type="hbar" label="Approved leave days by type" unit="days"
+                event="staff-leave-report-data-updated" source="leaveTypeDays"
+                :source-data="$payload['leaveTypeDays'] ?? []"
+                :series="[['label' => 'Approved days', 'key' => 'data']]" height="280" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Monthly Leave Requests</span></div>
-            <div style="padding:14px;height:300px"><canvas id="staffMonthlyLeaveChart"></canvas></div>
-        </div>
+        <x-ui.card title="Monthly Leave Requests">
+            <x-ui.chart type="area" label="Monthly leave requests"
+                event="staff-leave-report-data-updated" source="monthlyLeaveRequests"
+                :source-data="$payload['monthlyLeaveRequests'] ?? []"
+                :series="[['label' => 'Requests', 'key' => 'data']]" height="280" />
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head"><span class="pg-title">District Numbers</span></div>
-            <div class="staff-report-table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>District</th>
-                            <th>Region</th>
-                            <th>Total</th>
-                            <th>Male</th>
-                            <th>Female</th>
-                            <th>On Leave</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse (($payload['districtRows'] ?? []) as $row)
-                            <tr>
-                                <td>{{ $row['district'] }}</td>
-                                <td>{{ $row['region'] }}</td>
-                                <td>{{ $row['total'] }}</td>
-                                <td>{{ $row['male'] }}</td>
-                                <td>{{ $row['female'] }}</td>
-                                <td>
-                                    <span class="pill" style="background:#faeeda;color:#854f0b">{{ $row['on_leave'] }}</span>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="6" class="empty-state">No district records in this scope.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <x-ui.card title="District Numbers" :padded="false">
+            <x-ui.table label="Staff numbers by district">
+                <x-slot:head>
+                    <tr>
+                        <th>District</th>
+                        <th>Region</th>
+                        <th class="num">Total</th>
+                        <th class="num">Male</th>
+                        <th class="num">Female</th>
+                        <th class="num">On Leave</th>
+                    </tr>
+                </x-slot:head>
+                @forelse (($payload['districtRows'] ?? []) as $row)
+                    <tr>
+                        <td>{{ $row['district'] }}</td>
+                        <td>{{ $row['region'] }}</td>
+                        <td class="num">{{ $row['total'] }}</td>
+                        <td class="num">{{ $row['male'] }}</td>
+                        <td class="num">{{ $row['female'] }}</td>
+                        <td class="num">
+                            @if ((int) $row['on_leave'] > 0)
+                                <x-ui.badge tone="lagoon">{{ $row['on_leave'] }}</x-ui.badge>
+                            @else
+                                {{ $row['on_leave'] }}
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="6" icon="map-pin" title="No district records in this scope." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head"><span class="pg-title">On Leave Now</span></div>
-            <table>
-                <thead>
+        <x-ui.card title="On Leave Now" :padded="false">
+            <x-ui.table label="Staff on leave now">
+                <x-slot:head>
                     <tr>
                         <th>Employee</th>
                         <th>Leave</th>
                         <th>District</th>
                         <th>Returns</th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse (($payload['currentlyOnLeave'] ?? []) as $row)
-                        <tr>
-                            <td>{{ $row['employee'] }}</td>
-                            <td>{{ $row['leave_type'] }}</td>
-                            <td>{{ $row['district'] }}</td>
-                            <td>
-                                {{ $row['end_date'] ? \Carbon\Carbon::parse($row['end_date'])->format('d M Y') : '-' }}
-                                <div style="font-size:10px;color:var(--color-text-secondary)">{{ $row['days_remaining'] }} days remaining</div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="4" class="empty-state">No active approved leave in this scope.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
+                @forelse (($payload['currentlyOnLeave'] ?? []) as $row)
+                    <tr>
+                        <td>
+                            <span class="ui-person">
+                                <x-ui.avatar :name="$row['employee']" size="sm" />
+                                <span class="ui-person-name">{{ $row['employee'] }}</span>
+                            </span>
+                        </td>
+                        <td>{{ $row['leave_type'] }}</td>
+                        <td>{{ $row['district'] }}</td>
+                        <td>
+                            {{ $row['end_date'] ? \Carbon\Carbon::parse($row['end_date'])->format('d M Y') : '-' }}
+                            <span class="ui-person-sub">{{ $row['days_remaining'] }} days remaining</span>
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="4" icon="calendar-days" title="No active approved leave in this scope." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
     </div>
-
-    <script>
-        (() => {
-            const initialPayload = @js($payload);
-            const chartState = window.staffLeaveReportCharts || {};
-            window.staffLeaveReportCharts = chartState;
-
-            const palette = {
-                blue: '#185fa5',
-                green: '#21633c',
-                red: '#a32d2d',
-                amber: '#b7791f',
-                cyan: '#0e7490',
-                slate: '#66758b',
-                purple: '#6b46c1'
-            };
-
-            function ctx(id) {
-                const canvas = document.getElementById(id);
-                return canvas ? canvas.getContext('2d') : null;
-            }
-
-            function replaceChart(key, id, config) {
-                const context = ctx(id);
-
-                if (! context || typeof Chart === 'undefined') {
-                    return;
-                }
-
-                if (chartState[key]) {
-                    chartState[key].destroy();
-                }
-
-                chartState[key] = new Chart(context, config);
-            }
-
-            function baseOptions(extra = {}) {
-                return {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { labels: { boxWidth: 10, font: { size: 10 } } }
-                    },
-                    scales: {
-                        x: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(102,117,139,.12)' } },
-                        y: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(102,117,139,.12)' } }
-                    },
-                    ...extra
-                };
-            }
-
-            function render(payload) {
-                if (! payload) {
-                    return;
-                }
-
-                replaceChart('gender', 'staffGenderChart', {
-                    type: 'doughnut',
-                    data: {
-                        labels: payload.genderDistribution?.labels || [],
-                        datasets: [{ data: payload.genderDistribution?.data || [], backgroundColor: [palette.green, palette.blue, palette.slate] }]
-                    },
-                    options: baseOptions({ scales: {}, plugins: { legend: { position: 'bottom' } } })
-                });
-
-                replaceChart('district', 'staffDistrictChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.staffByDistrict?.labels || [],
-                        datasets: [
-                            { label: 'Total staff', data: payload.staffByDistrict?.staff || [], backgroundColor: palette.blue, borderRadius: 5 },
-                            { label: 'On leave', data: payload.staffByDistrict?.onLeave || [], backgroundColor: palette.amber, borderRadius: 5 }
-                        ]
-                    },
-                    options: baseOptions({ indexAxis: 'y' })
-                });
-
-                replaceChart('department', 'staffDepartmentChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.staffByDepartment?.labels || [],
-                        datasets: [{ label: 'Staff', data: payload.staffByDepartment?.data || [], backgroundColor: palette.cyan, borderRadius: 5 }]
-                    },
-                    options: baseOptions({ indexAxis: 'y', plugins: { legend: { display: false } } })
-                });
-
-                replaceChart('leaveStatus', 'staffLeaveStatusChart', {
-                    type: 'doughnut',
-                    data: {
-                        labels: payload.leaveStatusBreakdown?.labels || [],
-                        datasets: [{ data: payload.leaveStatusBreakdown?.data || [], backgroundColor: [palette.green, palette.amber, palette.red, palette.blue, palette.slate, palette.purple] }]
-                    },
-                    options: baseOptions({ scales: {}, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } })
-                });
-
-                replaceChart('leaveType', 'staffLeaveTypeChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.leaveTypeDays?.labels || [],
-                        datasets: [{ label: 'Approved days', data: payload.leaveTypeDays?.data || [], backgroundColor: palette.green, borderRadius: 5 }]
-                    },
-                    options: baseOptions({ indexAxis: 'y', plugins: { legend: { display: false } } })
-                });
-
-                replaceChart('monthlyLeave', 'staffMonthlyLeaveChart', {
-                    type: 'line',
-                    data: {
-                        labels: payload.monthlyLeaveRequests?.labels || [],
-                        datasets: [{ label: 'Requests', data: payload.monthlyLeaveRequests?.data || [], borderColor: palette.blue, backgroundColor: 'rgba(24,95,165,.12)', fill: true, tension: .35 }]
-                    },
-                    options: baseOptions()
-                });
-            }
-
-            window.addEventListener('staff-leave-report-data-updated', event => render(event.detail.charts));
-
-            // Chart.js arrives as a deferred module, which has run by DOMContentLoaded.
-            const renderInitial = () => requestAnimationFrame(() => render(initialPayload));
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
-            } else {
-                renderInitial();
-            }
-        })();
-    </script>
 </div>

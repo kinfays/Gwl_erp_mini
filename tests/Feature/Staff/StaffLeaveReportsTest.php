@@ -13,11 +13,13 @@ use App\Models\Permission;
 use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Staff\StaffLeaveReportService;
 use Database\Seeders\ModuleAccessSeeder;
 use Database\Seeders\PermissionSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\StaffRolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -91,6 +93,75 @@ class StaffLeaveReportsTest extends TestCase
         $this->actingAs($hr)
             ->get(route('staff.reports'))
             ->assertForbidden();
+    }
+
+    public function test_report_still_renders_when_its_payload_comes_back_from_the_cache(): void
+    {
+        // Production caches the payload in the database store, which serialises it and, because
+        // cache.serializable_classes is false, reads any object inside it back as
+        // __PHP_Incomplete_Class. The array store the suite normally uses does neither.
+        config(['cache.default' => 'database']);
+
+        $this->seedStaffAccess();
+        $this->actingAs($this->reportFixtures());
+
+        // First render: cache miss, so the payload is built and stored.
+        Livewire::test(LeaveReports::class)->assertSee('Accra Central');
+
+        $this->assertTrue(DB::table('cache')->where('key', 'like', '%staff_leave_reports:payload:%')->exists());
+
+        // Second render: cache hit, so the payload is unserialised from the database.
+        Livewire::test(LeaveReports::class)
+            ->assertSet('payload.districtRows.0.district', 'Accra Central')
+            ->assertSet('payload.districtRows.0.total', 2)
+            ->assertSee('Accra Central');
+    }
+
+    public function test_report_payload_holds_only_arrays_and_scalars_so_it_survives_the_cache(): void
+    {
+        $this->seedStaffAccess();
+        $hr = $this->reportFixtures();
+
+        $payload = app(StaffLeaveReportService::class)->reportPayload($hr, today()->startOfMonth(), today()->endOfMonth());
+
+        $this->assertNotEmpty($payload['districtRows']);
+        $this->assertNotEmpty($payload['currentlyOnLeave']);
+        $this->assertCacheSafe($payload, 'payload');
+    }
+
+    /**
+     * Cached values are unserialised without classes (config/cache.php serializable_classes), so
+     * anything other than arrays and scalars would come back as __PHP_Incomplete_Class.
+     */
+    protected function assertCacheSafe(mixed $value, string $path): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $this->assertCacheSafe($item, $path.'.'.$key);
+            }
+
+            return;
+        }
+
+        $this->assertTrue(
+            $value === null || is_scalar($value),
+            $path.' is '.get_debug_type($value).'; cached report payloads may only hold arrays and scalars.'
+        );
+    }
+
+    protected function reportFixtures(): User
+    {
+        $region = Region::query()->create(['region_name' => 'Greater Accra']);
+        $district = District::query()->create(['district_name' => 'Accra Central', 'region_id' => $region->id]);
+
+        $this->employee('EMP101', $region, $district, 'Male');
+        $onLeave = $this->employee('EMP102', $region, $district, 'Female');
+        $this->leaveRequest($onLeave, 'Approved', today()->subDay()->toDateString(), today()->addDays(2)->toDateString());
+
+        $hr = $this->user('HR101');
+        $hr->roles()->attach(Role::query()->where('name', 'hr_headoffice')->firstOrFail());
+
+        return $hr;
     }
 
     protected function seedStaffAccess(): void

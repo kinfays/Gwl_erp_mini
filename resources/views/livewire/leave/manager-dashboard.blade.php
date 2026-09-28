@@ -2,170 +2,101 @@
     @vite('resources/js/charts.js')
 @endassets
 
-<div class="main">
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>My Team — Leave Overview</h2>
-            <p>{{ now()->format('F Y') }}</p>
-        </div>
+@php
+    $viewer = auth()->user();
+    $canExport = $viewer->hasRoles('super_admin') || $viewer->hasPermission('leave.export');
+@endphp
 
-        <div class="ph-right">
-            <a href="{{ route('leave.approvals') }}" class="btn btn-primary">
+<div class="main">
+    <x-ui.page-header title="My Team — Leave Overview" :description="now()->format('F Y')">
+        <x-slot:actions>
+            @if ($canExport)
+                <x-ui.button :href="route('leave.export.team.excel')" icon="download">Export Team Leave</x-ui.button>
+            @endif
+            <x-ui.button :href="route('leave.approvals')" variant="primary" icon="square-check-big">
                 Pending Approvals ({{ $stats['pending_approvals'] }})
-            </a>
-        </div>
-    </div>
+            </x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     <div class="content">
-
-        {{-- KPI --}}
-        <div class="stats">
-            <div class="stat">
-                <div class="stat-lbl">Team size</div>
-                <div class="stat-val">{{ $stats['team_size'] }}</div>
-            </div>
-
-            <div class="stat">
-                <div class="stat-lbl">On leave now</div>
-                <div class="stat-val">{{ $stats['on_leave_now'] }}</div>
-            </div>
-
-            <div class="stat">
-                <div class="stat-lbl">Pending approvals</div>
-                <div class="stat-val">{{ $stats['pending_approvals'] }}</div>
-            </div>
-
-            <div class="stat">
-                <div class="stat-lbl">Approved this month</div>
-                <div class="stat-val">{{ $stats['approved_this_month'] }}</div>
-            </div>
+        <div class="ui-stat-grid dash-row">
+            <x-ui.stat-tile label="Team size" :value="$stats['team_size']" icon="users" />
+            <x-ui.stat-tile label="On leave now" :value="$stats['on_leave_now']" icon="calendar-days" tone="lagoon" />
+            <x-ui.stat-tile label="Pending approvals" :value="$stats['pending_approvals']" icon="clock"
+                :tone="$stats['pending_approvals'] > 0 ? 'warning' : 'muted'" :href="route('leave.approvals')" />
+            <x-ui.stat-tile label="Approved this month" :value="$stats['approved_this_month']" icon="circle-check" tone="success" />
         </div>
 
-        <div class="two">
-
-            {{-- LEFT --}}
-            <div>
-
-                <div class="pg">
-                    <div class="pg-head">
-                        <span class="pg-title">Currently on leave</span>
-                    </div>
-
-                    <table>
-                        <thead>
+        <div class="ui-grid ui-grid-main">
+            <div class="ui-stack">
+                <x-ui.card title="Currently on leave" :padded="false">
+                    <x-ui.table label="Team members currently on leave" :sticky="false">
+                        <x-slot:head>
                             <tr>
                                 <th>Employee</th>
                                 <th>Type</th>
                                 <th>Details</th>
                                 <th>Ends</th>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($onLeave as $r)
-                                <tr>
-                                    <td>{{ $r->requester->full_name }}</td>
-                                    <td>{{ $r->leave_type }}</td>
-                                    <td>{{ $r->leave_details ?: 'No details provided.' }}</td>
-                                    <td>{{ $r->end_date->format('d M') }}</td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="4">None</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                        </x-slot:head>
+                        @forelse ($onLeave as $r)
+                            <tr>
+                                <td>
+                                    <span class="ui-person">
+                                        <x-ui.avatar :name="$r->requester->full_name" />
+                                        <span class="ui-person-name">{{ $r->requester->full_name }}</span>
+                                    </span>
+                                </td>
+                                <td>{{ $r->leave_type }}</td>
+                                <td class="cell-muted">{{ $r->leave_details ?: 'No details provided.' }}</td>
+                                <td class="nowrap">{{ $r->end_date->format('d M') }}</td>
+                            </tr>
+                        @empty
+                            <x-ui.empty-row :colspan="4" icon="users" title="Nobody on your team is on leave today" />
+                        @endforelse
+                    </x-ui.table>
+                </x-ui.card>
 
-                <div class="pg">
-                    <div class="pg-head">
-                        <span class="pg-title">Upcoming leave (30 days)</span>
-                    </div>
-
-                    <table>
-                        <thead>
+                <x-ui.card title="Upcoming leave" description="Next 30 days" :padded="false">
+                    <x-ui.table label="Upcoming team leave" :sticky="false">
+                        <x-slot:head>
                             <tr>
                                 <th>Employee</th>
                                 <th>Type</th>
                                 <th>Details</th>
                                 <th>Starts</th>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($upcoming as $r)
-                                <tr>
-                                    <td>{{ $r->requester->full_name }}</td>
-                                    <td>{{ $r->leave_type }}</td>
-                                    <td>{{ $r->leave_details ?: 'No details provided.' }}</td>
-                                    <td>{{ $r->start_date->format('d M') }}</td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="4">None</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                        </x-slot:head>
+                        @forelse ($upcoming as $r)
+                            <tr>
+                                <td>
+                                    <span class="ui-person">
+                                        <x-ui.avatar :name="$r->requester->full_name" />
+                                        <span class="ui-person-name">{{ $r->requester->full_name }}</span>
+                                    </span>
+                                </td>
+                                <td>{{ $r->leave_type }}</td>
+                                <td class="cell-muted">{{ $r->leave_details ?: 'No details provided.' }}</td>
+                                <td class="nowrap">{{ $r->start_date->format('d M') }}</td>
+                            </tr>
+                        @empty
+                            <x-ui.empty-row :colspan="4" icon="calendar-days" title="No team leave in the next 30 days" />
+                        @endforelse
+                    </x-ui.table>
+                </x-ui.card>
             </div>
 
-            {{-- RIGHT --}}
-            <div>
-                <div class="pg">
-                    <div class="pg-head">
-                        <span class="pg-title">Team leave by type</span>
-                    </div>
-                    <div style="padding:10px 14px" wire:ignore>
-                        <div style="position:relative;height:220px">
-                            <canvas id="teamLeaveTypeChart"></canvas>
-                        </div>
-                    </div>
-                </div>
+            <div class="ui-stack">
+                <x-ui.card title="Team leave by type" description="Share of approved days">
+                    <x-ui.chart type="hbar" label="Team leave by type, share of approved days" unit="%" :max="100" :legend="false"
+                        :labels="array_keys($leaveByType)" :series="[['label' => 'Share of approved days', 'data' => array_values($leaveByType)]]" height="220" />
+                </x-ui.card>
 
-                <div class="pg">
-                    <div class="pg-head">
-                        <span class="pg-title">Avg approval cycle</span>
-                    </div>
-                    <div class="stat" style="margin:10px">
-                        <div class="stat-val">{{ $slaStats['avg_cycle_hours'] }} hrs</div>
-                        <div class="stat-lbl">Submission → Decision</div>
-                    </div>
-                </div>
+                <x-ui.card title="Avg approval cycle" description="Submission → Decision">
+                    <x-ui.meter label="Average cycle" :value="$slaStats['avg_cycle_hours'] ?? null" :target="72" unit="h" />
+                </x-ui.card>
             </div>
-
         </div>
     </div>
-<a href="{{ route('leave.export.team.excel') }}" class="btn">
-    Export Team Leave
-</a>
-<!------------------------------------- Chart Script ---------------------------------->
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById('teamLeaveTypeChart');
-    if (!el || typeof Chart === 'undefined') return;
-
-    const data = @json(array_values($leaveByType));
-    const labels = @json(array_keys($leaveByType));
-
-    new Chart(el, {
-        type: 'bar',
-        data: {
-            labels,
-            datasets: [{ label: 'Share of approved days', data, backgroundColor: '#185FA5' }],
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: { callbacks: { label: context => `${context.parsed.x}%` } },
-            },
-            scales: {
-                x: { min: 0, max: 100, ticks: { callback: value => `${value}%` } },
-            },
-        },
-    });
-});
-</script>
 </div>

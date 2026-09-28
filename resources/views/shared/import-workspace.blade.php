@@ -2,6 +2,12 @@
     $routePrefix = $context;
     $preview = session('import_preview.' . $context);
     $types = $availableImportTypes ?? app(\App\Services\Import\DataImportService::class)->availableTypes($showUsersType ?? true);
+    $currentStep = $preview && ! empty($preview['valid_rows']) && empty($preview['blocked']) ? 3 : 2;
+    $steps = [
+        1 => ['Template', 'Download the approved sheet structure.'],
+        2 => ['Preview', 'Validate the uploaded rows before writing to the database.'],
+        3 => ['Run Import', 'Persist only the validated rows and audit the result.'],
+    ];
 @endphp
 
 <div x-data="{
@@ -30,64 +36,54 @@
         this.fileName = files[0].name;
     },
 }">
-    <div class="page-head" style="padding-left:0;padding-right:0;background:transparent;border:0">
-        <div class="ph-left">
-            <h2>{{ $title }}</h2>
-            <p>{{ $description }}</p>
-        </div>
-    </div>
+    <x-ui.page-header :title="$title" :description="$description" />
 
-    @if (session('success'))
-        <div class="erp-card" style="margin-bottom:14px;background:#eaf7ef;border-color:#b8e0c5;color:#21633c;">
-            {{ session('success') }}
-        </div>
+    {{-- The UAC layout already shows the success flash. --}}
+    @if (session('success') && $context !== 'uac')
+        <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
     @endif
 
     @if ($errors->any())
-        <div class="erp-card" style="margin-bottom:14px;background:#fef2f2;border-color:#fecaca;color:#991b1b;">
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-                <span>{{ $errors->first() }}</span>
-
+        <x-ui.alert tone="danger" role="alert">
+            {{ $errors->first() }}
+            <x-slot:actions>
                 <form action="{{ route($routePrefix . '.import.clear') }}" method="POST">
                     @csrf
-                    <button type="submit" class="actn actn-r">Clear Upload Error</button>
+                    <button type="submit" class="btn btn-secondary btn-sm">Clear Upload Error</button>
                 </form>
-            </div>
-        </div>
+            </x-slot:actions>
+        </x-ui.alert>
     @endif
 
-    <div class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-        <div class="stat">
-            <div class="stat-lbl">Step 1</div>
-            <div class="stat-val" style="font-size:16px">Template</div>
-            <div class="stat-sub">Download the approved sheet structure.</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Step 2</div>
-            <div class="stat-val" style="font-size:16px">Preview</div>
-            <div class="stat-sub">Validate the uploaded rows before writing to the database.</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Step 3</div>
-            <div class="stat-val" style="font-size:16px">Run Import</div>
-            <div class="stat-sub">Persist only the validated rows and audit the result.</div>
-        </div>
-    </div>
+    <ol class="ui-steps" aria-label="Import steps">
+        @foreach ($steps as $number => [$stepTitle, $stepDescription])
+            <li @if ($number === $currentStep) aria-current="step" @endif>
+                <span class="ui-step-num" aria-hidden="true">{{ $number }}</span>
+                <span>
+                    <span class="ui-step-title"><span class="sr-only-text">Step {{ $number }}: </span>{{ $stepTitle }}</span>
+                    <span class="ui-step-desc">{{ $stepDescription }}</span>
+                </span>
+            </li>
+        @endforeach
+    </ol>
 
-    <div class="two">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Upload Workspace</span>
-            </div>
+    <div class="ui-grid ui-grid-main dash-row">
+        <x-ui.card title="Upload Workspace" description="Pick the data type, fill in its template, then preview the file.">
+            <div class="ui-stack">
+                <div class="import-type-row">
+                    <div class="ui-field toolbar-grow">
+                        <label for="import-type-{{ $context }}" class="ui-label">Import Type</label>
+                        <select id="import-type-{{ $context }}" x-model="selectedType" name="type" class="form-input ui-input">
+                            @foreach ($types as $type)
+                                <option value="{{ $type['type'] }}">{{ $type['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
 
-            <div style="padding:14px">
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Import Type</label>
-                    <select x-model="selectedType" name="type" class="form-input">
-                        @foreach ($types as $type)
-                            <option value="{{ $type['type'] }}">{{ $type['label'] }}</option>
-                        @endforeach
-                    </select>
+                    <a :href="`{{ url($routePrefix . '/import/template') }}/${selectedType}`" class="btn btn-secondary" x-on:click.stop>
+                        <x-ui.icon name="download" />
+                        Download Template
+                    </a>
                 </div>
 
                 <div
@@ -102,41 +98,31 @@
                     x-on:dragleave.prevent="isDragging = false"
                     x-on:drop.prevent="handleDrop($event)"
                 >
-                    <div style="font-size:24px;color:var(--color-text-tertiary);margin-bottom:6px">&uarr;</div>
-                    <div style="font-size:12px;color:var(--color-text-secondary)">Drop Excel or CSV here</div>
-                    <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;margin-bottom:8px" x-text="fileName || 'Accepts .xlsx and .csv'"></div>
-                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                        <a :href="`{{ url($routePrefix . '/import/template') }}/${selectedType}`" class="btn" x-on:click.stop>Download Template</a>
-                    </div>
+                    <span class="ui-empty-icon import-zone-icon" aria-hidden="true"><x-ui.icon name="upload" /></span>
+                    <p class="import-zone-title">Drop Excel or CSV here, or choose a file</p>
+                    <p class="import-zone-hint" x-text="fileName || 'Accepts .xlsx and .csv'">Accepts .xlsx and .csv</p>
                 </div>
 
-                <form action="{{ route($routePrefix . '.import.preview') }}" method="POST" enctype="multipart/form-data" style="display:grid;gap:12px">
+                <form action="{{ route($routePrefix . '.import.preview') }}" method="POST" enctype="multipart/form-data" class="ui-stack">
                     @csrf
                     <input type="hidden" name="type" x-bind:value="selectedType">
 
-                    <div class="form-field">
-                        <label class="form-label">Upload File</label>
-                        <input x-ref="fileInput" x-on:change="fileName = $event.target.files[0]?.name || ''" type="file" name="file" class="form-input" accept=".xlsx,.csv,.txt">
+                    <div class="ui-field">
+                        <label for="import-file-{{ $context }}" class="ui-label">Upload File</label>
+                        <input id="import-file-{{ $context }}" x-ref="fileInput" x-on:change="fileName = $event.target.files[0]?.name || ''" type="file" name="file" class="form-input" accept=".xlsx,.csv,.txt">
                     </div>
 
-                    <button type="submit" class="btn btn-primary" style="justify-content:center">Preview Import</button>
+                    <div>
+                        <button type="submit" class="btn btn-primary">
+                            <x-ui.icon name="list-checks" />
+                            Preview Import
+                        </button>
+                    </div>
                 </form>
-
-                @if ($preview)
-                    <div style="display:flex;gap:12px;font-size:10px;margin-top:12px;flex-wrap:wrap">
-                        <span style="color:#3B6D11">OK {{ $preview['valid_count'] }} rows validated</span>
-                        <span style="color:#A32D2D">! {{ $preview['error_count'] }} issues found</span>
-                        <span style="color:var(--color-text-secondary)">{{ $preview['failure_percent'] ?? 0 }}% failure rate; max {{ $preview['max_failure_percent'] ?? config('gwl.max_import_failure_percent', 20) }}%</span>
-                    </div>
-                @endif
             </div>
-        </div>
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Supported Types</span>
-            </div>
-
+        <x-ui.card title="Supported Types" description="Each type has its own template columns." :padded="false">
             <div class="supported-types-list">
                 @foreach ($types as $type)
                     <div class="supported-type-card">
@@ -145,83 +131,94 @@
                     </div>
                 @endforeach
             </div>
-        </div>
+        </x-ui.card>
     </div>
 
     @if ($preview)
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Preview Results</span>
+        @php
+            $previewRows = $preview['preview_rows'] ?? [];
+            $errorCount = (int) ($preview['error_count'] ?? 0);
+        @endphp
 
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    @if (! empty($preview['errors']))
-                        <form action="{{ route($routePrefix . '.import.clear') }}" method="POST">
-                            @csrf
-                            <button type="submit" class="actn actn-r">Clear Upload Error</button>
-                        </form>
-                    @endif
+        <x-ui.card
+            title="Preview Results"
+            :description="count($previewRows) ? 'The first '.count($previewRows).' of '.($preview['total_rows'] ?? count($previewRows)).' rows, as read from the file.' : null"
+            :padded="false"
+        >
+            <x-slot:actions>
+                @if (! empty($preview['errors']))
+                    <form action="{{ route($routePrefix . '.import.clear') }}" method="POST">
+                        @csrf
+                        <button type="submit" class="btn btn-secondary">Clear Upload Error</button>
+                    </form>
+                @endif
 
-                    @if (! empty($preview['valid_rows']))
-                        <form action="{{ route($routePrefix . '.import.run') }}" method="POST" x-data>
-                            @csrf
-                            <button
-                                type="submit"
-                                class="btn btn-primary"
-                                @if (! empty($preview['blocked'])) disabled @endif
-                                x-on:click.prevent="$dispatch('confirm-action', {
-                                    title: 'Run bulk import?',
-                                    message: 'Validated rows will be written to the database and audited.',
-                                    confirmLabel: 'Run Import',
-                                    variant: 'primary',
-                                    action: () => $root.submit()
-                                })"
-                            >
-                                Run Import
-                            </button>
-                        </form>
-                    @endif
-                </div>
+                @if (! empty($preview['valid_rows']))
+                    <form action="{{ route($routePrefix . '.import.run') }}" method="POST" x-data>
+                        @csrf
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            @if (! empty($preview['blocked'])) disabled @endif
+                            x-on:click.prevent="$dispatch('confirm-action', {
+                                title: 'Run bulk import?',
+                                message: 'Validated rows will be written to the database and audited.',
+                                confirmLabel: 'Run Import',
+                                variant: 'primary',
+                                action: () => $root.submit()
+                            })"
+                        >
+                            Run Import
+                        </button>
+                    </form>
+                @endif
+            </x-slot:actions>
+
+            <div class="import-summary">
+                <x-ui.status-pill tone="success" :label="$preview['valid_count'].' rows validated'" />
+                <x-ui.status-pill :tone="$errorCount > 0 ? 'danger' : 'muted'" :label="$errorCount.' issues found'" />
+                <span class="ui-hint">{{ $preview['failure_percent'] ?? 0 }}% failure rate; max {{ $preview['max_failure_percent'] ?? config('gwl.max_import_failure_percent', 20) }}%</span>
             </div>
 
             @if (! empty($preview['blocked']))
-                <div style="padding:12px 14px;border-top:0.5px solid var(--color-border-tertiary);background:#fcebeb;color:#a32d2d;font-size:11px">
-                    Import is blocked because the validation failure rate is above the configured limit.
+                <div class="import-section">
+                    <x-ui.alert tone="danger">Import is blocked because the validation failure rate is above the configured limit.</x-ui.alert>
                 </div>
             @endif
 
-            @if (! empty($preview['preview_rows']))
-                <table>
-                    <thead>
+            @if (! empty($previewRows))
+                <x-ui.table label="Preview rows" :sticky="false">
+                    <x-slot:head>
                         <tr>
-                            @foreach (array_keys($preview['preview_rows'][0]) as $heading)
+                            @foreach (array_keys($previewRows[0]) as $heading)
                                 <th>{{ Str::of($heading)->replace('_', ' ')->title() }}</th>
                             @endforeach
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($preview['preview_rows'] as $row)
-                            <tr>
-                                @foreach ($row as $value)
-                                    <td>{{ is_array($value) ? implode(', ', $value) : ($value !== '' && $value !== null ? $value : '-') }}</td>
-                                @endforeach
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                    </x-slot:head>
+
+                    @foreach ($previewRows as $row)
+                        <tr>
+                            @foreach ($row as $value)
+                                <td>{{ is_array($value) ? implode(', ', $value) : ($value !== '' && $value !== null ? $value : '-') }}</td>
+                            @endforeach
+                        </tr>
+                    @endforeach
+                </x-ui.table>
             @endif
 
             @if (! empty($preview['errors']))
-                <div style="padding:14px;border-top:0.5px solid var(--color-border-tertiary)">
-                    <div class="pg-title" style="margin-bottom:8px">Validation Issues</div>
-                    <div style="display:grid;gap:8px">
+                <section class="import-issues" aria-labelledby="import-issues-{{ $context }}">
+                    <h3 id="import-issues-{{ $context }}" class="ui-panel-title">Validation Issues</h3>
+                    <ul class="import-issue-list">
                         @foreach ($preview['errors'] as $error)
-                            <div class="erp-card" style="padding:10px;background:#fef2f2;border-color:#fecaca;color:#991b1b">
-                                <strong>Row {{ $error['row'] }}:</strong> {{ $error['message'] }}
-                            </div>
+                            <li>
+                                <x-ui.icon name="circle-alert" />
+                                <span><strong>{{ is_numeric($error['row']) ? 'Row '.$error['row'] : $error['row'] }}:</strong> {{ $error['message'] }}</span>
+                            </li>
                         @endforeach
-                    </div>
-                </div>
+                    </ul>
+                </section>
             @endif
-        </div>
+        </x-ui.card>
     @endif
 </div>

@@ -1,6 +1,6 @@
-<section class="profile-section">
+<section class="profile-section" aria-labelledby="profile-email-title">
     <header class="profile-section-head">
-        <h3>{{ __('Account Email') }}</h3>
+        <h2 id="profile-email-title">{{ __('Account Email') }}</h2>
         <p>{{ __('This email is used for account notifications and employee contact records.') }}</p>
     </header>
 
@@ -12,19 +12,23 @@
         @csrf
         @method('patch')
 
-        <div class="form-field">
-            <label class="form-label" for="email">{{ __('Email') }}</label>
+        <div class="ui-field">
+            <label class="ui-label" for="email">{{ __('Email') }}</label>
             <input
                 id="email"
                 name="email"
                 type="email"
-                class="form-input"
+                @class(['form-input', 'ui-input', 'is-invalid' => $errors->has('email')])
                 value="{{ old('email', $user->email) }}"
                 required
                 autocomplete="username"
+                @error('email') aria-invalid="true" aria-describedby="email-error" @enderror
             >
             @error('email')
-                <span class="form-error">{{ $message }}</span>
+                <p class="ui-error" id="email-error">
+                    <x-ui.icon name="circle-alert" class="icon-sm" />
+                    <span>{{ $message }}</span>
+                </p>
             @enderror
 
             @if ($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! $user->hasVerifiedEmail())
@@ -37,7 +41,7 @@
                 </div>
 
                 @if (session('status') === 'verification-link-sent')
-                    <p class="profile-saved">{{ __('A new verification link has been sent.') }}</p>
+                    <p class="profile-saved" role="status">{{ __('A new verification link has been sent.') }}</p>
                 @endif
             @endif
         </div>
@@ -52,6 +56,7 @@
                     x-transition
                     x-init="setTimeout(() => show = false, 2000)"
                     class="profile-saved"
+                    role="status"
                 >{{ __('Saved.') }}</p>
             @endif
         </div>

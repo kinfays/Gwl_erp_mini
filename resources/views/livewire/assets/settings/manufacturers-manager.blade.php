@@ -1,104 +1,96 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Manufacturers</h2>
-            <p>Manage the manufacturers offered when adding or editing an asset model. Shared across all regions.</p>
-        </div>
-    </div>
+    @php
+        // One set of inputs serves both modes; each mode binds its own properties.
+        $mode = $editingId ? 'edit-'.$editingId : 'new';
+    @endphp
 
-    <div class="two">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Manufacturer Directory</span>
-            </div>
-            <table>
-                <thead>
+    <x-ui.page-header title="Manufacturers" description="Manage the manufacturers offered when adding or editing an asset model. Shared across all regions." />
+
+    <div class="ui-grid ui-grid-main">
+        <x-ui.card title="Manufacturer Directory" :description="$manufacturers->count().' manufacturers'" :padded="false">
+            <x-ui.table label="Manufacturers">
+                <x-slot:head>
                     <tr>
                         <th>Manufacturer</th>
-                        <th>Models</th>
+                        <th class="num">Models</th>
                         <th>Status</th>
-                        <th></th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($manufacturers as $manufacturer)
-                        <tr wire:key="manufacturer-{{ $manufacturer->id }}">
-                            <td>
-                                <div>{{ $manufacturer->name }}</div>
+                </x-slot:head>
+
+                @forelse ($manufacturers as $manufacturer)
+                    <tr wire:key="manufacturer-{{ $manufacturer->id }}" @class(['is-selected' => $editingId === $manufacturer->id])>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $manufacturer->name }}</span>
                                 @if ($manufacturer->notes)
-                                    <div style="font-size:10px;color:var(--color-text-secondary)">{{ $manufacturer->notes }}</div>
+                                    <span class="ui-person-sub">{{ $manufacturer->notes }}</span>
                                 @endif
-                            </td>
-                            <td>{{ $manufacturer->models_count }}</td>
-                            <td>
-                                <span class="pill {{ $manufacturer->is_active ? 'p-g' : 'p-d' }}">{{ $manufacturer->is_active ? 'Active' : 'Inactive' }}</span>
-                            </td>
-                            <td>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                                    <button wire:click="edit({{ $manufacturer->id }})" class="actn">Edit</button>
-                                    <button wire:click="toggleActive({{ $manufacturer->id }})" class="actn">
-                                        {{ $manufacturer->is_active ? 'Deactivate' : 'Activate' }}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="actn actn-r"
-                                        x-data
-                                        x-on:click.prevent="$dispatch('confirm-action', {
-                                            title: 'Delete manufacturer?',
-                                            message: @js('This will delete ' . $manufacturer->name . ' if no models use it.'),
-                                            confirmLabel: 'Delete',
-                                            variant: 'danger',
-                                            action: () => $wire.delete({{ $manufacturer->id }})
-                                        })"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" style="text-align:center;color:var(--color-text-secondary)">No manufacturers found.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                            </span>
+                        </td>
+                        <td class="num">{{ $manufacturer->models_count }}</td>
+                        <td><x-ui.status-pill domain="account" :status="$manufacturer->is_active ? 'Active' : 'Inactive'" /></td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" wire:click="edit({{ $manufacturer->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $manufacturer->name }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                                <button type="button" wire:click="toggleActive({{ $manufacturer->id }})" class="btn btn-sm">
+                                    {{ $manufacturer->is_active ? 'Deactivate' : 'Activate' }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-icon is-danger"
+                                    title="Delete"
+                                    aria-label="Delete {{ $manufacturer->name }}"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Delete manufacturer?',
+                                        message: @js('This will delete ' . $manufacturer->name . ' if no models use it.'),
+                                        confirmLabel: 'Delete',
+                                        variant: 'danger',
+                                        action: () => $wire.delete({{ $manufacturer->id }})
+                                    })"
+                                >
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="4" icon="factory" title="No manufacturers found." description="Add the first one with the form alongside." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">{{ $editingId ? 'Edit Manufacturer' : 'Add Manufacturer' }}</span>
-            </div>
+        <x-ui.card :title="$editingId ? 'Edit Manufacturer' : 'Add Manufacturer'" class="manager-form">
+            <div class="ui-stack">
+                <x-ui.input
+                    label="Manufacturer Name"
+                    wire:model="{{ $editingId ? 'editingName' : 'name' }}"
+                    wire:key="manufacturer-name-{{ $mode }}"
+                    placeholder="e.g. HP"
+                    x-init="{{ $editingId ? '$nextTick(() => $el.focus())' : '' }}"
+                />
 
-            <div style="padding:14px">
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Manufacturer Name</label>
-                    <input type="text" wire:model="{{ $editingId ? 'editingName' : 'name' }}" class="form-input" placeholder="e.g. HP">
-                    @error($editingId ? 'editingName' : 'name')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
-                </div>
-
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Notes</label>
-                    <textarea rows="2" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" class="form-input"></textarea>
-                </div>
+                <x-ui.textarea label="Notes" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" wire:key="manufacturer-notes-{{ $mode }}" rows="2" />
 
                 @if ($editingId)
-                    <label class="form-label" style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-                        <input type="checkbox" wire:model="editingIsActive"> Active
-                    </label>
+                    <x-ui.checkbox label="Active" wire:model="editingIsActive" id="f-manufacturer-active" />
                 @endif
 
-                <div style="display:flex;gap:8px;justify-content:flex-end">
+                <div class="ui-form-actions">
                     @if ($editingId)
-                        <button wire:click="update" class="btn btn-primary">Save</button>
-                        <button wire:click="cancelEdit" class="btn">Cancel</button>
+                        <button type="button" wire:click="cancelEdit" class="btn btn-secondary">Cancel</button>
+                        <button type="button" wire:click="update" class="btn btn-primary">Save</button>
                     @else
-                        <button wire:click="save" class="btn btn-primary">Add Manufacturer</button>
+                        <button type="button" wire:click="save" class="btn btn-primary">
+                            <x-ui.icon name="plus" />
+                            Add Manufacturer
+                        </button>
                     @endif
                 </div>
             </div>
-        </div>
+        </x-ui.card>
     </div>
 </div>

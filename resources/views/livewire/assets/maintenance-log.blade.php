@@ -1,156 +1,134 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Asset Maintenance</h2>
-            <p>Track repair cycles, technicians, and completion status.</p>
-        </div>
-        <div class="ph-right">
-            <button type="button" wire:click="openCreate" class="btn btn-primary">Add Maintenance</button>
-        </div>
-    </div>
+    <x-ui.page-header title="Asset Maintenance" description="Track repair cycles, technicians, and completion status.">
+        <x-slot:actions>
+            <button type="button" wire:click="openCreate" class="btn btn-primary">
+                <x-ui.icon name="plus" />
+                Add Maintenance
+            </button>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @if ($dueCount > 0)
-        <div class="erp-card" style="margin-top:14px;background:#faeeda;border-color:#fac775;color:#854f0b;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-            <span>{{ $dueCount }} {{ \Illuminate\Support\Str::plural('device', $dueCount) }} due for maintenance (open tickets).</span>
-            <button type="button" wire:click="$set('dueOnly', true)" class="btn">View due</button>
-        </div>
+        <x-ui.alert tone="warning">
+            {{ $dueCount }} {{ \Illuminate\Support\Str::plural('device', $dueCount) }} due for maintenance (open tickets).
+            <x-slot:actions>
+                <button type="button" wire:click="$set('dueOnly', true)" class="btn btn-secondary btn-sm">View due</button>
+            </x-slot:actions>
+        </x-ui.alert>
     @endif
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Maintenance Log</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search type, asset, technician">
-                <select wire:model.live="status" class="form-input">
-                    <option value="">All statuses</option>
-                    @foreach ($statusOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="type" class="form-input">
-                    <option value="">All types</option>
-                    @foreach ($typeOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </select>
-                <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary)">
-                    <input type="checkbox" wire:model.live="dueOnly"> Due only
-                </label>
+    <x-ui.card title="Maintenance Log" :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter maintenance records">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search type, asset, technician" aria-label="Search maintenance records">
             </div>
+            <select wire:model.live="status" class="form-input" aria-label="Status">
+                <option value="">All statuses</option>
+                @foreach ($statusOptions as $option)
+                    <option value="{{ $option }}">{{ $option }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="type" class="form-input" aria-label="Maintenance type">
+                <option value="">All types</option>
+                @foreach ($typeOptions as $option)
+                    <option value="{{ $option }}">{{ $option }}</option>
+                @endforeach
+            </select>
+            <label class="toolbar-check">
+                <input type="checkbox" wire:model.live="dueOnly">
+                <span>Due only</span>
+            </label>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Asset</th>
-                    <th>Type</th>
-                    <th>Technician</th>
-                    <th>Location</th>
-                    <th>Status</th>
-                    <th>Completed</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($maintenance as $row)
+        <div class="ui-loading-host">
+            <x-ui.table label="Maintenance log" pin-first>
+                <x-slot:head>
                     <tr>
+                        <th>Asset</th>
+                        <th>Type</th>
+                        <th>Technician</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>Completed</th>
+                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($maintenance as $row)
+                    <tr wire:key="maintenance-{{ $row->id }}">
                         <td>
-                            <div>{{ $row->asset?->asset_name ?: 'Unknown asset' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $row->asset?->serial_number ?: 'No serial' }}</div>
-                        </td>
-                        <td>{{ $row->maintenance_type }}</td>
-                        <td>{{ $row->technician ?: '-' }}</td>
-                        <td>{{ $row->location ?: '-' }}</td>
-                        <td>
-                            <span class="pill {{ $row->status === 'Completed' ? 'p-g' : ($row->status === 'In Progress' ? 'p-a' : 'p-d') }}">
-                                {{ $row->status }}
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $row->asset?->asset_name ?: 'Unknown asset' }}</span>
+                                <span class="ui-person-sub mono">{{ $row->asset?->serial_number ?: 'No serial' }}</span>
                             </span>
                         </td>
-                        <td>{{ $row->completion_date?->format('d M Y') ?: '-' }}</td>
-                        <td><button type="button" wire:click="openEdit({{ $row->id }})" class="actn">Edit</button></td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="7" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                            No maintenance records found.
+                        <td>{{ $row->maintenance_type }}</td>
+                        <td @class(['cell-muted' => ! $row->technician])>{{ $row->technician ?: '-' }}</td>
+                        <td @class(['cell-muted' => ! $row->location])>{{ $row->location ?: '-' }}</td>
+                        <td><x-ui.status-pill domain="maintenance" :status="$row->status" /></td>
+                        <td @class(['nowrap', 'cell-muted' => ! $row->completion_date])>{{ $row->completion_date?->format('d M Y') ?: '-' }}</td>
+                        <td class="actions">
+                            <button type="button" wire:click="openEdit({{ $row->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit maintenance for {{ $row->asset?->asset_name ?: 'unknown asset' }}">
+                                <x-ui.icon name="pencil" />
+                            </button>
                         </td>
                     </tr>
+                @empty
+                    <x-ui.empty-row :colspan="7" icon="wrench" title="No maintenance records found." description="Log a repair or upgrade with Add Maintenance." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary)">
-            {{ $maintenance->links() }}
-        </div>
-    </div>
+                @if ($maintenance->hasPages())
+                    <x-slot:footer>
+                        <div class="pager-end">{{ $maintenance->links() }}</div>
+                    </x-slot:footer>
+                @endif
+            </x-ui.table>
 
-    @if ($showForm)
-        <div class="letter-panel-backdrop">
-            <div class="visitor-signature-modal" style="max-width: 860px;">
-                <div class="pg-head">
-                    <span class="pg-title">{{ $editingMaintenanceId ? 'Edit Maintenance' : 'New Maintenance' }}</span>
-                    <button type="button" wire:click="closeForm" class="actn">Close</button>
-                </div>
-
-                <div style="padding:14px">
-                    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-                        <div>
-                            <label class="form-label">Asset</label>
-                            <select wire:model.defer="form.ict_asset_id" class="form-input">
-                                <option value="">Select asset</option>
-                                @foreach ($assets as $asset)
-                                    <option value="{{ $asset->id }}">{{ $asset->asset_name }} ({{ $asset->serial_number ?: 'No serial' }})</option>
-                                @endforeach
-                            </select>
-                            @error('form.ict_asset_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Maintenance Type</label>
-                            <input type="text" wire:model.defer="form.maintenance_type" class="form-input" placeholder="Repair, Upgrade, Preventive">
-                            @error('form.maintenance_type') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Status</label>
-                            <select wire:model.defer="form.status" class="form-input">
-                                <option value="Open">Open</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Cancelled">Cancelled</option>
-                            </select>
-                            @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Completion Date</label>
-                            <input type="date" wire:model.defer="form.completion_date" class="form-input">
-                            @error('form.completion_date') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Technician</label>
-                            <input type="text" wire:model.defer="form.technician" class="form-input">
-                            @error('form.technician') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div>
-                            <label class="form-label">Location</label>
-                            <input type="text" wire:model.defer="form.location" class="form-input">
-                            @error('form.location') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
-
-                    <div style="margin-top:10px">
-                        <label class="form-label">Notes</label>
-                        <textarea rows="3" wire:model.defer="form.notes" class="form-input"></textarea>
-                        @error('form.notes') <div class="txt-err">{{ $message }}</div> @enderror
-                    </div>
-
-                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-                        <button type="button" wire:click="closeForm" class="btn">Cancel</button>
-                        <button type="button" wire:click="save" class="btn btn-primary">
-                            {{ $editingMaintenanceId ? 'Update' : 'Save' }}
-                        </button>
-                    </div>
-                </div>
+            <div wire:loading.delay class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
         </div>
+    </x-ui.card>
+
+    @if ($showForm)
+        <x-ui.modal :title="$editingMaintenanceId ? 'Edit Maintenance' : 'New Maintenance'" close="closeForm()" size="lg" icon="wrench">
+            <div class="ui-form-grid">
+                <div class="span-2">
+                    <x-ui.select label="Asset" wire:model.defer="form.ict_asset_id">
+                        <option value="">Select asset</option>
+                        @foreach ($assets as $asset)
+                            <option value="{{ $asset->id }}">{{ $asset->asset_name }} ({{ $asset->serial_number ?: 'No serial' }})</option>
+                        @endforeach
+                    </x-ui.select>
+                </div>
+
+                <x-ui.input label="Maintenance Type" wire:model.defer="form.maintenance_type" placeholder="Repair, Upgrade, Preventive" />
+                <x-ui.select label="Status" wire:model.defer="form.status">
+                    <option value="Open">Open</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                </x-ui.select>
+
+                <x-ui.input label="Completion Date" type="date" wire:model.defer="form.completion_date" />
+                <x-ui.input label="Technician" wire:model.defer="form.technician" />
+
+                <x-ui.input label="Location" wire:model.defer="form.location" />
+
+                <div class="span-2">
+                    <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />
+                </div>
+            </div>
+
+            <x-slot:footer>
+                <button type="button" wire:click="closeForm" class="btn btn-secondary">Cancel</button>
+                <button type="button" wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
+                    {{ $editingMaintenanceId ? 'Update' : 'Save' }}
+                </button>
+            </x-slot:footer>
+        </x-ui.modal>
     @endif
 </div>
-

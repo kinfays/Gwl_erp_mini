@@ -1,219 +1,172 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Assets</h2>
-            <p>Computers, laptops, printers, photocopiers, all-in-ones and servers.</p>
-        </div>
-        <div class="ph-right">
-            @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.create'))
-                <button type="button" wire:click="openCreate" class="btn btn-primary">Add Asset</button>
-            @endif
-        </div>
-    </div>
+    @php
+        $viewer = auth()->user();
+        $canCreate = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.create');
+        $canEdit = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.edit');
+    @endphp
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Filters</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search name, serial, assignee">
-                <select wire:model.live="status" class="form-input">
-                    <option value="">All statuses</option>
-                    @foreach ($statusOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="assetType" class="form-input">
-                    <option value="">All types</option>
-                    @foreach ($assetTypes as $value => $label)
-                        <option value="{{ $value }}">{{ $label }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="districtId" class="form-input">
-                    <option value="">All districts</option>
-                    @foreach ($districts as $district)
-                        <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="perPage" class="form-input">
-                    <option value="15">15</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                </select>
+    <x-ui.page-header title="Assets" description="Computers, laptops, printers, photocopiers, all-in-ones and servers.">
+        @if ($canCreate)
+            <x-slot:actions>
+                <button type="button" wire:click="openCreate" class="btn btn-primary">
+                    <x-ui.icon name="plus" />
+                    Add Asset
+                </button>
+            </x-slot:actions>
+        @endif
+    </x-ui.page-header>
+
+    <x-ui.card :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter assets">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, assignee" aria-label="Search assets">
             </div>
+            <select wire:model.live="status" class="form-input" aria-label="Status">
+                <option value="">All statuses</option>
+                @foreach ($statusOptions as $option)
+                    <option value="{{ $option }}">{{ $option }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="assetType" class="form-input" aria-label="Asset type">
+                <option value="">All types</option>
+                @foreach ($assetTypes as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="districtId" class="form-input" aria-label="District">
+                <option value="">All districts</option>
+                @foreach ($districts as $district)
+                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
+                <option value="15">15 per page</option>
+                <option value="30">30 per page</option>
+                <option value="50">50 per page</option>
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Asset</th>
-                    <th>Type / Model</th>
-                    <th>Location</th>
-                    <th>Assigned To</th>
-                    <th>Status</th>
-                    <th style="width: 90px;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($assets as $asset)
+        <div class="ui-loading-host">
+            <x-ui.table label="Assets" pin-first>
+                <x-slot:head>
                     <tr>
+                        <th>Asset</th>
+                        <th>Type / Model</th>
+                        <th>Location</th>
+                        <th>Assigned To</th>
+                        <th>Status</th>
+                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($assets as $asset)
+                    <tr wire:key="asset-{{ $asset->id }}">
                         <td>
-                            <div>{{ $asset->asset_name }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $asset->serial_number ?: 'No serial' }}</div>
-                        </td>
-                        <td>
-                            <div>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $asset->assetModel?->name ?: 'No model' }}
-                            </div>
-                        </td>
-                        <td>
-                            <div>{{ $asset->district?->district_name ?: 'No district' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $asset->region?->region_name ?: 'No region' }}</div>
-                        </td>
-                        <td>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td>
-                            <span class="pill {{ $asset->status === 'Active' ? 'p-g' : ($asset->status === 'In Repair' ? 'p-a' : 'p-d') }}">
-                                {{ $asset->status }}
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $asset->asset_name }}</span>
+                                <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
                             </span>
                         </td>
                         <td>
-                            @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.edit'))
-                                <button type="button" wire:click="openEdit({{ $asset->id }})" class="actn">Edit</button>
+                            <span class="ui-cell-stack">
+                                <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
+                                <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span>{{ $asset->district?->district_name ?: 'No district' }}</span>
+                                <span class="ui-person-sub">{{ $asset->region?->region_name ?: 'No region' }}</span>
+                            </span>
+                        </td>
+                        <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        <td class="actions">
+                            @if ($canEdit)
+                                <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
                             @else
-                                <span style="font-size:11px;color:var(--color-text-secondary)">Read only</span>
+                                <span class="ui-hint">Read only</span>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="6" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                            No assets found for your filters.
-                        </td>
-                    </tr>
+                    <x-ui.empty-row :colspan="6" icon="laptop" title="No assets found for your filters." description="Try a different search or clear the filters." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
-            <div style="font-size:11px;color:var(--color-text-secondary)">
-                Showing {{ $assets->firstItem() ?? 0 }} - {{ $assets->lastItem() ?? 0 }} of {{ $assets->total() }} assets
+                <x-slot:footer>
+                    <p class="pager-summary">
+                        Showing {{ $assets->firstItem() ?? 0 }} - {{ $assets->lastItem() ?? 0 }} of {{ $assets->total() }} assets
+                    </p>
+                    <div>{{ $assets->links() }}</div>
+                </x-slot:footer>
+            </x-ui.table>
+
+            <div wire:loading.delay class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
-            <div>{{ $assets->links() }}</div>
         </div>
-    </div>
+    </x-ui.card>
 
     @if ($showForm)
-        <div class="letter-panel-backdrop">
-            <div class="visitor-signature-modal" style="max-width: 780px;">
-                <div class="pg-head">
-                    <span class="pg-title">{{ $editingAssetId ? 'Edit Asset' : 'Add Asset' }}</span>
-                    <button type="button" wire:click="closeForm" class="actn">Close</button>
-                </div>
+        <x-ui.modal :title="$editingAssetId ? 'Edit Asset' : 'Add Asset'" close="closeForm()" size="lg" icon="laptop">
+            <div class="ui-form-grid">
+                <x-ui.select label="Asset Type" wire:model.defer="form.asset_type">
+                    <option value="">Select type</option>
+                    @foreach ($assetTypes as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input label="Asset Name" wire:model.defer="form.asset_name" />
 
-                <div style="padding:14px">
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Asset Type</label>
-                            <select wire:model.defer="form.asset_type" class="form-input">
-                                <option value="">Select type</option>
-                                @foreach ($assetTypes as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.asset_type') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Asset Name</label>
-                            <input type="text" wire:model.defer="form.asset_name" class="form-input">
-                            @error('form.asset_name') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" />
+                <x-assets.model-select :models="$models" />
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Serial Number</label>
-                            <input type="text" wire:model.defer="form.serial_number" class="form-input">
-                            @error('form.serial_number') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <x-assets.model-select :models="$models" />
-                    </div>
+                <x-ui.select label="Assigned To" wire:model.defer="form.assigned_to_employee_id">
+                    <option value="">Select employee</option>
+                    @foreach ($employees as $employee)
+                        <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Assigned To</label>
-                            <select wire:model.defer="form.assigned_to_employee_id" class="form-input">
-                                <option value="">Select employee</option>
-                                @foreach ($employees as $employee)
-                                    <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.assigned_to_employee_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Previous Assigned</label>
-                            <input type="text" class="form-input" value="{{ $previousAssignedLabel ?: 'None' }}" disabled>
-                        </div>
-                    </div>
+                <x-ui.select label="Status" wire:model.defer="form.status">
+                    @foreach ($statusOptions as $option)
+                        <option value="{{ $option }}">{{ $option }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.select label="Location" wire:model.defer="form.district_id">
+                    <option value="">Select location</option>
+                    @foreach ($formDistricts as $district)
+                        <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                    @endforeach
+                </x-ui.select>
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Status</label>
-                            <select wire:model.defer="form.status" class="form-input">
-                                @foreach ($statusOptions as $option)
-                                    <option value="{{ $option }}">{{ $option }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Location</label>
-                            <select wire:model.defer="form.district_id" class="form-input">
-                                <option value="">Select location</option>
-                                @foreach ($formDistricts as $district)
-                                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.district_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-ui.select label="Department" wire:model.defer="form.department_id">
+                    <option value="">Select department</option>
+                    @foreach ($departments as $department)
+                        <option value="{{ $department->id }}">{{ $department->department_name }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input label="Date" type="date" wire:model.defer="form.purchased_at" />
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Department</label>
-                            <select wire:model.defer="form.department_id" class="form-input">
-                                <option value="">Select department</option>
-                                @foreach ($departments as $department)
-                                    <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.department_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Date</label>
-                            <input type="date" wire:model.defer="form.purchased_at" class="form-input">
-                            @error('form.purchased_at') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-assets.actor-region :region="$actorRegion" />
 
-                    <div class="form-row">
-                        <x-assets.actor-region :region="$actorRegion" />
-                        <div class="form-field"></div>
-                    </div>
-
-                    <div style="margin-top:10px">
-                        <label class="form-label">Notes</label>
-                        <textarea rows="3" wire:model.defer="form.notes" class="form-input"></textarea>
-                        @error('form.notes') <div class="txt-err">{{ $message }}</div> @enderror
-                    </div>
-
-                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-                        <button type="button" wire:click="closeForm" class="btn">Cancel</button>
-                        <button type="button" wire:click="save" class="btn btn-primary">
-                            {{ $editingAssetId ? 'Update Asset' : 'Create Asset' }}
-                        </button>
-                    </div>
+                <div class="span-2">
+                    <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />
                 </div>
             </div>
-        </div>
+
+            <x-slot:footer>
+                <button type="button" wire:click="closeForm" class="btn btn-secondary">Cancel</button>
+                <button type="button" wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
+                    {{ $editingAssetId ? 'Update Asset' : 'Create Asset' }}
+                </button>
+            </x-slot:footer>
+        </x-ui.modal>
     @endif
 </div>

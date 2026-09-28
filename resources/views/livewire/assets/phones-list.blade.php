@@ -1,209 +1,163 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Phones</h2>
-            <p>POS terminals, SIM cards and mobile phones.</p>
-        </div>
-        <div class="ph-right">
-            @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.create'))
-                <button type="button" wire:click="openCreate" class="btn btn-primary">Add Phone Device</button>
-            @endif
-        </div>
-    </div>
+    @php
+        $viewer = auth()->user();
+        $canCreate = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.create');
+        $canEdit = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.edit');
+    @endphp
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Filters</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search name, serial, IMEI, number">
-                <select wire:model.live="status" class="form-input">
-                    <option value="">All statuses</option>
-                    @foreach ($statusOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="assetType" class="form-input">
-                    <option value="">All types</option>
-                    @foreach ($assetTypes as $value => $label)
-                        <option value="{{ $value }}">{{ $label }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="perPage" class="form-input">
-                    <option value="15">15</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                </select>
+    <x-ui.page-header title="Phones" description="POS terminals, SIM cards and mobile phones.">
+        @if ($canCreate)
+            <x-slot:actions>
+                <button type="button" wire:click="openCreate" class="btn btn-primary">
+                    <x-ui.icon name="plus" />
+                    Add Phone Device
+                </button>
+            </x-slot:actions>
+        @endif
+    </x-ui.page-header>
+
+    <x-ui.card :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter phone devices">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, IMEI, number" aria-label="Search phone devices">
             </div>
+            <select wire:model.live="status" class="form-input" aria-label="Status">
+                <option value="">All statuses</option>
+                @foreach ($statusOptions as $option)
+                    <option value="{{ $option }}">{{ $option }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="assetType" class="form-input" aria-label="Device type">
+                <option value="">All types</option>
+                @foreach ($assetTypes as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
+                <option value="15">15 per page</option>
+                <option value="30">30 per page</option>
+                <option value="50">50 per page</option>
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Device</th>
-                    <th>Type / Model</th>
-                    <th>Numbers</th>
-                    <th>Assigned To</th>
-                    <th>Status</th>
-                    <th style="width: 90px;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($assets as $asset)
+        <div class="ui-loading-host">
+            <x-ui.table label="Phone devices" pin-first>
+                <x-slot:head>
                     <tr>
+                        <th>Device</th>
+                        <th>Type / Model</th>
+                        <th>Numbers</th>
+                        <th>Assigned To</th>
+                        <th>Status</th>
+                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($assets as $asset)
+                    <tr wire:key="phone-{{ $asset->id }}">
                         <td>
-                            <div>{{ $asset->asset_name }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $asset->serial_number ?: 'No serial' }}
-                                @if ($asset->imei)
-                                    | IMEI {{ $asset->imei }}
-                                @endif
-                            </div>
-                        </td>
-                        <td>
-                            <div>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $asset->assetModel?->name ?: 'No model' }}</div>
-                        </td>
-                        <td>
-                            <div>{{ $asset->device_phone_number ?: 'No device number' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">User: {{ $asset->user_phone_number ?: 'n/a' }}</div>
-                        </td>
-                        <td>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td>
-                            <span class="pill {{ $asset->status === 'Active' ? 'p-g' : ($asset->status === 'In Repair' ? 'p-a' : 'p-d') }}">
-                                {{ $asset->status }}
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $asset->asset_name }}</span>
+                                <span class="ui-person-sub mono">
+                                    {{ $asset->serial_number ?: 'No serial' }}
+                                    @if ($asset->imei)
+                                        · IMEI {{ $asset->imei }}
+                                    @endif
+                                </span>
                             </span>
                         </td>
                         <td>
-                            @if (auth()->user()->hasRoles('super_admin') || auth()->user()->hasPermission('assets.edit'))
-                                <button type="button" wire:click="openEdit({{ $asset->id }})" class="actn">Edit</button>
+                            <span class="ui-cell-stack">
+                                <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
+                                <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span class="mono">{{ $asset->device_phone_number ?: 'No device number' }}</span>
+                                <span class="ui-person-sub">User: {{ $asset->user_phone_number ?: 'n/a' }}</span>
+                            </span>
+                        </td>
+                        <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        <td class="actions">
+                            @if ($canEdit)
+                                <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
                             @else
-                                <span style="font-size:11px;color:var(--color-text-secondary)">Read only</span>
+                                <span class="ui-hint">Read only</span>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="6" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                            No phone devices found for your filters.
-                        </td>
-                    </tr>
+                    <x-ui.empty-row :colspan="6" icon="smartphone" title="No phone devices found for your filters." description="Try a different search or clear the filters." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
-            <div style="font-size:11px;color:var(--color-text-secondary)">
-                Showing {{ $assets->firstItem() ?? 0 }} - {{ $assets->lastItem() ?? 0 }} of {{ $assets->total() }} devices
+                <x-slot:footer>
+                    <p class="pager-summary">
+                        Showing {{ $assets->firstItem() ?? 0 }} - {{ $assets->lastItem() ?? 0 }} of {{ $assets->total() }} devices
+                    </p>
+                    <div>{{ $assets->links() }}</div>
+                </x-slot:footer>
+            </x-ui.table>
+
+            <div wire:loading.delay class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
-            <div>{{ $assets->links() }}</div>
         </div>
-    </div>
+    </x-ui.card>
 
     @if ($showForm)
-        <div class="letter-panel-backdrop">
-            <div class="visitor-signature-modal" style="max-width: 780px;">
-                <div class="pg-head">
-                    <span class="pg-title">{{ $editingAssetId ? 'Edit Phone Device' : 'Add Phone Device' }}</span>
-                    <button type="button" wire:click="closeForm" class="actn">Close</button>
-                </div>
+        <x-ui.modal :title="$editingAssetId ? 'Edit Phone Device' : 'Add Phone Device'" close="closeForm()" size="lg" icon="smartphone">
+            <div class="ui-form-grid">
+                <x-ui.input label="Asset Name" wire:model.defer="form.asset_name" />
+                <x-ui.select label="Type" wire:model.defer="form.asset_type">
+                    <option value="">Select type</option>
+                    @foreach ($assetTypes as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
 
-                <div style="padding:14px">
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Asset Name</label>
-                            <input type="text" wire:model.defer="form.asset_name" class="form-input">
-                            @error('form.asset_name') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Type</label>
-                            <select wire:model.defer="form.asset_type" class="form-input">
-                                <option value="">Select type</option>
-                                @foreach ($assetTypes as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.asset_type') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" />
+                <x-assets.model-select :models="$models" />
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Serial Number</label>
-                            <input type="text" wire:model.defer="form.serial_number" class="form-input">
-                            @error('form.serial_number') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <x-assets.model-select :models="$models" />
-                    </div>
+                <x-ui.input label="IMEI" wire:model.defer="form.imei" class="mono" inputmode="numeric" />
+                <x-ui.select label="Assigned To" wire:model.defer="form.assigned_to_employee_id">
+                    <option value="">Unassigned</option>
+                    @foreach ($employees as $employee)
+                        <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
+                    @endforeach
+                </x-ui.select>
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">IMEI</label>
-                            <input type="text" wire:model.defer="form.imei" class="form-input">
-                            @error('form.imei') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Assigned To</label>
-                            <select wire:model.defer="form.assigned_to_employee_id" class="form-input">
-                                <option value="">Unassigned</option>
-                                @foreach ($employees as $employee)
-                                    <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.assigned_to_employee_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
+                <x-ui.select label="Status" wire:model.defer="form.status">
+                    @foreach ($statusOptions as $option)
+                        <option value="{{ $option }}">{{ $option }}</option>
+                    @endforeach
+                </x-ui.select>
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Previous Assigned</label>
-                            <input type="text" class="form-input" value="{{ $previousAssignedLabel ?: 'None' }}" disabled>
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Status</label>
-                            <select wire:model.defer="form.status" class="form-input">
-                                @foreach ($statusOptions as $option)
-                                    <option value="{{ $option }}">{{ $option }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.status') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
+                <x-ui.select label="Location (District)" wire:model.defer="form.district_id">
+                    <option value="">Select location</option>
+                    @foreach ($formDistricts as $district)
+                        <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input label="User Phone Number" type="tel" wire:model.defer="form.user_phone_number" />
 
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label class="form-label">Location (District)</label>
-                            <select wire:model.defer="form.district_id" class="form-input">
-                                <option value="">Select location</option>
-                                @foreach ($formDistricts as $district)
-                                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                                @endforeach
-                            </select>
-                            @error('form.district_id') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">User Phone Number</label>
-                            <input type="text" wire:model.defer="form.user_phone_number" class="form-input">
-                            @error('form.user_phone_number') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <x-assets.actor-region :region="$actorRegion" />
-                        <div class="form-field">
-                            <label class="form-label">Device Phone Number</label>
-                            <input type="text" wire:model.defer="form.device_phone_number" class="form-input">
-                            @error('form.device_phone_number') <div class="txt-err">{{ $message }}</div> @enderror
-                        </div>
-                    </div>
-
-                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-                        <button type="button" wire:click="closeForm" class="btn">Cancel</button>
-                        <button type="button" wire:click="save" class="btn btn-primary">
-                            {{ $editingAssetId ? 'Update Device' : 'Create Device' }}
-                        </button>
-                    </div>
-                </div>
+                <x-assets.actor-region :region="$actorRegion" />
+                <x-ui.input label="Device Phone Number" type="tel" wire:model.defer="form.device_phone_number" />
             </div>
-        </div>
+
+            <x-slot:footer>
+                <button type="button" wire:click="closeForm" class="btn btn-secondary">Cancel</button>
+                <button type="button" wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
+                    {{ $editingAssetId ? 'Update Device' : 'Create Device' }}
+                </button>
+            </x-slot:footer>
+        </x-ui.modal>
     @endif
 </div>

@@ -5,7 +5,12 @@
         $staffIdValue = old('staff_id', $staffId ?? $request->query('staff_id'));
     @endphp
 
-    <form method="POST" action="{{ route('password.store') }}">
+    <div class="auth-intro">
+        <h2>{{ $isSetPassword ? __('Set your password') : __('Choose a new password') }}</h2>
+        <p>{{ $isSetPassword ? __('Create the password you will use to sign in to the portal.') : __('Enter a new password for your portal account.') }}</p>
+    </div>
+
+    <form method="POST" action="{{ route('password.store') }}" class="auth-form">
         @csrf
 
         <!-- Password Reset Token -->
@@ -13,35 +18,33 @@
         <input type="hidden" name="email" value="{{ $emailValue }}">
 
         <!-- Staff ID -->
-        <div>
+        <div class="ui-field">
             <x-input-label for="staff_id" :value="__('Staff ID')" />
-            <x-text-input id="staff_id" class="block mt-1 w-full" type="text" name="staff_id" :value="$staffIdValue" readonly autofocus autocomplete="username" />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
+            <x-text-input id="staff_id" type="text" name="staff_id" :value="$staffIdValue" readonly autocomplete="username" />
+            <x-input-error :messages="$errors->get('email')" />
         </div>
 
         <!-- Password -->
-        <div class="mt-4">
+        <div class="ui-field">
             <x-input-label for="password" :value="__('Password')" />
-            <x-text-input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />
-            <p class="mt-1 text-xs text-gray-500">{{ __('At least 5 characters, including one letter and one number.') }}</p>
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
+            <x-text-input id="password" type="password" name="password" required autofocus autocomplete="new-password" aria-describedby="password-rules" />
+            <p class="ui-hint" id="password-rules">{{ __('At least 5 characters, including one letter and one number.') }}</p>
+            <x-input-error :messages="$errors->get('password')" />
         </div>
 
         <!-- Confirm Password -->
-        <div class="mt-4">
+        <div class="ui-field">
             <x-input-label for="password_confirmation" :value="__('Confirm Password')" />
 
-            <x-text-input id="password_confirmation" class="block mt-1 w-full"
+            <x-text-input id="password_confirmation"
                                 type="password"
                                 name="password_confirmation" required autocomplete="new-password" />
 
-            <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
+            <x-input-error :messages="$errors->get('password_confirmation')" />
         </div>
 
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
-                {{ $isSetPassword ? __('Set Password') : __('Reset Password') }}
-            </x-primary-button>
-        </div>
+        <x-primary-button class="btn-block">
+            {{ $isSetPassword ? __('Set Password') : __('Reset Password') }}
+        </x-primary-button>
     </form>
 </x-guest-layout>

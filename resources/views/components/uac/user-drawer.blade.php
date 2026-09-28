@@ -6,139 +6,108 @@
 <div
     x-data="userDrawer()"
     x-on:open-user-drawer.window="open($event.detail.id, $event.detail.url)"
-    x-show="isOpen"
-    x-cloak
-    class="fixed inset-0 z-50"
 >
-    <div
-        x-show="isOpen"
-        x-transition.opacity
-        x-on:click="close()"
-        class="absolute inset-0 bg-black/40"
-    ></div>
-
-    <div
-        x-show="isOpen"
-        x-transition:enter="transform transition ease-out duration-300"
-        x-transition:enter-start="translate-x-full"
-        x-transition:enter-end="translate-x-0"
-        x-transition:leave="transform transition ease-in duration-200"
-        x-transition:leave-start="translate-x-0"
-        x-transition:leave-end="translate-x-full"
-        class="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-xl border-l drawer-surface dark:bg-slate-900 dark:border-slate-700"
-    >
-        <div class="p-6 flex items-start justify-between border-b dark:border-slate-700">
-            <div>
-                <h2 class="text-lg font-semibold text-slate-800 dark:text-slate-100">User Profile</h2>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Read-only details</p>
-            </div>
-
-            <button
-                type="button"
-                x-on:click="close()"
-                class="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 text-2xl leading-none"
-                title="Close"
-            >
-                &times;
-            </button>
-        </div>
-
-        <div class="p-6 overflow-y-auto h-[calc(100%-72px)]">
-            <template x-if="loading">
-                <div class="text-sm text-slate-600 dark:text-slate-300">Loading profile...</div>
-            </template>
-
-            <template x-if="error">
-                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 text-sm dark:bg-red-950/40 dark:border-red-800 dark:text-red-200">
-                    <span x-text="error"></span>
+    <x-ui.drawer show="isOpen" close="close()" title="User Profile" description="Read-only details">
+        <template x-if="loading">
+            <div class="ui-stack" role="status">
+                <span class="sr-only-text">Loading profile...</span>
+                <div class="ui-panel" aria-hidden="true">
+                    <span class="skeleton-line short"></span>
+                    <span class="skeleton-line"></span>
+                    <span class="skeleton-line"></span>
                 </div>
-            </template>
+                <div class="ui-panel" aria-hidden="true">
+                    <span class="skeleton-line short"></span>
+                    <span class="skeleton-line"></span>
+                </div>
+            </div>
+        </template>
 
-            <template x-if="data && !loading">
-                <div class="space-y-6">
-                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 drawer-muted-surface dark:bg-slate-800 dark:border-slate-700">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-sm text-slate-500 dark:text-slate-400">Name</p>
-                                <p class="text-base font-semibold text-slate-900 dark:text-slate-100" x-text="data.user.full_name ?? '-'"></p>
+        <template x-if="error">
+            <x-ui.alert tone="danger" role="alert"><span x-text="error"></span></x-ui.alert>
+        </template>
 
-                                <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">Email</p>
-                                <p class="text-sm text-slate-800 dark:text-slate-200" x-text="data.user.email ?? '-'"></p>
-
-                                <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">Staff ID</p>
-                                <p class="text-sm text-slate-800 dark:text-slate-200" x-text="data.user.staff_id ?? '-'"></p>
-                            </div>
-
-                            <div class="text-right">
-                                <span
-                                    class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border"
-                                    :class="data.user.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800' : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-800'"
-                                    x-text="data.user.is_active ? 'Active' : 'Inactive'"
-                                ></span>
-
-                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-3">Last login</p>
-                                <p class="text-xs text-slate-800 dark:text-slate-200" x-text="data.user.last_login_at ?? 'Never'"></p>
-                            </div>
+        <template x-if="data && !loading">
+            <div class="ui-stack">
+                <section class="ui-panel drawer-muted-surface">
+                    <div class="user-drawer-head">
+                        <span class="ui-avatar ui-avatar-lg ui-avatar-primary" aria-hidden="true" x-text="initials(data.user.full_name)"></span>
+                        <div class="user-drawer-name">
+                            <p class="ui-person-name" x-text="data.user.full_name ?? '-'"></p>
+                            <p class="ui-person-sub" x-text="data.user.email ?? '-'"></p>
                         </div>
-
-                        <div class="mt-4">
-                            <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">Roles</p>
-                            <div class="flex flex-wrap gap-2">
-                                <template x-for="role in data.user.roles" :key="role.id">
-                                    <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-xs font-medium dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800"
-                                          x-text="role.display_name"></span>
-                                </template>
-
-                                <template x-if="!data.user.roles || data.user.roles.length === 0">
-                                    <span class="text-sm text-slate-500 dark:text-slate-400">No additional roles</span>
-                                </template>
-                            </div>
-                        </div>
+                        <span
+                            class="ui-pill"
+                            :class="data.user.is_active ? 'ui-pill-success' : 'ui-pill-muted'"
+                            x-text="data.user.is_active ? 'Active' : 'Inactive'"
+                        ></span>
                     </div>
 
-                    <div class="bg-white border border-slate-200 rounded-2xl p-4 drawer-surface dark:bg-slate-900 dark:border-slate-700" x-show="data.employee">
-                        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Employee Profile</h3>
+                    <dl class="ui-dl">
+                        <div>
+                            <dt>Staff ID</dt>
+                            <dd class="mono" x-text="data.user.staff_id ?? '-'"></dd>
+                        </div>
+                        <div>
+                            <dt>Last login</dt>
+                            <dd x-text="data.user.last_login_at ?? 'Never'"></dd>
+                        </div>
+                    </dl>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                            <template x-for="item in employeeFields()" :key="item.label">
-                                <div>
-                                    <p class="text-slate-500 dark:text-slate-400" x-text="item.label"></p>
-                                    <p class="text-slate-900 dark:text-slate-100 font-medium" x-text="item.value"></p>
-                                </div>
+                    <div class="user-drawer-roles">
+                        <p class="ui-panel-title">Roles</p>
+                        <div class="ui-tags">
+                            <template x-for="role in data.user.roles" :key="role.id">
+                                <span class="ui-badge ui-badge-primary" x-text="role.display_name"></span>
+                            </template>
+
+                            <template x-if="!data.user.roles || data.user.roles.length === 0">
+                                <span class="ui-hint">No additional roles</span>
                             </template>
                         </div>
                     </div>
+                </section>
 
-                    <div class="bg-white border border-slate-200 rounded-2xl p-4 drawer-surface dark:bg-slate-900 dark:border-slate-700" x-show="data.employee">
-                        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Leave Entitlements</h3>
+                <section class="ui-card drawer-surface user-drawer-section" x-show="data.employee">
+                    <h3 class="ui-panel-title">Employee Profile</h3>
 
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 drawer-muted-surface dark:bg-slate-800 dark:border-slate-700">
-                                <p class="text-slate-500 dark:text-slate-400">Annual</p>
-                                <p class="text-lg font-semibold text-slate-900 dark:text-slate-100" x-text="data.employee.annual_leave_days ?? '-'"></p>
+                    <dl class="ui-dl">
+                        <template x-for="item in employeeFields()" :key="item.label">
+                            <div>
+                                <dt x-text="item.label"></dt>
+                                <dd x-text="item.value"></dd>
                             </div>
+                        </template>
+                    </dl>
+                </section>
 
-                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 drawer-muted-surface dark:bg-slate-800 dark:border-slate-700">
-                                <p class="text-slate-500 dark:text-slate-400">Casual</p>
-                                <p class="text-lg font-semibold text-slate-900 dark:text-slate-100" x-text="data.employee.casual_leave_days ?? '-'"></p>
-                            </div>
+                <section class="ui-card drawer-surface user-drawer-section" x-show="data.employee">
+                    <h3 class="ui-panel-title">Leave Entitlements</h3>
 
-                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 drawer-muted-surface dark:bg-slate-800 dark:border-slate-700">
-                                <p class="text-slate-500 dark:text-slate-400">Parental</p>
-                                <p class="text-lg font-semibold text-slate-900 dark:text-slate-100" x-text="data.employee.parental_days ?? '-'"></p>
-                            </div>
+                    <div class="ui-grid ui-grid-3">
+                        <div class="ui-panel drawer-muted-surface">
+                            <p class="ui-person-sub">Annual</p>
+                            <p class="user-drawer-number" x-text="data.employee.annual_leave_days ?? '-'"></p>
+                        </div>
+
+                        <div class="ui-panel drawer-muted-surface">
+                            <p class="ui-person-sub">Casual</p>
+                            <p class="user-drawer-number" x-text="data.employee.casual_leave_days ?? '-'"></p>
+                        </div>
+
+                        <div class="ui-panel drawer-muted-surface">
+                            <p class="ui-person-sub">Parental</p>
+                            <p class="user-drawer-number" x-text="data.employee.parental_days ?? '-'"></p>
                         </div>
                     </div>
+                </section>
 
-                    <template x-if="data && !data.employee">
-                        <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 text-sm dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200">
-                            No employee profile is linked to this user.
-                        </div>
-                    </template>
-                </div>
-            </template>
-        </div>
-    </div>
+                <template x-if="data && !data.employee">
+                    <x-ui.alert tone="warning">No employee profile is linked to this user.</x-ui.alert>
+                </template>
+            </div>
+        </template>
+    </x-ui.drawer>
 </div>
 
 <script>
@@ -148,6 +117,16 @@ function userDrawer() {
         loading: false,
         error: '',
         data: null,
+
+        initials(name) {
+            return String(name || '')
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part.charAt(0).toUpperCase())
+                .join('') || '?';
+        },
 
         employeeFields() {
             if (!this.data?.employee) return [];

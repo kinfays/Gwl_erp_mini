@@ -1,118 +1,104 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Mileage Tracking</h2>
-            <p>Driver mileage logs and maintenance progress.</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('transport.issues') }}" class="btn btn-secondary">Report Issue</a>
-        </div>
-    </div>
+    <x-ui.page-header title="Mileage Tracking" description="Driver mileage logs and maintenance progress.">
+        <x-slot:actions>
+            <a href="{{ route('transport.issues') }}" class="btn btn-secondary">
+                <x-ui.icon name="triangle-alert" />
+                Report Issue
+            </a>
+        </x-slot:actions>
+    </x-ui.page-header>
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Mileage Entry</span>
-        </div>
-        <div style="padding:14px">
-            @if ($availableVehicles->isNotEmpty())
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Vehicle</label>
-                        <select class="form-input" wire:model.live="vehicleId">
-                            <option value="">Select vehicle</option>
-                            @foreach ($availableVehicles as $vehicle)
-                                <option value="{{ $vehicle->id }}">{{ $vehicle->number_plate }} - {{ $vehicle->brand }} {{ $vehicle->model }}</option>
-                            @endforeach
-                        </select>
-                        @error('vehicleId') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Trip Date</label>
-                        <input type="date" class="form-input" wire:model.defer="form.trip_date">
-                        @error('form.trip_date') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
+    <x-ui.card title="Mileage Entry" class="dash-row">
+        @if ($availableVehicles->isNotEmpty())
+            <div class="ui-stack">
+                <div class="ui-form-grid">
+                    <x-ui.select label="Vehicle" wire:model.live="vehicleId" id="f-mileage-vehicle" error="vehicleId">
+                        <option value="">Select vehicle</option>
+                        @foreach ($availableVehicles as $vehicle)
+                            <option value="{{ $vehicle->id }}">{{ $vehicle->number_plate }} - {{ $vehicle->brand }} {{ $vehicle->model }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.input label="Trip Date" type="date" wire:model.defer="form.trip_date" />
                 </div>
 
                 @if ($selectedVehicle)
                     @php
                         $used = max(0, $selectedVehicle->maintenance_interval_km - $selectedVehicle->maintenance_remaining_km);
                         $progress = $selectedVehicle->maintenance_interval_km > 0 ? min(100, round(($used / $selectedVehicle->maintenance_interval_km) * 100)) : 0;
+                        $dueSoon = $selectedVehicle->maintenance_remaining_km <= 500;
                     @endphp
-                    <div style="margin-bottom:12px">
-                        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-secondary);margin-bottom:5px">
-                            <span>{{ number_format($selectedVehicle->current_mileage) }} km current</span>
-                            <span>{{ number_format($selectedVehicle->maintenance_remaining_km) }} km to service</span>
+                    <div @class(['ui-meter', 'service-meter', 'is-due' => $dueSoon])>
+                        <div class="ui-meter-head">
+                            <span class="ui-meter-label">Service interval used</span>
+                            <span class="ui-meter-value">
+                                <b>{{ number_format($selectedVehicle->current_mileage) }} km</b>
+                                <small>current · {{ number_format($selectedVehicle->maintenance_remaining_km) }} km to service</small>
+                            </span>
                         </div>
-                        <div style="height:8px;border-radius:999px;background:var(--color-background-secondary);overflow:hidden">
-                            <div style="height:8px;width:{{ $progress }}%;background:{{ $selectedVehicle->maintenance_remaining_km <= 500 ? '#a32d2d' : '#185fa5' }}"></div>
+                        <div class="ui-meter-track" role="progressbar" aria-label="Service interval used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $progress }}" aria-valuetext="{{ $progress }}% used, {{ number_format($selectedVehicle->maintenance_remaining_km) }} km to service">
+                            <span style="width: {{ $progress }}%"></span>
                         </div>
                     </div>
 
-                    @if ($selectedVehicle->maintenance_remaining_km <= 500)
-                        <div class="alert alert-warning" style="margin-bottom:12px">Maintenance warning: this vehicle is within 500 km of its next service point.</div>
+                    @if ($dueSoon)
+                        <x-ui.alert tone="warning">Maintenance warning: this vehicle is within 500 km of its next service point.</x-ui.alert>
                     @endif
                 @endif
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Previous Mileage</label>
-                        <input type="number" class="form-input" wire:model="form.mileage_before" readonly>
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">New Mileage</label>
-                        <input type="number" class="form-input" wire:model.defer="form.mileage_after">
-                        @error('form.mileage_after') <span class="form-error">{{ $message }}</span> @enderror
+                <div class="ui-form-grid">
+                    <x-ui.input label="Previous Mileage" type="number" wire:model="form.mileage_before" readonly :error="false" />
+                    <x-ui.input label="New Mileage" type="number" wire:model.defer="form.mileage_after" inputmode="numeric" />
+
+                    <div class="span-2">
+                        <x-ui.input label="Trip Purpose" wire:model.defer="form.trip_purpose" />
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Trip Purpose</label>
-                        <input class="form-input" wire:model.defer="form.trip_purpose">
-                        @error('form.trip_purpose') <span class="form-error">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="form-field" style="justify-content:end">
-                        <button type="button" class="btn btn-primary" wire:click="save" wire:loading.attr="disabled">Save Mileage</button>
-                    </div>
+                <div class="ui-form-actions">
+                    <button type="button" class="btn btn-primary" wire:click="save" wire:loading.attr="disabled">
+                        <x-ui.icon name="check" />
+                        Save Mileage
+                    </button>
                 </div>
-            @else
-                <div class="empty-state">No active vehicle is assigned to your account.</div>
-            @endif
-        </div>
-    </div>
+            </div>
+        @else
+            <x-ui.empty-state icon="car" title="No active vehicle is assigned to your account." />
+        @endif
+    </x-ui.card>
 
-    <div class="pg">
-        <div class="pg-head">
-            <span class="pg-title">{{ $canManage ? 'Mileage Logs' : 'My Mileage Logs' }}</span>
-        </div>
-        <table>
-            <thead>
+    <x-ui.card :title="$canManage ? 'Mileage Logs' : 'My Mileage Logs'" :padded="false">
+        <x-ui.table label="Mileage logs" pin-first>
+            <x-slot:head>
                 <tr>
                     <th>Date</th>
                     <th>Vehicle</th>
                     <th>Driver</th>
-                    <th>Before</th>
-                    <th>After</th>
-                    <th>Distance</th>
+                    <th class="num">Before</th>
+                    <th class="num">After</th>
+                    <th class="num">Distance</th>
                     <th>Purpose</th>
                 </tr>
-            </thead>
-            <tbody>
-                @forelse ($logs as $log)
-                    <tr>
-                        <td>{{ $log->trip_date?->format('d M Y') }}</td>
-                        <td>{{ $log->vehicle?->number_plate }}</td>
-                        <td>{{ $log->driver?->full_name ?? $log->driver?->email }}</td>
-                        <td>{{ number_format($log->mileage_before) }}</td>
-                        <td>{{ number_format($log->mileage_after) }}</td>
-                        <td>{{ number_format($log->distance_driven) }} km</td>
-                        <td>{{ $log->trip_purpose }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="7" class="empty-state">No mileage logs found.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-        <div style="padding:12px 14px">{{ $logs->links() }}</div>
-    </div>
+            </x-slot:head>
+
+            @forelse ($logs as $log)
+                <tr wire:key="mileage-log-{{ $log->id }}">
+                    <td class="nowrap">{{ $log->trip_date?->format('d M Y') }}</td>
+                    <td class="mono nowrap">{{ $log->vehicle?->number_plate }}</td>
+                    <td class="nowrap">{{ $log->driver?->full_name ?? $log->driver?->email }}</td>
+                    <td class="num">{{ number_format($log->mileage_before) }}</td>
+                    <td class="num">{{ number_format($log->mileage_after) }}</td>
+                    <td class="num nowrap"><strong>{{ number_format($log->distance_driven) }} km</strong></td>
+                    <td class="cell-wrap">{{ $log->trip_purpose }}</td>
+                </tr>
+            @empty
+                <x-ui.empty-row :colspan="7" icon="gauge" title="No mileage logs found." />
+            @endforelse
+
+            @if ($logs->hasPages())
+                <x-slot:footer>
+                    <div class="pager-end">{{ $logs->links() }}</div>
+                </x-slot:footer>
+            @endif
+        </x-ui.table>
+    </x-ui.card>
 </div>

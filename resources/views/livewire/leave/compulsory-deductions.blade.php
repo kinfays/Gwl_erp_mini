@@ -1,97 +1,78 @@
-<div class="space-y-6">
-    <div class="compulsory-alert">
-        <strong>Compulsory leave window</strong>
-        <span>Choose dates only between {{ \Carbon\Carbon::parse($rangeStartLimit)->format('d M Y') }} and {{ \Carbon\Carbon::parse($rangeEndLimit)->format('d M Y') }}.</span>
-    </div>
+<div>
+    <x-ui.page-header title="Compulsory Leave" description="Deduct annual leave for everyone in the selected categories over the closure period." />
 
-    <div class="erp-card space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="text-sm font-medium">Leave Year</label>
-                <input type="number" value="{{ $year }}" readonly class="w-full border rounded-sm p-2 bg-slate-100 text-slate-600 cursor-not-allowed">
-                @error('year') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-            </div>
+    <x-ui.alert tone="warning" title="Compulsory leave window">
+        Choose dates only between {{ \Carbon\Carbon::parse($rangeStartLimit)->format('d M Y') }} and {{ \Carbon\Carbon::parse($rangeEndLimit)->format('d M Y') }}.
+    </x-ui.alert>
 
-            <div>
-                <label class="text-sm font-medium">Start Date</label>
-                <input type="date" wire:model.live="startDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" class="w-full border rounded-sm p-2">
-                @error('startDate') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-            </div>
+    <x-ui.card title="Deduction">
+        <div class="ui-form-grid compulsory-grid">
+            <x-ui.field label="Leave Year" for="compulsory-year" error="year">
+                <input type="number" id="compulsory-year" value="{{ $year }}" readonly class="form-input ui-input">
+            </x-ui.field>
 
-            <div>
-                <label class="text-sm font-medium">End Date</label>
-                <input type="date" wire:model.live="endDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" class="w-full border rounded-sm p-2">
-                @error('endDate') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-            </div>
-
-            <div class="compulsory-days">
+            <div class="compulsory-days" aria-live="polite">
                 <span>Deduction Days</span>
                 <strong>{{ $deductionDays }}</strong>
                 <small>Calculated working days</small>
             </div>
-        </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="text-sm font-medium">Exclude Location Type</label>
-                <select wire:model.live="excludeLocationType" class="w-full border rounded-sm p-2">
-                    <option value="">None</option>
-                    <option value="HeadOffice">Head Office</option>
-                    <option value="Region">Region</option>
-                    <option value="District">District</option>
-                </select>
-            </div>
+            <x-ui.input type="date" label="Start Date" wire:model.live="startDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" id="compulsory-start" />
+            <x-ui.input type="date" label="End Date" wire:model.live="endDate" min="{{ $rangeStartLimit }}" max="{{ $rangeEndLimit }}" id="compulsory-end" />
 
-            <div>
-                <label class="text-sm font-medium">Employee Categories</label>
-                <div class="flex flex-wrap gap-3 mt-2">
-                    @foreach($availableCategories as $category)
-                        <label class="flex items-center gap-2 text-sm">
-                            <input type="checkbox" wire:model.live="categories" value="{{ $category }}">
-                            {{ $category }}
-                        </label>
+            <x-ui.select label="Exclude Location Type" wire:model.live="excludeLocationType" id="compulsory-exclude">
+                <option value="">None</option>
+                <option value="HeadOffice">Head Office</option>
+                <option value="Region">Region</option>
+                <option value="District">District</option>
+            </x-ui.select>
+
+            <fieldset class="ui-field span-2 compulsory-categories">
+                <legend class="ui-label">Employee Categories</legend>
+                <div class="check-grid">
+                    @foreach ($availableCategories as $category)
+                        <x-ui.checkbox :label="$category" :id="'category-'.\Illuminate\Support\Str::slug($category)" wire:model.live="categories" value="{{ $category }}" />
                     @endforeach
                 </div>
-                @error('categories') <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-            </div>
+                @error('categories')
+                    <p class="ui-error"><x-ui.icon name="circle-alert" class="icon-sm" /><span>{{ $message }}</span></p>
+                @enderror
+            </fieldset>
         </div>
 
-        <div class="p-3 bg-slate-50 border rounded-sm text-sm dark:bg-slate-900 dark:border-slate-700">
+        <x-ui.alert tone="info" class="compulsory-affected" role="status">
             <strong>{{ $affectedCount }}</strong> employees will be affected. Annual leave will be deducted for the selected year.
-        </div>
+        </x-ui.alert>
 
-        <div>
-            <label class="text-sm font-medium">Notes</label>
-            <textarea wire:model="notes" class="w-full border rounded-sm p-2" rows="3"></textarea>
-        </div>
+        <x-ui.textarea label="Notes" wire:model="notes" rows="3" id="compulsory-notes" />
 
-        @if($errors->has('confirmOverride'))
-            <div class="p-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
+        @if ($errors->has('confirmOverride'))
+            <x-ui.alert tone="danger" role="alert" class="compulsory-override">
                 {{ $errors->first('confirmOverride') }}
-                <div class="mt-2">
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" wire:model="confirmOverride">
-                        Confirm override existing deduction
-                    </label>
+                <div class="compulsory-override-check">
+                    <x-ui.checkbox label="Confirm override existing deduction" id="compulsory-override" wire:model="confirmOverride" />
                 </div>
-            </div>
+            </x-ui.alert>
         @endif
 
-        <div>
-            <button
-                type="button"
-                class="btn btn-danger"
-                x-data
-                x-on:click.prevent="$dispatch('confirm-action', {
-                    title: 'Apply compulsory deduction?',
-                    message: 'Annual leave balances for affected employees will be reduced by the selected working days.',
-                    confirmLabel: 'Apply Deduction',
-                    variant: 'danger',
-                    action: () => $wire.apply()
-                })"
-            >
-                Apply Deduction
-            </button>
-        </div>
-    </div>
+        <x-slot:footer>
+            <div class="ui-form-actions">
+                <button
+                    type="button"
+                    class="btn btn-danger-solid"
+                    x-data
+                    x-on:click.prevent="$dispatch('confirm-action', {
+                        title: 'Apply compulsory deduction?',
+                        message: 'Annual leave balances for affected employees will be reduced by the selected working days.',
+                        confirmLabel: 'Apply Deduction',
+                        variant: 'danger',
+                        action: () => $wire.apply()
+                    })"
+                >
+                    <x-ui.icon name="calendar-x" />
+                    Apply Deduction
+                </button>
+            </div>
+        </x-slot:footer>
+    </x-ui.card>
 </div>

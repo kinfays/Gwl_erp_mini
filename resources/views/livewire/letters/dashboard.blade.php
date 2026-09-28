@@ -1,49 +1,39 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Letters Dashboard</h2>
-            <p>{{ now()->format('F Y') }} correspondence overview</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('letters.active') }}" class="btn">Active Letters</a>
+    <x-ui.page-header title="Letters Dashboard" :description="now()->format('F Y').' correspondence overview'">
+        <x-slot:actions>
+            <a href="{{ route('letters.active') }}" class="btn btn-secondary">
+                <x-ui.icon name="inbox" />
+                Active Letters
+            </a>
             @if (auth()->user()?->hasRoles('super_admin') || auth()->user()?->hasPermission('letters.create'))
-                <a href="{{ route('letters.create') }}" class="btn btn-primary">+ New Letter</a>
+                <a href="{{ route('letters.create') }}" class="btn btn-primary">
+                    <x-ui.icon name="file-plus" />
+                    New Letter
+                </a>
             @endif
-        </div>
-    </div>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @if ($missingEmployee)
-        <div class="erp-card" style="margin-top:14px;background:#fcebeb;border-color:#f7c1c1;color:#a32d2d">
-            Your user account is not linked to an employee record, so letters cannot be assigned to you.
-        </div>
+        <x-ui.alert tone="danger">Your user account is not linked to an employee record, so letters cannot be assigned to you.</x-ui.alert>
     @else
-        <div class="stats" style="margin-top:14px">
-            <div class="stat">
-                <div class="stat-lbl">Total</div>
-                <div class="stat-val">{{ $stats['total'] }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-lbl">Pending Review</div>
-                <div class="stat-val">{{ $stats['pending'] }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-lbl">Dispatch</div>
-                <div class="stat-val">{{ $stats['dispatched'] }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-lbl">Closed</div>
-                <div class="stat-val">{{ $stats['closed'] }}</div>
-            </div>
+        <div class="ui-stat-grid dash-row">
+            <x-ui.stat-tile label="Total" :value="$stats['total']" icon="mail" meta="Letters visible to you" />
+            <x-ui.stat-tile label="Pending Review" :value="$stats['pending']" icon="hourglass" tone="warning" meta="Received or in review at your desk" />
+            <x-ui.stat-tile label="Dispatch" :value="$stats['dispatched']" icon="send" tone="lagoon" meta="Dispatched, not yet closed" />
+            <x-ui.stat-tile label="Closed" :value="$stats['closed']" icon="archive" tone="muted" meta="Closed at your desk" :href="route('letters.closed')" />
         </div>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Requires your attention</span>
-                <a href="{{ route('letters.active') }}" class="actn">View all</a>
-            </div>
+        <x-ui.card title="Requires your attention" description="Letters received or in review at your desk" :padded="false">
+            <x-slot:actions>
+                <a href="{{ route('letters.active') }}" class="btn btn-ghost btn-sm">
+                    View all
+                    <x-ui.icon name="arrow-right" class="icon-sm" />
+                </a>
+            </x-slot:actions>
 
-            <table>
-                <thead>
+            <x-ui.table label="Letters requiring your attention" :sticky="false">
+                <x-slot:head>
                     <tr>
                         <th>SN#</th>
                         <th>Subject</th>
@@ -51,31 +41,26 @@
                         <th>Status</th>
                         <th>Date</th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($attentionLetters as $letter)
-                        @php($status = $letter->latestStatusFor(auth()->user()->employee ?? auth()->user()->employeeByStaffId)?->status ?? 'Received')
-                        <tr>
-                            <td style="color:#185FA5">{{ $letter->sn_number }}</td>
-                            <td>
-                                <a href="{{ route('letters.active', ['letter' => $letter->id]) }}" style="color:inherit;text-decoration:none">
-                                    {{ $letter->subject }}
-                                </a>
-                                <div style="font-size:10px;color:var(--color-text-secondary)">{{ $letter->ref_no ?: 'No reference' }}</div>
-                            </td>
-                            <td>{{ $letter->sender_name }}</td>
-                            <td><span class="pill {{ $status === 'Received' ? 'p-g' : 'p-b' }}">{{ $status }}</span></td>
-                            <td>{{ $letter->date_on_letter?->format('d M Y') }}</td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="5" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                                No letters need your attention.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
+
+                @forelse ($attentionLetters as $letter)
+                    @php($status = $letter->latestStatusFor(auth()->user()->employee ?? auth()->user()->employeeByStaffId)?->status ?? 'Received')
+                    <tr wire:key="attention-{{ $letter->id }}">
+                        <td class="mono nowrap">{{ $letter->sn_number }}</td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <a href="{{ route('letters.active', ['letter' => $letter->id]) }}" class="row-link">{{ $letter->subject }}</a>
+                                <span class="ui-person-sub">{{ $letter->ref_no ?: 'No reference' }}</span>
+                            </span>
+                        </td>
+                        <td>{{ $letter->sender_name }}</td>
+                        <td><x-ui.status-pill domain="letter" :status="$status" /></td>
+                        <td class="nowrap cell-muted">{{ $letter->date_on_letter?->format('d M Y') }}</td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="5" icon="inbox" title="No letters need your attention." description="New letters routed to you will show up here." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
     @endif
 </div>

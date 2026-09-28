@@ -1,139 +1,134 @@
 <div wire:poll.30s>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Today's Visitor Log</h2>
-            <p>{{ now()->format('l, d F Y') }}</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('visitors.export.excel', ['date' => today()->toDateString()]) }}" class="btn">Export Excel</a>
-            <a href="{{ route('visitors.export.pdf', ['date' => today()->toDateString()]) }}" class="btn">Export PDF</a>
-            <a href="{{ route('visitors.kiosk') }}" target="_blank" class="btn btn-primary">Kiosk Screen</a>
-        </div>
+    <x-ui.page-header title="Today's Visitor Log" :description="now()->format('l, d F Y')">
+        <x-slot:actions>
+            <a href="{{ route('visitors.export.excel', ['date' => today()->toDateString()]) }}" class="btn btn-secondary">
+                <x-ui.icon name="file-spreadsheet" />
+                Export Excel
+            </a>
+            <a href="{{ route('visitors.export.pdf', ['date' => today()->toDateString()]) }}" class="btn btn-secondary">
+                <x-ui.icon name="file-down" />
+                Export PDF
+            </a>
+            <a href="{{ route('visitors.kiosk') }}" target="_blank" rel="noopener" class="btn btn-primary">
+                <x-ui.icon name="monitor" />
+                Kiosk Screen
+                <span class="sr-only-text">(opens in a new tab)</span>
+            </a>
+        </x-slot:actions>
+    </x-ui.page-header>
+
+    <div class="ui-stat-grid dash-row">
+        <x-ui.stat-tile label="Total Today" :value="$stats['total']" icon="users" meta="Checked in today" />
+        <x-ui.stat-tile label="Currently Inside" :value="$stats['inside']" icon="door-open" tone="lagoon" meta="On site now" />
+        <x-ui.stat-tile label="Checked Out" :value="$stats['out']" icon="log-out" tone="muted" meta="Left the premises today" />
+        <x-ui.stat-tile label="Auto-checkout Time" :value="$stats['autoTime']" icon="clock" tone="info" meta="Anyone still inside is checked out then" />
     </div>
 
-    <div class="stats" style="margin-top:14px">
-        <div class="stat">
-            <div class="stat-lbl">Total Today</div>
-            <div class="stat-val">{{ $stats['total'] }}</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Currently Inside</div>
-            <div class="stat-val">{{ $stats['inside'] }}</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Checked Out</div>
-            <div class="stat-val">{{ $stats['out'] }}</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Auto-checkout Time</div>
-            <div class="stat-val">{{ $stats['autoTime'] }}</div>
-        </div>
-    </div>
-
-    <div class="pg">
-        <div class="pg-head">
-            <span class="pg-title">Live visitor table</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search visitor or staff">
-                <select wire:model.live="status" class="form-input">
-                    <option value="">All statuses</option>
-                    <option value="inside">Inside</option>
-                    <option value="out">Out</option>
-                </select>
+    <x-ui.card title="Live visitor table" description="Refreshes every 30 seconds." :padded="false">
+        <div class="ui-toolbar">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search visitor or staff" aria-label="Search visitors">
             </div>
+            <select wire:model.live="status" class="form-input" aria-label="Status">
+                <option value="">All statuses</option>
+                <option value="inside">On site</option>
+                <option value="out">Checked out</option>
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Visitor Name</th>
-                    <th>Visiting</th>
-                    <th>Purpose</th>
-                    <th>Check-in Time</th>
-                    <th>Check-out Time</th>
-                    <th>Code</th>
-                    <th>Status</th>
-                    <th>Signature</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($visitors as $visitor)
+        <div class="ui-loading-host">
+            <x-ui.table label="Today's visitors" pin-first>
+                <x-slot:head>
                     <tr>
+                        <th>Visitor Name</th>
+                        <th>Visiting</th>
+                        <th>Purpose</th>
+                        <th>Check-in Time</th>
+                        <th>Check-out Time</th>
+                        <th>Code</th>
+                        <th>Status</th>
+                        <th class="actions">Actions</th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($visitors as $visitor)
+                    <tr wire:key="visitor-{{ $visitor->id }}">
                         <td>
-                            <div>{{ $visitor->visitor_name }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $visitor->phone ?: 'No phone' }}</div>
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $visitor->visitor_name }}</span>
+                                <span class="ui-person-sub">{{ $visitor->phone ?: 'No phone' }}</span>
+                            </span>
                         </td>
                         <td>
-                            <div>{{ $visitor->staff?->full_name ?? '-' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $visitor->staff?->department?->department_name ?? '-' }}</div>
+                            <span class="ui-cell-stack">
+                                <span>{{ $visitor->staff?->full_name ?? '-' }}</span>
+                                <span class="ui-person-sub">{{ $visitor->staff?->department?->department_name ?? '-' }}</span>
+                            </span>
                         </td>
-                        <td>{{ $visitor->purpose ?: '-' }}</td>
-                        <td>{{ $visitor->check_in_at?->format('h:i A') }}</td>
-                        <td>{{ $visitor->check_out_at?->format('h:i A') ?: '-' }}</td>
+                        <td class="cell-wrap">{{ $visitor->purpose ?: '-' }}</td>
+                        <td class="nowrap num">{{ $visitor->check_in_at?->format('h:i A') }}</td>
+                        <td @class(['nowrap', 'num', 'cell-muted' => ! $visitor->check_out_at])>{{ $visitor->check_out_at?->format('h:i A') ?: '-' }}</td>
                         <td>
                             @if ($visitor->check_out_at)
-                                {{ $visitor->checkout_code }}
+                                <span class="mono">{{ $visitor->checkout_code }}</span>
                             @else
-                                <span class="pill p-g">Still Inside</span>
+                                <span class="cell-muted nowrap">Still Inside</span>
                             @endif
                         </td>
-                        <td><span class="pill {{ $visitor->check_out_at ? 'p-d' : 'p-g' }}">{{ $visitor->status }}</span></td>
-                        <td><button type="button" wire:click="showSignature({{ $visitor->id }})" class="actn">View</button></td>
-                        <td>
-                            @if (! $visitor->check_out_at)
-                                <button
-                                    type="button"
-                                    class="actn actn-p"
-                                    x-data
-                                    x-on:click.prevent="$dispatch('confirm-action', {
-                                        title: 'Check out visitor?',
-                                        message: @js('This will mark ' . $visitor->visitor_name . ' as checked out now.'),
-                                        confirmLabel: 'Check Out',
-                                        variant: 'primary',
-                                        action: () => $wire.checkOut({{ $visitor->id }})
-                                    })"
-                                >
-                                    Check Out
+                        <td><x-ui.status-pill domain="presence" :status="$visitor->status" /></td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" wire:click="showSignature({{ $visitor->id }})" class="btn btn-ghost btn-sm btn-icon" title="View signature" aria-label="View signature for {{ $visitor->visitor_name }}">
+                                    <x-ui.icon name="signature" />
                                 </button>
-                            @else
-                                <button type="button" wire:click="showSignature({{ $visitor->id }})" class="actn">View</button>
-                            @endif
+                                @if (! $visitor->check_out_at)
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm"
+                                        x-data
+                                        x-on:click.prevent="$dispatch('confirm-action', {
+                                            title: 'Check out visitor?',
+                                            message: @js('This will mark ' . $visitor->visitor_name . ' as checked out now.'),
+                                            confirmLabel: 'Check Out',
+                                            variant: 'primary',
+                                            action: () => $wire.checkOut({{ $visitor->id }})
+                                        })"
+                                    >
+                                        <x-ui.icon name="log-out" class="icon-sm" />
+                                        Check Out
+                                    </button>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="9" style="text-align:center;color:var(--color-text-secondary);padding:20px">No visitors logged today.</td>
-                    </tr>
+                    <x-ui.empty-row :colspan="8" icon="door-open" title="No visitors logged today." description="Check-ins from the kiosk appear here as they happen." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div wire:loading.delay class="table-skeleton">
-            <span class="skeleton-line"></span>
-            <span class="skeleton-line"></span>
-            <span class="skeleton-line short"></span>
-        </div>
+                <x-slot:footer>
+                    <p class="pager-summary">
+                        Showing {{ $visitors->firstItem() ?? 0 }} - {{ $visitors->lastItem() ?? 0 }} of {{ $visitors->total() }} visitors
+                    </p>
+                    <div>{{ $visitors->links() }}</div>
+                </x-slot:footer>
+            </x-ui.table>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
-            <div style="font-size:11px;color:var(--color-text-secondary)">
-                Showing {{ $visitors->firstItem() ?? 0 }} - {{ $visitors->lastItem() ?? 0 }} of {{ $visitors->total() }} visitors
+            <div wire:loading.delay wire:target="search,status,gotoPage,nextPage,previousPage,setPage" class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
-            <div>{{ $visitors->links() }}</div>
         </div>
-    </div>
+    </x-ui.card>
 
     @if ($signatureVisitor)
-        <div class="letter-panel-backdrop">
-            <div class="visitor-signature-modal">
-                <div class="pg-head">
-                    <span class="pg-title">{{ $signatureVisitor->visitor_name }} signature</span>
-                    <button type="button" wire:click="closeSignature" class="actn">Close</button>
-                </div>
-                <div style="padding:14px">
-                    <img src="{{ $signatureVisitor->signature }}" alt="Visitor signature" style="width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:8px;background:#fff">
-                </div>
-            </div>
-        </div>
+        <x-ui.modal :title="$signatureVisitor->visitor_name.' signature'" close="closeSignature()" size="md" icon="signature">
+            <img src="{{ $signatureVisitor->signature }}" alt="Signature of {{ $signatureVisitor->visitor_name }}" class="signature-image">
+
+            <x-slot:footer>
+                <button type="button" wire:click="closeSignature" class="btn btn-secondary">Close</button>
+            </x-slot:footer>
+        </x-ui.modal>
     @endif
 </div>

@@ -1,164 +1,105 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>ICT Asset Dashboard</h2>
-            <p>Live visibility across inventory, maintenance, and agent health.</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('assets.assets') }}" class="btn btn-primary">Open Assets</a>
-        </div>
-    </div>
+    @assets
+        @vite('resources/js/charts.js')
+    @endassets
 
-    <style>
-        /* Categorical slots, validated for CVD separation and contrast
-           against each theme's own chart surface. */
-        .assets-dash-columns {
-            --assets-series-1: #2a78d6;
-            --assets-series-2: #eb6834;
-            --assets-series-3: #1baf7a;
-            --assets-series-4: #eda100;
-        }
-        .dark .assets-dash-columns {
-            --assets-series-1: #3987e5;
-            --assets-series-2: #d95926;
-            --assets-series-3: #199e70;
-            --assets-series-4: #c98500;
-        }
-        .assets-kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-        .assets-kpi-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 16px; }
-        .assets-kpi-title { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 6px; }
-        .assets-kpi-value { font-size: 30px; font-weight: 600; color: var(--color-text-primary); line-height: 1; }
-        .assets-kpi-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
-        .assets-kpi-badge { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 10px; background: var(--color-background-tertiary); color: var(--color-text-secondary); }
-        .assets-dash-columns { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-top: 14px; align-items: start; }
-        .assets-donut-wrap { display: flex; align-items: center; gap: 18px; padding: 16px; flex-wrap: wrap; }
-        .assets-donut-legend { display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--color-text-secondary); }
-        .assets-donut-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: middle; }
-        @media (max-width: 1000px) {
-            .assets-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .assets-dash-columns { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 640px) {
-            .assets-kpi-grid { grid-template-columns: 1fr; }
-        }
-    </style>
+    <x-ui.page-header title="ICT Asset Dashboard" description="Live visibility across inventory, maintenance, and agent health.">
+        <x-slot:actions>
+            <a href="{{ route('assets.assets') }}" class="btn btn-primary">
+                <x-ui.icon name="laptop" />
+                Open Assets
+            </a>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @php
         $cardMeta = [
-            'computers' => 'Computers',
-            'laptops' => 'Laptops',
-            'printers' => 'Printers',
-            'phones' => 'Phones',
-            'servers' => 'Servers',
-            'network' => 'Network Devices',
+            'computers' => ['Computers', 'monitor', 'primary'],
+            'laptops' => ['Laptops', 'laptop', 'info'],
+            'printers' => ['Printers', 'printer', 'muted'],
+            'phones' => ['Phones', 'smartphone', 'lagoon'],
+            'servers' => ['Servers', 'server', 'warning'],
+            'network' => ['Network Devices', 'network', 'success'],
+        ];
+        // Fixed categorical slots per device family, so a colour never moves with rank.
+        $allocationColours = [
+            'Computers' => 'series-1',
+            'Phones' => 'series-2',
+            'Network Devices' => 'series-3',
+            'Printers' => 'series-4',
         ];
         $allocationTotal = collect($allocation)->sum('total');
-        $circumference = 2 * M_PI * 45;
-        $donutOffset = 0;
     @endphp
 
-    <div class="assets-kpi-grid">
-        @foreach ($cardMeta as $key => $label)
+    <div class="ui-stat-grid dash-row">
+        @foreach ($cardMeta as $key => [$label, $icon, $tone])
             @php($card = $cards[$key])
-            <div class="assets-kpi-card">
-                <div class="assets-kpi-title">{{ $label }}</div>
-                <div class="assets-kpi-value">{{ $card['total'] }}</div>
+            <x-ui.stat-tile :label="$label" :value="$card['total']" :icon="$icon" :tone="$tone">
                 @if (count($card['badges']))
-                    <div class="assets-kpi-badges">
+                    <span class="ui-tags stat-breakdown">
                         @foreach ($card['badges'] as $type => $count)
-                            <span class="assets-kpi-badge">{{ $type }}: {{ $count }}</span>
+                            <x-ui.badge>{{ $type }}: {{ $count }}</x-ui.badge>
                         @endforeach
-                    </div>
+                    </span>
                 @endif
-            </div>
+            </x-ui.stat-tile>
         @endforeach
     </div>
 
-    <div class="assets-dash-columns">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">District Breakdown</span>
-            </div>
-            <table>
-                <thead>
+    <div class="ui-grid ui-grid-main dash-row">
+        <x-ui.card title="District Breakdown" description="Assets per district; Attention means an open maintenance ticket or issue report." :padded="false">
+            <x-ui.table label="Assets by district" :sticky="false" pin-first>
+                <x-slot:head>
                     <tr>
                         <th>District</th>
-                        <th>Total Assets</th>
-                        <th>Computers</th>
-                        <th>Laptops</th>
-                        <th>Printers</th>
-                        <th>Phones</th>
-                        <th>Network</th>
+                        <th class="num">Total Assets</th>
+                        <th class="num">Computers</th>
+                        <th class="num">Laptops</th>
+                        <th class="num">Printers</th>
+                        <th class="num">Phones</th>
+                        <th class="num">Network</th>
                         <th>Status</th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($districtBreakdown as $row)
-                        <tr>
-                            <td>{{ $row['district_name'] }}</td>
-                            <td>{{ $row['total'] }}</td>
-                            <td>{{ $row['computers'] }}</td>
-                            <td>{{ $row['laptops'] }}</td>
-                            <td>{{ $row['printers'] }}</td>
-                            <td>{{ $row['phones'] }}</td>
-                            <td>{{ $row['network'] }}</td>
-                            <td>
-                                <span class="pill {{ $row['status'] === 'OPTIMAL' ? 'p-g' : 'p-a' }}">{{ $row['status'] }}</span>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8" style="text-align:center;color:var(--color-text-secondary);padding:18px">
-                                No district totals available.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Device Allocation</span>
-            </div>
-            <div class="assets-donut-wrap">
-                <svg viewBox="0 0 120 120" width="140" height="140" style="flex-shrink:0" role="img" aria-label="Device allocation by category">
-                    <circle cx="60" cy="60" r="45" fill="none" stroke="var(--color-background-tertiary)" stroke-width="16"></circle>
-                    @if ($allocationTotal > 0)
-                        @foreach ($allocation as $slice)
-                            {{-- 2px surface gap between adjacent segments, never wider than the segment itself. --}}
-                            @php($length = $circumference * ($slice['percentage'] / 100))
-                            @php($drawn = max($length - 2, 0))
-                            <circle
-                                cx="60" cy="60" r="45" fill="none"
-                                stroke="{{ $slice['color'] }}"
-                                stroke-width="16"
-                                stroke-dasharray="{{ $drawn }} {{ $circumference - $drawn }}"
-                                stroke-dashoffset="{{ -$donutOffset }}"
-                                transform="rotate(-90 60 60)"
-                            ></circle>
-                            @php($donutOffset += $length)
-                        @endforeach
-                    @endif
-                </svg>
-                <div class="assets-donut-legend">
-                    @foreach ($allocation as $slice)
-                        <div>
-                            <span class="assets-donut-swatch" style="background:{{ $slice['color'] }}"></span>
-                            {{ $slice['label'] }} — {{ $slice['total'] }} ({{ $slice['percentage'] }}%)
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        </div>
+                @forelse ($districtBreakdown as $row)
+                    <tr>
+                        <td class="nowrap">{{ $row['district_name'] }}</td>
+                        <td class="num"><strong>{{ $row['total'] }}</strong></td>
+                        <td class="num">{{ $row['computers'] }}</td>
+                        <td class="num">{{ $row['laptops'] }}</td>
+                        <td class="num">{{ $row['printers'] }}</td>
+                        <td class="num">{{ $row['phones'] }}</td>
+                        <td class="num">{{ $row['network'] }}</td>
+                        <td>
+                            <x-ui.status-pill :tone="$row['status'] === 'OPTIMAL' ? 'success' : 'warning'" :label="\Illuminate\Support\Str::title(strtolower($row['status']))" />
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="8" icon="map-pin" title="No district totals available." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
+
+        <x-ui.card title="Device Allocation" description="Share of computers, phones, network devices and printers">
+            <x-ui.chart type="doughnut" label="Device allocation by category" center center-caption="devices"
+                :color-map="$allocationColours"
+                :labels="collect($allocation)->pluck('label')->all()"
+                :series="[['label' => 'Devices', 'data' => collect($allocation)->pluck('total')->all()]]"
+                height="240" empty-text="No devices recorded yet." />
+        </x-ui.card>
     </div>
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Recently Updated Assets</span>
-        </div>
-        <table>
-            <thead>
+    <x-ui.card title="Recently Updated Assets" :padded="false">
+        <x-slot:actions>
+            <a href="{{ route('assets.assets') }}" class="btn btn-ghost btn-sm">
+                View all
+                <x-ui.icon name="arrow-right" class="icon-sm" />
+            </a>
+        </x-slot:actions>
+
+        <x-ui.table label="Recently updated assets" :sticky="false">
+            <x-slot:head>
                 <tr>
                     <th>Asset</th>
                     <th>District</th>
@@ -166,27 +107,24 @@
                     <th>Status</th>
                     <th>Updated</th>
                 </tr>
-            </thead>
-            <tbody>
-                @forelse ($recentAssets as $asset)
-                    <tr>
-                        <td>
-                            <div>{{ $asset->asset_name }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $asset->serial_number ?: 'No serial' }}</div>
-                        </td>
-                        <td>{{ $asset->district?->district_name ?: 'Unassigned' }}</td>
-                        <td>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td>{{ $asset->status ?: 'Unknown' }}</td>
-                        <td>{{ $asset->updated_at?->diffForHumans() }}</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="5" style="text-align:center;color:var(--color-text-secondary);padding:18px">
-                            No recent updates yet.
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+            </x-slot:head>
+
+            @forelse ($recentAssets as $asset)
+                <tr>
+                    <td>
+                        <span class="ui-cell-stack">
+                            <span class="ui-person-name">{{ $asset->asset_name }}</span>
+                            <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
+                        </span>
+                    </td>
+                    <td @class(['cell-muted' => ! $asset->district])>{{ $asset->district?->district_name ?: 'Unassigned' }}</td>
+                    <td @class(['cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                    <td><x-ui.status-pill domain="asset" :status="$asset->status ?: 'Unknown'" /></td>
+                    <td class="nowrap cell-muted">{{ $asset->updated_at?->diffForHumans() }}</td>
+                </tr>
+            @empty
+                <x-ui.empty-row :colspan="5" icon="history" title="No recent updates yet." />
+            @endforelse
+        </x-ui.table>
+    </x-ui.card>
 </div>

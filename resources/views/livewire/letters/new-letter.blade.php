@@ -1,89 +1,64 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>New Letter</h2>
-            <p>Register incoming correspondence and assign the first received status.</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('letters.active') }}" class="btn">Active Letters</a>
-        </div>
-    </div>
+    <x-ui.page-header title="New Letter" description="Register incoming correspondence and assign the first received status.">
+        <x-slot:actions>
+            <a href="{{ route('letters.active') }}" class="btn btn-secondary">
+                <x-ui.icon name="inbox" />
+                Active Letters
+            </a>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @if ($missingEmployee)
-        <div class="erp-card" style="margin-top:14px;background:#fcebeb;border-color:#f7c1c1;color:#a32d2d">
-            Your user account is not linked to an employee record.
-        </div>
+        <x-ui.alert tone="danger">Your user account is not linked to an employee record.</x-ui.alert>
     @elseif (! $canCreate)
-        <div class="erp-card" style="margin-top:14px;background:#faeeda;border-color:#fac775;color:#854f0b">
-            You do not have permission to create letters.
-        </div>
+        <x-ui.alert tone="warning">You do not have permission to create letters.</x-ui.alert>
     @else
-        <form wire:submit.prevent="save" class="pg" style="margin-top:14px">
-            <div class="pg-head">
-                <span class="pg-title">Letter details</span>
-                <button type="submit" class="btn btn-primary">Save Letter</button>
-            </div>
+        <form wire:submit.prevent="save">
+            <x-ui.card title="Letter details" description="Fields marked * are required.">
+                <div class="ui-form-grid">
+                    <x-ui.input label="Subject" wire:model="subject" required />
+                    <x-ui.input label="Reference No." wire:model="ref_no" class="mono" />
 
-            <div style="padding:14px">
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Subject</label>
-                        <input type="text" wire:model="subject" class="form-input">
-                        @error('subject') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
+                    <div class="ui-field">
+                        <span class="ui-label" aria-hidden="true">Type<span class="ui-req">*</span></span>
+                        <x-ui.segmented label="Type" wire:model.live="type" :options="['Internal' => 'Internal', 'External' => 'External']" />
                     </div>
-                    <div class="form-field">
-                        <label class="form-label">Reference No.</label>
-                        <input type="text" wire:model="ref_no" class="form-input">
-                    </div>
-                </div>
+                    <x-ui.input label="Date on Letter" type="date" wire:model="date_on_letter" required />
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Type</label>
-                        <select wire:model.live="type" class="form-input">
-                            <option value="Internal">Internal</option>
-                            <option value="External">External</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Date on Letter</label>
-                        <input type="date" wire:model="date_on_letter" class="form-input">
-                        @error('date_on_letter') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                    </div>
-                </div>
-
-                @if ($type === 'Internal')
-                    <div class="form-row">
+                    @if ($type === 'Internal')
                         <x-form.combobox
-                            style="grid-column:1 / -1"
+                            class="span-2"
                             label="Memo Sender"
                             model="memo_sender_id"
+                            required
                             :options="$senderOptions"
                             placeholder="Type to search employee"
                             empty-text="No matching employees"
                         />
-                    </div>
-                @else
-                    <div class="form-field" style="margin-bottom:10px">
-                        <label class="form-label">Company / External Sender</label>
-                        <textarea wire:model="company_sender" class="form-input" rows="3"></textarea>
-                        @error('company_sender') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                    </div>
-                @endif
+                    @else
+                        <div class="span-2">
+                            <x-ui.textarea label="Company / External Sender" wire:model="company_sender" rows="3" required />
+                        </div>
+                    @endif
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Region</label>
-                        <select wire:model="region_id" class="form-input">
-                            <option value="">Select region</option>
-                            @foreach ($regions as $region)
-                                <option value="{{ $region->id }}">{{ $region->region_name }}</option>
-                            @endforeach
-                        </select>
-                        @error('region_id') <span class="form-label" style="color:#a32d2d">{{ $message }}</span> @enderror
-                    </div>
+                    <x-ui.select label="Region" wire:model="region_id" required>
+                        <option value="">Select region</option>
+                        @foreach ($regions as $region)
+                            <option value="{{ $region->id }}">{{ $region->region_name }}</option>
+                        @endforeach
+                    </x-ui.select>
                 </div>
-            </div>
+
+                <x-slot:footer>
+                    <div class="ui-form-actions">
+                        <a href="{{ route('letters.active') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
+                            <x-ui.icon name="check" />
+                            Save Letter
+                        </button>
+                    </div>
+                </x-slot:footer>
+            </x-ui.card>
         </form>
     @endif
 </div>

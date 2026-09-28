@@ -1,147 +1,116 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>IP Ranges</h2>
-            <p>Assigned IP ranges per district/region, used to validate Device IP / Management IP on save.</p>
-        </div>
-    </div>
+    @php
+        // One set of inputs serves both modes; each mode binds its own properties.
+        $mode = $editingId ? 'edit-'.$editingId : 'new';
+    @endphp
 
-    <div class="two">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Range Directory</span>
-            </div>
-            <table>
-                <thead>
+    <x-ui.page-header title="IP Ranges" description="Assigned IP ranges per district/region, used to validate Device IP / Management IP on save." />
+
+    <div class="ui-grid ui-grid-main">
+        <x-ui.card title="Range Directory" :description="$ranges->count().' ranges'" :padded="false">
+            <x-ui.table label="IP ranges">
+                <x-slot:head>
                     <tr>
                         <th>Label</th>
                         <th>Location</th>
                         <th>Range</th>
                         <th>Status</th>
-                        <th></th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($ranges as $range)
-                        <tr>
-                            <td>{{ $range->label }}</td>
-                            <td>
-                                {{ $range->district?->district_name ?: ($range->region?->region_name ?: 'All locations') }}
-                            </td>
-                            <td>
-                                <div>{{ $range->start_ip }} - {{ $range->end_ip }}</div>
+                </x-slot:head>
+
+                @forelse ($ranges as $range)
+                    <tr wire:key="ip-range-{{ $range->id }}" @class(['is-selected' => $editingId === $range->id])>
+                        <td class="nowrap"><span class="ui-person-name">{{ $range->label }}</span></td>
+                        <td>{{ $range->district?->district_name ?: ($range->region?->region_name ?: 'All locations') }}</td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span class="mono">{{ $range->start_ip }} – {{ $range->end_ip }}</span>
                                 @if ($range->cidr)
-                                    <div style="font-size:10px;color:var(--color-text-secondary)">{{ $range->cidr }}</div>
+                                    <span class="ui-person-sub mono">{{ $range->cidr }}</span>
                                 @endif
-                            </td>
-                            <td>
-                                <span class="pill {{ $range->is_active ? 'p-g' : 'p-d' }}">{{ $range->is_active ? 'Active' : 'Inactive' }}</span>
-                            </td>
-                            <td>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                                    <button wire:click="edit({{ $range->id }})" class="actn">Edit</button>
-                                    <button
-                                        type="button"
-                                        class="actn actn-r"
-                                        x-data
-                                        x-on:click.prevent="$dispatch('confirm-action', {
-                                            title: 'Delete IP range?',
-                                            message: @js('This will delete ' . $range->label . '.'),
-                                            confirmLabel: 'Delete',
-                                            variant: 'danger',
-                                            action: () => $wire.delete({{ $range->id }})
-                                        })"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="5" style="text-align:center;color:var(--color-text-secondary)">No IP ranges configured.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                            </span>
+                        </td>
+                        <td><x-ui.status-pill domain="account" :status="$range->is_active ? 'Active' : 'Inactive'" /></td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" wire:click="edit({{ $range->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $range->label }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-icon is-danger"
+                                    title="Delete"
+                                    aria-label="Delete {{ $range->label }}"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Delete IP range?',
+                                        message: @js('This will delete ' . $range->label . '.'),
+                                        confirmLabel: 'Delete',
+                                        variant: 'danger',
+                                        action: () => $wire.delete({{ $range->id }})
+                                    })"
+                                >
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="5" icon="ethernet-port" title="No IP ranges configured." description="Add the first one with the form alongside." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">{{ $editingId ? 'Edit IP Range' : 'Add IP Range' }}</span>
-            </div>
+        <x-ui.card :title="$editingId ? 'Edit IP Range' : 'Add IP Range'" class="manager-form">
+            <div class="ui-stack">
+                <x-ui.input
+                    label="Label"
+                    wire:model="{{ $editingId ? 'editingLabel' : 'label' }}"
+                    wire:key="ip-range-label-{{ $mode }}"
+                    placeholder="e.g. Accra West HQ LAN"
+                    x-init="{{ $editingId ? '$nextTick(() => $el.focus())' : '' }}"
+                />
 
-            <div style="padding:14px">
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Label</label>
-                    <input type="text" wire:model="{{ $editingId ? 'editingLabel' : 'label' }}" class="form-input" placeholder="e.g. Accra West HQ LAN">
-                    @error($editingId ? 'editingLabel' : 'label')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
+                <x-ui.select label="Region" wire:model="{{ $editingId ? 'editingRegionId' : 'region_id' }}" wire:key="ip-range-region-{{ $mode }}">
+                    <option value="">Any region</option>
+                    @foreach ($regions as $region)
+                        <option value="{{ $region->id }}">{{ $region->region_name }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.select label="District" wire:model="{{ $editingId ? 'editingDistrictId' : 'district_id' }}" wire:key="ip-range-district-{{ $mode }}">
+                    <option value="">Any district</option>
+                    @foreach ($districts as $district)
+                        <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <div class="ui-form-grid">
+                    <x-ui.input label="Start IP" wire:model="{{ $editingId ? 'editingStartIp' : 'start_ip' }}" wire:key="ip-range-start-{{ $mode }}" placeholder="192.168.10.1" class="mono" inputmode="decimal" />
+                    <x-ui.input label="End IP" wire:model="{{ $editingId ? 'editingEndIp' : 'end_ip' }}" wire:key="ip-range-end-{{ $mode }}" placeholder="192.168.10.254" class="mono" inputmode="decimal" />
                 </div>
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Region</label>
-                    <select wire:model="{{ $editingId ? 'editingRegionId' : 'region_id' }}" class="form-input">
-                        <option value="">Any region</option>
-                        @foreach ($regions as $region)
-                            <option value="{{ $region->id }}">{{ $region->region_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+                <x-ui.input label="CIDR (optional)" wire:model="{{ $editingId ? 'editingCidr' : 'cidr' }}" wire:key="ip-range-cidr-{{ $mode }}" placeholder="192.168.10.0/24" class="mono" />
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">District</label>
-                    <select wire:model="{{ $editingId ? 'editingDistrictId' : 'district_id' }}" class="form-input">
-                        <option value="">Any district</option>
-                        @foreach ($districts as $district)
-                            <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">Start IP</label>
-                        <input type="text" wire:model="{{ $editingId ? 'editingStartIp' : 'start_ip' }}" class="form-input" placeholder="192.168.10.1">
-                        @error($editingId ? 'editingStartIp' : 'start_ip')
-                            <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                        @enderror
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">End IP</label>
-                        <input type="text" wire:model="{{ $editingId ? 'editingEndIp' : 'end_ip' }}" class="form-input" placeholder="192.168.10.254">
-                        @error($editingId ? 'editingEndIp' : 'end_ip')
-                            <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                        @enderror
-                    </div>
-                </div>
-
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">CIDR (optional)</label>
-                    <input type="text" wire:model="{{ $editingId ? 'editingCidr' : 'cidr' }}" class="form-input" placeholder="192.168.10.0/24">
-                </div>
-
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Notes</label>
-                    <textarea rows="2" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" class="form-input"></textarea>
-                </div>
+                <x-ui.textarea label="Notes" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" wire:key="ip-range-notes-{{ $mode }}" rows="2" />
 
                 @if ($editingId)
-                    <label class="form-label" style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-                        <input type="checkbox" wire:model="editingIsActive"> Active
-                    </label>
+                    <x-ui.checkbox label="Active" wire:model="editingIsActive" id="f-ip-range-active" />
                 @endif
 
-                <div style="display:flex;gap:8px;justify-content:flex-end">
+                <div class="ui-form-actions">
                     @if ($editingId)
-                        <button wire:click="update" class="btn btn-primary">Save</button>
-                        <button wire:click="cancelEdit" class="btn">Cancel</button>
+                        <button type="button" wire:click="cancelEdit" class="btn btn-secondary">Cancel</button>
+                        <button type="button" wire:click="update" class="btn btn-primary">Save</button>
                     @else
-                        <button wire:click="save" class="btn btn-primary">Add Range</button>
+                        <button type="button" wire:click="save" class="btn btn-primary">
+                            <x-ui.icon name="plus" />
+                            Add Range
+                        </button>
                     @endif
                 </div>
             </div>
-        </div>
+        </x-ui.card>
     </div>
 </div>

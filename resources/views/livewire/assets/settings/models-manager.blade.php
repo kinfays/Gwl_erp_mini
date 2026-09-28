@@ -1,183 +1,159 @@
 <div>
     @php
-        $thumbStyle = 'display:block;width:36px;height:36px;object-fit:cover;border-radius:6px;border:0.5px solid var(--color-border-tertiary)';
+        // One set of inputs serves both modes; each mode binds its own properties.
+        $mode = $editingId ? 'edit-'.$editingId : 'new';
         $imageField = $editingId ? 'editingImage' : 'image';
         $pendingImage = $editingId ? $editingImage : $image;
     @endphp
 
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Asset Models</h2>
-            <p>Manage the model catalogue used by the Assets, Phones and Network add/edit forms. Models are shared across all regions.</p>
-        </div>
-    </div>
+    <x-ui.page-header title="Asset Models" description="Manage the model catalogue used by the Assets, Phones and Network add/edit forms. Models are shared across all regions." />
 
-    <div class="two">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Model Directory</span>
-            </div>
-            <table>
-                <thead>
+    <div class="ui-grid ui-grid-main">
+        <x-ui.card title="Model Directory" :description="$models->count().' models'" :padded="false">
+            <x-ui.table label="Asset models">
+                <x-slot:head>
                     <tr>
-                        <th style="width:52px">Image</th>
+                        <th class="thumb-col">Image</th>
                         <th>Model</th>
                         <th>Category</th>
                         <th>Manufacturer</th>
-                        <th>In Use</th>
+                        <th class="num">In Use</th>
                         <th>Status</th>
-                        <th></th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($models as $model)
-                        <tr wire:key="model-{{ $model->id }}">
-                            <td>
-                                @if ($model->image_path)
-                                    <img src="{{ $model->imageUrl() }}" alt="{{ $model->name }}" style="{{ $thumbStyle }}" loading="lazy">
-                                @else
-                                    <div style="{{ $thumbStyle }};border-style:dashed" title="No image"></div>
-                                @endif
-                            </td>
-                            <td>{{ $model->name }}</td>
-                            <td>{{ $model->category }}</td>
-                            <td>{{ $model->manufacturer?->name ?: '-' }}</td>
-                            <td>{{ $model->assets_count }}</td>
-                            <td>
-                                <span class="pill {{ $model->is_active ? 'p-g' : 'p-d' }}">{{ $model->is_active ? 'Active' : 'Inactive' }}</span>
-                            </td>
-                            <td>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                                    <button wire:click="edit({{ $model->id }})" class="actn">Edit</button>
-                                    <button wire:click="toggleActive({{ $model->id }})" class="actn">
-                                        {{ $model->is_active ? 'Deactivate' : 'Activate' }}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="actn actn-r"
-                                        x-data
-                                        x-on:click.prevent="$dispatch('confirm-action', {
-                                            title: 'Delete model?',
-                                            message: @js('This will delete ' . $model->name . ' and its image if no assets use it.'),
-                                            confirmLabel: 'Delete',
-                                            variant: 'danger',
-                                            action: () => $wire.delete({{ $model->id }})
-                                        })"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="7" style="text-align:center;color:var(--color-text-secondary)">No models found.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">{{ $editingId ? 'Edit Model' : 'Add Model' }}</span>
-            </div>
+                @forelse ($models as $model)
+                    <tr wire:key="model-{{ $model->id }}" @class(['is-selected' => $editingId === $model->id])>
+                        <td class="thumb-col">
+                            @if ($model->image_path)
+                                <img src="{{ $model->imageUrl() }}" alt="{{ $model->name }}" class="model-thumb" loading="lazy">
+                            @else
+                                <span class="model-thumb is-empty" title="No image" aria-label="No image" role="img"></span>
+                            @endif
+                        </td>
+                        <td class="nowrap"><span class="ui-person-name">{{ $model->name }}</span></td>
+                        <td>{{ $model->category }}</td>
+                        <td @class(['cell-muted' => ! $model->manufacturer])>{{ $model->manufacturer?->name ?: '-' }}</td>
+                        <td class="num">{{ $model->assets_count }}</td>
+                        <td><x-ui.status-pill domain="account" :status="$model->is_active ? 'Active' : 'Inactive'" /></td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" wire:click="edit({{ $model->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $model->name }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                                <button type="button" wire:click="toggleActive({{ $model->id }})" class="btn btn-sm">
+                                    {{ $model->is_active ? 'Deactivate' : 'Activate' }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-icon is-danger"
+                                    title="Delete"
+                                    aria-label="Delete {{ $model->name }}"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Delete model?',
+                                        message: @js('This will delete ' . $model->name . ' and its image if no assets use it.'),
+                                        confirmLabel: 'Delete',
+                                        variant: 'danger',
+                                        action: () => $wire.delete({{ $model->id }})
+                                    })"
+                                >
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="7" icon="boxes" title="No models found." description="Add the first one with the form alongside." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-            <div style="padding:14px">
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Model Name</label>
-                    <input type="text" wire:model="{{ $editingId ? 'editingName' : 'name' }}" class="form-input" placeholder="e.g. HP EliteBook 840 G9">
-                    @error($editingId ? 'editingName' : 'name')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
-                </div>
+        <x-ui.card :title="$editingId ? 'Edit Model' : 'Add Model'" class="manager-form">
+            <div class="ui-stack">
+                <x-ui.input
+                    label="Model Name"
+                    wire:model="{{ $editingId ? 'editingName' : 'name' }}"
+                    wire:key="model-name-{{ $mode }}"
+                    placeholder="e.g. HP EliteBook 840 G9"
+                    x-init="{{ $editingId ? '$nextTick(() => $el.focus())' : '' }}"
+                />
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Category</label>
-                    <select wire:model="{{ $editingId ? 'editingCategory' : 'category' }}" class="form-input">
-                        <option value="">Select category</option>
-                        @foreach ($assetTypeGroups as $group => $types)
-                            <optgroup label="{{ ucfirst($group) }}">
-                                @foreach ($types as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </optgroup>
-                        @endforeach
-                    </select>
-                    @error($editingId ? 'editingCategory' : 'category')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
-                </div>
+                <x-ui.select label="Category" wire:model="{{ $editingId ? 'editingCategory' : 'category' }}" wire:key="model-category-{{ $mode }}">
+                    <option value="">Select category</option>
+                    @foreach ($assetTypeGroups as $group => $types)
+                        <optgroup label="{{ ucfirst($group) }}">
+                            @foreach ($types as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </optgroup>
+                    @endforeach
+                </x-ui.select>
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Manufacturer</label>
-                    <select wire:model="{{ $editingId ? 'editingManufacturerId' : 'manufacturer_id' }}" class="form-input">
+                <div>
+                    <x-ui.select label="Manufacturer" wire:model="{{ $editingId ? 'editingManufacturerId' : 'manufacturer_id' }}" wire:key="model-manufacturer-{{ $mode }}">
                         <option value="">Select manufacturer</option>
                         @foreach ($manufacturers as $manufacturer)
                             <option value="{{ $manufacturer->id }}">{{ $manufacturer->name }}{{ $manufacturer->is_active ? '' : ' (inactive)' }}</option>
                         @endforeach
-                    </select>
+                    </x-ui.select>
                     @if ($manufacturers->isEmpty())
-                        <span class="form-label" style="color:var(--color-text-secondary)">
+                        <p class="ui-hint field-note">
                             No manufacturers yet.
                             @if ($canManageManufacturers)
-                                <a href="{{ route('assets.settings.manufacturers') }}">Add one under Settings &rsaquo; Manufacturers.</a>
+                                <a href="{{ route('assets.settings.manufacturers') }}" class="text-link">Add one under Settings &rsaquo; Manufacturers.</a>
                             @endif
-                        </span>
+                        </p>
                     @endif
-                    @error($editingId ? 'editingManufacturerId' : 'manufacturer_id')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
                 </div>
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Image</label>
-                    <div style="display:flex;gap:10px;align-items:center">
+                <x-ui.field label="Image" for="f-model-image" hint="JPG, PNG or WebP, up to 2MB." :error="$imageField">
+                    <div class="model-image-row">
                         @if ($pendingImage && ! $errors->has($imageField) && $pendingImage->isPreviewable())
-                            <img src="{{ $pendingImage->temporaryUrl() }}" alt="New image preview" style="{{ $thumbStyle }};width:56px;height:56px">
+                            <img src="{{ $pendingImage->temporaryUrl() }}" alt="New image preview" class="model-thumb model-thumb-lg">
                         @elseif ($editingModel?->image_path)
-                            <img src="{{ $editingModel->imageUrl() }}" alt="{{ $editingModel->name }}" style="{{ $thumbStyle }};width:56px;height:56px">
+                            <img src="{{ $editingModel->imageUrl() }}" alt="{{ $editingModel->name }}" class="model-thumb model-thumb-lg">
                         @endif
                         <input
+                            id="f-model-image"
                             type="file"
                             wire:model="{{ $imageField }}"
                             wire:key="model-image-input-{{ $editingId ?? 'new' }}"
                             class="form-input"
                             accept=".jpg,.jpeg,.png,.webp"
+                            aria-describedby="f-model-image-hint"
                         >
                     </div>
-                    <span wire:loading wire:target="{{ $imageField }}" class="form-label">Uploading…</span>
-                    <span class="form-label" style="color:var(--color-text-secondary)">JPG, PNG or WebP, up to 2MB.</span>
-                    @error($imageField)
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
+                    <span wire:loading wire:target="{{ $imageField }}" class="ui-hint">Uploading…</span>
                     @if ($editingModel?->image_path)
-                        <div style="margin-top:6px">
-                            <button type="button" wire:click="removeImage({{ $editingModel->id }})" class="actn actn-r">Remove image</button>
+                        <div>
+                            <button type="button" wire:click="removeImage({{ $editingModel->id }})" class="btn btn-sm btn-danger">
+                                <x-ui.icon name="trash-2" class="icon-sm" />
+                                Remove image
+                            </button>
                         </div>
                     @endif
-                </div>
+                </x-ui.field>
 
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Notes</label>
-                    <textarea rows="2" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" class="form-input"></textarea>
-                </div>
+                <x-ui.textarea label="Notes" wire:model="{{ $editingId ? 'editingNotes' : 'notes' }}" wire:key="model-notes-{{ $mode }}" rows="2" />
 
                 @if ($editingId)
-                    <label class="form-label" style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-                        <input type="checkbox" wire:model="editingIsActive"> Active
-                    </label>
+                    <x-ui.checkbox label="Active" wire:model="editingIsActive" id="f-model-active" />
                 @endif
 
-                <div style="display:flex;gap:8px;justify-content:flex-end">
+                <div class="ui-form-actions">
                     @if ($editingId)
-                        <button wire:click="update" wire:loading.attr="disabled" wire:target="editingImage" class="btn btn-primary">Save</button>
-                        <button wire:click="cancelEdit" class="btn">Cancel</button>
+                        <button type="button" wire:click="cancelEdit" class="btn btn-secondary">Cancel</button>
+                        <button type="button" wire:click="update" wire:loading.attr="disabled" wire:target="editingImage" class="btn btn-primary">Save</button>
                     @else
-                        <button wire:click="save" wire:loading.attr="disabled" wire:target="image" class="btn btn-primary">Add Model</button>
+                        <button type="button" wire:click="save" wire:loading.attr="disabled" wire:target="image" class="btn btn-primary">
+                            <x-ui.icon name="plus" />
+                            Add Model
+                        </button>
                     @endif
                 </div>
             </div>
-        </div>
+        </x-ui.card>
     </div>
 </div>

@@ -1,55 +1,41 @@
 <x-erp-layout module="profile" title="Profile">
     <div class="content profile-page">
-        <div class="page-head" style="padding-left:0;padding-right:0;background:transparent;border:0">
-            <div class="ph-left">
-                <h2>{{ __('Profile') }}</h2>
-                <p>{{ __('Review your employee details and manage your account access.') }}</p>
-            </div>
-        </div>
+        <x-ui.page-header :title="__('Profile')" :description="__('Review your employee details and manage your account access.')" />
 
         @if ($mustChangePassword)
-            <div class="erp-card profile-alert profile-alert-warning">
+            <x-ui.alert tone="warning" role="alert">
                 {{ __('You are using the default password. Change it before continuing to the portal.') }}
-            </div>
+            </x-ui.alert>
         @endif
 
         <div class="profile-layout">
-            <section class="erp-card profile-details">
-                <div class="profile-card-head">
-                    <div>
-                        <h3>{{ __('Employee Details') }}</h3>
-                        <p>{{ __('These details are maintained by HR and are read-only here.') }}</p>
-                    </div>
-                </div>
-
+            <x-ui.card :title="__('Employee Details')" :description="__('These details are maintained by HR and are read-only here.')" class="profile-details">
                 @if ($employee)
-                    <div class="profile-facts">
+                    <dl class="profile-facts">
                         @foreach ($employeeDetails as $label => $value)
                             <div class="profile-fact">
-                                <span>{{ $label }}</span>
-                                <strong>{{ filled($value) ? $value : __('Not set') }}</strong>
+                                <dt>{{ $label }}</dt>
+                                <dd @class(['is-empty' => ! filled($value)])>{{ filled($value) ? $value : __('Not set') }}</dd>
                             </div>
                         @endforeach
-                    </div>
+                    </dl>
                 @else
-                    <div class="empty-state">
-                        {{ __('No employee record is linked to this account.') }}
-                    </div>
+                    <x-ui.empty-state icon="user-x" :title="__('No employee record is linked to this account.')" />
                 @endif
-            </section>
+            </x-ui.card>
 
             <div class="profile-actions">
-                <div class="erp-card">
+                <x-ui.card>
                     @include('profile.partials.update-profile-information-form')
-                </div>
+                </x-ui.card>
 
-                <div class="erp-card">
+                <x-ui.card>
                     @include('profile.partials.update-password-form')
-                </div>
+                </x-ui.card>
 
-                <div class="erp-card">
+                <x-ui.card>
                     @include('profile.partials.delete-user-form')
-                </div>
+                </x-ui.card>
             </div>
         </div>
     </div>

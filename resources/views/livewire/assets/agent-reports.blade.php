@@ -1,70 +1,71 @@
 <div wire:poll.45s>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Agent Reports</h2>
-            <p>Super admin intake board for endpoint telemetry and manual matching.</p>
-        </div>
-    </div>
+    <x-ui.page-header title="Agent Reports" description="Super admin intake board for endpoint telemetry and manual matching." />
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Recent Device Reports</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" class="form-input" placeholder="Search host, serial, MAC, OS">
-                <select wire:model.live="matchedFilter" class="form-input">
-                    <option value="all">All</option>
-                    <option value="matched">Matched</option>
-                    <option value="unmatched">Unmatched</option>
-                </select>
-                <select wire:model.live="perPage" class="form-input">
-                    <option value="20">20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
+    <x-ui.card title="Recent Device Reports" description="Refreshes every 45 seconds. Unmatched devices are tinted." :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter device reports">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search host, serial, MAC, OS" aria-label="Search device reports">
             </div>
+            <select wire:model.live="matchedFilter" class="form-input" aria-label="Match status">
+                <option value="all">All</option>
+                <option value="matched">Matched</option>
+                <option value="unmatched">Unmatched</option>
+            </select>
+            <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
+                <option value="20">20 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Hostname</th>
-                    <th>Serial</th>
-                    <th>Last Seen</th>
-                    <th>Matched Asset</th>
-                    <th>OS / CPU / RAM</th>
-                    <th>Region</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
+        <div class="ui-loading-host">
+            <x-ui.table label="Device reports" pin-first>
+                <x-slot:head>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>Serial</th>
+                        <th>Last Seen</th>
+                        <th>Matched Asset</th>
+                        <th>OS / CPU / RAM</th>
+                        <th>Region</th>
+                        <th class="actions">Action</th>
+                    </tr>
+                </x-slot:head>
+
                 @forelse ($reports as $report)
-                    <tr @if (! $report->matched) style="background:#fff7ed" @endif>
+                    <tr wire:key="agent-report-{{ $report->id }}" @class(['is-flagged' => ! $report->matched])>
                         <td>
-                            <div>{{ $report->hostname ?: 'Unknown host' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">{{ $report->mac_address ?: 'No MAC' }}</div>
+                            <span class="ui-cell-stack">
+                                <span class="ui-person-name">{{ $report->hostname ?: 'Unknown host' }}</span>
+                                <span class="ui-person-sub mono">{{ $report->mac_address ?: 'No MAC' }}</span>
+                            </span>
                         </td>
-                        <td>{{ $report->serial_number ?: 'No serial' }}</td>
-                        <td>{{ $report->reported_at?->diffForHumans() ?: '-' }}</td>
+                        <td @class(['mono', 'cell-muted' => ! $report->serial_number])>{{ $report->serial_number ?: 'No serial' }}</td>
+                        <td class="nowrap">{{ $report->reported_at?->diffForHumans() ?: '-' }}</td>
                         <td>
                             @if ($report->asset)
-                                <div>{{ $report->asset->asset_name }}</div>
-                                <div style="font-size:10px;color:var(--color-text-secondary)">{{ $report->asset->serial_number ?: 'No serial' }}</div>
+                                <span class="ui-cell-stack">
+                                    <span>{{ $report->asset->asset_name }}</span>
+                                    <span class="ui-person-sub mono">{{ $report->asset->serial_number ?: 'No serial' }}</span>
+                                </span>
                             @else
-                                <span class="pill p-w">Unmatched</span>
+                                <x-ui.status-pill tone="warning" label="Unmatched" />
                             @endif
                         </td>
                         <td>
-                            <div>{{ $report->os_name ?: '-' }} {{ $report->os_version ?: '' }}</div>
-                            <div style="font-size:10px;color:var(--color-text-secondary)">
-                                {{ $report->cpu_name ?: '-' }} | {{ $report->ram_gb ? $report->ram_gb.' GB' : '-' }}
-                            </div>
+                            <span class="ui-cell-stack">
+                                <span>{{ $report->os_name ?: '-' }} {{ $report->os_version ?: '' }}</span>
+                                <span class="ui-person-sub">{{ $report->cpu_name ?: '-' }} · {{ $report->ram_gb ? $report->ram_gb.' GB' : '-' }}</span>
+                            </span>
                         </td>
-                        <td>{{ $report->region?->region_name ?: '-' }}</td>
-                        <td>
+                        <td @class(['cell-muted' => ! $report->region])>{{ $report->region?->region_name ?: '-' }}</td>
+                        <td class="actions">
                             @if (! $report->matched || $linkingReportId === $report->id)
                                 @if ($linkingReportId === $report->id)
-                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                                        <select wire:model="linkAssetId" class="form-input" style="min-width:220px">
+                                    <div class="row-actions link-picker">
+                                        <label for="link-asset-{{ $report->id }}" class="sr-only-text">Asset to link to {{ $report->hostname ?: 'this device' }}</label>
+                                        <select id="link-asset-{{ $report->id }}" wire:model="linkAssetId" class="form-input">
                                             <option value="">Select asset</option>
                                             @foreach ($assets as $asset)
                                                 <option value="{{ $asset->id }}">
@@ -72,30 +73,36 @@
                                                 </option>
                                             @endforeach
                                         </select>
-                                        <button type="button" wire:click="linkReport" class="actn actn-p">Link</button>
-                                        <button type="button" wire:click="cancelLink" class="actn">Cancel</button>
+                                        <button type="button" wire:click="linkReport" class="btn btn-primary btn-sm">Link</button>
+                                        <button type="button" wire:click="cancelLink" class="btn btn-ghost btn-sm">Cancel</button>
                                     </div>
                                 @else
-                                    <button type="button" wire:click="startLink({{ $report->id }})" class="actn actn-p">Link Asset</button>
+                                    <button type="button" wire:click="startLink({{ $report->id }})" class="btn btn-sm">
+                                        <x-ui.icon name="layers" class="icon-sm" />
+                                        Link Asset
+                                    </button>
                                 @endif
                             @else
-                                <span style="font-size:11px;color:var(--color-text-secondary)">Matched</span>
+                                <span class="ui-hint">Matched</span>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="7" style="text-align:center;color:var(--color-text-secondary);padding:20px">
-                            No agent reports found.
-                        </td>
-                    </tr>
+                    <x-ui.empty-row :colspan="7" icon="radar" title="No agent reports found." description="Devices appear here once their agent checks in." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary)">
-            {{ $reports->links() }}
+                @if ($reports->hasPages())
+                    <x-slot:footer>
+                        <div class="pager-end">{{ $reports->links() }}</div>
+                    </x-slot:footer>
+                @endif
+            </x-ui.table>
+
+            <div wire:loading.delay wire:target="search,matchedFilter,perPage,gotoPage,nextPage,previousPage,setPage" class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
+            </div>
         </div>
-    </div>
+    </x-ui.card>
 </div>
-

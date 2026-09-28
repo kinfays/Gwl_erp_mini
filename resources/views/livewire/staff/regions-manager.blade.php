@@ -1,134 +1,85 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Regions</h2>
-            <p>Manage region records used by locations, employees, and HR workflows.</p>
-        </div>
-    </div>
+    <x-ui.page-header title="Regions" description="Manage region records used by locations, employees, and HR workflows." />
 
     @if (session('success'))
-        <div class="erp-card" style="margin-bottom:14px;background:#eaf7ef;border-color:#b8e0c5;color:#21633c;">
-            {{ session('success') }}
-        </div>
+        <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
     @endif
 
     @error('region_name')
-        <div class="erp-card" style="margin-bottom:14px;background:#fef2f2;border-color:#fecaca;color:#991b1b;">
-            {{ $message }}
-        </div>
+        <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert>
     @enderror
 
-    <div class="two">
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Region Directory</span>
-            </div>
-
-            <table>
-                <thead>
+    <div class="ui-grid ui-grid-main">
+        <x-ui.card title="Region Directory" :description="$regions->count().' regions'" :padded="false">
+            <x-ui.table label="Regions">
+                <x-slot:head>
                     <tr>
                         <th>Region</th>
                         <th>HR Email</th>
-                        <th>Locations</th>
-                        <th>Employees</th>
-                        <th></th>
+                        <th class="num">Locations</th>
+                        <th class="num">Employees</th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse ($regions as $region)
-                        <tr>
-                            <td>{{ $region->region_name }}</td>
-                            <td>{{ $region->hr_email ?: '-' }}</td>
-                            <td>{{ $region->districts_count }}</td>
-                            <td>{{ $region->employees_count }}</td>
-                            <td>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                                    <button wire:click="edit({{ $region->id }})" class="actn">Edit</button>
-                                    <button
-                                        type="button"
-                                        class="actn actn-r"
-                                        x-data
-                                        x-on:click.prevent="$dispatch('confirm-action', {
-                                            title: 'Delete region?',
-                                            message: @js('This will delete ' . $region->region_name . ' if no locations or employees are assigned.'),
-                                            confirmLabel: 'Delete',
-                                            variant: 'danger',
-                                            action: () => $wire.delete({{ $region->id }})
-                                        })"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="5" style="text-align:center;color:var(--color-text-secondary)">No regions found.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
 
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">{{ $editingId ? 'Edit Region' : 'Add Region' }}</span>
-            </div>
+                @forelse ($regions as $region)
+                    <tr wire:key="region-{{ $region->id }}" @class(['is-selected' => $editingId === $region->id])>
+                        <td>{{ $region->region_name }}</td>
+                        <td @class(['cell-muted' => ! $region->hr_email])>{{ $region->hr_email ?: '-' }}</td>
+                        <td class="num">{{ $region->districts_count }}</td>
+                        <td class="num">{{ $region->employees_count }}</td>
+                        <td class="actions">
+                            <div class="row-actions">
+                                <button type="button" wire:click="edit({{ $region->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $region->region_name }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-icon is-danger"
+                                    title="Delete"
+                                    aria-label="Delete {{ $region->region_name }}"
+                                    x-data
+                                    x-on:click.prevent="$dispatch('confirm-action', {
+                                        title: 'Delete region?',
+                                        message: @js('This will delete ' . $region->region_name . ' if no locations or employees are assigned.'),
+                                        confirmLabel: 'Delete',
+                                        variant: 'danger',
+                                        action: () => $wire.delete({{ $region->id }})
+                                    })"
+                                >
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="5" icon="map" title="No regions found." description="Add the first one with the form alongside." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-            <div style="padding:14px">
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">Region Name</label>
+        <x-ui.card :title="$editingId ? 'Edit Region' : 'Add Region'" class="manager-form">
+            <div class="ui-stack">
+                @if ($editingId)
+                    <x-ui.input label="Region Name" wire:model="editingName" placeholder="Enter region name" wire:key="region-edit-{{ $editingId }}" x-init="$nextTick(() => $el.focus())" />
+                    <x-ui.input label="HR Email" type="email" wire:model="editingHrEmail" placeholder="Optional" wire:key="region-edit-email-{{ $editingId }}" />
+                @else
+                    <x-ui.input label="Region Name" wire:model="region_name" placeholder="Enter region name" wire:key="region-new" />
+                    <x-ui.input label="HR Email" type="email" wire:model="hr_email" placeholder="Optional" wire:key="region-new-email" />
+                @endif
+
+                <div class="ui-form-actions">
                     @if ($editingId)
-                        <input
-                            type="text"
-                            wire:model="editingName"
-                            class="form-input"
-                            placeholder="Enter region name"
-                        >
+                        <button type="button" wire:click="cancelEdit" class="btn btn-secondary">Cancel</button>
+                        <button type="button" wire:click="update" class="btn btn-primary">Save</button>
                     @else
-                        <input
-                            type="text"
-                            wire:model="region_name"
-                            class="form-input"
-                            placeholder="Enter region name"
-                        >
-                    @endif
-                    @error($editingId ? 'editingName' : 'region_name')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
-                </div>
-
-                <div class="form-field" style="margin-bottom:12px">
-                    <label class="form-label">HR Email</label>
-                    @if ($editingId)
-                        <input
-                            type="email"
-                            wire:model="editingHrEmail"
-                            class="form-input"
-                            placeholder="Optional"
-                        >
-                    @else
-                        <input
-                            type="email"
-                            wire:model="hr_email"
-                            class="form-input"
-                            placeholder="Optional"
-                        >
-                    @endif
-                    @error($editingId ? 'editingHrEmail' : 'hr_email')
-                        <span class="form-label" style="color:#a32d2d">{{ $message }}</span>
-                    @enderror
-                </div>
-
-                <div style="display:flex;gap:8px;justify-content:flex-end">
-                    @if ($editingId)
-                        <button wire:click="update" class="btn btn-primary">Save</button>
-                        <button wire:click="cancelEdit" class="btn">Cancel</button>
-                    @else
-                        <button wire:click="save" class="btn btn-primary">Add Region</button>
+                        <button type="button" wire:click="save" class="btn btn-primary">
+                            <x-ui.icon name="plus" />
+                            Add Region
+                        </button>
                     @endif
                 </div>
             </div>
-        </div>
+        </x-ui.card>
     </div>
 </div>

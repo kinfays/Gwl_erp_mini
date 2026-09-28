@@ -1,25 +1,14 @@
 <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Leave Reports</h2>
-            <p>Download approved leave summaries for your visible scope.</p>
-        </div>
-    </div>
+    <x-ui.page-header title="Leave Reports" description="Download approved leave summaries for your visible scope." />
 
-    <div class="pg">
-        <div class="pg-head">
-            <span class="pg-title">Monthly Leave Summary</span>
-
-            <select wire:model="format" class="form-input" style="width:140px">
+    <x-ui.card title="Monthly Leave Summary">
+        <div class="report-export">
+            <x-ui.select label="Format" wire:model="format" id="leave-report-format" class="report-format">
                 <option value="xlsx">Excel (.xlsx)</option>
                 <option value="csv">CSV</option>
-            </select>
-        </div>
+            </x-ui.select>
 
-        <div style="padding:14px">
-            <button wire:click="export" class="btn btn-primary">
-                Export Report
-            </button>
+            <x-ui.button variant="primary" icon="download" wire:click="export" loading="export">Export Report</x-ui.button>
         </div>
-    </div>
+    </x-ui.card>
 </div>

@@ -1,179 +1,167 @@
-<div class="space-y-4">
-    <div class="bg-white border rounded-xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-            <h2 class="text-lg font-semibold">Approvals</h2>
-            <p class="text-sm text-slate-600">Pending leave requests in your approval chain.</p>
-        </div>
-
-        <div class="flex flex-col sm:flex-row gap-2">
-            <span class="px-3 py-2 text-sm rounded-sm bg-blue-600 text-white text-center">Pending</span>
-            <input type="text"
-                   wire:model.live="search"
-                   placeholder="Search employee name..."
-                   class="border rounded-sm px-3 py-2 text-sm">
-        </div>
-    </div>
+<div>
+    <x-ui.page-header title="Approvals" description="Pending leave requests in your approval chain.">
+        <x-slot:actions>
+            <x-ui.badge tone="primary">Pending</x-ui.badge>
+            <x-ui.input type="search" wire:model.live="search" placeholder="Search employee name..." icon="search" aria-label="Search employee name" class="approvals-search" />
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @if ($errors->has('action'))
-        <div class="p-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-            {{ $errors->first('action') }}
-        </div>
+        <x-ui.alert tone="danger" role="alert">{{ $errors->first('action') }}</x-ui.alert>
     @endif
 
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        @forelse($requests as $r)
-            <div class="bg-white border rounded-xl p-5 space-y-3">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <div class="text-sm text-slate-500">Leave Type</div>
-                        <div class="text-base font-semibold">{{ $r->leave_type }}</div>
-                    </div>
-
-                    <span class="text-xs px-2 py-1 rounded-sm bg-slate-100 text-slate-700 text-right">
-                        {{ $r->requester->full_name }}
+    <div class="request-grid">
+        @forelse ($requests as $r)
+            <article class="request-card">
+                <header class="request-card-head">
+                    <span class="ui-person">
+                        <x-ui.avatar :name="$r->requester->full_name" size="lg" />
+                        <span>
+                            <span class="ui-person-name">{{ $r->requester->full_name }}</span>
+                            <span class="ui-person-sub">{{ $r->department->department_name ?? 'N/A' }}</span>
+                        </span>
                     </span>
-                </div>
+                    <x-ui.status-pill
+                        :tone="$r->manager_recommendation === 'Pending' ? 'warning' : 'info'"
+                        :label="$r->manager_recommendation === 'Pending' ? 'Manager review' : 'Final approval'"
+                    />
+                </header>
 
-                <div class="text-sm text-slate-700 space-y-1">
+                <dl class="ui-dl request-card-facts">
                     <div>
-                        <span class="text-slate-500">Dates:</span>
-                        {{ $r->start_date->format('d M Y') }} - {{ $r->end_date->format('d M Y') }}
+                        <dt>Leave Type</dt>
+                        <dd>{{ $r->leave_type }}</dd>
                     </div>
-                    <div><span class="text-slate-500">Days:</span> {{ $r->total_days_applied }}</div>
-                    <div><span class="text-slate-500">Applied:</span> {{ $r->created_at?->format('D, d M Y h:i A') }}</div>
-                    <div><span class="text-slate-500">Department:</span> {{ $r->department->department_name ?? 'N/A' }}</div>
                     <div>
-                        <span class="text-slate-500">Stage:</span>
-                        {{ $r->manager_recommendation === 'Pending' ? 'Manager review' : 'Final approval' }}
+                        <dt>Days</dt>
+                        <dd>{{ $r->total_days_applied }}</dd>
                     </div>
-                </div>
+                    <div class="span-2">
+                        <dt>Dates</dt>
+                        <dd>{{ $r->start_date->format('d M Y') }} – {{ $r->end_date->format('d M Y') }}</dd>
+                    </div>
+                    <div class="span-2">
+                        <dt>Applied</dt>
+                        <dd>{{ $r->created_at?->format('D, d M Y h:i A') }}</dd>
+                    </div>
+                </dl>
 
-                <div class="pt-2 flex flex-wrap gap-2">
-                    <button wire:click="viewRequest({{ $r->id }})"
-                            class="px-3 py-1.5 rounded-sm bg-slate-100 text-xs">
-                        View
-                    </button>
+                <footer class="request-card-actions">
+                    <x-ui.button size="sm" variant="ghost" icon="eye" wire:click="viewRequest({{ $r->id }})">View</x-ui.button>
 
-                    @if($readOnly)
-                        <span class="px-3 py-1.5 rounded-sm bg-slate-50 text-slate-500 text-xs border">Read-only</span>
+                    @if ($readOnly)
+                        <x-ui.badge>Read-only</x-ui.badge>
                     @else
-                        <button wire:click="approveRequest({{ $r->id }})"
-                                class="px-3 py-1.5 rounded-sm bg-blue-600 text-white text-xs">
-                            Approve
-                        </button>
                         <button
-                                type="button"
-                                x-data
-                                x-on:click.prevent="$dispatch('confirm-action', {
-                                    title: 'Deny leave request?',
-                                    message: @js('This will deny the request from ' . $r->requester->full_name . '.'),
-                                    confirmLabel: 'Deny',
-                                    variant: 'danger',
-                                    action: () => $wire.denyRequest({{ $r->id }})
-                                })"
-                                class="px-3 py-1.5 rounded-sm bg-red-50 text-red-700 text-xs border border-red-200">
-                            Deny
-                        </button>
+                            type="button"
+                            class="btn btn-danger btn-sm"
+                            x-data
+                            x-on:click.prevent="$dispatch('confirm-action', {
+                                title: 'Deny leave request?',
+                                message: @js('This will deny the request from ' . $r->requester->full_name . '.'),
+                                confirmLabel: 'Deny',
+                                variant: 'danger',
+                                action: () => $wire.denyRequest({{ $r->id }})
+                            })"
+                        >Deny</button>
+                        <x-ui.button size="sm" variant="primary" icon="check" wire:click="approveRequest({{ $r->id }})" loading="approveRequest">Approve</x-ui.button>
                     @endif
-                </div>
-            </div>
+                </footer>
+            </article>
         @empty
-            <div class="md:col-span-2 xl:col-span-3 bg-white border rounded-xl p-8 text-center text-slate-500">
-                No pending requests found.
-            </div>
+            <x-ui.card class="request-grid-empty">
+                <x-ui.empty-state icon="square-check-big" title="No pending requests found." description="When someone in your approval chain applies for leave, it will wait for you here." />
+            </x-ui.card>
         @endforelse
     </div>
 
-    <div>
+    <div class="list-pager">
         {{ $requests->links() }}
     </div>
 
-    @if($showDrawer && $selectedRequest)
+    @if ($showDrawer && $selectedRequest)
         @php($commentKey = 'comments.' . $selectedRequest->id)
-        <div class="fixed inset-0 z-50">
-            <div class="absolute inset-0 bg-black/40" wire:click="closeDrawer"></div>
-
-            <div class="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-xl border-l p-6 overflow-y-auto">
-                <div class="flex items-start justify-between">
-                    <div>
-                        <h3 class="text-lg font-semibold">Leave Request Details</h3>
-                        <p class="text-sm text-slate-600">{{ $selectedRequest->requester->full_name }}</p>
-                    </div>
-                    <button wire:click="closeDrawer" class="text-2xl text-slate-500 hover:text-slate-800">&times;</button>
+        <x-ui.drawer show="true" close="$wire.closeDrawer()" title="Leave Request Details" :description="$selectedRequest->requester->full_name">
+            <dl class="ui-dl">
+                <div>
+                    <dt>Employee</dt>
+                    <dd>{{ $selectedRequest->requester->full_name }}</dd>
                 </div>
-
-                <div class="mt-6 space-y-3 text-sm">
-                    <div><span class="text-slate-500">Employee:</span> {{ $selectedRequest->requester->full_name }}</div>
-                    <div><span class="text-slate-500">Department:</span> {{ $selectedRequest->department->department_name ?? 'N/A' }}</div>
-                    <div><span class="text-slate-500">Type:</span> {{ $selectedRequest->leave_type }}</div>
-                    <div><span class="text-slate-500">Stage:</span> {{ $selectedRequest->manager_recommendation === 'Pending' ? 'Manager review' : 'Final approval' }}</div>
-                    <div><span class="text-slate-500">Applied:</span> {{ $selectedRequest->created_at?->format('D, d M Y h:i A') }}</div>
-                    <div>
-                        <span class="text-slate-500">Dates:</span>
-                        {{ $selectedRequest->start_date->format('d M Y') }} - {{ $selectedRequest->end_date->format('d M Y') }}
-                    </div>
-                    <div><span class="text-slate-500">Working Days:</span> {{ $selectedRequest->total_days_applied }}</div>
-
-                    <div class="pt-2">
-                        <div class="text-slate-500 mb-1">Reason</div>
-                        <div class="p-3 bg-slate-50 border rounded-sm whitespace-pre-line">{{ $selectedRequest->leave_details ?: 'No details provided.' }}</div>
-                    </div>
-
-                    <div class="pt-2">
-                        <div class="text-slate-500 mb-1">Manager</div>
-                        <div class="p-3 bg-slate-50 border rounded-sm">
-                            {{ $selectedRequest->manager?->full_name ?? 'N/A' }}<br>
-                            <span class="text-xs text-slate-500">Recommendation: {{ $selectedRequest->manager_recommendation }}</span><br>
-                            <span class="text-xs text-slate-500">Comment: {{ $selectedRequest->manager_comments ?: 'N/A' }}</span>
-                        </div>
-                    </div>
-
-                    <div class="pt-2">
-                        <label class="text-slate-500 mb-1 block">Comment (optional)</label>
-                        <textarea wire:model.live="comments.{{ $selectedRequest->id }}"
-                                  class="w-full border rounded-sm p-2 text-sm"
-                                  rows="3"
-                                  maxlength="2000"></textarea>
-                        @error($commentKey) <div class="text-xs text-red-700 mt-1">{{ $message }}</div> @enderror
-                    </div>
-
-                    @if($selectedRequest->file_attachment)
-                        <div class="pt-2">
-                            <div class="text-slate-500 mb-1">Attachment</div>
-                            <a class="text-blue-600 underline"
-                               href="{{ asset('storage/' . $selectedRequest->file_attachment) }}"
-                               target="_blank"
-                               rel="noopener">
-                                View attachment
-                            </a>
-                        </div>
-                    @endif
+                <div>
+                    <dt>Department</dt>
+                    <dd>{{ $selectedRequest->department->department_name ?? 'N/A' }}</dd>
                 </div>
-
-                <div class="mt-6 flex flex-wrap gap-2">
-                    @if($readOnly)
-                        <span class="px-4 py-2 rounded-sm bg-slate-50 text-slate-500 text-sm border">Read-only</span>
-                    @else
-                        <button wire:click="approveRequest({{ $selectedRequest->id }})"
-                                class="px-4 py-2 rounded-sm bg-blue-600 text-white text-sm">
-                            Approve
-                        </button>
-                        <button
-                                type="button"
-                                x-data
-                                x-on:click.prevent="$dispatch('confirm-action', {
-                                    title: 'Deny leave request?',
-                                    message: @js('This will deny the request from ' . $selectedRequest->requester->full_name . '.'),
-                                    confirmLabel: 'Deny',
-                                    variant: 'danger',
-                                    action: () => $wire.denyRequest({{ $selectedRequest->id }})
-                                })"
-                                class="px-4 py-2 rounded-sm bg-red-600 text-white text-sm">
-                            Deny
-                        </button>
-                    @endif
+                <div>
+                    <dt>Type</dt>
+                    <dd>{{ $selectedRequest->leave_type }}</dd>
                 </div>
-            </div>
-        </div>
+                <div>
+                    <dt>Stage</dt>
+                    <dd>{{ $selectedRequest->manager_recommendation === 'Pending' ? 'Manager review' : 'Final approval' }}</dd>
+                </div>
+                <div>
+                    <dt>Dates</dt>
+                    <dd>{{ $selectedRequest->start_date->format('d M Y') }} – {{ $selectedRequest->end_date->format('d M Y') }}</dd>
+                </div>
+                <div>
+                    <dt>Working Days</dt>
+                    <dd>{{ $selectedRequest->total_days_applied }}</dd>
+                </div>
+                <div class="span-2">
+                    <dt>Applied</dt>
+                    <dd>{{ $selectedRequest->created_at?->format('D, d M Y h:i A') }}</dd>
+                </div>
+            </dl>
+
+            <section class="ui-panel">
+                <h3 class="ui-panel-title">Reason</h3>
+                <p class="panel-text">{{ $selectedRequest->leave_details ?: 'No details provided.' }}</p>
+            </section>
+
+            <section class="ui-panel">
+                <h3 class="ui-panel-title">Manager</h3>
+                <p class="panel-text"><strong>{{ $selectedRequest->manager?->full_name ?? 'N/A' }}</strong></p>
+                <p class="ui-hint">Recommendation: {{ $selectedRequest->manager_recommendation }}</p>
+                <p class="ui-hint">Comment: {{ $selectedRequest->manager_comments ?: 'N/A' }}</p>
+            </section>
+
+            <x-ui.field label="Comment (optional)" for="approval-comment" :error="$commentKey">
+                <textarea
+                    id="approval-comment"
+                    wire:model.live="comments.{{ $selectedRequest->id }}"
+                    class="form-input ui-input"
+                    rows="3"
+                    maxlength="2000"
+                ></textarea>
+            </x-ui.field>
+
+            @if ($selectedRequest->file_attachment)
+                <p>
+                    <a class="text-link" href="{{ asset('storage/' . $selectedRequest->file_attachment) }}" target="_blank" rel="noopener">
+                        <x-ui.icon name="external-link" class="icon-sm" /> View attachment
+                    </a>
+                </p>
+            @endif
+
+            <x-slot:footer>
+                @if ($readOnly)
+                    <x-ui.badge>Read-only</x-ui.badge>
+                @else
+                    <button
+                        type="button"
+                        class="btn btn-danger-solid"
+                        x-data
+                        x-on:click.prevent="$dispatch('confirm-action', {
+                            title: 'Deny leave request?',
+                            message: @js('This will deny the request from ' . $selectedRequest->requester->full_name . '.'),
+                            confirmLabel: 'Deny',
+                            variant: 'danger',
+                            action: () => $wire.denyRequest({{ $selectedRequest->id }})
+                        })"
+                    >Deny</button>
+                    <x-ui.button variant="primary" icon="check" wire:click="approveRequest({{ $selectedRequest->id }})" loading="approveRequest">Approve</x-ui.button>
+                @endif
+            </x-slot:footer>
+        </x-ui.drawer>
     @endif
 </div>

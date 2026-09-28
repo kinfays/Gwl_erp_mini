@@ -2,331 +2,190 @@
     @vite('resources/js/charts.js')
 @endassets
 
-<div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>Transport Reports</h2>
-            <p>{{ $fromLabel }} to {{ $toLabel }}</p>
-        </div>
-        <div class="ph-right">
-            <a href="{{ route('transport.reports.export.pdf', $exportQuery) }}" class="btn btn-secondary">Export PDF</a>
-            <a href="{{ route('transport.reports.export.excel', $exportQuery) }}" class="btn btn-primary">Export Excel</a>
-        </div>
-    </div>
+@php
+    $statIcons = [
+        'Total Vehicles' => ['car', 'primary'],
+        'In Maintenance' => ['wrench', 'warning'],
+        'Open Issues' => ['triangle-alert', 'danger'],
+        'Fleet Spend' => ['banknote', 'primary'],
+        'Docs Expiring' => ['calendar-x', 'warning'],
+    ];
+    // Colour a badge only when it reports a non-zero problem ("0 critical" stays neutral).
+    $deltaTone = fn (?string $tone, ?string $badge) => preg_match('/^0(\D|$)/', trim((string) $badge)) ? 'neutral' : match ($tone) {
+        'red' => 'bad',
+        'amber' => 'warn',
+        default => 'neutral',
+    };
+    // Issue types keep the hue family the report service gives them, re-stepped to the chart palette.
+    $issueTones = [
+        '#a32d2d' => 'series-8',
+        '#b7791f' => 'series-4',
+        '#185fa5' => 'series-1',
+        '#21633c' => 'series-6',
+        '#6b46c1' => 'series-7',
+        '#0f766e' => 'series-3',
+        '#66758b' => 'muted',
+        '#475569' => 'muted',
+    ];
+@endphp
 
-    <div class="pg" style="margin-top:14px">
-        <div class="pg-head">
-            <span class="pg-title">Filters</span>
-        </div>
-        <div style="padding:14px">
-            <div class="form-row">
-                <div class="form-field">
-                    <label class="form-label">Date Range</label>
-                    <select class="form-input" wire:model.live="datePreset">
-                        <option value="this_month">This month</option>
-                        <option value="last_3_months">Last 3 months</option>
-                        <option value="last_6_months">Last 6 months</option>
-                        <option value="last_12_months">Last 12 months</option>
-                        <option value="custom">Custom range</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label class="form-label">Department</label>
-                    <select class="form-input" wire:model.live="departmentId">
-                        <option value="">All departments</option>
-                        @foreach ($departments as $department)
-                            <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+<div>
+    <x-ui.page-header title="Transport Reports" :description="$fromLabel.' to '.$toLabel">
+        <x-slot:actions>
+            <x-ui.button :href="route('transport.reports.export.pdf', $exportQuery)" icon="file-down">Export PDF</x-ui.button>
+            <x-ui.button :href="route('transport.reports.export.excel', $exportQuery)" variant="primary" icon="download">Export Excel</x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
+
+    <x-ui.card class="report-filters">
+        <div class="report-filter-row">
+            <div class="ui-field">
+                <span class="ui-label" aria-hidden="true">Date range</span>
+                <x-ui.segmented
+                    label="Date range"
+                    wire:model.live="datePreset"
+                    :options="[
+                        'this_month' => 'This month',
+                        'last_3_months' => 'Last 3 months',
+                        'last_6_months' => 'Last 6 months',
+                        'last_12_months' => 'Last 12 months',
+                        'custom' => 'Custom range',
+                    ]"
+                />
             </div>
+
+            <x-ui.select label="Department" wire:model.live="departmentId" class="report-filter-select">
+                <option value="">All departments</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}">{{ $department->department_name }}</option>
+                @endforeach
+            </x-ui.select>
 
             @if ($datePreset === 'custom')
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-label">From</label>
-                        <input type="date" class="form-input" wire:model.live="customFrom">
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">To</label>
-                        <input type="date" class="form-input" wire:model.live="customTo">
-                    </div>
-                </div>
+                <x-ui.input type="date" label="From" wire:model.live="customFrom" />
+                <x-ui.input type="date" label="To" wire:model.live="customTo" />
             @endif
         </div>
-    </div>
+    </x-ui.card>
 
-    <style>
-        .transport-report-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; }
-        .transport-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-        @media (max-width: 1000px) {
-            .transport-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .transport-report-grid { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 640px) {
-            .transport-report-stats { grid-template-columns: 1fr; }
-        }
-    </style>
-
-    <div class="stats transport-report-stats">
+    <div class="ui-stat-grid report-stats">
         @foreach (($payload['statCards'] ?? []) as $card)
             @php
-                $tone = $card['tone'] ?? 'blue';
-                $badgeBg = match ($tone) {
-                    'red' => '#fcebeb',
-                    'amber' => '#faeeda',
-                    'green' => '#eaf3de',
-                    default => '#e6f1fb',
-                };
-                $badgeColor = match ($tone) {
-                    'red' => '#a32d2d',
-                    'amber' => '#854f0b',
-                    'green' => '#3b6d11',
-                    default => '#185fa5',
-                };
+                [$icon, $tone] = $statIcons[$card['label']] ?? ['chart-column', 'primary'];
             @endphp
-            <div class="stat">
-                <div class="stat-lbl">{{ $card['label'] }}</div>
-                <div class="stat-val">{{ $card['value'] }}</div>
-                <div class="stat-sub">
-                    <span class="pill" style="background:{{ $badgeBg }};color:{{ $badgeColor }}">{{ $card['badge'] }}</span>
-                </div>
-            </div>
+            <x-ui.stat-tile
+                :label="$card['label']"
+                :value="$card['value']"
+                :icon="$icon"
+                :tone="$tone"
+                :delta="$card['badge'] ?? null"
+                :delta-tone="$deltaTone($card['tone'] ?? null, $card['badge'] ?? null)"
+            />
         @endforeach
     </div>
 
-    <div class="transport-report-grid">
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Monthly Fleet Expenses</span></div>
-            <div style="padding:14px;height:280px"><canvas id="transportMonthlyExpensesChart"></canvas></div>
-        </div>
+    <div class="ui-grid ui-grid-2 report-grid">
+        <x-ui.card title="Monthly Fleet Expenses">
+            <x-ui.chart type="bar" label="Monthly fleet expenses" unit="GHS"
+                event="transport-report-data-updated" source="monthlyExpenses"
+                :source-data="$payload['monthlyExpenses'] ?? []"
+                :series="[['label' => 'GHS', 'key' => 'data']]" height="260" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Expense Breakdown By Type</span></div>
-            <div style="padding:14px;height:280px"><canvas id="transportExpenseTypeChart"></canvas></div>
-        </div>
+        <x-ui.card title="Expense Breakdown By Type">
+            <x-ui.chart type="doughnut" label="Expense breakdown by type" unit="GHS" center center-caption="GHS"
+                event="transport-report-data-updated" source="expenseByType"
+                :source-data="$payload['expenseByType'] ?? []"
+                :series="[['label' => 'GHS', 'key' => 'data']]" height="260" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Vehicle Status Distribution</span></div>
-            <div style="padding:14px;height:260px"><canvas id="transportVehicleStatusChart"></canvas></div>
-        </div>
+        <x-ui.card title="Vehicle Status Distribution">
+            <x-ui.chart type="doughnut" label="Vehicle status distribution" center center-caption="vehicles"
+                event="transport-report-data-updated" source="vehicleStatusCounts"
+                :source-data="$payload['vehicleStatusCounts'] ?? []"
+                :series="[['label' => 'Vehicles', 'key' => 'data', 'colors' => ['success', 'warning', 'muted']]]" height="240" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Vehicles By Department</span></div>
-            <div style="padding:14px;height:260px"><canvas id="transportDepartmentChart"></canvas></div>
-        </div>
+        <x-ui.card title="Vehicles By Department">
+            <x-ui.chart type="hbar" label="Vehicles by department"
+                event="transport-report-data-updated" source="vehiclesByDepartment"
+                :source-data="$payload['vehiclesByDepartment'] ?? []"
+                :series="[['label' => 'Vehicles', 'key' => 'data']]" height="240" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Mileage Logged Per Month</span></div>
-            <div style="padding:14px;height:280px"><canvas id="transportMileageChart"></canvas></div>
-        </div>
+        <x-ui.card title="Mileage Logged Per Month">
+            <x-ui.chart type="area" label="Mileage logged per month" unit="km"
+                event="transport-report-data-updated" source="mileageByMonth"
+                :source-data="$payload['mileageByMonth'] ?? []"
+                :series="[['label' => 'KM', 'key' => 'data']]" height="260" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Issues Reported Vs Resolved</span></div>
-            <div style="padding:14px;height:280px"><canvas id="transportIssuesTrendChart"></canvas></div>
-        </div>
+        <x-ui.card title="Issues Reported Vs Resolved">
+            <x-ui.chart type="line" label="Issues reported versus resolved"
+                event="transport-report-data-updated" source="issuesTrend"
+                :source-data="$payload['issuesTrend'] ?? []"
+                :series="[['label' => 'Reported', 'key' => 'reported'], ['label' => 'Resolved', 'key' => 'resolved']]" height="260" />
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Top 5 Most Expensive Vehicles</span></div>
-            <div style="padding:14px;height:260px"><canvas id="transportTopSpendChart"></canvas></div>
-        </div>
+        <x-ui.card title="Top 5 Most Expensive Vehicles">
+            <x-ui.chart type="hbar" label="Top five most expensive vehicles" unit="GHS"
+                event="transport-report-data-updated" source="topExpensiveVehicles"
+                :source-data="$payload['topExpensiveVehicles'] ?? []"
+                :series="[['label' => 'GHS', 'key' => 'data']]" height="240" />
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head"><span class="pg-title">Issues By Type</span></div>
-            <div style="padding:14px;display:grid;gap:10px">
-                @foreach (($payload['issuesByType']['rows'] ?? []) as $row)
-                    <div style="display:grid;grid-template-columns:34px 110px 1fr 40px;align-items:center;gap:10px">
-                        <span style="width:30px;height:30px;border-radius:8px;background:{{ $row['color'] }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">{{ $row['abbr'] }}</span>
-                        <span style="font-size:12px;color:var(--color-text-primary)">{{ $row['label'] }}</span>
-                        <span style="height:8px;border-radius:999px;background:var(--color-background-secondary);overflow:hidden">
-                            <span style="display:block;height:8px;width:{{ $row['percent'] }}%;background:{{ $row['color'] }}"></span>
+        <x-ui.card title="Issues By Type">
+            <div class="report-bars">
+                @forelse (($payload['issuesByType']['rows'] ?? []) as $row)
+                    @php
+                        $tone = $issueTones[strtolower($row['color'] ?? '')] ?? 'muted';
+                    @endphp
+                    <div class="report-bar-row">
+                        <span class="report-bar-label">{{ $row['label'] }}</span>
+                        <span class="report-bar-track" aria-hidden="true">
+                            <span style="width: {{ $row['percent'] }}%; background: var(--color-{{ $tone }})"></span>
                         </span>
-                        <strong style="font-size:12px;text-align:right">{{ $row['count'] }}</strong>
+                        <strong class="num">{{ $row['count'] }}</strong>
                     </div>
-                @endforeach
+                @empty
+                    <x-ui.empty-state icon="triangle-alert" title="No issues reported in this period" />
+                @endforelse
             </div>
-        </div>
+        </x-ui.card>
 
-        <div class="pg">
-            <div class="pg-head"><span class="pg-title">Upcoming Document Renewals</span></div>
-            <table>
-                <thead>
+        <x-ui.card title="Upcoming Document Renewals" description="Due within 60 days" :padded="false">
+            <x-ui.table label="Upcoming document renewals" :sticky="false">
+                <x-slot:head>
                     <tr>
                         <th>Vehicle</th>
                         <th>Document</th>
                         <th>Expiry</th>
-                        <th>Days</th>
+                        <th class="num">Days</th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse (($payload['upcomingExpiryDocs'] ?? []) as $row)
-                        <tr>
-                            <td>{{ $row['vehicle'] }}</td>
-                            <td>{{ $row['document'] }}</td>
-                            <td>{{ \Carbon\Carbon::parse($row['expiry_date'])->format('d M Y') }}</td>
-                            <td>
-                                <span class="pill" style="background:{{ $row['badge'] === 'red' ? '#fcebeb' : '#faeeda' }};color:{{ $row['badge'] === 'red' ? '#a32d2d' : '#854f0b' }}">
-                                    {{ $row['days_remaining'] }} days
-                                </span>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="4" class="empty-state">No document renewals due within 60 days.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                </x-slot:head>
+                @forelse (($payload['upcomingExpiryDocs'] ?? []) as $row)
+                    <tr>
+                        <td class="mono">{{ $row['vehicle'] }}</td>
+                        <td>{{ $row['document'] }}</td>
+                        <td>{{ \Carbon\Carbon::parse($row['expiry_date'])->format('d M Y') }}</td>
+                        <td class="num">
+                            <x-ui.status-pill :tone="$row['badge'] === 'red' ? 'danger' : 'warning'" :label="$row['days_remaining'].' days'" />
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="4" icon="calendar-days" title="No document renewals due within 60 days." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
 
-        <div class="pg" wire:ignore>
-            <div class="pg-head"><span class="pg-title">Maintenance Due By Mileage</span></div>
-            <div style="padding:14px;height:300px"><canvas id="transportMaintenanceChart"></canvas></div>
-        </div>
+        <x-ui.card title="Maintenance Due By Mileage" class="report-span-2">
+            <x-ui.chart type="hbar" label="Maintenance due by mileage" unit="km"
+                event="transport-report-data-updated" source="maintenanceDueSoon"
+                :source-data="$payload['maintenanceDueSoon'] ?? []"
+                :series="[
+                    ['label' => 'Current mileage', 'key' => 'current'],
+                    ['label' => 'KM remaining', 'key' => 'remaining', 'colorsKey' => 'remainingColors'],
+                ]" height="300" />
+        </x-ui.card>
     </div>
-
-    <script>
-        (() => {
-            const initialPayload = @js($payload);
-            const chartState = window.transportReportCharts || {};
-            window.transportReportCharts = chartState;
-
-            const palette = {
-                blue: '#185fa5',
-                green: '#21633c',
-                red: '#a32d2d',
-                amber: '#b7791f',
-                slate: '#66758b',
-                cyan: '#0e7490',
-                purple: '#6b46c1'
-            };
-
-            function ctx(id) {
-                const canvas = document.getElementById(id);
-                return canvas ? canvas.getContext('2d') : null;
-            }
-
-            function replaceChart(key, id, config) {
-                const context = ctx(id);
-
-                if (! context || typeof Chart === 'undefined') {
-                    return;
-                }
-
-                if (chartState[key]) {
-                    chartState[key].destroy();
-                }
-
-                chartState[key] = new Chart(context, config);
-            }
-
-            function baseOptions(extra = {}) {
-                return {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { labels: { boxWidth: 10, font: { size: 10 } } }
-                    },
-                    scales: {
-                        x: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(102,117,139,.12)' } },
-                        y: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(102,117,139,.12)' } }
-                    },
-                    ...extra
-                };
-            }
-
-            function render(payload) {
-                if (! payload) {
-                    return;
-                }
-
-                replaceChart('monthlyExpenses', 'transportMonthlyExpensesChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.monthlyExpenses?.labels || [],
-                        datasets: [{ label: 'GHS', data: payload.monthlyExpenses?.data || [], backgroundColor: palette.blue, borderRadius: 5 }]
-                    },
-                    options: baseOptions({ plugins: { legend: { display: false } } })
-                });
-
-                replaceChart('expenseType', 'transportExpenseTypeChart', {
-                    type: 'doughnut',
-                    data: {
-                        labels: payload.expenseByType?.labels || [],
-                        datasets: [{ data: payload.expenseByType?.data || [], backgroundColor: [palette.blue, palette.green, palette.amber, palette.red, palette.cyan, palette.slate, palette.purple, '#0f766e', '#475569'] }]
-                    },
-                    options: baseOptions({ scales: {}, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } })
-                });
-
-                replaceChart('vehicleStatus', 'transportVehicleStatusChart', {
-                    type: 'doughnut',
-                    data: {
-                        labels: payload.vehicleStatusCounts?.labels || [],
-                        datasets: [{ data: payload.vehicleStatusCounts?.data || [], backgroundColor: [palette.green, palette.amber, palette.slate] }]
-                    },
-                    options: baseOptions({ scales: {}, plugins: { legend: { position: 'bottom' } } })
-                });
-
-                replaceChart('departments', 'transportDepartmentChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.vehiclesByDepartment?.labels || [],
-                        datasets: [{ label: 'Vehicles', data: payload.vehiclesByDepartment?.data || [], backgroundColor: palette.cyan, borderRadius: 5 }]
-                    },
-                    options: baseOptions({ indexAxis: 'y', plugins: { legend: { display: false } } })
-                });
-
-                replaceChart('mileage', 'transportMileageChart', {
-                    type: 'line',
-                    data: {
-                        labels: payload.mileageByMonth?.labels || [],
-                        datasets: [{ label: 'KM', data: payload.mileageByMonth?.data || [], borderColor: palette.green, backgroundColor: 'rgba(33,99,60,.14)', fill: true, tension: .35 }]
-                    },
-                    options: baseOptions()
-                });
-
-                replaceChart('issuesTrend', 'transportIssuesTrendChart', {
-                    type: 'line',
-                    data: {
-                        labels: payload.issuesTrend?.labels || [],
-                        datasets: [
-                            { label: 'Reported', data: payload.issuesTrend?.reported || [], borderColor: palette.red, backgroundColor: 'rgba(163,45,45,.08)', tension: .35 },
-                            { label: 'Resolved', data: payload.issuesTrend?.resolved || [], borderColor: palette.green, backgroundColor: 'rgba(33,99,60,.08)', tension: .35 }
-                        ]
-                    },
-                    options: baseOptions()
-                });
-
-                replaceChart('topSpend', 'transportTopSpendChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.topExpensiveVehicles?.labels || [],
-                        datasets: [{ label: 'GHS', data: payload.topExpensiveVehicles?.data || [], backgroundColor: [palette.blue, palette.green, palette.amber, palette.red, palette.cyan], borderRadius: 5 }]
-                    },
-                    options: baseOptions({ indexAxis: 'y', plugins: { legend: { display: false } } })
-                });
-
-                replaceChart('maintenance', 'transportMaintenanceChart', {
-                    type: 'bar',
-                    data: {
-                        labels: payload.maintenanceDueSoon?.labels || [],
-                        datasets: [
-                            { label: 'Current mileage', data: payload.maintenanceDueSoon?.current || [], backgroundColor: palette.blue, borderRadius: 5 },
-                            { label: 'KM remaining', data: payload.maintenanceDueSoon?.remaining || [], backgroundColor: payload.maintenanceDueSoon?.remainingColors || [], borderRadius: 5 }
-                        ]
-                    },
-                    options: baseOptions({ indexAxis: 'y' })
-                });
-            }
-
-            window.addEventListener('transport-report-data-updated', event => render(event.detail.charts));
-
-            // Chart.js arrives as a deferred module, which has run by DOMContentLoaded.
-            const renderInitial = () => requestAnimationFrame(() => render(initialPayload));
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
-            } else {
-                renderInitial();
-            }
-        })();
-    </script>
 </div>

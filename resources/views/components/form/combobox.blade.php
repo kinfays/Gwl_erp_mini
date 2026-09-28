@@ -6,6 +6,7 @@
     'options' => [],
     'placeholder' => 'Select an option',
     'emptyText' => 'No matching results',
+    'required' => false,
 ])
 
 @php
@@ -112,7 +113,7 @@
     }"
     x-on:click.outside="open = false"
 >
-    <label for="{{ $inputId }}" class="form-label">{{ $label }}</label>
+    <label for="{{ $inputId }}" class="form-label">{{ $label }}@if ($required)<span class="ui-req" aria-hidden="true">*</span>@endif</label>
 
     <div class="erp-combobox-control">
         <input
@@ -126,6 +127,7 @@
             role="combobox"
             aria-autocomplete="list"
             aria-controls="{{ $listId }}"
+            @if ($required) aria-required="true" @endif
             x-bind:aria-expanded="open.toString()"
             x-bind:aria-activedescendant="open && activeIndex >= 0 ? '{{ $listId }}-' + activeIndex : null"
             x-on:input="inputChanged()"

@@ -1,59 +1,66 @@
 <x-guest-layout>
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
+    <div class="auth-intro">
+        <h2>{{ __('Sign in') }}</h2>
+        <p>{{ __('Use your staff ID and portal password.') }}</p>
+    </div>
 
-    <form method="POST" action="{{ route('login') }}" x-data="{ clearErrors() { this.$root.querySelectorAll('[data-login-error]').forEach((el) => el.remove()) } }">
+    <!-- Session Status -->
+    <x-auth-session-status :status="session('status')" />
+
+    <form method="POST" action="{{ route('login') }}" class="auth-form" x-data="{ clearErrors() { this.$root.querySelectorAll('[data-login-error]').forEach((el) => el.remove()) } }">
         @csrf
 
         @if ($errors->has('staff_id'))
-            <div data-login-error class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                {{ $errors->first('staff_id') }}
+            <div data-login-error class="alert alert-danger" role="alert">
+                <x-ui.icon name="circle-alert" class="alert-icon" />
+                <div class="alert-body">{{ $errors->first('staff_id') }}</div>
             </div>
         @endif
 
         <!-- Staff ID -->
-        <div>
+        <div class="ui-field">
+            <x-input-label for="staff_id" :value="__('Staff ID')" />
             <input id="staff_id"
                    type="text"
                    name="staff_id"
                    value="{{ old('staff_id') }}"
                    required
                    autofocus
+                   autocomplete="username"
                    x-on:input="clearErrors()"
-                   class="block mt-1 w-full">
+                   class="form-input ui-input">
         </div>
 
         <!-- Password -->
-        <div class="mt-4">
+        <div class="ui-field">
             <x-input-label for="password" :value="__('Password')" />
 
-            <x-text-input id="password" class="block mt-1 w-full"
+            <x-text-input id="password"
                             type="password"
                             name="password"
                             x-on:input="clearErrors()"
                             required autocomplete="current-password" />
 
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
+            <x-input-error :messages="$errors->get('password')" />
         </div>
 
-        <!-- Remember Me -->
-        <div class="block mt-4">
-            <label for="remember_me" class="inline-flex items-center">
-                <input id="remember_me" type="checkbox" class="rounded-sm border-gray-300 text-indigo-600 shadow-xs focus:ring-indigo-500" name="remember">
-                <span class="ms-2 text-sm text-gray-600">{{ __('Remember me') }}</span>
+        <div class="auth-row">
+            <!-- Remember Me -->
+            <label for="remember_me" class="auth-check">
+                <input id="remember_me" type="checkbox" name="remember">
+                <span>{{ __('Remember me') }}</span>
             </label>
-        </div>
 
-        <div class="flex items-center justify-end mt-4">
             @if (Route::has('password.request'))
-                <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" href="{{ route('password.request') }}">
+                <a class="text-link" href="{{ route('password.request') }}">
                     {{ __('Forgot your password?') }}
                 </a>
             @endif
-
-            <x-primary-button class="ms-3">
-                {{ __('Log in') }}
-            </x-primary-button>
         </div>
+
+        <x-primary-button class="btn-block">
+            <x-ui.icon name="log-in" />
+            {{ __('Log in') }}
+        </x-primary-button>
     </form>
 </x-guest-layout>

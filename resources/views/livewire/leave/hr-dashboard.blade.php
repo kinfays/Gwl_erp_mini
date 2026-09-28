@@ -2,348 +2,165 @@
     @vite('resources/js/charts.js')
 @endassets
 
-<div class="space-y-6">
+@php
+    $viewer = auth()->user();
+    $canExport = $viewer->hasRoles('super_admin') || $viewer->hasPermission('leave.export');
+    $statusColours = ['Approved' => 'success', 'Pending Approval' => 'warning', 'Planned' => 'muted', 'Denied' => 'danger'];
+    $onLeaveShare = ($zoneStaffCount ?? 0) > 0 ? round($onLeaveNowCount / $zoneStaffCount * 100, 1) : null;
+@endphp
 
-    {{-- PAGE HEADER --}}
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>HR Dashboard</h2>
-            <p>
-                {{ auth()->user()->isHeadOfficeHr() ? 'Head Office Zone' : 'Regional Zone' }}
-                · {{ now()->format('F Y') }}
-            </p>
-        </div>
+<div>
+    <x-ui.page-header
+        title="HR Dashboard"
+        :description="($viewer->isHeadOfficeHr() ? 'Head Office Zone' : 'Regional Zone').' · '.now()->format('F Y')"
+    >
+        <x-slot:actions>
+            @if ($canExport)
+                <x-ui.button :href="route('leave.export.approved.excel')" icon="download">Export Excel</x-ui.button>
+            @endif
+            <x-ui.button :href="route('leave.apply')" variant="primary" icon="plus">New Request</x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
 
-        <div class="ph-right">
-            {{-- reserved for Phase 4 --}}
-            <button class="btn">Export Excel</button>
-            <a href="{{ route('leave.apply') }}" class="btn btn-primary">+ New Request</a>
-        </div>
+    <div class="ui-stat-grid dash-row">
+        <x-ui.stat-tile label="Staff in zone" :value="number_format($zoneStaffCount ?? 0)" icon="users" meta="Active employees" />
+        <x-ui.stat-tile label="On leave now" :value="$onLeaveNowCount" icon="calendar-days" tone="lagoon"
+            :meta="$onLeaveShare !== null ? $onLeaveShare.'% of zone' : null" />
+        <x-ui.stat-tile label="Pending requests" :value="$pendingCount" icon="clock" :tone="$pendingCount > 0 ? 'warning' : 'muted'"
+            :href="route('leave.approvals')" meta="Awaiting a decision" />
+        <x-ui.stat-tile label="Approved this month" :value="$approvedThisMonth" icon="circle-check" tone="success" />
+        <x-ui.stat-tile label="Denied this month" :value="$deniedThisMonth" icon="circle-x" tone="muted" />
     </div>
 
-    {{-- KPI STATS --}}
-    <div class="stats" style="margin-bottom:24px">
+    <div class="ui-grid ui-grid-main dash-row">
+        <x-ui.card title="Leave days taken per month" :description="now()->format('Y').' · approved leave, by the month it starts'">
+            <x-ui.chart type="area" label="Approved leave days per month, {{ now()->format('Y') }}" unit="days"
+                :labels="$daysByMonth['labels']" :series="[['label' => 'Leave days', 'data' => $daysByMonth['data']]]" height="260" />
+        </x-ui.card>
 
-        <div class="stat">
-            <div class="stat-lbl">Regional staff</div>
-            <div class="stat-val">{{ $zoneStaffCount ?? '—' }}</div>
-        </div>
-
-        <div class="stat">
-            <div class="stat-lbl">On leave now</div>
-            <div class="stat-val">{{ $onLeaveNowCount }}</div>
-        </div>
-        <div class="stat">
-            <div class="stat-lbl">Pending Request</div>
-            <div class="stat-val">{{ $pendingCount }}</div>
-        </div>
-        
-
-        <div class="stat">
-            <div class="stat-lbl">Approved this month</div>
-            <div class="stat-val">{{ $approvedThisMonth }}</div>
-        </div>
-
-        <div class="stat">
-            <div class="stat-lbl">Denied</div>
-            <div class="stat-val">{{ $deniedThisMonth }}</div>
-        </div>
+        <x-ui.card title="Requests by status" :description="now()->format('Y').' · by start date'">
+            <x-ui.chart type="doughnut" label="Leave requests by status, {{ now()->format('Y') }}" center center-caption="requests"
+                :color-map="$statusColours" :labels="$requestsByStatus['labels']"
+                :series="[['label' => 'Requests', 'data' => $requestsByStatus['data']]]" height="260" />
+        </x-ui.card>
     </div>
 
-    <div class="two">
+    <div class="ui-grid ui-grid-main dash-row">
+        <x-ui.card title="Pending approvals" description="Most recent first" :padded="false">
+            <x-slot:actions>
+                <a href="{{ route('leave.approvals') }}" class="btn btn-ghost btn-sm">View all <x-ui.icon name="arrow-right" class="icon-sm" /></a>
+            </x-slot:actions>
 
-        {{-- SLA METRICS --}}
-<div class="stats">
-    <div class="stat">
-        <div class="stat-lbl">Avg. manager response</div>
-        <div class="stat-val">{{ $slaStats['avg_manager_hours'] }}h</div>
-        <div class="stat-sub">Target ≤ 48h</div>
-    </div>
-
-    <div class="stat">
-        <div class="stat-lbl">Avg. final approval</div>
-        <div class="stat-val">{{ $slaStats['avg_final_hours'] }}h</div>
-        <div class="stat-sub">Target ≤ 24h</div>
-    </div>
-
-    <div class="stat">
-        <div class="stat-lbl">Avg. total cycle</div>
-        <div class="stat-val">{{ $slaStats['avg_total_hours'] }}h</div>
-        <div class="stat-sub">Target ≤ 72h</div>
-    </div>
-</div>
-
-        {{-- PENDING APPROVALS --}}
-        <div class="pg">
-            <div class="pg-head">
-                <span class="pg-title">Pending approvals</span>
-                <a href="{{ route('leave.approvals') }}" class="actn">View all</a>
-            </div>
-
-            <table>
-                <thead>
+            <x-ui.table label="Pending approvals" :sticky="false">
+                <x-slot:head>
                     <tr>
                         <th>Employee</th>
                         <th>Type</th>
                         <th>Dates</th>
-                        <th>Days</th>
-                        <th>Status</th>
+                        <th class="num">Days</th>
+                        <th>Stage</th>
                     </tr>
-                </thead>
-                <tbody>
-                    @forelse($pendingApprovals as $r)
-                        <tr>
-                            <td>{{ $r->requester->full_name }}</td>
-                            <td>{{ $r->leave_type }}</td>
-                            <td>{{ $r->start_date->format('d M') }} – {{ $r->end_date->format('d M') }}</td>
-                            <td>{{ $r->total_days_applied }}</td>
-                            <td>
-                                <span class="pill p-a">Pending</span>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="5" class="text-slate-500">No pending approvals</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                </x-slot:head>
+                @forelse ($pendingApprovals as $r)
+                    <tr>
+                        <td>
+                            <span class="ui-person">
+                                <x-ui.avatar :name="$r->requester->full_name" />
+                                <span>
+                                    <span class="ui-person-name">{{ $r->requester->full_name }}</span>
+                                    <span class="ui-person-sub mono">{{ $r->requester->staff_id }}</span>
+                                </span>
+                            </span>
+                        </td>
+                        <td>{{ $r->leave_type }}</td>
+                        <td class="nowrap">{{ $r->start_date->format('d M') }} – {{ $r->end_date->format('d M') }}</td>
+                        <td class="num">{{ $r->total_days_applied }}</td>
+                        <td><x-ui.status-pill domain="recommendation" :status="$r->manager_recommendation ?: 'Pending'" /></td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="5" icon="square-check-big" title="No pending approvals" description="New requests will appear here as staff submit them." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
+
+        <x-ui.card title="Approval turnaround" description="Average hours per stage">
+            <div class="ui-stack">
+                <x-ui.meter label="Manager response" :value="$slaStats['avg_manager_hours'] ?? null" :target="48" unit="h" />
+                <x-ui.meter label="Final approval" :value="$slaStats['avg_final_hours'] ?? null" :target="24" unit="h" />
+                <x-ui.meter label="Total cycle" :value="$slaStats['avg_total_hours'] ?? null" :target="72" unit="h" />
+                <p class="ui-hint">{{ __('Submission to recommendation, recommendation to decision, and submission to decision.') }}</p>
+            </div>
+        </x-ui.card>
+    </div>
+
+    <div class="ui-grid ui-grid-main dash-row">
+        <x-ui.card title="Upcoming absences" description="Approved leave starting in the next 14 days" :padded="false">
+            <x-ui.table label="Upcoming absences" :sticky="false">
+                <x-slot:head>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Type</th>
+                        <th>Dates</th>
+                        <th class="num">Days</th>
+                    </tr>
+                </x-slot:head>
+                @forelse ($upcomingAbsences as $absence)
+                    <tr>
+                        <td>
+                            <span class="ui-person">
+                                <x-ui.avatar :name="$absence->requester?->full_name ?? ''" />
+                                <span>
+                                    <span class="ui-person-name">{{ $absence->requester?->full_name ?? 'Unknown employee' }}</span>
+                                    <span class="ui-person-sub">{{ $absence->requester?->department?->department_name ?? $absence->requester?->district?->district_name }}</span>
+                                </span>
+                            </span>
+                        </td>
+                        <td>{{ $absence->leave_type }}</td>
+                        <td class="nowrap">{{ $absence->start_date->format('D d M') }} – {{ $absence->end_date->format('d M') }}</td>
+                        <td class="num">{{ $absence->total_days_applied }}</td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="4" icon="calendar-days" title="No approved leave starts in the next two weeks" />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
+
+        <div class="ui-stack">
+            <x-ui.card title="Leave by type" :description="now()->format('Y').' · share of approved days'">
+                <x-ui.chart type="hbar" label="Leave usage by type, {{ now()->year }}" unit="%" :max="100" :legend="false"
+                    :labels="array_keys($leaveByType)" :series="[['label' => 'Usage', 'data' => array_values($leaveByType)]]" height="220" />
+            </x-ui.card>
+
+            <x-ui.card title="Gender breakdown" description="Approved requests">
+                <x-ui.split-bar label="Gender split of approved requests" :parts="[
+                    ['label' => 'Male', 'value' => $genderBreakdown['male'] ?? 0, 'color' => 'series-1'],
+                    ['label' => 'Female', 'value' => $genderBreakdown['female'] ?? 0, 'color' => 'series-3'],
+                ]" />
+            </x-ui.card>
         </div>
-
-        {{-- LEAVE BY TYPE --}}
-
-            <div class="pg">
-    <div class="pg-head">
-        <span class="pg-title">Leave by Type — {{ now()->year }}</span>
     </div>
 
-    <div class="px-4 py-3" wire:ignore>
-        <div style="position:relative;height:240px">
-            <canvas
-                id="leaveByTypeChart"
-                data-series='@json(array_values($leaveByType))'
-                data-labels='@json(array_keys($leaveByType))'
-            ></canvas>
-        </div>
-    </div>
-</div>
-
-{{-- SLA BREACHES --}}
-<div class="pg">
-    <div class="pg-head">
-        <span class="pg-title">SLA breaches (slow approvals)</span>
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>Employee</th>
-                <th>Type</th>
-                <th>Total Time</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($slowestApprovals as $r)
+    <x-ui.card title="SLA breaches" description="Approvals that took more than 72 hours from submission" :padded="false">
+        <x-ui.table label="SLA breaches" :sticky="false">
+            <x-slot:head>
+                <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th class="num">Total time</th>
+                </tr>
+            </x-slot:head>
+            @forelse ($slowestApprovals as $r)
                 <tr>
                     <td>{{ $r->requester->full_name }}</td>
                     <td>{{ $r->leave_type }}</td>
-                    <td>
-                        <span class="pill p-r">
-                            {{ $r->updated_at->diffInHours($r->created_at) }}h
-                        </span>
+                    <td class="num">
+                        {{-- One decimal where there is one, so e.g. 72.4h never reads as "72h" under a "> 72h" rule. --}}
+                        <x-ui.status-pill tone="danger" :label="rtrim(rtrim(number_format($r->cycleHours(), 1), '0'), '.').'h'" />
                     </td>
                 </tr>
             @empty
-                <tr>
-                    <td colspan="3" class="text-slate-500">
-                        No SLA breaches 🎉
-                    </td>
-                </tr>
+                <x-ui.empty-row :colspan="3" icon="circle-check" title="No SLA breaches" />
             @endforelse
-        </tbody>
-    </table>
+        </x-ui.table>
+    </x-ui.card>
 </div>
-
-            {{-- GENDER --}}
-
-            <div class="pg">
-            <div class="pg-head">
-             <span class="pg-title">Gender Breakdown (Approved)</span>
-             </div>
-
-    <div class="px-4 py-3" wire:ignore>
-        <div style="position:relative;height:90px">
-            <canvas
-                id="genderChart"
-                data-male="{{ $genderBreakdown['male'] ?? 0 }}"
-                data-female="{{ $genderBreakdown['female'] ?? 0 }}"
-            ></canvas>
-        </div>
-    </div>
-</div>
-       <!--     <div class="pg">
-                <div class="pg-head">
-                    <span class="pg-title">Gender breakdown (approved)</span>
-                </div>
-
-                <div class="px-4 py-3 text-xs space-y-2">
-                    <div class="flex justify-between">
-                        <span>Male</span>
-                        <span>{{ $genderBreakdown['male'] ?? 0 }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Female</span>
-                        <span>{{ $genderBreakdown['female'] ?? 0 }}</span>
-                    </div>
-                </div>
-            </div> -->
-
-        </div>
-
-    </div>
-</div>  
-
-<script>
-    (() => {
-        // Chart.js has no built-in data labels, so write each segment's percentage inside the bar.
-        const segmentPercentLabels = {
-            id: 'segmentPercentLabels',
-            afterDatasetsDraw(chart) {
-                const { ctx } = chart;
-
-                ctx.save();
-                ctx.fillStyle = '#fff';
-                ctx.font = '600 11px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                chart.data.datasets.forEach((dataset, datasetIndex) => {
-                    if (! chart.isDatasetVisible(datasetIndex)) {
-                        return;
-                    }
-
-                    chart.getDatasetMeta(datasetIndex).data.forEach((bar, index) => {
-                        const value = dataset.data[index];
-
-                        if (value > 0) {
-                            ctx.fillText(`${value}%`, (bar.x + bar.base) / 2, bar.y);
-                        }
-                    });
-                });
-
-                ctx.restore();
-            },
-        };
-
-        function initLeaveCharts() {
-            if (typeof Chart === 'undefined') {
-                return;
-            }
-
-            /* ===============================
-               LEAVE BY TYPE (Horizontal Bar)
-            =============================== */
-            const typeEl = document.getElementById('leaveByTypeChart');
-            if (typeEl) {
-                const series = JSON.parse(typeEl.dataset.series || '[]');
-                const labels = JSON.parse(typeEl.dataset.labels || '[]');
-
-                typeEl._chart?.destroy();
-                typeEl._chart = new Chart(typeEl, {
-                    type: 'bar',
-                    data: {
-                        labels,
-                        datasets: [{ label: 'Usage %', data: series, backgroundColor: '#185FA5', borderRadius: 4 }],
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: context => `${context.parsed.x}%` } },
-                        },
-                        scales: {
-                            x: { min: 0, max: 100, ticks: { callback: value => `${value}%` } },
-                        },
-                    },
-                });
-            }
-
-            /* ===============================
-               GENDER BREAKDOWN (Stacked)
-            =============================== */
-            const genderEl = document.getElementById('genderChart');
-            if (genderEl) {
-                // data-male/data-female are approved-request counts; chart each as a share of the total.
-                const counts = [parseInt(genderEl.dataset.male || 0), parseInt(genderEl.dataset.female || 0)];
-                const total = counts[0] + counts[1];
-                const malePercent = total ? Math.round((counts[0] / total) * 100) : 0;
-                const femalePercent = total ? 100 - malePercent : 0;
-
-                genderEl._chart?.destroy();
-                genderEl._chart = new Chart(genderEl, {
-                    type: 'bar',
-                    data: {
-                        labels: [''],
-                        datasets: [
-                            { label: 'Male', data: [malePercent], backgroundColor: '#185FA5', maxBarThickness: 24 },
-                            { label: 'Female', data: [femalePercent], backgroundColor: '#D4537E', maxBarThickness: 24 },
-                        ],
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom', labels: { color: '#6B7280', boxWidth: 10 } },
-                            tooltip: {
-                                callbacks: {
-                                    label: context => `${context.dataset.label}: ${counts[context.datasetIndex]} requests (${context.parsed.x}%)`,
-                                },
-                            },
-                        },
-                        scales: {
-                            x: { stacked: true, min: 0, max: 100, ticks: { callback: value => `${value}%` } },
-                            y: { stacked: true, grid: { display: false } },
-                        },
-                    },
-                    plugins: [segmentPercentLabels],
-                });
-            }
-        }
-
-        document.addEventListener('livewire:navigated', initLeaveCharts);
-        document.addEventListener('DOMContentLoaded', initLeaveCharts);
-    })();
-</script>
-
-
-<!-- <div class="space-y-6">
-    <div>
-        <h2 class="text-lg font-semibold">HR Dashboard</h2>
-        <p class="text-sm text-slate-600">Leave module overview for your scope.</p>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white border rounded-xl p-4">
-            <p class="text-xs text-slate-500">Pending Requests</p>
-            <p class="text-2xl font-bold">{{ $pendingCount }}</p>
-        </div>
-
-        <div class="bg-white border rounded-xl p-4">
-            <p class="text-xs text-slate-500">Approved This Month</p>
-            <p class="text-2xl font-bold">{{ $approvedThisMonth }}</p>
-        </div>
-
-        <div class="bg-white border rounded-xl p-4">
-            <p class="text-xs text-slate-500">Denied This Month</p>
-            <p class="text-2xl font-bold">{{ $deniedThisMonth }}</p>
-        </div>
-    </div>
-
-    <div class="bg-white border rounded-xl p-4 text-slate-500">
-        Pending approvals table + charts (ApexCharts) will be added next.
-    </div>
-</div> -->
-

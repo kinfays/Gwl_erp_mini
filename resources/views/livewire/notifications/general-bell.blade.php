@@ -1,16 +1,20 @@
 <div class="general-notify" x-data x-on:click.outside="$wire.open && $wire.close()" wire:poll.{{ $pollSeconds }}s="pollForNewNotifications">
-    <button type="button" class="tb-icon-btn general-notify-btn" wire:click="toggle" aria-label="General notifications">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M10 21h4" />
-        </svg>
+    <button
+        type="button"
+        class="icon-btn general-notify-btn"
+        wire:click="toggle"
+        aria-haspopup="true"
+        aria-expanded="{{ $open ? 'true' : 'false' }}"
+        aria-label="General notifications{{ $unreadCount > 0 ? ', '.$unreadCount.' unread' : '' }}"
+    >
+        <x-ui.icon name="bell" />
         @if ($unreadCount > 0)
-            <span class="notify-count">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
+            <span class="count-badge" aria-hidden="true">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
         @endif
     </button>
 
     @if ($open)
-        <div class="notify-menu">
+        <div class="notify-menu" role="region" aria-label="Notifications">
             <div class="notify-head">
                 <span>Notifications</span>
                 @if ($unreadCount > 0)
@@ -19,8 +23,8 @@
             </div>
 
             <div class="notify-tabs">
-                <button type="button" wire:click="setTab('unread')" class="{{ $tab === 'unread' ? 'active' : '' }}">Unread</button>
-                <button type="button" wire:click="setTab('all')" class="{{ $tab === 'all' ? 'active' : '' }}">All</button>
+                <button type="button" wire:click="setTab('unread')" class="{{ $tab === 'unread' ? 'active' : '' }}" aria-pressed="{{ $tab === 'unread' ? 'true' : 'false' }}">Unread</button>
+                <button type="button" wire:click="setTab('all')" class="{{ $tab === 'all' ? 'active' : '' }}" aria-pressed="{{ $tab === 'all' ? 'true' : 'false' }}">All</button>
             </div>
 
             <div wire:loading class="notify-loading">
@@ -28,7 +32,7 @@
                 <span class="skeleton-line short"></span>
             </div>
 
-            <div wire:loading.remove>
+            <div wire:loading.remove class="notify-list">
                 @forelse ($notifications as $notification)
                     @php
                         $data = $notification->data ?? [];

@@ -1,168 +1,151 @@
-
-    <div>
-    <div class="page-head">
-        <div class="ph-left">
-            <h2>All Employees</h2>
-            <p>{{ $employees->total() }} employees in scope</p>
-        </div>
-
-        <div class="ph-right">
+<div>
+    <x-ui.page-header title="All Employees" :description="$employees->total().' employees in scope'">
+        <x-slot:actions>
             @if ($canManage)
-                <a href="{{ route('staff.import') }}" class="btn">Import Excel</a>
+                <a href="{{ route('staff.import') }}" class="btn btn-secondary">
+                    <x-ui.icon name="upload" />
+                    Import Excel
+                </a>
             @endif
-            <a href="{{ $exportUrl }}" class="btn">Export</a>
+            <a href="{{ $exportUrl }}" class="btn btn-secondary">
+                <x-ui.icon name="download" />
+                Export
+            </a>
             @if ($canManage)
-                <a href="{{ route('staff.create') }}" class="btn btn-primary">+ Add Employee</a>
+                <a href="{{ route('staff.create') }}" class="btn btn-primary">
+                    <x-ui.icon name="user-plus" />
+                    Add Employee
+                </a>
             @endif
-        </div>
-    </div>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     @if (session('success'))
-        <div class="erp-card" style="margin-bottom:14px;background:#eaf7ef;border-color:#b8e0c5;color:#21633c;">
-            {{ session('success') }}
-        </div>
+        <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
     @endif
 
     @if ($errors->any())
-        <div class="erp-card" style="margin-bottom:14px;background:#fef2f2;border-color:#fecaca;color:#991b1b;">
-            {{ $errors->first() }}
-        </div>
+        <x-ui.alert tone="danger" role="alert">{{ $errors->first() }}</x-ui.alert>
     @endif
 
-    <div class="pg">
-        <div class="pg-head">
-            <div style="display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap">
-                <input type="text" wire:model.live="search" placeholder="Search name, staff ID, email..." class="form-input" style="min-width:220px">
-
-                <select wire:model.live="department_id" class="form-input" style="min-width:150px">
-                    <option value="">All departments</option>
-                    @foreach ($departments as $department)
-                        <option value="{{ $department->id }}">{{ $department->department_name }}</option>
-                    @endforeach
-                </select>
-
-                <select wire:model.live="category" class="form-input" style="min-width:150px">
-                    <option value="">All categories</option>
-                    @foreach ($categories as $item)
-                        <option value="{{ $item }}">{{ $item }}</option>
-                    @endforeach
-                </select>
-
-                <select wire:model.live="location_type" class="form-input" style="min-width:140px">
-                    <option value="">All locations</option>
-                    <option value="HeadOffice">Head Office</option>
-                    <option value="Region">Region</option>
-                    <option value="District">District</option>
-                </select>
-
-                <select wire:model.live="status" class="form-input" style="min-width:130px">
-                    <option value="">All statuses</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Deactivated</option>
-                    <option value="on_leave">On Leave</option>
-                </select>
-
-                <select wire:model.live="perPage" class="form-input" style="min-width:120px">
-                    @foreach ($perPageOptions as $option)
-                        <option value="{{ $option }}">{{ $option }} per page</option>
-                    @endforeach
-                </select>
+    <x-ui.card :padded="false">
+        <div class="ui-toolbar" role="search" aria-label="Filter employees">
+            <div class="ui-input-wrap toolbar-grow">
+                <x-ui.icon name="search" class="ui-input-icon" />
+                <input type="text" wire:model.live="search" placeholder="Search name, staff ID, email..." aria-label="Search employees" class="form-input ui-input has-icon">
             </div>
+
+            <select wire:model.live="department_id" class="form-input" aria-label="Department">
+                <option value="">All departments</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}">{{ $department->department_name }}</option>
+                @endforeach
+            </select>
+
+            <select wire:model.live="category" class="form-input" aria-label="Category">
+                <option value="">All categories</option>
+                @foreach ($categories as $item)
+                    <option value="{{ $item }}">{{ $item }}</option>
+                @endforeach
+            </select>
+
+            <select wire:model.live="location_type" class="form-input" aria-label="Location">
+                <option value="">All locations</option>
+                <option value="HeadOffice">Head Office</option>
+                <option value="Region">Region</option>
+                <option value="District">District</option>
+            </select>
+
+            <select wire:model.live="status" class="form-input" aria-label="Status">
+                <option value="">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Deactivated</option>
+                <option value="on_leave">On Leave</option>
+            </select>
+
+            <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
+                @foreach ($perPageOptions as $option)
+                    <option value="{{ $option }}">{{ $option }} per page</option>
+                @endforeach
+            </select>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Staff ID</th>
-                    <th>Name</th>
-                    <th>Department</th>
-                    <th>Category</th>
-                    <th>Location</th>
-                    <th>Annual Leave Balance</th>
-                    <th>Status</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
+        <div class="ui-loading-host">
+            <x-ui.table label="Employees" pin-first>
+                <x-slot:head>
+                    <tr>
+                        <th>Name</th>
+                        <th>Staff ID</th>
+                        <th>Department</th>
+                        <th>Category</th>
+                        <th>Location</th>
+                        <th class="num">Annual Leave Balance</th>
+                        <th>Status</th>
+                        <th class="actions"><span class="sr-only-text">Actions</span></th>
+                    </tr>
+                </x-slot:head>
+
                 @forelse ($employees as $employee)
                     @php
                         $statusLabel = ! $employee->is_active
                             ? 'Deactivated'
                             : ((int) $employee->on_leave_count > 0 ? 'On Leave' : 'Active');
-                        $statusClass = match ($statusLabel) {
-                            'Active' => 'p-g',
-                            'On Leave' => 'p-a',
-                            default => 'p-d',
-                        };
                         $annualBalance = $employee->leaveBalances->first()?->remaining_days;
                         if ($annualBalance === null && $employee->is_active) {
                             $annualBalance = $employee->annual_leave_days;
                         }
-                        $avatarClass = ['av-b', 'av-t', 'av-c', 'av-p'][($loop->index % 4)];
                     @endphp
-                    <tr>
-                        <td style="color:#185FA5;font-size:10px">#{{ $employee->staff_id }}</td>
+                    <tr wire:key="employee-{{ $employee->id }}">
                         <td>
-                            <div class="if">
-                                <div class="av-sm {{ $avatarClass }}">{{ $employee->initials }}</div>
-                                <div>
-                                    <div>{{ $employee->full_name }}</div>
-                                    <div style="font-size:10px;color:var(--color-text-secondary)">{{ $employee->email
-                                     }}</div>
-                                </div>
-                            </div>
+                            <span class="ui-person">
+                                <x-ui.avatar :name="$employee->full_name" />
+                                <span>
+                                    <span class="ui-person-name">{{ $employee->full_name }}</span>
+                                    <span class="ui-person-sub">{{ $employee->email }}</span>
+                                </span>
+                            </span>
                         </td>
-                         <td>
-                            <div class="if">
-                                <div>
-                                    <div>{{ $employee->department?->department_name ?? '-' }}</div>
-                                    <div style="font-size:10px;color:var(--color-text-secondary)">{{ $employee->jobTitle?->job_title_name ?? '-' }}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td><span class="pill p-b">{{ $employee->category }}</span></td>
-                         
+                        <td class="mono nowrap">#{{ $employee->staff_id }}</td>
                         <td>
-                            <div class="if">
-                                <div>
-                                    <div> {{ $employee->region?->region_name ?? '-' }} </div>
-                                    <div style="font-size:10px;color:var(--color-text-secondary)">{{ $employee->district?->district_name ?? '-' }}</div>
-                                </div>
-                            </div>
+                            <span class="ui-cell-stack">
+                                <span>{{ $employee->department?->department_name ?? '-' }}</span>
+                                <span class="ui-person-sub">{{ $employee->jobTitle?->job_title_name ?? '-' }}</span>
+                            </span>
                         </td>
-                        
-                        <td style="font-size:11px;color:{{ $annualBalance !== null ? '#3B6D11' : 'var(--color-text-secondary)' }}">
+                        <td class="nowrap"><x-ui.badge>{{ $employee->category }}</x-ui.badge></td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <span>{{ $employee->region?->region_name ?? '-' }}</span>
+                                <span class="ui-person-sub">{{ $employee->district?->district_name ?? '-' }}</span>
+                            </span>
+                        </td>
+                        <td @class(['num', 'nowrap', 'cell-muted' => $annualBalance === null])>
                             {{ $annualBalance !== null ? $annualBalance . ' days' : '-' }}
                         </td>
                         <td>
-                            <span class="pill {{ $statusClass }}">{{ $statusLabel }}</span>
+                            <x-ui.status-pill domain="account" :status="$statusLabel" />
                             @if (! $employee->is_active && $employee->deactivation_reason_label)
-                                <div style="font-size:10px;color:var(--color-text-secondary);margin-top:4px">
-                                    Reason: {{ $employee->deactivation_reason_label }}
-                                </div>
+                                <span class="ui-person-sub cell-note">Reason: {{ $employee->deactivation_reason_label }}</span>
                             @endif
                         </td>
-                        <td>
-                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <td class="actions">
+                            <div class="row-actions">
                                 @if ($employee->user)
                                     <button
+                                        type="button"
                                         x-data
                                         x-on:click.prevent="$dispatch('open-user-drawer', { id: {{ $employee->user->id }} })"
-                                        class="actn"
+                                        class="btn btn-ghost btn-sm btn-icon"
                                         title="View user details"
+                                        aria-label="View user details for {{ $employee->full_name }}"
                                     >
-                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
-                                                     -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        </svg>
-
+                                        <x-ui.icon name="eye" />
                                     </button>
                                 @endif
                                 @if ($canManage)
-                                    <a href="{{ route('staff.edit', $employee) }}" class="actn">Edit</a>
+                                    <a href="{{ route('staff.edit', $employee) }}" class="btn btn-ghost btn-sm btn-icon" title="Edit employee" aria-label="Edit {{ $employee->full_name }}">
+                                        <x-ui.icon name="pencil" />
+                                    </a>
 
                                     <form method="POST" action="{{ route('staff.toggle-status', $employee) }}" x-data>
                                         @csrf
@@ -170,7 +153,7 @@
                                         <input type="hidden" name="deactivation_reason" x-ref="deactivationReason">
                                         <button
                                             type="submit"
-                                            class="actn {{ $employee->is_active ? 'actn-r' : 'actn-g' }}"
+                                            @class(['btn', 'btn-sm', 'btn-danger' => $employee->is_active])
                                             x-on:click.prevent="$dispatch('confirm-action', {
                                                 title: @js($employee->is_active ? 'Deactivate employee?' : 'Activate employee?'),
                                                 message: @js(($employee->is_active ? 'This will deactivate ' : 'This will activate ') . $employee->full_name . '.'),
@@ -198,34 +181,31 @@
                                         </button>
                                     </form>
                                 @else
-                                    <span class="actn">View only</span>
+                                    <span class="ui-hint">View only</span>
                                 @endif
                             </div>
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="8" style="text-align:center;color:var(--color-text-secondary);padding:20px">No employees found.</td>
-                    </tr>
+                    <x-ui.empty-row :colspan="8" icon="users" title="No employees found." description="Try a different search or clear the filters." />
                 @endforelse
-            </tbody>
-        </table>
 
-        <div wire:loading.delay class="table-skeleton">
-            <span class="skeleton-line"></span>
-            <span class="skeleton-line"></span>
-            <span class="skeleton-line short"></span>
-        </div>
+                <x-slot:footer>
+                    <p class="pager-summary">
+                        Showing {{ $employees->firstItem() ?? 0 }} - {{ $employees->lastItem() ?? 0 }} of {{ $employees->total() }} employees
+                    </p>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
-            <div style="font-size:11px;color:var(--color-text-secondary)">
-                Showing {{ $employees->firstItem() ?? 0 }} - {{ $employees->lastItem() ?? 0 }} of {{ $employees->total() }} employees
+                    @if ($employees->hasPages())
+                        <div>{{ $employees->links() }}</div>
+                    @endif
+                </x-slot:footer>
+            </x-ui.table>
+
+            <div wire:loading.delay class="table-skeleton">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
             </div>
-            @if ($employees->hasPages())
-                <div>
-                    {{ $employees->links() }}
-                </div>
-            @endif
         </div>
-    </div>
+    </x-ui.card>
 </div>

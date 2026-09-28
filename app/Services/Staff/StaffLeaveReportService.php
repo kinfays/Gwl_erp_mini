@@ -228,7 +228,7 @@ class StaffLeaveReportService
 
     protected function staffByDistrict(Collection $employees, Collection $currentLeaveEmployeeIds): array
     {
-        $rows = $this->districtRows($employees, $currentLeaveEmployeeIds)
+        $rows = collect($this->districtRows($employees, $currentLeaveEmployeeIds))
             ->sortByDesc('total')
             ->take(10)
             ->values();
@@ -352,7 +352,12 @@ class StaffLeaveReportService
         ];
     }
 
-    protected function districtRows(Collection $employees, Collection $currentLeaveEmployeeIds): Collection
+    /**
+     * A plain array, not a Collection: this lands in the cached payload, and cached values are
+     * unserialised without classes (config/cache.php serializable_classes), so any object in
+     * there comes back as __PHP_Incomplete_Class.
+     */
+    protected function districtRows(Collection $employees, Collection $currentLeaveEmployeeIds): array
     {
         return $employees
             ->groupBy(fn (Employee $employee) => $employee->district_id ?: 'unassigned')
@@ -371,7 +376,8 @@ class StaffLeaveReportService
                 ];
             })
             ->sortBy('district')
-            ->values();
+            ->values()
+            ->all();
     }
 
     protected function currentlyOnLeave(Collection $currentLeaves): array

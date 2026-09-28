@@ -6,8 +6,6 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>Visitor Kiosk</title>
         @include('partials.favicon')
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
         @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/signature-pad.js'])
         @livewireStyles
     </head>

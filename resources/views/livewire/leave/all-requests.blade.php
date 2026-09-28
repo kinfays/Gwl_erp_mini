@@ -1,95 +1,83 @@
-<div class="space-y-4">
-    <div class="bg-white border rounded-xl p-6">
-        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-            <div>
-                <h2 class="text-lg font-semibold">All Leave Requests</h2>
-                <p class="text-sm text-slate-600">
-                    Search and filter leave requests.
-                    @if($readOnly)
-                        <span class="ml-2 text-xs bg-slate-100 px-2 py-1 rounded-sm">HR view (read-only)</span>
-                    @endif
-                </p>
-            </div>
+<div>
+    <x-ui.page-header title="All Leave Requests" description="Search and filter leave requests.">
+        @if ($readOnly)
+            <p><x-ui.badge>HR view (read-only)</x-ui.badge></p>
+        @endif
+    </x-ui.page-header>
 
-            <div class="flex flex-wrap gap-2">
-                <input type="text" wire:model.live="search" placeholder="Search employee name..."
-                       class="border rounded-sm px-3 py-2 text-sm">
+    <x-ui.card :padded="false">
+        <div class="ui-toolbar">
+            <x-ui.input type="search" wire:model.live="search" placeholder="Search employee name..." icon="search" aria-label="Search employee name" class="toolbar-search" />
 
-                <select wire:model.live="leaveType" class="border rounded-sm px-3 py-2 text-sm">
-                    <option value="">All Types</option>
-                    <option value="Annual">Annual</option>
-                    <option value="Casual">Casual</option>
-                    <option value="Paternity">Paternity</option>
-                    <option value="Maternity">Maternity</option>
-                    <option value="Sick">Sick</option>
-                </select>
+            <x-ui.select wire:model.live="leaveType" aria-label="Leave type">
+                <option value="">All Types</option>
+                <option value="Annual">Annual</option>
+                <option value="Casual">Casual</option>
+                <option value="Paternity">Paternity</option>
+                <option value="Maternity">Maternity</option>
+                <option value="Sick">Sick</option>
+            </x-ui.select>
 
-                <select wire:model.live="departmentId" class="border rounded-sm px-3 py-2 text-sm">
-                    <option value="">All Departments</option>
-                    @foreach($departments as $d)
-                        <option value="{{ $d->id }}">{{ $d->department_name }}</option>
-                    @endforeach
-                </select>
+            <x-ui.select wire:model.live="departmentId" aria-label="Department">
+                <option value="">All Departments</option>
+                @foreach ($departments as $d)
+                    <option value="{{ $d->id }}">{{ $d->department_name }}</option>
+                @endforeach
+            </x-ui.select>
 
-                <input type="date" wire:model.live="dateFrom" class="border rounded-sm px-3 py-2 text-sm">
-                <input type="date" wire:model.live="dateTo" class="border rounded-sm px-3 py-2 text-sm">
+            <x-ui.input type="date" wire:model.live="dateFrom" aria-label="From date" />
+            <x-ui.input type="date" wire:model.live="dateTo" aria-label="To date" />
+        </div>
+
+        <div class="ui-toolbar toolbar-tabs">
+            <div class="tabs" role="group" aria-label="Filter by status">
+                <button type="button" wire:click="setTab('all')" @class(['tab', 'active' => $tab === 'all']) aria-pressed="{{ $tab === 'all' ? 'true' : 'false' }}">All</button>
+                <button type="button" wire:click="setTab('pending')" @class(['tab', 'active' => $tab === 'pending']) aria-pressed="{{ $tab === 'pending' ? 'true' : 'false' }}">Pending</button>
+                <button type="button" wire:click="setTab('approved')" @class(['tab', 'active' => $tab === 'approved']) aria-pressed="{{ $tab === 'approved' ? 'true' : 'false' }}">Approved</button>
+                <button type="button" wire:click="setTab('denied')" @class(['tab', 'active' => $tab === 'denied']) aria-pressed="{{ $tab === 'denied' ? 'true' : 'false' }}">Denied</button>
             </div>
         </div>
 
-        <div class="flex gap-2 mt-4">
-            <button wire:click="setTab('all')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">All</button>
-            <button wire:click="setTab('pending')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Pending</button>
-            <button wire:click="setTab('approved')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Approved</button>
-            <button wire:click="setTab('denied')" class="px-3 py-2 text-sm rounded-sm {{ $tab === 'denied' ? 'bg-blue-600 text-white' : 'bg-slate-100' }}">Denied</button>
-        </div>
-    </div>
-
-    <div class="bg-white border rounded-xl overflow-x-auto">
-        <table class="min-w-full text-sm">
-            <thead class="bg-slate-50">
-                <tr class="text-left border-b">
-                    <th class="px-4 py-3">Employee</th>
-                    <th class="px-4 py-3">Type</th>
-                    <th class="px-4 py-3">Dates</th>
-                    <th class="px-4 py-3">Days</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Region/District</th>
+        <x-ui.table label="Leave requests" pin-first>
+            <x-slot:head>
+                <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th>Dates</th>
+                    <th class="num">Days</th>
+                    <th>Status</th>
+                    <th>Region/District</th>
                 </tr>
-            </thead>
-            <tbody>
-                @forelse($requests as $r)
-                    <tr class="border-b hover:bg-slate-50">
-                        <td class="px-4 py-3">
-                            <div class="font-medium">{{ $r->requester->full_name }}</div>
-                            <div class="text-xs text-slate-500">{{ $r->department->department_name ?? '—' }}</div>
-                        </td>
-                        <td class="px-4 py-3">{{ $r->leave_type }}</td>
-                        <td class="px-4 py-3">
-                            {{ $r->start_date->format('d M Y') }} → {{ $r->end_date->format('d M Y') }}
-                        </td>
-                        <td class="px-4 py-3">{{ $r->total_days_applied }}</td>
-                        <td class="px-4 py-3">
-                            <span class="px-2 py-1 text-xs rounded-sm bg-slate-100">
-                                {{ $r->leave_status }}
+            </x-slot:head>
+            @forelse ($requests as $r)
+                <tr>
+                    <td>
+                        <span class="ui-person">
+                            <x-ui.avatar :name="$r->requester->full_name" />
+                            <span>
+                                <span class="ui-person-name">{{ $r->requester->full_name }}</span>
+                                <span class="ui-person-sub">{{ $r->department->department_name ?? '—' }}</span>
                             </span>
-                        </td>
-                        <td class="px-4 py-3 text-xs text-slate-600">
-                            {{ $r->requester->region->region_name ?? '—' }} /
-                            {{ $r->requester->district->district_name ?? '—' }}
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="6" class="px-4 py-10 text-center text-slate-500">
-                            No requests found.
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+                        </span>
+                    </td>
+                    <td>{{ $r->leave_type }}</td>
+                    <td class="nowrap">{{ $r->start_date->format('d M Y') }} – {{ $r->end_date->format('d M Y') }}</td>
+                    <td class="num">{{ $r->total_days_applied }}</td>
+                    <td><x-ui.status-pill domain="leave" :status="$r->leave_status" /></td>
+                    <td class="cell-muted">
+                        {{ $r->requester->region->region_name ?? '—' }} /
+                        {{ $r->requester->district->district_name ?? '—' }}
+                    </td>
+                </tr>
+            @empty
+                <x-ui.empty-row :colspan="6" icon="list-checks" title="No requests found." description="Try another status tab or clear the filters." />
+            @endforelse
 
-    <div>
-        {{ $requests->links() }}
-    </div>
+            @if ($requests->hasPages())
+                <x-slot:footer>
+                    {{ $requests->links() }}
+                </x-slot:footer>
+            @endif
+        </x-ui.table>
+    </x-ui.card>
 </div>

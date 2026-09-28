@@ -3,12 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Permission;
+use App\Services\HomeSummaryService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, HomeSummaryService $summary): View
     {
         $user = $request->user()->loadMissing([
             'roles.moduleAccesses',
@@ -124,6 +125,7 @@ class DashboardController extends Controller
             'roleName' => $roleName,
             'today' => now()->format('l, d F Y'),
             'unreadNotifications' => 3,
+            'summary' => $summary->forUser($user),
         ]);
     }
 }

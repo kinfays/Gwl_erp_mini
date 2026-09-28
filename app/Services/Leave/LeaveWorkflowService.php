@@ -87,6 +87,7 @@ class LeaveWorkflowService
         );
 
         $year = (int) Carbon::parse($start)->format('Y');
+        $submittedAt = $status === 'Pending Approval' ? now() : null;
 
         return LeaveRequest::create([
             'requester_id' => $requester->id,
@@ -99,6 +100,7 @@ class LeaveWorkflowService
             'manager_comments' => null,
             'manager_recommendation' => $recommendation,
             'leave_status' => $status,
+            ...$this->stageTimestamps($submittedAt, $recommendation),
             'approved_by_id' => null,
             'chiefManager_comments' => null,
             'request_year' => $year,
@@ -128,6 +130,10 @@ class LeaveWorkflowService
             Carbon::parse($end)
         );
 
+        // Editing a request that is already waiting keeps its place (and its submission time);
+        // a planned request starts waiting when it is submitted.
+        $submittedAt = $status === 'Pending Approval' ? ($request->submitted_at ?? now()) : null;
+
         $request->update([
             'leave_type' => $data['leave_type'],
             'start_date' => $start,
@@ -138,6 +144,7 @@ class LeaveWorkflowService
             'manager_comments' => null,
             'manager_recommendation' => $recommendation,
             'leave_status' => $status,
+            ...$this->stageTimestamps($submittedAt, $recommendation),
             'approved_by_id' => null,
             'chiefManager_comments' => null,
             'request_year' => (int) Carbon::parse($start)->format('Y'),
@@ -167,6 +174,20 @@ class LeaveWorkflowService
         return (bool) $user?->hasRoles('manager', 'departmental_manager', 'district_manager');
     }
 
+    /**
+     * Stage times for a request entering (or leaving) the queue. A request that skips the
+     * manager is recommended at the moment it is submitted, so the final approver's time starts
+     * there and no manager response is counted for it.
+     */
+    protected function stageTimestamps(?Carbon $submittedAt, string $recommendation): array
+    {
+        return [
+            'submitted_at' => $submittedAt,
+            'recommended_at' => $submittedAt && $recommendation === 'Recommended' ? $submittedAt : null,
+            'decided_at' => null,
+        ];
+    }
+
     public function recommend(Employee $managerActor, LeaveRequest $req, ?string $comments, bool $recommended): LeaveRequest
     {
         // Only the assigned manager can recommend
@@ -176,11 +197,14 @@ class LeaveWorkflowService
 
         $req->manager_comments = filled($comments) ? trim($comments) : null;
         $req->manager_recommendation = $recommended ? 'Recommended' : 'Rejected';
+        $req->recommended_at = now();
         if ($recommended) {
             [$mgr, $chief] = $this->chain->resolve($req->requester);
             $this->notify->recommended($req, $chief->email);
         } else {
+            // A manager's rejection is also the final decision.
             $req->leave_status = 'Denied';
+            $req->decided_at = $req->recommended_at;
         }
 
         $req->save();
@@ -223,6 +247,7 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($approve, $comments, $req, $chiefActor) {
             $req->chiefManager_comments = filled($comments) ? trim($comments) : null;
             $req->approved_by_id = $chiefActor->id;
+            $req->decided_at = now();
 
             if (! $approve) {
                 $req->leave_status = 'Denied';
@@ -279,6 +304,10 @@ class LeaveWorkflowService
         $req->manager_comments = null;
         $req->chiefManager_comments = null;
         $req->approved_by_id = null;
+        // Back to planning: a later submission starts a new cycle.
+        $req->submitted_at = null;
+        $req->recommended_at = null;
+        $req->decided_at = null;
         $req->save();
 
         return $req;

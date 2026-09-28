@@ -73,41 +73,57 @@ class ErpNavigation
             [
                 'slug' => Permission::MODULE_LEAVE,
                 'title' => 'Leave Management',
+                'short' => 'Leave',
+                'icon_name' => 'calendar-days',
                 'route' => $this->safeRoute('leave.home'),
             ],
             [
                 'slug' => Permission::MODULE_STAFF,
                 'title' => 'Staff Management',
+                'short' => 'Staff',
+                'icon_name' => 'users',
                 'route' => $this->safeRoute('staff.index'),
             ],
             [
                 'slug' => Permission::MODULE_LETTERS,
                 'title' => 'Letters',
+                'short' => 'Letters',
+                'icon_name' => 'mail',
                 'route' => $this->safeRoute('letters.home'),
             ],
             [
                 'slug' => Permission::MODULE_VISITORS,
                 'title' => 'Visitors Log',
+                'short' => 'Visitors',
+                'icon_name' => 'door-open',
                 'route' => $this->safeRoute('visitors.home'),
             ],
             [
                 'slug' => Permission::MODULE_ASSETS,
                 'title' => 'ICT Assets',
+                'short' => 'Assets',
+                'icon_name' => 'monitor',
                 'route' => $this->safeRoute('assets.home'),
             ],
             [
                 'slug' => Permission::MODULE_TRANSPORT,
                 'title' => 'Transport',
+                'short' => 'Transport',
+                'icon_name' => 'car',
                 'route' => $this->safeRoute('transport.home'),
             ],
             [
                 'slug' => Permission::MODULE_CREDIT_UNION,
                 'title' => 'Credit Union',
+                'short' => 'Credit Union',
+                'icon_name' => 'landmark',
                 'route' => $this->safeRoute('credit-union.home'),
             ],
             [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
+                'short' => 'Access',
+                'icon_name' => 'shield-check',
                 'route' => $this->safeRoute('uac.index'),
             ],
         ];
@@ -174,12 +190,14 @@ class ErpNavigation
                 'route' => $homeRoute,
                 'active' => ['leave.home', 'leave.team-dashboard'],
                 'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
             ],
             [
                 'label' => 'All Requests',
                 'route' => 'leave.requests',
                 'active' => ['leave.requests'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'list-checks',
                 'can' => $canReview,
             ],
             [
@@ -187,12 +205,14 @@ class ErpNavigation
                 'route' => 'leave.apply',
                 'active' => ['leave.apply'],
                 'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'circle-plus',
             ],
             [
                 'label' => 'My Leave History',
                 'route' => 'leave.my-history',
                 'active' => ['leave.my-history'],
                 'icon' => $this->icon('user'),
+                'icon_name' => 'history',
             ],
             [
                 'type' => 'section',
@@ -203,6 +223,7 @@ class ErpNavigation
                 'route' => 'leave.approvals',
                 'active' => ['leave.approvals'],
                 'icon' => $this->icon('check'),
+                'icon_name' => 'square-check-big',
                 'can' => $canReview,
             ],
             [
@@ -214,6 +235,7 @@ class ErpNavigation
                 'route' => 'leave.compulsory',
                 'active' => ['leave.compulsory'],
                 'icon' => $this->icon('spark'),
+                'icon_name' => 'calendar-x',
                 'can' => $canManageHrTools,
             ],
             [
@@ -221,6 +243,7 @@ class ErpNavigation
                 'route' => 'leave.reports',
                 'active' => ['leave.reports'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
                 'can' => $canExport,
             ],
         ];
@@ -241,12 +264,14 @@ class ErpNavigation
                 'route' => 'staff.index',
                 'active' => ['staff.index'],
                 'icon' => $this->icon('user'),
+                'icon_name' => 'users',
             ],
             [
                 'label' => 'Add Employee',
                 'route' => 'staff.create',
                 'active' => ['staff.create', 'staff.edit'],
                 'icon' => $this->icon('user-plus'),
+                'icon_name' => 'user-plus',
                 'can' => $canManage,
             ],
             [
@@ -258,6 +283,7 @@ class ErpNavigation
                 'route' => 'staff.reports',
                 'active' => ['staff.reports'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
                 'can' => $canViewReports,
             ],
             [
@@ -265,6 +291,7 @@ class ErpNavigation
                 'route' => 'staff.import',
                 'active' => ['staff.import'],
                 'icon' => $this->icon('stack'),
+                'icon_name' => 'file-spreadsheet',
                 'can' => $canManage,
             ],
             [
@@ -272,6 +299,7 @@ class ErpNavigation
                 'route' => 'staff.departments',
                 'active' => ['staff.departments'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'building-2',
                 'can' => $canManageDepartments,
             ],
             [
@@ -279,6 +307,7 @@ class ErpNavigation
                 'route' => 'staff.regions',
                 'active' => ['staff.regions'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'map',
                 'can' => $canManageRegions,
             ],
             [
@@ -286,6 +315,7 @@ class ErpNavigation
                 'route' => 'staff.locations',
                 'active' => ['staff.locations'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'map-pin',
                 'can' => $canManageLocations,
             ],
             [
@@ -293,6 +323,7 @@ class ErpNavigation
                 'route' => 'staff.job-titles',
                 'active' => ['staff.job-titles'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'briefcase',
                 'can' => $canManageJobTitles,
             ],
         ];
@@ -306,12 +337,14 @@ class ErpNavigation
                 'route' => 'uac.users',
                 'active' => ['uac.users'],
                 'icon' => $this->icon('user'),
+                'icon_name' => 'users',
             ],
             [
                 'label' => 'Roles & Permissions',
                 'route' => 'uac.roles',
                 'active' => ['uac.roles'],
                 'icon' => $this->icon('shield'),
+                'icon_name' => 'key-round',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
             ],
             [
@@ -319,6 +352,7 @@ class ErpNavigation
                 'route' => 'uac.import',
                 'active' => ['uac.import'],
                 'icon' => $this->icon('stack'),
+                'icon_name' => 'file-spreadsheet',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
             ],
             [
@@ -326,6 +360,7 @@ class ErpNavigation
                 'route' => 'uac.audit-log',
                 'active' => ['uac.audit-log'],
                 'icon' => $this->icon('bars'),
+                'icon_name' => 'scroll-text',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin'),
             ],
         ];
@@ -339,18 +374,21 @@ class ErpNavigation
                 'route' => 'letters.home',
                 'active' => ['letters.home'],
                 'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
             ],
             [
                 'label' => 'Active Letters',
                 'route' => 'letters.active',
                 'active' => ['letters.active'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'inbox',
             ],
             [
                 'label' => 'New Letter',
                 'route' => 'letters.create',
                 'active' => ['letters.create'],
                 'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'pen-line',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('letters.create'),
             ],
             [
@@ -358,6 +396,7 @@ class ErpNavigation
                 'route' => 'letters.closed',
                 'active' => ['letters.closed'],
                 'icon' => $this->icon('check'),
+                'icon_name' => 'archive',
             ],
         ];
     }
@@ -370,18 +409,21 @@ class ErpNavigation
                 'route' => 'visitors.home',
                 'active' => ['visitors.home'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'clipboard-list',
             ],
             [
                 'label' => 'Historical Log',
                 'route' => 'visitors.history',
                 'active' => ['visitors.history'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'history',
             ],
             [
                 'label' => 'Kiosk Screen',
                 'route' => 'visitors.kiosk',
                 'active' => ['visitors.kiosk'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'tablet',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'receptionist') || $currentUser->hasPermission('visitors.kiosk'),
             ],
         ];
@@ -397,6 +439,7 @@ class ErpNavigation
                 'route' => 'assets.home',
                 'active' => ['assets.home'],
                 'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_dashboard') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -408,6 +451,7 @@ class ErpNavigation
                 'route' => 'assets.assets',
                 'active' => ['assets.assets'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'laptop',
                 'can' => $canViewInventory,
             ],
             [
@@ -415,6 +459,7 @@ class ErpNavigation
                 'route' => 'assets.phones',
                 'active' => ['assets.phones'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'smartphone',
                 'can' => $canViewInventory,
             ],
             [
@@ -422,6 +467,7 @@ class ErpNavigation
                 'route' => 'assets.network',
                 'active' => ['assets.network'],
                 'icon' => $this->icon('stack'),
+                'icon_name' => 'network',
                 'can' => $canViewInventory,
             ],
             [
@@ -429,6 +475,7 @@ class ErpNavigation
                 'route' => 'assets.maintenance',
                 'active' => ['assets.maintenance'],
                 'icon' => $this->icon('spark'),
+                'icon_name' => 'wrench',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_maintenance') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -436,6 +483,7 @@ class ErpNavigation
                 'route' => 'assets.reports',
                 'active' => ['assets.reports'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_reports') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -447,6 +495,7 @@ class ErpNavigation
                 'route' => 'assets.settings.manufacturers',
                 'active' => ['assets.settings.manufacturers'],
                 'icon' => $this->icon('stack'),
+                'icon_name' => 'factory',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_manufacturers') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -454,6 +503,7 @@ class ErpNavigation
                 'route' => 'assets.settings.models',
                 'active' => ['assets.settings.models'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'boxes',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_models') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -461,6 +511,7 @@ class ErpNavigation
                 'route' => 'assets.settings.ip-ranges',
                 'active' => ['assets.settings.ip-ranges'],
                 'icon' => $this->icon('shield'),
+                'icon_name' => 'ethernet-port',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_ip_ranges') || $currentUser->hasRoles('super_admin'),
             ],
             [
@@ -472,6 +523,7 @@ class ErpNavigation
                 'route' => 'assets.agent',
                 'active' => ['assets.agent'],
                 'icon' => $this->icon('bars'),
+                'icon_name' => 'activity',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin'),
             ],
         ];
@@ -497,12 +549,14 @@ class ErpNavigation
                 'route' => 'transport.home',
                 'active' => ['transport.home'],
                 'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
             ],
             [
                 'label' => 'Vehicles',
                 'route' => 'transport.vehicles',
                 'active' => ['transport.vehicles'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'car',
                 'can' => $canManageVehicles,
             ],
             [
@@ -514,6 +568,7 @@ class ErpNavigation
                 'route' => 'transport.mileage',
                 'active' => ['transport.mileage'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'gauge',
                 'can' => $canOperate,
             ],
             [
@@ -521,6 +576,7 @@ class ErpNavigation
                 'route' => 'transport.issues',
                 'active' => ['transport.issues'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'triangle-alert',
                 'can' => $canOperate,
             ],
             [
@@ -528,6 +584,7 @@ class ErpNavigation
                 'route' => 'transport.maintenance',
                 'active' => ['transport.maintenance'],
                 'icon' => $this->icon('spark'),
+                'icon_name' => 'wrench',
                 'can' => $canManageMaintenance,
             ],
             [
@@ -535,6 +592,7 @@ class ErpNavigation
                 'route' => 'transport.expenses',
                 'active' => ['transport.expenses'],
                 'icon' => $this->icon('bars'),
+                'icon_name' => 'receipt',
                 'can' => $canManageExpenses,
             ],
             [
@@ -542,6 +600,7 @@ class ErpNavigation
                 'route' => 'transport.reports',
                 'active' => ['transport.reports'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
                 'can' => $canViewReports,
             ],
         ];
@@ -578,6 +637,7 @@ class ErpNavigation
                 'route' => 'credit-union.members',
                 'active' => ['credit-union.members', 'credit-union.members.show'],
                 'icon' => $this->icon('list'),
+                'icon_name' => 'users',
                 'can' => $canManageMembers,
             ],
             [
@@ -585,6 +645,7 @@ class ErpNavigation
                 'route' => 'credit-union.members.applications',
                 'active' => ['credit-union.members.applications'],
                 'icon' => $this->icon('check'),
+                'icon_name' => 'clipboard-check',
                 'can' => $canSeeApplications,
             ],
             [
@@ -596,6 +657,7 @@ class ErpNavigation
                 'route' => 'credit-union.deductions',
                 'active' => ['credit-union.deductions', 'credit-union.deductions.show'],
                 'icon' => $this->icon('stack'),
+                'icon_name' => 'layers',
                 'can' => $canManageDeductions,
             ],
             [
@@ -603,6 +665,7 @@ class ErpNavigation
                 'route' => 'credit-union.loans',
                 'active' => ['credit-union.loans', 'credit-union.loans.show'],
                 'icon' => $this->icon('bars'),
+                'icon_name' => 'hand-coins',
                 'can' => $canSeeLoans,
             ],
             [
@@ -610,6 +673,7 @@ class ErpNavigation
                 'route' => 'credit-union.receipts',
                 'active' => ['credit-union.receipts'],
                 'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'receipt',
                 'can' => $canManageReceipts,
             ],
             [
@@ -621,6 +685,7 @@ class ErpNavigation
                 'route' => 'credit-union.withdrawals',
                 'active' => ['credit-union.withdrawals', 'credit-union.withdrawals.show'],
                 'icon' => $this->icon('report'),
+                'icon_name' => 'banknote',
                 'can' => $canSeeWithdrawals,
             ],
             [
@@ -628,6 +693,7 @@ class ErpNavigation
                 'route' => 'credit-union.refunds',
                 'active' => ['credit-union.refunds'],
                 'icon' => $this->icon('spark'),
+                'icon_name' => 'undo-2',
                 'can' => $canManageRefunds,
             ],
             [
@@ -635,6 +701,7 @@ class ErpNavigation
                 'route' => 'credit-union.interest-distributions',
                 'active' => ['credit-union.interest-distributions', 'credit-union.interest-distributions.show'],
                 'icon' => $this->icon('grid'),
+                'icon_name' => 'percent',
                 'can' => $canSeeInterestDistributions,
             ],
             [
@@ -646,6 +713,7 @@ class ErpNavigation
                 'route' => 'credit-union.apply',
                 'active' => ['credit-union.apply'],
                 'icon' => $this->icon('user-plus'),
+                'icon_name' => 'user-plus',
                 'can' => $canApply,
             ],
         ];
@@ -659,6 +727,7 @@ class ErpNavigation
                 'route' => $route,
                 'active' => [$route],
                 'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
             ],
         ];
     }

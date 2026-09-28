@@ -21,6 +21,9 @@
             this.input = detail.input || null;
             this.inputValue = detail.input?.value || '';
             this.inputError = '';
+            // A drawer or modal underneath may have hidden the rest of the page (x-trap.inert);
+            // this dialog sits on top of it, so it must stay visible to assistive tech.
+            this.$root.removeAttribute('aria-hidden');
             this.open = true;
         },
         confirm() {
@@ -43,28 +46,40 @@
         }
     }"
     x-on:confirm-action.window="ask($event)"
-    x-on:keydown.escape.window="open = false"
+    x-on:keydown.escape.window.capture="if (open) { $event.stopPropagation(); open = false; }"
     x-cloak
 >
     <div class="confirm-backdrop" x-show="open" x-transition.opacity>
-        <div class="confirm-card" x-show="open" x-transition>
-            <div class="confirm-icon" :class="`confirm-${variant}`">!</div>
+        <div
+            class="confirm-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-modal-title"
+            aria-describedby="confirm-modal-message"
+            x-show="open"
+            x-trap.inert.noscroll="open"
+            x-transition
+        >
+            <div class="confirm-icon" :class="`confirm-${variant}`" aria-hidden="true">
+                <x-ui.icon name="triangle-alert" x-show="variant === 'danger'" />
+                <x-ui.icon name="info" x-show="variant !== 'danger'" />
+            </div>
             <div class="confirm-body">
-                <h2 x-text="title"></h2>
-                <p x-text="message"></p>
-                <div x-show="input" style="margin-top:12px;text-align:left">
-                    <label class="form-label" x-text="input?.label || 'Value'"></label>
-                    <select x-model="inputValue" class="form-input">
+                <h2 id="confirm-modal-title" x-text="title"></h2>
+                <p id="confirm-modal-message" x-text="message"></p>
+                <div x-show="input" style="margin-top:14px;text-align:left" class="form-field">
+                    <label class="form-label" for="confirm-modal-input" x-text="input?.label || 'Value'"></label>
+                    <select id="confirm-modal-input" x-model="inputValue" class="form-input" x-bind:aria-invalid="inputError ? 'true' : 'false'">
                         <option value="" x-text="input?.placeholder || 'Select an option'"></option>
                         <template x-for="option in (input?.options || [])" :key="option.value">
                             <option :value="option.value" x-text="option.label"></option>
                         </template>
                     </select>
-                    <div x-show="inputError" class="form-label form-error" x-text="inputError"></div>
+                    <div x-show="inputError" class="form-error" role="alert" x-text="inputError"></div>
                 </div>
                 <div class="confirm-actions">
                     <button type="button" class="btn" x-on:click="open = false" x-text="cancelLabel"></button>
-                    <button type="button" class="btn" :class="variant === 'danger' ? 'btn-danger' : 'btn-primary'" x-on:click="confirm()" x-text="confirmLabel"></button>
+                    <button type="button" class="btn" :class="variant === 'danger' ? 'btn-danger-solid' : 'btn-primary'" x-on:click="confirm()" x-text="confirmLabel"></button>
                 </div>
             </div>
         </div>

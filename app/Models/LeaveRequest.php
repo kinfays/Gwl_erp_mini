@@ -17,6 +17,9 @@ class LeaveRequest extends Model
         'manager_comments',
         'manager_recommendation',
         'leave_status',
+        'submitted_at',
+        'recommended_at',
+        'decided_at',
         'approved_by_id',
         'chiefManager_comments',
         'request_year',
@@ -29,6 +32,9 @@ class LeaveRequest extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'request_year' => 'integer',
+        'submitted_at' => 'datetime',
+        'recommended_at' => 'datetime',
+        'decided_at' => 'datetime',
     ];
 
     public function requester()
@@ -60,6 +66,44 @@ class LeaveRequest extends Model
     {
         return $this->leave_status === 'Planned'
             || ($this->leave_status === 'Pending Approval' && $this->manager_recommendation === 'Pending');
+    }
+
+    /**
+     * Hours the manager took to recommend or reject, from submission. Null when the manager
+     * hasn't acted, when the step was skipped (a manager's own request is recommended the moment
+     * it is submitted), or when the time predates these columns.
+     */
+    public function managerResponseHours(): ?float
+    {
+        if (! $this->submitted_at || ! $this->recommended_at || ! $this->recommended_at->gt($this->submitted_at)) {
+            return null;
+        }
+
+        return $this->submitted_at->diffInHours($this->recommended_at);
+    }
+
+    /**
+     * Hours the final approver took to approve or deny, from the recommendation (or from
+     * submission when the recommendation step was skipped). Null for requests the manager
+     * rejected, which never reached the approver.
+     */
+    public function approverHours(): ?float
+    {
+        if (! $this->approved_by_id || ! $this->recommended_at || ! $this->decided_at) {
+            return null;
+        }
+
+        return $this->recommended_at->diffInHours($this->decided_at);
+    }
+
+    /** Hours from submission to the final decision, whoever made it. */
+    public function cycleHours(): ?float
+    {
+        if (! $this->submitted_at || ! $this->decided_at) {
+            return null;
+        }
+
+        return $this->submitted_at->diffInHours($this->decided_at);
     }
 
     public function scopeVisibleForApprovals($query, Employee $actor, User $actorUser)

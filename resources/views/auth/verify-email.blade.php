@@ -1,29 +1,31 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600">
-        {{ __('Thanks for signing up! Before getting started, could you verify your email address by clicking on the link we just emailed to you? If you didn\'t receive the email, we will gladly send you another.') }}
+    <div class="auth-intro">
+        <h2>{{ __('Verify your email address') }}</h2>
+        <p>{{ __('Thanks for signing up! Before getting started, could you verify your email address by clicking on the link we just emailed to you? If you didn\'t receive the email, we will gladly send you another.') }}</p>
     </div>
 
     @if (session('status') == 'verification-link-sent')
-        <div class="mb-4 font-medium text-sm text-green-600">
-            {{ __('A new verification link has been sent to the email address you provided during registration.') }}
+        <div class="alert alert-success" role="status">
+            <x-ui.icon name="circle-check" class="alert-icon" />
+            <div class="alert-body">{{ __('A new verification link has been sent to the email address you provided during registration.') }}</div>
         </div>
     @endif
 
-    <div class="mt-4 flex items-center justify-between">
+    <div class="auth-row">
         <form method="POST" action="{{ route('verification.send') }}">
             @csrf
 
-            <div>
-                <x-primary-button>
-                    {{ __('Resend Verification Email') }}
-                </x-primary-button>
-            </div>
+            <x-primary-button>
+                <x-ui.icon name="send" />
+                {{ __('Resend Verification Email') }}
+            </x-primary-button>
         </form>
 
         <form method="POST" action="{{ route('logout') }}">
             @csrf
 
-            <button type="submit" class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            <button type="submit" class="btn btn-ghost">
+                <x-ui.icon name="log-out" />
                 {{ __('Log Out') }}
             </button>
         </form>

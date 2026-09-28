@@ -11,9 +11,12 @@
 
 <div
     class="toast-stack"
+    role="region"
+    aria-label="{{ __('Notifications') }}"
     x-data="{
         nextId: 1,
         toasts: [],
+        timers: {},
         push(detail) {
             const toast = {
                 id: this.nextId++,
@@ -21,10 +24,33 @@
                 message: detail.message || detail.detail?.message || 'Done.'
             };
 
-            this.toasts = [...this.toasts.slice(-2), toast];
-            setTimeout(() => this.remove(toast.id), 4000);
+            const show = () => {
+                this.toasts = [...this.toasts.slice(-2), toast];
+                this.schedule(toast.id);
+            };
+
+            // An open drawer or modal (x-trap.inert) hides the rest of the page from assistive
+            // tech. Un-hide this live region first, then add the message a beat later so it is
+            // still announced.
+            if (this.$root.getAttribute('aria-hidden') === 'true') {
+                this.$root.removeAttribute('aria-hidden');
+                setTimeout(show, 100);
+
+                return;
+            }
+
+            show();
+        },
+        schedule(id) {
+            clearTimeout(this.timers[id]);
+            this.timers[id] = setTimeout(() => this.remove(id), 6000);
+        },
+        pause(id) {
+            clearTimeout(this.timers[id]);
         },
         remove(id) {
+            clearTimeout(this.timers[id]);
+            delete this.timers[id];
             this.toasts = this.toasts.filter((toast) => toast.id !== id);
         }
     }"
@@ -33,10 +59,30 @@
     aria-live="polite"
 >
     <template x-for="toast in toasts" :key="toast.id">
-        <div class="toast" :class="`toast-${toast.type}`" x-transition>
-            <span class="toast-icon" x-text="toast.type === 'success' ? 'OK' : toast.type === 'error' ? '!' : toast.type === 'warning' ? '?' : 'i'"></span>
+        <div
+            class="toast"
+            :class="`toast-${toast.type}`"
+            x-on:mouseenter="pause(toast.id)"
+            x-on:mouseleave="schedule(toast.id)"
+            x-on:focusin="pause(toast.id)"
+            x-on:focusout="schedule(toast.id)"
+            x-transition:enter="toast-enter"
+            x-transition:enter-start="toast-enter-start"
+            x-transition:enter-end="toast-enter-end"
+            x-transition:leave="toast-leave"
+            x-transition:leave-start="toast-leave-start"
+            x-transition:leave-end="toast-leave-end"
+        >
+            <span class="toast-icon" aria-hidden="true">
+                <x-ui.icon name="circle-check" x-show="toast.type === 'success'" />
+                <x-ui.icon name="circle-alert" x-show="toast.type === 'error'" />
+                <x-ui.icon name="triangle-alert" x-show="toast.type === 'warning'" />
+                <x-ui.icon name="info" x-show="! ['success', 'error', 'warning'].includes(toast.type)" />
+            </span>
             <span class="toast-message" x-text="toast.message"></span>
-            <button type="button" x-on:click="remove(toast.id)" aria-label="Close notification">&times;</button>
+            <button type="button" class="toast-close" x-on:click="remove(toast.id)" aria-label="{{ __('Dismiss notification') }}">
+                <x-ui.icon name="x" class="icon-sm" />
+            </button>
         </div>
     </template>
 </div>

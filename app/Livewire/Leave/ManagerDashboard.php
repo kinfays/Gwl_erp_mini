@@ -183,14 +183,15 @@ class ManagerDashboard extends Component
             ->whereIn('leave_status', ['Approved', 'Denied'])
             ->get();
 
+        // Submission to the final decision; requests without both stage times are skipped.
         $times = $requests
-            ->filter(fn ($r) => $r->created_at && $r->updated_at)
-            ->map(fn ($r) => $r->updated_at->diffInHours($r->created_at));
+            ->map(fn ($r) => $r->cycleHours())
+            ->reject(fn ($hours) => $hours === null);
 
         $this->slaStats = [
             'avg_cycle_hours' => $times->isNotEmpty()
                 ? round($times->avg())
-                : 0,
+                : null,
         ];
     }
 
