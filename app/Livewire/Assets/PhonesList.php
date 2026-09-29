@@ -8,8 +8,15 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
+use App\Models\MdmDevice;
+use App\Models\MdmDeviceCommand;
 use App\Services\Assets\AssetRecordService;
+use App\Services\Assets\Mdm\CommandService;
+use App\Services\Assets\Mdm\MdmAccessGuard;
+use App\Services\Assets\Mdm\MdmSettings;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -34,6 +41,21 @@ class PhonesList extends Component
     public ?int $editingAssetId = null;
 
     public ?string $previousAssignedLabel = null;
+
+    /**
+     * Set when a status change on an enrolled phone should offer Lost Mode ('start') or Stop Lost Mode ('stop').
+     * Locked and re-resolved through MdmAccessGuard when confirmed, so the client cannot aim it at another phone.
+     */
+    #[Locked]
+    public ?int $mdmPromptDeviceId = null;
+
+    #[Locked]
+    public ?string $mdmPromptAction = null;
+
+    /** Editable on the Lost Mode offer; start out as the configured defaults. */
+    public string $mdmPromptMessage = '';
+
+    public string $mdmPromptPhone = '';
 
     /**
      * form.region_id is display-only. It has no validation rule, so it never
@@ -128,10 +150,83 @@ class PhonesList extends Component
             ? $this->scopeAssetsForActor(IctAsset::query())->where('device_category', self::CATEGORY)->findOrFail($this->editingAssetId)
             : null;
 
-        app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing);
+        $previousStatus = $existing?->status;
+
+        $asset = app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing);
 
         $this->dispatch('toast', type: 'success', message: $existing ? 'Phone device updated successfully.' : 'Phone device created successfully.');
         $this->closeForm();
+        $this->offerMdmLostMode($previousStatus, $asset);
+    }
+
+    /**
+     * Marking an enrolled phone Lost offers to start Lost Mode; recovering it offers to stop it. Only an offer:
+     * nothing is sent until the user confirms in the modal, and it never wipes.
+     */
+    protected function offerMdmLostMode(?string $previousStatus, IctAsset $asset): void
+    {
+        $this->mdmPromptDeviceId = null;
+        $this->mdmPromptAction = null;
+
+        if (! config('gwl.mdm_enabled') || ! $this->canUseMdmCommands()) {
+            return;
+        }
+
+        $device = MdmDevice::query()->notDeleted()->where('ict_asset_id', $asset->id)->first();
+
+        if (! $device || $device->needs_review) {
+            return;
+        }
+
+        $nowLost = $asset->status === IctAsset::STATUS_LOST;
+        $wasLost = $previousStatus === IctAsset::STATUS_LOST;
+
+        if ($nowLost && ! $wasLost && ! $device->is_lost) {
+            $defaults = app(MdmSettings::class)->lostModeDefaults();
+
+            $this->mdmPromptDeviceId = $device->id;
+            $this->mdmPromptAction = 'start';
+            $this->mdmPromptMessage = (string) $defaults['message'];
+            $this->mdmPromptPhone = (string) $defaults['phone'];
+        } elseif ($wasLost && ! $nowLost && $device->is_lost) {
+            $this->mdmPromptDeviceId = $device->id;
+            $this->mdmPromptAction = 'stop';
+        }
+    }
+
+    public function confirmMdmPrompt(): void
+    {
+        $action = $this->mdmPromptAction;
+
+        abort_unless(config('gwl.mdm_enabled') && $this->mdmPromptDeviceId && in_array($action, ['start', 'stop'], true), 404);
+
+        $device = app(MdmAccessGuard::class)->deviceOrFail($this->actor(), $this->mdmPromptDeviceId);
+
+        try {
+            app(CommandService::class)->request(
+                $this->actor(),
+                $device,
+                $action === 'start' ? MdmDeviceCommand::TYPE_START_LOST_MODE : MdmDeviceCommand::TYPE_STOP_LOST_MODE,
+                $action === 'start' ? ['message' => $this->mdmPromptMessage, 'phone' => $this->mdmPromptPhone] : [],
+            );
+        } catch (AuthorizationException $e) {
+            abort(403, $e->getMessage());
+        }
+
+        $this->dismissMdmPrompt();
+        $this->dispatch('toast', type: 'success', message: $action === 'start' ? 'Lost Mode queued.' : 'Stop Lost Mode queued.');
+    }
+
+    public function dismissMdmPrompt(): void
+    {
+        $this->mdmPromptDeviceId = null;
+        $this->mdmPromptAction = null;
+        $this->resetErrorBag('command');
+    }
+
+    protected function canUseMdmCommands(): bool
+    {
+        return app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_command');
     }
 
     /**
@@ -206,7 +301,7 @@ class PhonesList extends Component
     public function render()
     {
         $assets = $this->scopeAssetsForActor(
-            IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region'])
+            IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region', 'mdmDevice'])
         )
             ->where('device_category', self::CATEGORY)
             ->when($this->search, function ($query) {
@@ -238,7 +333,13 @@ class PhonesList extends Component
             ->limit(500)
             ->get();
 
+        $mdmEnabled = (bool) config('gwl.mdm_enabled');
+
         return view('livewire.assets.phones-list', [
+            'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
+            'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
+                ? app(MdmAccessGuard::class)->devices($this->actor())->with('asset.assignedTo')->find($this->mdmPromptDeviceId)
+                : null,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],

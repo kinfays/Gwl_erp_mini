@@ -23,3 +23,11 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Google service-account keys (Android Management API / Pub/Sub). Keep them outside the repo entirely;
+# this is a safety net in case one lands here by accident.
+/google-credentials*.json
+/service-account*.json
+/*-amapi*.json
+/*-service-account*.json
+/gwl-amapi*.json

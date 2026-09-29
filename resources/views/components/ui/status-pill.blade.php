@@ -91,6 +91,13 @@
             'retired' => ['muted'],
             'lost' => ['danger'],
         ],
+        // mdm_device_commands.status
+        'mdm-command' => [
+            'requested' => ['muted', 'Queued'],
+            'sent' => ['info', 'Sent to Google'],
+            'acknowledged' => ['success', 'Acknowledged'],
+            'failed' => ['danger'],
+        ],
         'credit-union' => [
             'draft' => ['muted'],
             'pending' => ['warning'],

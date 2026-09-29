@@ -7,7 +7,10 @@
     "license": "MIT",
     "require": {
         "php": "^8.4.1",
+        "bacon/bacon-qr-code": "^3.0",
         "dompdf/dompdf": "^3.1",
+        "firebase/php-jwt": "^7.0",
+        "google/apiclient": "^2.18",
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^4.2",
@@ -54,6 +57,7 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "pre-autoload-dump": "Google\\Task\\Composer::cleanup",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
@@ -76,7 +80,11 @@
     "extra": {
         "laravel": {
             "dont-discover": []
-        }
+        },
+        "google/apiclient-services": [
+            "AndroidManagement",
+            "Pubsub"
+        ]
     },
     "config": {
         "optimize-autoloader": true,

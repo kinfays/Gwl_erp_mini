@@ -14,6 +14,14 @@ class AssetsRolePermissionSeeder extends Seeder
             ->where('module', Permission::MODULE_ASSETS)
             ->pluck('id', 'name');
 
+        $mdmAll = [
+            'assets.mdm_view',
+            'assets.mdm_manage_policies',
+            'assets.mdm_enroll',
+            'assets.mdm_command',
+            'assets.mdm_wipe',
+        ];
+
         $map = [
             'super_admin' => [
                 'assets.view_dashboard',
@@ -29,7 +37,10 @@ class AssetsRolePermissionSeeder extends Seeder
                 'assets.agent_ingest',
                 'assets.manage_ip_ranges',
                 'assets.view_network_secrets',
+                ...$mdmAll,
             ],
+            // admin only ever holds the MDM permissions inside Assets (see the mdm permissions migration).
+            'admin' => $mdmAll,
             'ict_team' => [
                 'assets.view_dashboard',
                 'assets.view_inventory',
@@ -39,6 +50,9 @@ class AssetsRolePermissionSeeder extends Seeder
                 'assets.manage_reports',
                 'assets.agent_ingest',
                 'assets.view_network_secrets',
+                'assets.mdm_view',
+                'assets.mdm_enroll',
+                'assets.mdm_command',
             ],
         ];
 

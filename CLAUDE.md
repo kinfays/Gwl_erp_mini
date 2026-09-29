@@ -7,7 +7,8 @@ Guidance for Claude Code (and any other agent) working in this repository.
 A Laravel-based internal ERP portal (staff_id + password login) covering seven
 modules: **UAC** (user access control), **Staff** (HR directory), **Leave**
 (leave requests/balances), **Letters** (document routing), **Visitors**
-(kiosk check-in/out), **Assets** (ICT inventory), and **Transport** (fleet
+(kiosk check-in/out), **Assets** (ICT inventory, plus Android Enterprise
+phone management — "MDM", behind `GWL_MDM_ENABLED`), and **Transport** (fleet
 management). See `APP_DOCUMENTATION.md` and `docs/` for a functional
 walkthrough of each module — this file is about how the code is put
 together, not what it does for end users.
@@ -28,6 +29,7 @@ Versions below are what `composer.lock` / `package-lock.json` pin; those files a
 - **dompdf/dompdf 3.1** (used directly via `new Dompdf($options)`, not the barryvdh wrapper) — PDF export (visitor logs, transport reports, credit union statements)
 - **Blade + Alpine.js 3 + Tailwind CSS 4 + Vite 8** (`laravel-vite-plugin` 3) — frontend. Node **22+** is required (`concurrently` 10, used by `composer run dev`).
 - **Chart.js 4** (npm, MIT) — the only chart library. It's a separate Vite entry (`resources/js/charts.js`, sets `window.Chart`) that each chart component loads with `@assets @vite('resources/js/charts.js') @endassets`, so it only ships on pages that draw charts; the module runs before `DOMContentLoaded`, so draw charts from that event, not immediately. Don't reintroduce ApexCharts: since v5.1 its licence needs a paid commercial licence for organisations over US$2M revenue.
+- **google/apiclient 2.x** (only `Google\Service\AndroidManagement` + `Pubsub`; `composer.json` runs `Google\Task\Composer::cleanup` on `pre-autoload-dump` to delete the other ~670 service folders from `vendor/`, so a fresh `composer install` is slow once and then small), **firebase/php-jwt 7** (verifies Pub/Sub push OIDC tokens) and **bacon/bacon-qr-code 3** (inline-SVG enrollment QR codes) — all MDM only.
 - **signature_pad 5** (npm, MIT) — likewise its own Vite entry (`resources/js/signature-pad.js`, sets `window.SignaturePad`), loaded only by the standalone visitor kiosk page through its `@vite([...])` list.
 - Front-end libraries come from npm through Vite (version-locked with integrity hashes in `package-lock.json`), never from a CDN `<script>` tag.
 - **SQLite** by default (`database/database.sqlite`); swappable via `.env`
@@ -44,6 +46,7 @@ Versions below are what `composer.lock` / `package-lock.json` pin; those files a
 
 ```
 app/
+  Console/Commands/Mdm/      mdm:* Artisan commands (enterprise bootstrap, poll-events, sync-devices, prune-events)
   Events/Transport/          Domain events (currently transport-only)
   Exports/{Leave,Staff,Transport,Visitors}/   Maatwebsite Excel export classes, one per report
   Http/
@@ -52,7 +55,8 @@ app/
     Middleware/              CheckModuleAccess, CheckRole, CheckPermission, EnsureUserIsActive
     Requests/                Form requests, grouped by module (Transport/, Uac/, Auth/)
   Listeners/Transport/       Event listeners (notify managers of issues/maintenance/expiry)
-  Livewire/                  Interactive UI components, grouped by module (Leave/, Staff/, Letters/, Transport/, Assets/, Visitors/, Uac/, Notifications/)
+  Jobs/Assets/Mdm/           The only queued jobs in the app (SendMdmCommand, ProcessAndroidNotification, SyncMdmDevice)
+  Livewire/                  Interactive UI components, grouped by module (Leave/, Staff/, Letters/, Transport/, Assets/ incl. Assets/Mdm/, Visitors/, Uac/, Notifications/)
   Livewire/Concerns/         EnforcesModuleAccess trait for Livewire-level module checks (separate from the controller one above)
   Mail/                      Mailables (leave submitted/recommended/approved/denied)
   Models/                    Eloquent models, flat under app/Models (Concerns/ holds shared traits like HasUuid)
@@ -110,12 +114,24 @@ When adding a new protected screen, replicate this pattern rather than relying o
 Controllers and Livewire components stay thin and delegate to `app/Services/{Module}/*`. Follow the existing per-module split:
 - `Services/Leave/` — `LeaveApprovalChainResolver`, `LeaveWorkflowService`, `LeaveBalanceService`, `LeaveEntitlementService`, `LeaveNotificationService`, `WorkingDaysCalculator` — one class per concern, not one god-service.
 - `Services/Letters/LetterWorkflowService` — routing/dispatch/remark logic.
+- `Services/Assets/Mdm/` — Android Enterprise: `AndroidManagementGateway` (interface; `AndroidManagementClient` is the only class that touches Google), `PolicyService`, `EnrollmentService`, `DeviceService`, `CommandService`, `EventIntakeService`, `PubSubPushVerifier`, `MdmAccessGuard`. See "Android Enterprise (MDM)" below and `docs/assets/mdm.md`.
 - `Services/Staff/EmployeeDirectory` — the canonical place for role-scoped employee visibility queries (used by both StaffController and UAC's employee search).
 - `Services/Transport/TransportService`, `TransportNotificationService`.
 - `Services/Import/DataImportService` — shared xlsx import/preview/validate pipeline for both the UAC and Staff import screens (see `ImportController`).
 - Flat `Services/ReportsService` — date-range resolution + payload building for transport reports (PDF/Excel).
 
 If you're adding meaningful business logic, put it in a new or existing service class, not directly in a controller/Livewire method.
+
+### Android Enterprise (MDM) — things that are easy to get wrong
+- **Feature flag.** `config('gwl.mdm_enabled')` (env `GWL_MDM_ENABLED`, default false, true in `phpunit.xml`) is checked where the routes are registered (`web.php`, like Credit Union), in the `routes/console.php` schedule, in the sidebar `can` closures, on Livewire `mount()`, and at the top of every `mdm:*` command. Routes register at boot, so a "flag off" test must rebuild the app with an env override (see `AccessAndFeatureFlagTest`).
+- **Two separate route groups on purpose.** MDM routes live in their own `assets/mdm` group (`role:super_admin,admin,ict_team`), not inside the main Assets group, because `admin` may use MDM but nothing else in Assets and a nested group cannot loosen its parent's `role:` check. `ErpNavigation::assetsLandingRoute()` sends `admin`'s Assets tile to the MDM dashboard.
+- **The webhook is `POST /webhooks/android-management`** in `web.php` with `->withoutMiddleware('web')` (no session, no CSRF) and `throttle:mdm-webhook`. It authenticates by Google OIDC + secret `?token=` and must never call Google or do device work; it stores an `mdm_events` row and dispatches `ProcessAndroidNotification`. Do not reuse the `api_token` scheme.
+- **Region scope for MDM is `MdmAccessGuard`** (the service-level twin of the Livewire `ScopesAssetsByActor` trait; jobs have no `Auth::user()`). `ScopingParityTest` pins the two together. Resolve every device/asset id through it; never `MdmDevice::find($id)` from a client value. Commands re-check scope and permission again inside the queued job.
+- **A queue worker and a per-minute scheduler are required** — MDM is the first thing that needs either. Tests use `sync`, so use `Queue::fake()` when you need to assert dispatch.
+- **Tests never reach Google:** bind `Tests\Support\Mdm\FakeAndroidManagementGateway` / `FakeIdTokenVerifier` (see `Tests/Feature/Assets/Mdm/Concerns/BuildsMdmFixtures`). `AndroidManagementClientTest` drives the real client through a Guzzle mock (record in the *handler*, not a middleware: Guzzle runs middleware in insertion order, so an earlier one never sees Google's auth header).
+- **Google enum values are SHOUTING_SNAKE_CASE; `Str::headline()` spells them out letter by letter.** Use `App\Services\Assets\Mdm\Labels`.
+- Wipe is `devices.delete`, not `issueCommand` (AMAPI also has a `WIPE` command type; deliberately unused). `mdm_device_commands.payload` is encrypted and secrets (the reset passcode) are blanked after delivery; never put them in audit metadata.
+- The seeded "GWL Standard Phone" policy exists in every test database (a migration creates it) — don't assert global policy counts.
 
 ### Audit logging
 Any mutating action a human should be able to trace back later calls `AuditLog::record(...)` (static helper on the model) or the `App\Support\Audit::log(...)` wrapper — both write to `audit_logs`. Follow this pattern for new create/update/delete/export endpoints; it's checked for in several existing tests indirectly via the UAC audit log screen.
@@ -129,7 +145,7 @@ Any mutating action a human should be able to trace back later calls `AuditLog::
 - Soft deletes: only `Vehicle` uses `SoftDeletes`. Nothing else does — don't assume `deleted_at` exists elsewhere.
 
 ### Custom config
-`config/gwl.php` and `config/gwcl.php` hold app-specific env-driven settings (auto-checkout time, leave carry-over expiry window, import failure threshold, etc.) — these are **not** stock Laravel config files, they were added for this app. `gwcl.php` currently exists mostly as a legacy/fallback alias for one `gwl.php` key; prefer adding new settings to `gwl.php` and reading them as `config('gwl.your_key')`.
+`config/gwl.php` and `config/gwcl.php` hold app-specific env-driven settings (auto-checkout time, leave carry-over expiry window, import failure threshold, the `mdm_*` Android Enterprise settings, etc.) — these are **not** stock Laravel config files, they were added for this app. `gwcl.php` currently exists mostly as a legacy/fallback alias for one `gwl.php` key; prefer adding new settings to `gwl.php` and reading them as `config('gwl.your_key')`.
 
 ## Testing
 

@@ -35,5 +35,6 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="GWL_CREDIT_UNION_MODULE_ENABLED" value="true"/>
+        <env name="GWL_MDM_ENABLED" value="true"/>
     </php>
 </phpunit>

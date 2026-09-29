@@ -62,7 +62,7 @@ if (! function_exists('dashboardModules')) {
                 'title' => 'ICT Assets',
                 'description' => 'Track inventory, maintenance, and device telemetry',
                 'icon' => 'AS',
-                'route' => route('assets.home'),
+                'route' => route(app(\App\Support\ErpNavigation::class)->assetsLandingRoute($user)),
             ],
             [
                 'slug' => 'transport',

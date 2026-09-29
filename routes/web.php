@@ -2,7 +2,10 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\Api\AndroidManagementWebhookController;
 use App\Http\Controllers\Assets\AssetModuleController;
+use App\Http\Controllers\Assets\MdmEnterpriseController;
+use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
@@ -204,6 +207,56 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.manage_ip_ranges')
             ->name('settings.ip-ranges');
     });
+
+// Android Enterprise (MDM) inside the Assets module. Registered only while GWL_MDM_ENABLED is on, exactly like the
+// Credit Union block below. These routes live in their own group (not the group above) because `admin` may use MDM
+// but is deliberately not allowed anywhere else in Assets; a nested group cannot loosen its parent's role check.
+if (config('gwl.mdm_enabled')) {
+    // Google Pub/Sub push webhook. Outside auth / active / module, with no session and no CSRF check (dropping the
+    // `web` group removes both), rate limited, and authenticated by Google's OIDC token plus a secret ?token= —
+    // not by the api_token check the agent endpoints use.
+    Route::post('/webhooks/android-management', AndroidManagementWebhookController::class)
+        ->withoutMiddleware('web')
+        ->middleware('throttle:mdm-webhook')
+        ->name('webhooks.android-management');
+
+    Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,admin,ict_team'])
+        ->prefix('assets/mdm')
+        ->name('assets.mdm.')
+        ->group(function () {
+            Route::get('/', [MdmModuleController::class, 'devices'])
+                ->middleware('permission:assets.mdm_view')
+                ->name('devices');
+
+            Route::get('/devices/{device}', [MdmModuleController::class, 'device'])
+                ->middleware('permission:assets.mdm_view')
+                ->whereNumber('device')
+                ->name('devices.show');
+
+            Route::get('/enroll', [MdmModuleController::class, 'enroll'])
+                ->middleware('permission:assets.mdm_enroll')
+                ->name('enroll');
+
+            Route::get('/policies', [MdmModuleController::class, 'policies'])
+                ->middleware('permission:assets.mdm_view')
+                ->name('policies');
+
+            Route::get('/policies/create', [MdmModuleController::class, 'policyCreate'])
+                ->middleware('permission:assets.mdm_manage_policies')
+                ->name('policies.create');
+
+            Route::get('/policies/{policy}', [MdmModuleController::class, 'policyEdit'])
+                ->middleware('permission:assets.mdm_manage_policies')
+                ->whereNumber('policy')
+                ->name('policies.edit');
+
+            // One-time Android Enterprise bootstrap. Google redirects the admin's browser here after signup.
+            Route::middleware('role:super_admin')->group(function () {
+                Route::get('/enterprise/callback', [MdmEnterpriseController::class, 'callback'])->name('enterprise.callback');
+                Route::post('/enterprise/create', [MdmEnterpriseController::class, 'create'])->name('enterprise.create');
+            });
+        });
+}
 
 Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager,driver,employee'])
     ->prefix('transport')

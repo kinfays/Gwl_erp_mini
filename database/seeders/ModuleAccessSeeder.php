@@ -23,7 +23,8 @@ class ModuleAccessSeeder extends Seeder
 
         $accessMap = [
             'super_admin' => Permission::MODULES,
-            'admin' => [Permission::MODULE_UAC],
+            // Assets access lets admin reach the MDM screens (their routes are the only Assets routes that list admin).
+            'admin' => [Permission::MODULE_UAC, Permission::MODULE_ASSETS],
             'ict_team' => [Permission::MODULE_UAC, Permission::MODULE_ASSETS],
             'transport_manager' => [Permission::MODULE_TRANSPORT],
             'driver' => [Permission::MODULE_TRANSPORT],

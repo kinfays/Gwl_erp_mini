@@ -14,6 +14,8 @@ This folder contains split documentation pages for easier maintenance.
 - Leave: [06-module-leave.md](06-module-leave.md)
 - Letters: [07-module-letters.md](07-module-letters.md)
 - Visitors: [08-module-visitors.md](08-module-visitors.md)
+- Assets (inventory and agent): [assets-module.md](assets-module.md)
+- Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
 
 ## Reference Pages
 

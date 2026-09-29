@@ -72,6 +72,11 @@ class PermissionSeeder extends Seeder
                 'assets.agent_ingest',
                 'assets.manage_ip_ranges',
                 'assets.view_network_secrets',
+                'assets.mdm_view',
+                'assets.mdm_manage_policies',
+                'assets.mdm_enroll',
+                'assets.mdm_command',
+                'assets.mdm_wipe',
             ],
             'transport' => [
                 'transport.view_dashboard',

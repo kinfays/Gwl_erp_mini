@@ -64,6 +64,16 @@ Artisan::command('transport:check-expiries', function () {
 
 Schedule::command('transport:check-expiries')->dailyAt('07:30');
 
+// Android Enterprise (MDM). Schedules exist only while the feature flag is on. These need BOTH a running scheduler
+// (`php artisan schedule:work`, or a per-minute cron / Task Scheduler entry) and a queue worker — see docs/assets/mdm.md.
+if (config('gwl.mdm_enabled')) {
+    // Pull delivery: every minute; the command itself does nothing in push mode unless run with --force.
+    Schedule::command('mdm:poll-events')->everyMinute()->withoutOverlapping(10);
+    // Safety net in both modes.
+    Schedule::command('mdm:sync-devices')->dailyAt('02:15')->withoutOverlapping();
+    Schedule::command('mdm:prune-events')->dailyAt('03:00');
+}
+
 Artisan::command('credit-union:post-deferred-loan-repayments', function (LoanService $loans) {
     $posted = 0;
 

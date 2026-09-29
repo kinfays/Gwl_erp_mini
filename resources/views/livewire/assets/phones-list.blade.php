@@ -80,7 +80,16 @@
                             </span>
                         </td>
                         <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        <td>
+                            <span class="ui-cell-stack">
+                                <x-ui.status-pill domain="asset" :status="$asset->status" />
+                                @if ($mdmLinks && $asset->mdmDevice && ! $asset->mdmDevice->isDeleted())
+                                    <a href="{{ route('assets.mdm.devices.show', $asset->mdmDevice->id) }}" class="ui-person-sub" title="Open the MDM record">
+                                        MDM · {{ $asset->mdmDevice->is_lost ? 'Lost mode' : ($asset->mdmDevice->needs_review ? 'Needs review' : ($asset->mdmDevice->policy_compliant === false ? 'Non-compliant' : 'Managed')) }}
+                                    </a>
+                                @endif
+                            </span>
+                        </td>
                         <td class="actions">
                             @if ($canEdit)
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
@@ -159,5 +168,32 @@
                 </button>
             </x-slot:footer>
         </x-ui.modal>
+    @endif
+
+    @if ($mdmPromptDevice)
+        @if ($mdmPromptAction === 'start')
+            <x-ui.modal title="Start Lost Mode on this phone?" description="This phone is managed by MDM. Lost Mode locks it and shows a message." close="dismissMdmPrompt()" icon="map-pin" tone="danger">
+                <x-assets.mdm-identity :device="$mdmPromptDevice" />
+                <div class="ui-form-grid">
+                    <div class="span-2"><x-ui.textarea label="Message shown on the phone" wire:model="mdmPromptMessage" rows="3" /></div>
+                    <div class="span-2"><x-ui.input label="Phone number to call" type="tel" wire:model="mdmPromptPhone" /></div>
+                </div>
+                @error('message') <p class="ui-error">{{ $message }}</p> @enderror
+                @error('command') <p class="ui-error">{{ $message }}</p> @enderror
+                <x-slot:footer>
+                    <button type="button" wire:click="dismissMdmPrompt" class="btn btn-secondary">Not now</button>
+                    <button type="button" wire:click="confirmMdmPrompt" class="btn btn-danger-solid" wire:loading.attr="disabled" wire:target="confirmMdmPrompt">Start Lost Mode</button>
+                </x-slot:footer>
+            </x-ui.modal>
+        @else
+            <x-ui.modal title="Stop Lost Mode on this phone?" description="The phone is back. Stop Lost Mode so it can be used again." close="dismissMdmPrompt()" icon="circle-check">
+                <x-assets.mdm-identity :device="$mdmPromptDevice" />
+                @error('command') <p class="ui-error">{{ $message }}</p> @enderror
+                <x-slot:footer>
+                    <button type="button" wire:click="dismissMdmPrompt" class="btn btn-secondary">Not now</button>
+                    <button type="button" wire:click="confirmMdmPrompt" class="btn btn-primary" wire:loading.attr="disabled" wire:target="confirmMdmPrompt">Stop Lost Mode</button>
+                </x-slot:footer>
+            </x-ui.modal>
+        @endif
     @endif
 </div>

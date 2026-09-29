@@ -42,8 +42,12 @@ class ErpNavigation
         $employee = $user->employee ?? $user->employeeByStaffId;
         $modules = collect($this->moduleDefinitions())
             ->filter(fn (array $module) => $this->userCanAccessModule($user, $module['slug']))
-            ->map(function (array $module) use ($currentModule) {
+            ->map(function (array $module) use ($currentModule, $user) {
                 $module['active'] = $module['slug'] === $currentModule;
+
+                if ($module['slug'] === Permission::MODULE_ASSETS) {
+                    $module['route'] = $this->safeRoute($this->assetsLandingRoute($user));
+                }
 
                 return $module;
             })
@@ -150,8 +154,10 @@ class ErpNavigation
 
         return collect($definitions)
             ->filter(function (array $item) use ($user) {
+                // A section heading is always shown unless it carries its own `can` (used by the MDM heading, so it
+                // disappears together with its entries when the feature flag is off).
                 if (($item['type'] ?? 'item') === 'section') {
-                    return true;
+                    return isset($item['can']) ? (bool) $item['can']($user) : true;
                 }
 
                 $condition = $item['can'] ?? fn () => true;
@@ -429,6 +435,28 @@ class ErpNavigation
         ];
     }
 
+    /**
+     * Where the "ICT Assets" module tile should land. `admin` can use MDM but not the rest of Assets, so without this
+     * their tile would open the Assets dashboard and answer 403.
+     */
+    public function assetsLandingRoute(User $user): string
+    {
+        $canSeeDashboard = $user->hasRoles('super_admin') || $user->hasPermission('assets.view_dashboard');
+
+        if (! $canSeeDashboard && $this->mdmVisibleTo($user) && Route::has('assets.mdm.devices')) {
+            return 'assets.mdm.devices';
+        }
+
+        return 'assets.home';
+    }
+
+    /** MDM entries need the feature flag AND the permission; the flag comes first so it is a hard off-switch. */
+    protected function mdmVisibleTo(User $user, string $permission = 'assets.mdm_view'): bool
+    {
+        return config('gwl.mdm_enabled')
+            && ($user->hasRoles('super_admin') || $user->hasPermission($permission));
+    }
+
     protected function assetsSidebar(User $user): array
     {
         $canViewInventory = fn (User $currentUser) => $currentUser->hasPermission('assets.view_inventory') || $currentUser->hasRoles('super_admin');
@@ -485,6 +513,35 @@ class ErpNavigation
                 'icon' => $this->icon('report'),
                 'icon_name' => 'chart-column',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_reports') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Mobile Devices',
+                'can' => fn (User $currentUser) => $this->mdmVisibleTo($currentUser),
+            ],
+            [
+                'label' => 'MDM Devices',
+                'route' => 'assets.mdm.devices',
+                'active' => ['assets.mdm.devices', 'assets.mdm.devices.show'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'smartphone',
+                'can' => fn (User $currentUser) => $this->mdmVisibleTo($currentUser, 'assets.mdm_view'),
+            ],
+            [
+                'label' => 'Enroll Phone',
+                'route' => 'assets.mdm.enroll',
+                'active' => ['assets.mdm.enroll'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'circle-plus',
+                'can' => fn (User $currentUser) => $this->mdmVisibleTo($currentUser, 'assets.mdm_enroll'),
+            ],
+            [
+                'label' => 'MDM Policies',
+                'route' => 'assets.mdm.policies',
+                'active' => ['assets.mdm.policies', 'assets.mdm.policies.create', 'assets.mdm.policies.edit'],
+                'icon' => $this->icon('shield'),
+                'icon_name' => 'shield-check',
+                'can' => fn (User $currentUser) => $this->mdmVisibleTo($currentUser, 'assets.mdm_view'),
             ],
             [
                 'type' => 'section',

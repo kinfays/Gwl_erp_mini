@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class IctAsset extends Model
 {
@@ -157,5 +158,14 @@ class IctAsset extends Model
     public function agentReports(): HasMany
     {
         return $this->hasMany(AgentReport::class, 'ict_asset_id');
+    }
+
+    /**
+     * The Android Enterprise (MDM) record for a phone. Device identity stays on this asset; the MDM row only
+     * holds what Google reports.
+     */
+    public function mdmDevice(): HasOne
+    {
+        return $this->hasOne(MdmDevice::class, 'ict_asset_id');
     }
 }
