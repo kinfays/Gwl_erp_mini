@@ -20,6 +20,7 @@ class PermissionSeeder extends Seeder
                 'leave.manage_compulsory',
                 'leave.export',
                 'leave.delete_own',
+                'leave.manage_hr_contacts',
             ],
             'staff' => [
                 'staff.view',

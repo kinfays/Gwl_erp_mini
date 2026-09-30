@@ -4,7 +4,7 @@
 
 - `assets` module integrated into ERP navigation and dashboard.
 - Asset inventory with:
-  - search and filters (status, category, district),
+  - search and filters (status, category, district). Super admin and the Head Office ICT team see every region (the district filter lists all districts, labelled with their region); a regional ICT user sees only their own region. Editing stays in the user's own region,
   - create/edit form,
   - "Last Seen" health indicator:
     - `🟢` seen in last 24 hours,

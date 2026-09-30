@@ -62,18 +62,24 @@
                     </div>
 
                     <div class="ui-card-actions">
-                        <x-ui.button icon="plus" wire:click="$set('showCreateRole', true)">New Role</x-ui.button>
-                        <x-ui.button icon="pencil" wire:click="openEditRole" :disabled="! $selectedRoleId">Edit</x-ui.button>
-                        <x-ui.button variant="danger" icon="trash-2" wire:click="openDeleteRole" :disabled="! $selectedRoleId">Delete</x-ui.button>
+                        @if ($canCreate)
+                            <x-ui.button icon="plus" wire:click="$set('showCreateRole', true)">New Role</x-ui.button>
+                        @endif
+                        <x-ui.button icon="pencil" wire:click="openEditRole" :disabled="! $canEditDetails">Edit</x-ui.button>
+                        <x-ui.button variant="danger" icon="trash-2" wire:click="openDeleteRole" :disabled="! $canDelete">Delete</x-ui.button>
                         <x-ui.button variant="primary" icon="check" wire:click="save" :disabled="! $canEdit" loading="save">Save</x-ui.button>
                     </div>
                 </div>
 
                 @if ($locked)
                     <x-ui.alert tone="warning" class="uac-role-alert">
-                        This role is locked (system role). Permissions cannot be modified.
+                        {{ $lockReason }}
                     </x-ui.alert>
                 @endif
+
+                @error('selectedPermissionIds')
+                    <x-ui.alert tone="danger" class="uac-role-alert" role="alert">{{ $message }}</x-ui.alert>
+                @enderror
 
                 @if ($message)
                     <x-ui.alert tone="success" class="uac-role-alert" role="status">
@@ -81,6 +87,20 @@
                     </x-ui.alert>
                 @endif
             </x-ui.card>
+
+            {{-- Who may hand this role out --}}
+            @if ($selectedRole && $canSetIctAssignable)
+                <x-ui.card title="ICT team" description="Whether the ICT team may assign this role, and only to users inside their own location.">
+                    <x-ui.toggle
+                        label="ICT team can assign this role"
+                        description="Off: only a Global Admin or Super Admin can give or remove it"
+                        id="ict-assignable"
+                        wire:click="toggleIctAssignable"
+                        x-bind:checked="{{ $ictAssignable ? 'true' : 'false' }}"
+                        :disabled="! $canEdit"
+                    />
+                </x-ui.card>
+            @endif
 
             {{-- Module access --}}
             <x-ui.card title="Module Access" description="Which modules people with this role can open.">

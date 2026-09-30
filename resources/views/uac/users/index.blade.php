@@ -118,7 +118,9 @@
                                         id: '{{ $user->id }}',
                                         name: @js($user->full_name ?? $user->name),
                                         email: @js($user->email),
-                                        roles: @js($visibleRoles->pluck('id')->map(fn ($id) => (string) $id)->values())
+                                        roles: @js($visibleRoles->pluck('id')->map(fn ($id) => (string) $id)->values()),
+                                        manageable: @js(collect($manageableRoleIds[$user->id] ?? [])->map(fn ($id) => (string) $id)->values()),
+                                        locked: @js($visibleRoles->reject(fn ($role) => in_array($role->id, $manageableRoleIds[$user->id] ?? [], true))->pluck('display_name')->values())
                                     })
                                 "
                                 title="Edit user"
@@ -171,8 +173,17 @@
             name: '',
             email: '',
             roles: [],
+            manageable: [],
+            locked: [],
             roleOptions: @js($roles->map(fn ($role) => ['id' => (string) $role->id, 'name' => $role->display_name])->values()),
+            canChange(roleId) {
+                return this.manageable.includes(String(roleId));
+            },
             removeRole(roleId) {
+                if (! this.canChange(roleId)) {
+                    return;
+                }
+
                 this.roles = this.roles.filter((id) => id !== String(roleId));
             }
         }"
@@ -182,6 +193,8 @@
             name = $event.detail.name;
             email = $event.detail.email;
             roles = ($event.detail.roles || []).map((id) => String(id));
+            manageable = ($event.detail.manageable || []).map((id) => String(id));
+            locked = $event.detail.locked || [];
         "
         x-on:keydown.escape.window="open = false"
         x-show="open"
@@ -227,13 +240,14 @@
 
                         <div class="role-picker-list">
                             @foreach ($roles as $role)
-                                <label class="role-picker-option">
-                                    <input type="checkbox" name="roles[]" value="{{ $role->id }}" x-model="roles">
+                                <label class="role-picker-option" x-show="canChange({{ $role->id }})">
+                                    <input type="checkbox" name="roles[]" value="{{ $role->id }}" x-model="roles" x-bind:disabled="! canChange({{ $role->id }})">
                                     <span>{{ $role->display_name }}</span>
                                 </label>
                             @endforeach
                         </div>
-                        <p class="ui-hint">Uncheck all roles to remove all assigned roles.</p>
+                        <p class="ui-hint" x-show="locked.length > 0" x-text="'Not yours to change: ' + locked.join(', ')"></p>
+                        <p class="ui-hint">Uncheck all roles to remove the roles you manage.</p>
                     </fieldset>
                 </div>
 
@@ -257,17 +271,26 @@
             name: '',
             email: '',
             roles: [],
-            roleOptions: @js($roles->map(fn ($role) => ['id' => (string) $role->id, 'name' => $role->display_name])->values()),
+            assignable: null,
+            roleOptions: @js($assignableRoles->map(fn ($role) => ['id' => (string) $role->id, 'name' => $role->display_name])->values()),
+            offered(roleId) {
+                return this.assignable === null || this.assignable.includes(String(roleId));
+            },
             removeRole(roleId) {
                 this.roles = this.roles.filter((id) => id !== String(roleId));
             }
         }"
+        x-on:employee-picked.window="
+            assignable = $event.detail.assignable === null ? null : $event.detail.assignable.map((id) => String(id));
+            roles = roles.filter((id) => offered(id));
+        "
         x-on:create-user.window="
             open = true;
             staffId = '';
             name = '';
             email = '';
             roles = [];
+            assignable = null;
         "
         x-on:keydown.escape.window="open = false"
         x-show="open"
@@ -347,9 +370,9 @@
                         </div>
 
                         <div class="role-picker-list">
-                            @foreach ($roles as $role)
-                                <label class="role-picker-option">
-                                    <input type="checkbox" name="roles[]" value="{{ $role->id }}" x-model="roles">
+                            @foreach ($assignableRoles as $role)
+                                <label class="role-picker-option" x-show="offered({{ $role->id }})">
+                                    <input type="checkbox" name="roles[]" value="{{ $role->id }}" x-model="roles" x-bind:disabled="! offered({{ $role->id }})">
                                     <span>{{ $role->display_name }}</span>
                                 </label>
                             @endforeach
@@ -397,6 +420,7 @@
                     this.selectedEmail = emp.email;
                     this.results = [];
                     this.query = emp.staff_id;
+                    window.dispatchEvent(new CustomEvent('employee-picked', { detail: { assignable: emp.assignable_role_ids ?? null } }));
                 }
             }
         }

@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             LettersRolePermissionSeeder::class,
             VisitorsRolePermissionSeeder::class,
             UacRolePermissionSeeder::class,
+            LeaveApprovalRolePermissionSeeder::class,
             AssetsRolePermissionSeeder::class,
             TransportRolePermissionSeeder::class,
             CreditUnionRolePermissionSeeder::class,

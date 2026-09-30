@@ -300,7 +300,7 @@ class PhonesList extends Component
 
     public function render()
     {
-        $assets = $this->scopeAssetsForActor(
+        $assets = $this->scopeAssetsForViewing(
             IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region', 'mdmDevice'])
         )
             ->where('device_category', self::CATEGORY)
@@ -345,6 +345,7 @@ class PhonesList extends Component
             'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),
+            ...$this->regionViewData(),
             'models' => $models,
             'employees' => $employees,
         ]);

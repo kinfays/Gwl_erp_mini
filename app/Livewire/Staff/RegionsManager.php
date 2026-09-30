@@ -13,13 +13,9 @@ class RegionsManager extends Component
 
     public string $region_name = '';
 
-    public string $hr_email = '';
-
     public ?int $editingId = null;
 
     public string $editingName = '';
-
-    public string $editingHrEmail = '';
 
     public function mount(): void
     {
@@ -34,17 +30,15 @@ class RegionsManager extends Component
     {
         $validated = $this->validate([
             'region_name' => ['required', 'string', 'max:255', 'unique:regions,region_name'],
-            'hr_email' => ['nullable', 'email', 'max:255'],
         ]);
 
         $region = Region::create([
             'region_name' => $validated['region_name'],
-            'hr_email' => $validated['hr_email'] ?: null,
         ]);
 
         AuditLog::record('create_region', 'staff', 'regions', $region->id, null, $region->toArray());
 
-        $this->reset('region_name', 'hr_email');
+        $this->reset('region_name');
         session()->flash('success', 'Region created successfully.');
         $this->dispatch('toast', type: 'success', message: 'Region created successfully.');
     }
@@ -55,12 +49,11 @@ class RegionsManager extends Component
 
         $this->editingId = $region->id;
         $this->editingName = $region->region_name;
-        $this->editingHrEmail = $region->hr_email ?? '';
     }
 
     public function cancelEdit(): void
     {
-        $this->reset('editingId', 'editingName', 'editingHrEmail');
+        $this->reset('editingId', 'editingName');
     }
 
     public function update(): void
@@ -69,18 +62,16 @@ class RegionsManager extends Component
 
         $validated = $this->validate([
             'editingName' => ['required', 'string', 'max:255', 'unique:regions,region_name,'.$region->id],
-            'editingHrEmail' => ['nullable', 'email', 'max:255'],
         ]);
 
         $old = $region->toArray();
         $region->update([
             'region_name' => $validated['editingName'],
-            'hr_email' => $validated['editingHrEmail'] ?: null,
         ]);
 
         AuditLog::record('update_region', 'staff', 'regions', $region->id, $old, $region->fresh()->toArray());
 
-        $this->reset('editingId', 'editingName', 'editingHrEmail');
+        $this->reset('editingId', 'editingName');
         session()->flash('success', 'Region updated successfully.');
         $this->dispatch('toast', type: 'success', message: 'Region updated successfully.');
     }

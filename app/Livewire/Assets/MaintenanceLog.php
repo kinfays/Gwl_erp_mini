@@ -163,7 +163,7 @@ class MaintenanceLog extends Component
     {
         $maintenance = IctAssetMaintenance::query()
             ->with(['asset.region', 'asset.district'])
-            ->whereHas('asset', fn ($assetQuery) => $this->scopeAssetsForActor($assetQuery))
+            ->whereHas('asset', fn ($assetQuery) => $this->scopeAssetsForViewing($assetQuery))
             ->when($this->search, function ($query) {
                 $term = '%'.$this->search.'%';
                 $query->where(function ($inner) use ($term) {
@@ -188,7 +188,7 @@ class MaintenanceLog extends Component
         $typeOptions = IctAssetMaintenance::query()->select('maintenance_type')->distinct()->orderBy('maintenance_type')->pluck('maintenance_type');
 
         $dueCount = IctAssetMaintenance::query()
-            ->whereHas('asset', fn ($assetQuery) => $this->scopeAssetsForActor($assetQuery))
+            ->whereHas('asset', fn ($assetQuery) => $this->scopeAssetsForViewing($assetQuery))
             ->where('status', 'Open')
             ->count();
 
@@ -198,6 +198,7 @@ class MaintenanceLog extends Component
             'statusOptions' => $statusOptions,
             'typeOptions' => $typeOptions,
             'dueCount' => $dueCount,
+            ...$this->regionViewData(),
         ]);
     }
 }

@@ -1,7 +1,7 @@
 <x-uac-layout>
     @php
         $viewer = auth()->user();
-        $canManageRoles = $viewer->hasRoles('super_admin', 'admin');
+        $canManageRoles = $viewer->tier() >= \App\Models\User::TIER_GLOBAL_ADMIN;
         $canSeeAudit = $viewer->hasRoles('super_admin');
     @endphp
 
@@ -51,7 +51,7 @@
                     <li>
                         <span>
                             <span class="ui-person-name">{{ $log->action }}</span>
-                            <span class="ui-person-sub">{{ $log->user?->hasRoles('super_admin') ? 'System' : ($log->user?->full_name ?? 'System') }} • {{ $log->module ?: 'general' }}</span>
+                            <span class="ui-person-sub">{{ $log->actorLabelFor($viewer) }} • {{ $log->module ?: 'general' }}</span>
                         </span>
                         <span class="ui-hint nowrap">{{ $log->created_at?->diffForHumans() }}</span>
                     </li>

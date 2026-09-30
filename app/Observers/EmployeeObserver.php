@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\Employee;
 use App\Models\User;
 use App\Notifications\InviteUserNotification;
+use App\Services\Uac\RoleAssignmentService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +20,11 @@ class EmployeeObserver
     public function updated(Employee $employee): void
     {
         $this->syncUser($employee, sendInviteForNewUser: true);
+
+        // Global Admin, Head Office HR and Chief Manager are for Head Office staff only: moving one out of Head Office
+        // takes the role away. Every path that saves an employee (staff form, import, renaming a district, scripts)
+        // lands here, which is why it lives in the observer.
+        app(RoleAssignmentService::class)->stripHeadOfficeRolesOnTransfer($employee);
     }
 
     protected function syncUser(Employee $employee, bool $sendInviteForNewUser = false): User

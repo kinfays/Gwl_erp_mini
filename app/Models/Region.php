@@ -12,7 +12,6 @@ class Region extends Model
 
     protected $fillable = [
         'region_name',
-        'hr_email',
     ];
 
     protected $casts = [

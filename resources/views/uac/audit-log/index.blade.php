@@ -31,7 +31,7 @@
                     $viewerPayload = [
                         'id' => $log->id,
                         'action' => $log->action,
-                        'user' => $log->user?->hasRoles('super_admin') ? 'System' : ($log->user?->full_name ?? $log->user_name ?? 'System'),
+                        'user' => $log->actorLabelFor(auth()->user()),
                         'module' => strtoupper($log->module ?: 'general'),
                         'target' => $target,
                         'ip_address' => $log->ip_address ?: '-',

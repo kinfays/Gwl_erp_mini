@@ -118,12 +118,19 @@
                 <p class="panel-text">{{ $selectedRequest->leave_details ?: 'No details provided.' }}</p>
             </section>
 
-            <section class="ui-panel">
-                <h3 class="ui-panel-title">Manager</h3>
-                <p class="panel-text"><strong>{{ $selectedRequest->manager?->full_name ?? 'N/A' }}</strong></p>
-                <p class="ui-hint">Recommendation: {{ $selectedRequest->manager_recommendation }}</p>
-                <p class="ui-hint">Comment: {{ $selectedRequest->manager_comments ?: 'N/A' }}</p>
-            </section>
+            @if ($selectedRequest->is_single_stage)
+                <section class="ui-panel">
+                    <h3 class="ui-panel-title">Approval route</h3>
+                    <p class="ui-hint">Applied directly to the final approver: no manager recommendation is needed.</p>
+                </section>
+            @else
+                <section class="ui-panel">
+                    <h3 class="ui-panel-title">Manager</h3>
+                    <p class="panel-text"><strong>{{ $selectedRequest->manager?->full_name ?? 'N/A' }}</strong></p>
+                    <p class="ui-hint">Recommendation: {{ $selectedRequest->manager_recommendation }}</p>
+                    <p class="ui-hint">Comment: {{ $selectedRequest->manager_comments ?: 'N/A' }}</p>
+                </section>
+            @endif
 
             <x-ui.field label="Comment (optional)" for="approval-comment" :error="$commentKey">
                 <textarea

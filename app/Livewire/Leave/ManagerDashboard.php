@@ -5,6 +5,7 @@ namespace App\Livewire\Leave;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Services\Leave\LeaveApprovalChainResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
 
@@ -197,26 +198,8 @@ class ManagerDashboard extends Component
 
     protected function pendingApprovalsCount(): int
     {
-        $user = auth()->user();
-        $employee = $this->employee();
-        $count = 0;
-
-        if ($user->hasRoles('manager', 'departmental_manager', 'district_manager')) {
-            $count += LeaveRequest::query()
-                ->where('manager_id', $employee->id)
-                ->where('leave_status', 'Pending Approval')
-                ->where('manager_recommendation', 'Pending')
-                ->count();
-        }
-
-        if ($user->hasRoles('chief_manager', 'regional_chief_manager')) {
-            $count += $this->teamLeaveQuery()
-                ->where('leave_status', 'Pending Approval')
-                ->where('manager_recommendation', 'Recommended')
-                ->count();
-        }
-
-        return $count;
+        // The same queue as the Approvals screen: what this user can act on right now.
+        return app(LeaveApprovalChainResolver::class)->actionableRequests(auth()->user())->count();
     }
 
     protected function applyLocationScope(Builder $query, Employee $manager): void

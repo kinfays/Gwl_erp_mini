@@ -13,6 +13,7 @@ use App\Services\Staff\EmployeeDirectory;
 use App\Support\ErpNavigation;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 
@@ -110,17 +111,23 @@ class EmployeeForm extends Component
             : null;
 
         if ($this->employee) {
-            $this->employee->update($validated);
-            $employee = $this->employee->fresh(['leaveBalances']);
+            // One transaction: a transfer out of Head Office also removes the person's Global Admin role
+            // (EmployeeObserver), and the move and that removal must stand or fall together.
+            $employee = DB::transaction(function () use ($validated, $oldValues) {
+                $this->employee->update($validated);
+                $employee = $this->employee->fresh(['leaveBalances']);
 
-            AuditLog::record(
-                'update_employee',
-                'staff',
-                'employees',
-                $employee->id,
-                $oldValues,
-                Arr::only($employee->toArray(), array_keys($validated))
-            );
+                AuditLog::record(
+                    'update_employee',
+                    'staff',
+                    'employees',
+                    $employee->id,
+                    $oldValues,
+                    Arr::only($employee->toArray(), array_keys($validated))
+                );
+
+                return $employee;
+            });
 
             session()->flash('success', 'Employee updated successfully.');
         } else {

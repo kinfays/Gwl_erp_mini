@@ -79,7 +79,7 @@ class AgentReports extends Component
 
     public function render()
     {
-        $reports = $this->scopeReportsForActor(
+        $reports = $this->scopeReportsForViewing(
             AgentReport::query()->with(['asset', 'user', 'region'])
         )
             ->when($this->search, function ($query) {
@@ -105,6 +105,7 @@ class AgentReports extends Component
         return view('livewire.assets.agent-reports', [
             'reports' => $reports,
             'assets' => $assets,
+            ...$this->regionViewData(),
         ]);
     }
 }

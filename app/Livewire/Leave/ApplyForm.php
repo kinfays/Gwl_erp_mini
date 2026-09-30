@@ -10,6 +10,7 @@ use App\Services\Leave\LeaveWorkflowService;
 use App\Services\Leave\WorkingDaysCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -151,6 +152,8 @@ class ApplyForm extends Component
                     'leave_details' => $this->leave_details,
                     'file_attachment' => $path ?? $req->file_attachment,
                 ]);
+            } catch (ValidationException $e) {
+                return $this->rejectSubmission($e->validator->errors()->first());
             } catch (\RuntimeException $e) {
                 $this->addError('leave_type', $e->getMessage());
                 $this->dispatch('toast', type: 'error', message: $e->getMessage());
@@ -171,6 +174,8 @@ class ApplyForm extends Component
                 'leave_details' => $this->leave_details,
                 'file_attachment' => $path,
             ]);
+        } catch (ValidationException $e) {
+            return $this->rejectSubmission($e->validator->errors()->first());
         } catch (\RuntimeException $e) {
             $this->addError('leave_type', $e->getMessage());
             $this->dispatch('toast', type: 'error', message: $e->getMessage());
@@ -194,6 +199,13 @@ class ApplyForm extends Component
                 ? $this->start_date
                 : today()->toDateString(),
         ]);
+    }
+
+    /** The workflow refused the submission (e.g. no approver is set up for the applicant): show why. */
+    protected function rejectSubmission(string $message): void
+    {
+        $this->addError('leave_type', $message);
+        $this->dispatch('toast', type: 'error', message: $message);
     }
 
     protected function requester(): Employee

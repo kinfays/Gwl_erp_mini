@@ -205,7 +205,7 @@ class AssetsList extends Component
 
     public function render()
     {
-        $assets = $this->scopeAssetsForActor(
+        $assets = $this->scopeAssetsForViewing(
             IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region'])
         )
             ->where('device_category', self::CATEGORY)
@@ -226,7 +226,8 @@ class AssetsList extends Component
 
         // List filter: follows what the actor can see, not the form's region lock.
         $districts = District::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
+            ->with('region')
+            ->when(! $this->actorSeesAllRegions(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
             ->orderBy('district_name')
             ->get();
 
@@ -250,6 +251,7 @@ class AssetsList extends Component
             'districts' => $districts,
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),
+            ...$this->regionViewData(),
             'models' => $models,
             'departments' => Department::query()->orderBy('department_name')->get(),
             'employees' => $employees,

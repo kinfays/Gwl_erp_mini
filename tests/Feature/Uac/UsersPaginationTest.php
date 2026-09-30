@@ -21,12 +21,13 @@ class UsersPaginationTest extends TestCase
         $this->get(route('uac.users'))
             ->assertOk()
             ->assertSee('15 per page')
-            ->assertSee('Showing 1 - 15 of 25 users');
+            // 25 seeded users plus the super_admin viewing the list (super_admin accounts are visible to super_admin).
+            ->assertSee('Showing 1 - 15 of 26 users');
 
         $this->get(route('uac.users', ['per_page' => 10]))
             ->assertOk()
             ->assertSee('10 per page')
-            ->assertSee('Showing 1 - 10 of 25 users');
+            ->assertSee('Showing 1 - 10 of 26 users');
     }
 
     protected function createSuperAdmin(): User

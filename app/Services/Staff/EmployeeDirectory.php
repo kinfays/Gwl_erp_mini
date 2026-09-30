@@ -54,7 +54,7 @@ class EmployeeDirectory
     {
         $employee = $user->employee ?? $user->employeeByStaffId;
 
-        $query = Employee::query()->visibleInErp();
+        $query = Employee::query()->visibleTo($user);
 
         if ($user->hasRoles('super_admin', 'hr_headoffice')) {
             return $query;

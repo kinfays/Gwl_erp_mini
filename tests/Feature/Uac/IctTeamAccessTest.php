@@ -73,9 +73,10 @@ class IctTeamAccessTest extends TestCase
         $ict = $this->createRole(User::ROLE_ICT_TEAM, [Permission::MODULE_UAC]);
         $admin = $this->createRole(User::ROLE_ADMIN, [Permission::MODULE_UAC]);
         $region = Region::query()->create(['region_name' => 'Greater Accra']);
-        $actor = $this->createUserForEmployee($this->createEmployee($region, 'ICT001', 'ict@example.com'));
+        // Global Admin is a Head Office role, so this is all Head Office staff: a Head Office ICT user and their target.
+        $actor = $this->createUserForEmployee($this->createEmployee($region, 'ICT001', 'ict@example.com', 'HeadOffice'));
         $actor->roles()->attach($ict);
-        $target = $this->createUserForEmployee($this->createEmployee($region, 'REG001', 'regional@example.com'));
+        $target = $this->createUserForEmployee($this->createEmployee($region, 'REG001', 'regional@example.com', 'HeadOffice'));
 
         $this
             ->actingAs($actor)
@@ -86,7 +87,7 @@ class IctTeamAccessTest extends TestCase
             ->assertRedirect(route('uac.users'))
             ->assertSessionHasErrors('roles.0');
 
-        $adminActor = $this->createUserForEmployee($this->createEmployee($region, 'ADM001', 'admin@example.com'));
+        $adminActor = $this->createUserForEmployee($this->createEmployee($region, 'ADM001', 'admin@example.com', 'HeadOffice'));
         $adminActor->roles()->attach($admin);
 
         $this
@@ -185,11 +186,11 @@ class IctTeamAccessTest extends TestCase
         ]);
     }
 
-    protected function createEmployee(Region $region, string $staffId, string $email): Employee
+    protected function createEmployee(Region $region, string $staffId, string $email, string $locationType = 'District'): Employee
     {
-        return Employee::withoutEvents(function () use ($region, $staffId, $email) {
+        return Employee::withoutEvents(function () use ($region, $staffId, $email, $locationType) {
             $district = District::query()->create([
-                'district_name' => $staffId.' District',
+                'district_name' => $staffId.($locationType === 'HeadOffice' ? ' Head Office' : ' District'),
                 'region_id' => $region->id,
             ]);
             $department = Department::query()->firstOrCreate(['department_name' => 'Administration']);
@@ -205,7 +206,7 @@ class IctTeamAccessTest extends TestCase
                 'department_id' => $department->id,
                 'region_id' => $region->id,
                 'district_id' => $district->id,
-                'location_type' => 'District',
+                'location_type' => $locationType,
                 'date_of_birth' => '1990-01-01',
                 'date_joined' => '2026-05-04',
             ]);

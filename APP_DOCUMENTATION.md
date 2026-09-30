@@ -71,8 +71,10 @@ Modules are visible based on role + module_access records, except `leave`, which
 ### 3.3 Core Security Rules
 
 - Super admin bypass exists for role/permission checks.
-- Employee and super admin records are hidden in several UAC/staff contexts.
-- ICT team users are region-scoped in UAC unless they also have admin/super_admin.
+- `super_admin` is a developer account: its user, role, employee and staff records, counts and audit rows are hidden from everyone but a super admin (its role/access changes still show to others, with the actor as "System").
+- The `admin` role (slug unchanged) is displayed as **Global Admin**. It must be a Head Office staff member. Global Admin, Head Office HR and Chief Manager are Head Office-only roles: assigning them to anyone else is refused, and they are removed automatically (audited, with a notification) when the holder is moved out of Head Office — including by renaming their district.
+- ICT team users work in one location scope — Head Office, or one region — and can only assign or remove roles flagged `ict_assignable`, only to users in that scope. In Assets the Head Office ICT team can list every region's assets (edits stay in their own region). A role must also fit the person's location (e.g. `hr_headoffice` only for Head Office staff).
+- Nobody grants a role above their own tier (super admin > Global Admin > ICT > others), super admin, or a role carrying governance permissions they don't hold. All of this is decided in `App\Services\Uac\RoleGrantPolicy` (`docs/04-module-uac.md`).
 - Employee self-deletion is blocked.
 
 ## 4. Installation and Local Development
@@ -204,27 +206,31 @@ Defined via `config/gwl.php` and `config/gwcl.php`:
 
 ### User creation flow
 
-1. Admin selects employee.
+1. Global Admin or ICT (within their scope) selects an employee.
 2. User is created with default password (`12345`) and `must_change_password=true`.
-3. Invite email with password-reset token is sent.
-4. Roles are synced (filtered by actor authorization).
+3. Roles are assigned, each checked against the actor and the employee's location; a refused role cancels the creation.
+4. Invite email with password-reset token is sent.
 
 ### Role management rules
 
-- `super_admin` and `employee` roles are excluded from editable UI.
-- `admin` and `super_admin` can create roles.
-- Only `super_admin` can generally edit role access mappings.
-- `ict_team` role can be edited by `admin` or `super_admin`.
-- Only `super_admin` can delete custom roles, and only if role has no users.
+- The implicit `employee` role is never listed; `super_admin` is listed only to a super admin and is locked for everyone.
+- Global Admin and super admin can create roles and edit role permissions (roles are shared definitions). The protected roles (`super_admin`, `admin`) can only be changed by a super admin.
+- Roles start Global-Admin-only; a Global Admin flags a role `ict_assignable` to let ICT hand it out.
+- Only `super_admin` can delete custom roles, and only if the role has no users.
+- Editing a user only adds/removes the roles the actor may manage; other roles they hold are left alone.
 
-### ICT region scoping
+### ICT location scoping
 
-If actor is ICT Team without admin/super_admin:
+If actor is ICT Team without Global Admin/super_admin, they work in one scope (`User::ictScope()`): Head Office, or one region (its districts, excluding Head Office staff who share the region id).
 
-- User visibility is constrained to same region.
-- Employee search for user creation is constrained to same region.
-- Cannot assign admin/ict_team roles unless authorized.
-- Cannot update own roles.
+- User visibility and employee search are constrained to that scope.
+- Can only assign/remove roles flagged `ict_assignable`, only to users in that scope.
+- Cannot assign admin (Global Admin), ict_team, managing_director or credit union roles.
+- Cannot update own roles, edit role permissions, create or delete roles.
+
+### Audit log visibility
+
+Audit rows written by a super admin are visible only to a super admin (`AuditLog::visibleTo()`), except role/access changes, which others see with the actor shown as "System".
 
 ## 6.2 Staff Management
 
@@ -285,24 +291,27 @@ The same scope is enforced on edit, deactivate/reactivate and bulk import, not j
 
 Typical flow:
 
-1. Employee saves planned or submits request.
-2. Manager recommendation stage (`Pending` -> `Recommended` or `Rejected`).
-3. Final chief decision (`Approved` or `Denied`).
+1. Employee saves planned or submits request. Approvers are resolved (and must exist) on submission.
+2. Manager recommendation stage (`Pending` -> `Recommended` or `Rejected`) — skipped for managers, who apply
+   directly to the level above (single-stage: `Pending Approval` -> `Approved`/`Denied`).
+3. Final decision (`Approved` or `Denied`) by the chief / regional chief / Managing Director.
 4. Denied requests can be reopened to `Planned` by requester.
+5. After final approval, HR of the applicant's scope (region, or Head Office) is emailed and notified in-app.
 
 ### Approval chain resolution
 
-`LeaveApprovalChainResolver` selects manager + chief based on `location_type`:
+`LeaveApprovalChainResolver` selects the recommender and final approver from the applicant's `location_type`
+and role (full table and rules: `docs/06-module-leave.md`):
 
-- `HeadOffice`:
-  - chief: `chief_manager` in same department
-  - manager: `manager` by same dept+unit if unit exists, else `departmental_manager`
-- `Region`:
-  - manager: `departmental_manager` (same dept + region)
-  - chief: `regional_chief_manager` (same region)
-- `District`:
-  - manager: `district_manager` (same district)
-  - chief: `regional_chief_manager` (same region)
+- `District`: `district_manager` (same district) -> `regional_chief_manager` (same region)
+- `Region`: `departmental_manager` (same dept + region) -> `regional_chief_manager`
+- `HeadOffice`: unit `manager` (same dept + unit) or, with no unit, `departmental_manager` -> `chief_manager` (same department)
+- `district_manager` / `departmental_manager` (region/district) apply directly to the `regional_chief_manager`;
+  a Head Office `manager` / `departmental_manager` applies directly to their department's `chief_manager`
+- `chief_manager` and `regional_chief_manager` apply directly to the `managing_director`
+
+Only active users/employees are resolved; when several hold a role all are notified and the first to act wins.
+The applicant is never their own approver; a missing role blocks submission with a message naming it.
 
 ### Special leave rules
 

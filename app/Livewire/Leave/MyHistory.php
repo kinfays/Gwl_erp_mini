@@ -51,7 +51,7 @@ class MyHistory extends Component
     public function viewRequest(int $id): void
     {
         $req = LeaveRequest::query()
-            ->with(['department', 'manager', 'approvedBy'])
+            ->with(['department', 'manager', 'approvedBy', 'chiefUser'])
             ->where('requester_id', $this->requesterId())
             ->findOrFail($id);
 

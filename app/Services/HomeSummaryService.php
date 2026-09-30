@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Models\Visitor;
 use App\Services\Leave\LeaveApprovalChainResolver;
 use App\Services\Leave\LeaveBalanceService;
-use Throwable;
 
 /**
  * Figures for the per-user summary on the landing page (/dashboard). Each one mirrors the screen
@@ -25,6 +24,7 @@ class HomeSummaryService
         'district_manager',
         'chief_manager',
         'regional_chief_manager',
+        'managing_director',
     ];
 
     public function __construct(
@@ -111,32 +111,8 @@ class HomeSummaryService
             return null;
         }
 
-        // The queue rules from Approvals::render(): the manager stage waits on manager_id, the chief
-        // stage on whoever the approval chain resolves as chief.
-        $count = LeaveRequest::query()
-            ->with('requester')
-            ->where('leave_status', 'Pending Approval')
-            ->where(function ($query) use ($employee) {
-                $query->where(function ($manager) use ($employee) {
-                    $manager->where('manager_id', $employee->id)
-                        ->where('manager_recommendation', 'Pending');
-                })->orWhere('manager_recommendation', 'Recommended');
-            })
-            ->get()
-            ->filter(function (LeaveRequest $request) use ($employee) {
-                try {
-                    [, $chief] = $this->resolver->resolve($request->requester);
-
-                    return $request->manager_recommendation === 'Recommended'
-                        ? $chief->id === $employee->id
-                        : true;
-                } catch (Throwable) {
-                    return false;
-                }
-            })
-            ->count();
-
-        return ['count' => $count, 'actionable' => true];
+        // The same queue as Approvals::render(): what this user can act on right now.
+        return ['count' => $this->resolver->actionableRequests($user)->count(), 'actionable' => true];
     }
 
     /**

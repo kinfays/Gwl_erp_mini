@@ -124,13 +124,15 @@
                         <strong>Submitted</strong>
                         <span>{{ $selectedRequest->created_at?->format('D, d M Y h:i A') }}</span>
                     </li>
-                    <li @class(['is-done' => $selectedRequest->manager_recommendation !== 'Pending', 'is-current' => $selectedRequest->manager_recommendation === 'Pending'])>
-                        <strong>Manager — {{ $selectedRequest->manager?->full_name ?? '—' }}</strong>
-                        <span><x-ui.status-pill domain="recommendation" :status="$selectedRequest->manager_recommendation" /></span>
-                        <span>Comment: {{ $selectedRequest->manager_comments ?: '—' }}</span>
-                    </li>
+                    @unless ($selectedRequest->is_single_stage)
+                        <li @class(['is-done' => $selectedRequest->manager_recommendation !== 'Pending', 'is-current' => $selectedRequest->manager_recommendation === 'Pending'])>
+                            <strong>Manager — {{ $selectedRequest->manager?->full_name ?? '—' }}</strong>
+                            <span><x-ui.status-pill domain="recommendation" :status="$selectedRequest->manager_recommendation" /></span>
+                            <span>Comment: {{ $selectedRequest->manager_comments ?: '—' }}</span>
+                        </li>
+                    @endunless
                     <li @class(['is-done' => in_array($selectedRequest->leave_status, ['Approved', 'Denied'], true)])>
-                        <strong>Final Approver — {{ $selectedRequest->approvedBy?->full_name ?? '—' }}</strong>
+                        <strong>Final Approver — {{ $selectedRequest->approvedBy?->full_name ?? $selectedRequest->chiefUser?->full_name ?? '—' }}</strong>
                         <span>Comment: {{ $selectedRequest->chiefManager_comments ?: '—' }}</span>
                     </li>
                 </ol>

@@ -21,6 +21,11 @@ class User extends Authenticatable
     public const ROLE_TRANSPORT_MANAGER = 'transport_manager';
     public const ROLE_DRIVER = 'driver';
 
+    public const TIER_SUPER_ADMIN = 3;
+    public const TIER_GLOBAL_ADMIN = 2;
+    public const TIER_ICT = 1;
+    public const TIER_STAFF = 0;
+
     protected $fillable = [
         'full_name',
         'email',
@@ -120,6 +125,67 @@ class User extends Authenticatable
         return $this->hasRoles('hr_headoffice', 'hr_region');
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRoles(self::ROLE_SUPER_ADMIN);
+    }
+
+    /** The `admin` slug, shown as "Global Admin". */
+    public function isGlobalAdmin(): bool
+    {
+        return $this->hasRoles(self::ROLE_ADMIN);
+    }
+
+    /**
+     * How much user/role management power the account has: super_admin > Global Admin > ICT team > everyone else.
+     * Nobody may grant a role above their own tier.
+     */
+    public function tier(): int
+    {
+        return match (true) {
+            $this->isSuperAdmin() => self::TIER_SUPER_ADMIN,
+            $this->isGlobalAdmin() => self::TIER_GLOBAL_ADMIN,
+            $this->hasRoles(self::ROLE_ICT_TEAM) => self::TIER_ICT,
+            default => self::TIER_STAFF,
+        };
+    }
+
+    /** ICT team without Global Admin / super_admin: confined to one location scope (Head Office, or one region). */
+    public function isScopedIct(): bool
+    {
+        return $this->hasRoles(self::ROLE_ICT_TEAM)
+            && ! $this->hasRoles(self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN);
+    }
+
+    /**
+     * The location scope a scoped ICT user works in, or null when they aren't scoped (not ICT, or Global Admin /
+     * super_admin). Head Office is a district, not a region, and its staff carry the Head Office district's
+     * region_id, so a Head Office ICT is recognised by location_type and a regional ICT's scope excludes Head
+     * Office staff even when they share the region_id. No employee record: 'none' (sees nobody).
+     *
+     * @return array{type: 'head_office'|'region'|'none', region_id: int|null}|null
+     */
+    public function ictScope(): ?array
+    {
+        if (! $this->isScopedIct()) {
+            return null;
+        }
+
+        $employee = $this->employee ?? $this->employeeByStaffId;
+
+        if (! $employee) {
+            return ['type' => 'none', 'region_id' => null];
+        }
+
+        if ($employee->location_type === 'HeadOffice') {
+            return ['type' => 'head_office', 'region_id' => null];
+        }
+
+        return $employee->region_id
+            ? ['type' => 'region', 'region_id' => (int) $employee->region_id]
+            : ['type' => 'none', 'region_id' => null];
+    }
+
     public function isHeadOfficeHr(): bool
     {
         return $this->hasRoles('hr_headoffice');
@@ -183,5 +249,15 @@ class User extends Authenticatable
     public function scopeVisibleInErp($query)
     {
         return $query->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->where('name', 'super_admin'));
+    }
+
+    /**
+     * Users $viewer may see in the UAC and staff contexts: super_admin accounts only to a super_admin. Operational
+     * pickers (visitor hosts, letter recipients, leave approvers…) keep using visibleInErp(): a developer account is
+     * never a real member of staff there, whoever is looking.
+     */
+    public function scopeVisibleTo($query, ?User $viewer)
+    {
+        return $viewer?->isSuperAdmin() ? $query : $query->visibleInErp();
     }
 }

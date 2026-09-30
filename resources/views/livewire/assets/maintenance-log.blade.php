@@ -69,9 +69,13 @@
                         <td><x-ui.status-pill domain="maintenance" :status="$row->status" /></td>
                         <td @class(['nowrap', 'cell-muted' => ! $row->completion_date])>{{ $row->completion_date?->format('d M Y') ?: '-' }}</td>
                         <td class="actions">
-                            <button type="button" wire:click="openEdit({{ $row->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit maintenance for {{ $row->asset?->asset_name ?: 'unknown asset' }}">
-                                <x-ui.icon name="pencil" />
-                            </button>
+                            @if ((! $regionLimited || (int) $row->asset?->region_id === (int) $ownRegionId))
+                                <button type="button" wire:click="openEdit({{ $row->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit maintenance for {{ $row->asset?->asset_name ?: 'unknown asset' }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                            @else
+                                <span class="ui-hint">Read only</span>
+                            @endif
                         </td>
                     </tr>
                 @empty

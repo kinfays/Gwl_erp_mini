@@ -39,10 +39,11 @@ Core entities:
 
 Notable rules:
 
-- Super admin bypass for role/permission checks.
-- Admin role gets UAC and leave behaviors through app logic.
+- Super admin bypass for role/permission checks; super admin accounts, roles and audit rows are invisible to everyone else.
+- The `admin` role is shown as "Global Admin": Head Office staff only, gets UAC and leave behaviors through app logic.
 - Leave module is always included in user accessible modules.
-- ICT team without admin/super_admin is region-scoped in UAC.
+- ICT team without admin/super_admin works in one location scope (Head Office, or one region) and only hands out `ict_assignable` roles.
+- All of it is decided in `App\Services\Uac\RoleGrantPolicy` — see `docs/04-module-uac.md`.
 
 ## Notifications
 

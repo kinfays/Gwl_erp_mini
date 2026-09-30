@@ -37,7 +37,7 @@
             <select wire:model.live="districtId" class="form-input" aria-label="District">
                 <option value="">All districts</option>
                 @foreach ($districts as $district)
-                    <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                    <option value="{{ $district->id }}">{{ $district->district_name.($seesAllRegions && $district->region ? ' ('.$district->region->region_name.')' : '') }}</option>
                 @endforeach
             </select>
             <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
@@ -83,7 +83,7 @@
                         <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
                         <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
                         <td class="actions">
-                            @if ($canEdit)
+                            @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
                                     <x-ui.icon name="pencil" />
                                 </button>

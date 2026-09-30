@@ -6,7 +6,9 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\AuditLog;
 use App\Models\District;
 use App\Models\Region;
+use App\Services\Staff\DistrictEmployeeSync;
 use App\Support\ErpNavigation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 
@@ -86,16 +88,34 @@ class LocationsManager extends Component
         ]);
 
         $old = $location->toArray();
-        $location->update([
-            'district_name' => $validated['editingName'],
-            'region_id' => $validated['editingRegionId'],
-        ]);
 
-        AuditLog::record('update_location', 'staff', 'districts', $location->id, $old, $location->fresh()->toArray());
+        // One transaction: the district and its employees (location_type follows the name, region_id follows the
+        // region) change together, including any Head Office roles removed from people no longer at Head Office.
+        $employeesUpdated = DB::transaction(function () use ($location, $validated, $old) {
+            $location->update([
+                'district_name' => $validated['editingName'],
+                'region_id' => $validated['editingRegionId'],
+            ]);
+
+            $employeesUpdated = app(DistrictEmployeeSync::class)->sync($location->fresh());
+
+            AuditLog::record(
+                'update_location',
+                'staff',
+                'districts',
+                $location->id,
+                $old,
+                $location->fresh()->toArray(),
+                ['employees_updated' => $employeesUpdated]
+            );
+
+            return $employeesUpdated;
+        });
 
         $this->reset('editingId', 'editingName', 'editingRegionId');
-        session()->flash('success', 'Location updated successfully.');
-        $this->dispatch('toast', type: 'success', message: 'Location updated successfully.');
+        $message = 'Location updated successfully.'.($employeesUpdated > 0 ? " {$employeesUpdated} employee record(s) updated to match." : '');
+        session()->flash('success', $message);
+        $this->dispatch('toast', type: 'success', message: $message);
     }
 
     public function delete(int $locationId): void

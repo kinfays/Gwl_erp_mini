@@ -368,7 +368,7 @@ Test **each phone model we buy** on a physical unit before rolling it out:
 | `assets.mdm_manage_policies` | Create, edit and publish policies | | ✅ | ✅ |
 | `assets.mdm_wipe` | Wipe (also needs your password) | | ✅ | ✅ |
 
-- **Region scope.** ICT users who are not admin or super_admin can only see, enroll and command phones whose *asset* is in
+- **Region scope.** (The Head Office ICT team can list every region's phones in the Phones inventory, but their MDM access is the same as any ICT user's: their own region only.) ICT users who are not admin or super_admin can only see, enroll and command phones whose *asset* is in
   the region of their own staff record (no staff record or region = nothing). Admin and super_admin see every region,
   plus unlinked devices. This is enforced in every query and every action, and again inside the queued job when a command is
   delivered (so a permission or region change while a command is queued still applies). Device and asset ids from the

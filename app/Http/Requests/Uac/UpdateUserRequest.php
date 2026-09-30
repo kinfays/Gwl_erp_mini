@@ -1,10 +1,9 @@
 <?php
+
 namespace App\Http\Requests\Uac;
 
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -13,36 +12,21 @@ class UpdateUserRequest extends FormRequest
         $target = $this->route('user');
         $actor = $this->user();
 
-        if (
+        // A scoped ICT user never changes their own roles.
+        return ! (
             $actor
             && $target instanceof User
             && $actor->is($target)
-            && $actor->hasRoles(User::ROLE_ICT_TEAM)
-            && ! $actor->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN)
-        ) {
-            return false;
-        }
-
-        return true;
+            && $actor->isScopedIct()
+        );
     }
 
+    /** See StoreUserRequest: role-level rules live in RoleAssignmentService / RoleGrantPolicy. */
     public function rules(): array
     {
         return [
             'roles' => ['nullable', 'array'],
-            'roles.*' => ['integer', Rule::exists('roles', 'id')->where(fn ($query) => $query->whereIn('name', $this->assignableRoleNames()))],
+            'roles.*' => ['integer'],
         ];
-    }
-
-    protected function assignableRoleNames(): array
-    {
-        $query = Role::query()
-            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE]);
-
-        if (! $this->user()?->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN)) {
-            $query->whereNotIn('name', [User::ROLE_ADMIN, User::ROLE_ICT_TEAM]);
-        }
-
-        return $query->pluck('name')->all();
     }
 }

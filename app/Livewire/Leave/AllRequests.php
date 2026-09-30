@@ -104,36 +104,29 @@ class AllRequests extends Component
         }
 
         /**
-         * Managers/Chief: only approval chain items
-         * - direct manager queue: manager_id = actor.id
-         * - chief queue: actor must be resolved chief for requester
+         * Managers/Chief/MD: only requests in their approval chain — ones routed to them, ones they have
+         * decided, and pending ones they can act on (LeaveApprovalChainResolver::inChain()).
          */
         abort_if(! $actor, 403, 'Employee profile is required for leave approvals.');
 
         $resolver = app(LeaveApprovalChainResolver::class);
 
         $candidate = (clone $base)
-            ->where(function ($q) use ($actor) {
+            ->with(['requester.user.roles', 'requester.userByStaffId.roles'])
+            ->where('requester_id', '!=', $actor->id)
+            ->where(function ($q) use ($actor, $user) {
                 $q->where('manager_id', $actor->id)
-                    ->orWhere(function ($qq) {
-                        $qq->where('manager_recommendation', 'Recommended');
-                    });
+                    ->orWhere('approved_by_id', $actor->id)
+                    ->orWhere('manager_user_id', $user->id)
+                    ->orWhere('chief_user_id', $user->id)
+                    ->orWhere('leave_status', 'Pending Approval');
             })
             ->get();
 
-        $allowedIds = $candidate->filter(function ($req) use ($actor, $resolver) {
-            try {
-                [$mgr, $chief] = $resolver->resolve($req->requester);
-
-                if ($req->manager_id === $actor->id) {
-                    return true;
-                }
-
-                return $chief->id === $actor->id;
-            } catch (\Throwable $e) {
-                return false;
-            }
-        })->pluck('id')->toArray();
+        $allowedIds = $resolver->scan(fn () => $candidate
+            ->filter(fn (LeaveRequest $req) => $resolver->inChain($user, $actor, $req))
+            ->pluck('id')
+            ->toArray());
 
         $requests = LeaveRequest::query()
             ->with(['requester', 'requester.region', 'requester.district', 'department'])

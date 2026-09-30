@@ -12,7 +12,10 @@ use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Staff\EmployeeDirectory;
+use App\Services\Uac\RoleAssignmentService;
+use App\Services\Uac\RoleGrantPolicy;
 use Closure;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +30,11 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class DataImportService
 {
-    public function __construct(protected EmployeeDirectory $directory) {}
+    public function __construct(
+        protected EmployeeDirectory $directory,
+        protected RoleGrantPolicy $roleGrants,
+        protected RoleAssignmentService $roleAssignments,
+    ) {}
 
     public function availableTypes(bool $includeUsers = true): array
     {
@@ -55,6 +62,7 @@ class DataImportService
     public function preview(UploadedFile $file, string $type, ?User $actor = null): array
     {
         $definition = $this->definition($type);
+        $this->authorizeType($type, $actor);
         $rows = $this->readRows($file);
 
         if ($rows->isEmpty()) {
@@ -126,6 +134,8 @@ class DataImportService
 
     public function run(string $type, array $rows, ?User $actor = null): array
     {
+        $this->authorizeType($type, $actor);
+
         $created = 0;
         $updated = 0;
 
@@ -137,7 +147,7 @@ class DataImportService
                     'districts' => [$this->upsertDistrict($row)],
                     'job_titles' => [$this->upsertJobTitle($row)],
                     'employees' => [$this->upsertEmployee($row, $actor)],
-                    'users' => [$this->upsertUser($row)],
+                    'users' => [$this->upsertUser($row, $actor)],
                     default => [false],
                 };
 
@@ -212,7 +222,6 @@ class DataImportService
             ],
             'regions' => [
                 'region_name' => ['required', 'string', 'max:255'],
-                'hr_email' => ['nullable', 'email', 'max:255'],
             ],
             'districts' => [
                 'district_name' => ['required', 'string', 'max:255'],
@@ -301,15 +310,32 @@ class DataImportService
                 'staff_id' => [
                     'required',
                     'string',
-                    function (string $attribute, mixed $value, Closure $fail): void {
-                        if (! Employee::visibleInErp()->where('staff_id', $value)->exists()) {
-                            $fail('The selected staff ID is invalid.');
+                    function (string $attribute, mixed $value, Closure $fail) use ($actor): void {
+                        $employee = $actor
+                            ? $this->roleGrants->employeesQueryFor($actor)->where('staff_id', $value)->first()
+                            : null;
+
+                        if (! $employee) {
+                            $fail('The selected staff ID is invalid or outside your scope.');
                         }
                     },
                 ],
                 'email' => ['required', 'email', 'max:255'],
                 'role_slugs' => ['required', 'array', 'min:1'],
-                'role_slugs.*' => [Rule::exists('roles', 'name')->where(fn ($query) => $query->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE]))],
+                'role_slugs.*' => [
+                    Rule::exists('roles', 'name')->where(fn ($query) => $query->where('name', '!=', User::ROLE_EMPLOYEE)),
+                    // Same rules as the users screen: tiers, the ICT allow-list, role/location fit, anti-escalation.
+                    function (string $attribute, mixed $value, Closure $fail) use ($actor, $row): void {
+                        $role = Role::query()->with('permissions')->where('name', $value)->first();
+                        $employee = $actor
+                            ? $this->roleGrants->employeesQueryFor($actor)->where('staff_id', $row['staff_id'] ?? null)->first()
+                            : null;
+
+                        if ($role && $employee && $actor && ($denial = $this->roleGrants->assignmentDenial($actor, $role, $employee))) {
+                            $fail($denial);
+                        }
+                    },
+                ],
             ],
             default => [],
         };
@@ -458,10 +484,9 @@ class DataImportService
 
     protected function upsertRegion(array $row): bool
     {
-        $region = Region::updateOrCreate(
-            ['region_name' => $row['region_name']],
-            ['hr_email' => $row['hr_email'] ?: null]
-        );
+        $region = Region::firstOrCreate([
+            'region_name' => $row['region_name'],
+        ]);
 
         return $region->wasRecentlyCreated;
     }
@@ -533,9 +558,13 @@ class DataImportService
         return $employee->wasRecentlyCreated;
     }
 
-    protected function upsertUser(array $row): bool
+    protected function upsertUser(array $row, ?User $actor): bool
     {
-        $employee = Employee::visibleInErp()->where('staff_id', $row['staff_id'])->firstOrFail();
+        if (! $actor) {
+            throw new AuthorizationException('Importing users needs a signed-in user.');
+        }
+
+        $employee = $this->roleGrants->employeesQueryFor($actor)->where('staff_id', $row['staff_id'])->firstOrFail();
 
         $payload = [
             'employee_id' => $employee->id,
@@ -563,14 +592,23 @@ class DataImportService
 
         $user->save();
 
-        $roles = Role::query()
-            ->whereIn('name', $row['role_slugs'])
-            ->pluck('id')
-            ->all();
-
-        $user->roles()->sync($roles);
+        // The same role checks and audit as the users screen; roles the actor doesn't manage stay as they are.
+        // A refused role throws, which rolls the whole import back (run() is one transaction).
+        $this->roleAssignments->sync(
+            $actor,
+            $user,
+            Role::query()->whereIn('name', $row['role_slugs'])->pluck('id')->all()
+        );
 
         return $user->wasRecentlyCreated;
+    }
+
+    /** Importing users assigns roles, so it is a Global Admin / super_admin job whichever screen the file came from. */
+    protected function authorizeType(string $type, ?User $actor): void
+    {
+        if ($type === 'users' && (! $actor || ! $this->roleGrants->canImportUsers($actor))) {
+            abort(403, 'You are not allowed to import users.');
+        }
     }
 
     protected function definition(string $type): array
@@ -620,9 +658,9 @@ class DataImportService
             'regions' => [
                 'label' => 'Regions',
                 'description' => 'Region master data.',
-                'headings' => ['region_name', 'hr_email'],
+                'headings' => ['region_name'],
                 'sample_rows' => [
-                    ['Greater Accra', 'hr.accra@example.com'],
+                    ['Greater Accra'],
                 ],
             ],
             'districts' => [

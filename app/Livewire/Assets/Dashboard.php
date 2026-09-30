@@ -20,11 +20,11 @@ class Dashboard extends Component
 
     public function render()
     {
-        $baseQuery = $this->scopeAssetsForActor(IctAsset::query());
+        $baseQuery = $this->scopeAssetsForViewing(IctAsset::query());
 
         $dashboard = app(AssetDashboardService::class)->build($baseQuery);
 
-        $recentAssets = $this->scopeAssetsForActor(IctAsset::query())
+        $recentAssets = $this->scopeAssetsForViewing(IctAsset::query())
             ->with(['district', 'assignedTo'])
             ->orderByDesc('updated_at')
             ->limit(8)

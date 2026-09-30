@@ -83,7 +83,7 @@
                         <td>
                             <span class="ui-cell-stack">
                                 <x-ui.status-pill domain="asset" :status="$asset->status" />
-                                @if ($mdmLinks && $asset->mdmDevice && ! $asset->mdmDevice->isDeleted())
+                                @if ($mdmLinks && $asset->mdmDevice && ! $asset->mdmDevice->isDeleted() && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                     <a href="{{ route('assets.mdm.devices.show', $asset->mdmDevice->id) }}" class="ui-person-sub" title="Open the MDM record">
                                         MDM · {{ $asset->mdmDevice->is_lost ? 'Lost mode' : ($asset->mdmDevice->needs_review ? 'Needs review' : ($asset->mdmDevice->policy_compliant === false ? 'Non-compliant' : 'Managed')) }}
                                     </a>
@@ -91,7 +91,7 @@
                             </span>
                         </td>
                         <td class="actions">
-                            @if ($canEdit)
+                            @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
                                     <x-ui.icon name="pencil" />
                                 </button>

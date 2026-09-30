@@ -26,7 +26,6 @@ class StaffDataManagersTest extends TestCase
 
         Livewire::test(RegionsManager::class)
             ->set('region_name', 'Greater Accra')
-            ->set('hr_email', 'hr.accra@example.com')
             ->call('save')
             ->assertHasNoErrors();
 
@@ -35,15 +34,45 @@ class StaffDataManagersTest extends TestCase
         Livewire::test(RegionsManager::class)
             ->call('edit', $region->id)
             ->set('editingName', 'Greater Accra Region')
-            ->set('editingHrEmail', 'hr.greater.accra@example.com')
             ->call('update')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('regions', [
             'id' => $region->id,
             'region_name' => 'Greater Accra Region',
-            'hr_email' => 'hr.greater.accra@example.com',
         ]);
+    }
+
+    public function test_the_regions_screen_no_longer_has_an_hr_email(): void
+    {
+        $this->actingAs($this->createSuperAdmin());
+        Region::query()->create(['region_name' => 'Ashanti']);
+
+        // HR emails for leave live on the Leave module's HR Contacts screen now.
+        Livewire::test(RegionsManager::class)
+            ->assertDontSee('HR Email')
+            ->assertSee('Ashanti')
+            ->call('edit', Region::query()->value('id'))
+            ->assertDontSee('HR Email');
+    }
+
+    public function test_the_region_import_template_only_asks_for_the_region_name_and_ignores_an_old_hr_email_column(): void
+    {
+        $service = app(\App\Services\Import\DataImportService::class);
+
+        $template = $service->templateExport('regions');
+        $this->assertSame(['region_name'], $template->headings());
+        $this->assertSame([['Greater Accra']], $template->array());
+
+        // A file exported from before still carries hr_email: it is neither validated nor stored.
+        $validate = new \ReflectionMethod($service, 'validateRow');
+        $validate->setAccessible(true);
+        [$row, $errors] = $validate->invoke($service, 'regions', ['region_name' => 'Volta', 'hr_email' => 'not-an-email'], 2);
+        $this->assertSame([], $errors);
+
+        $this->assertSame(['created' => 1, 'updated' => 0, 'processed' => 1], $service->run('regions', [$row]));
+        $this->assertDatabaseHas('regions', ['region_name' => 'Volta']);
+        $this->assertSame(['created' => 0, 'updated' => 1, 'processed' => 1], $service->run('regions', [$row]));
     }
 
     public function test_region_delete_is_blocked_when_locations_are_assigned(): void

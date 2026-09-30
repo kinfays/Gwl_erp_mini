@@ -183,11 +183,16 @@ class ErpNavigation
 
     protected function leaveSidebar(User $user): array
     {
-        $canReview = fn (User $currentUser) => $this->isHrViewer($currentUser) || $this->isManagerialUser($currentUser);
+        $canReview = fn (User $currentUser) => $this->isHrViewer($currentUser)
+            || $this->isManagerialUser($currentUser)
+            || $currentUser->hasRoles('managing_director');
         $canManageHrTools = fn (User $currentUser) => $currentUser->hasPermission('leave.manage_compulsory')
             || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
         $canExport = fn (User $currentUser) => $currentUser->hasPermission('leave.export')
             || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
+        // Regional HR edit only their own region: that limit is enforced by the screen and LeaveHrContactService.
+        $canManageHrContacts = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin')
+            || ($currentUser->hasRoles('hr_headoffice', 'hr_region') && $currentUser->hasPermission('leave.manage_hr_contacts'));
         $homeRoute = $this->leaveHomeRoute($user);
 
         return [
@@ -243,6 +248,14 @@ class ErpNavigation
                 'icon' => $this->icon('spark'),
                 'icon_name' => 'calendar-x',
                 'can' => $canManageHrTools,
+            ],
+            [
+                'label' => 'HR Contacts',
+                'route' => 'leave.hr-contacts',
+                'active' => ['leave.hr-contacts'],
+                'icon' => $this->icon('user-plus'),
+                'icon_name' => 'mail',
+                'can' => $canManageHrContacts,
             ],
             [
                 'label' => 'Reports',
@@ -351,7 +364,8 @@ class ErpNavigation
                 'active' => ['uac.roles'],
                 'icon' => $this->icon('shield'),
                 'icon_name' => 'key-round',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
+                // Global Admin and super_admin; the ICT team never sees the roles screen.
+                'can' => fn (User $currentUser) => $currentUser->tier() >= User::TIER_GLOBAL_ADMIN,
             ],
             [
                 'label' => 'Bulk Import',
@@ -359,7 +373,7 @@ class ErpNavigation
                 'active' => ['uac.import'],
                 'icon' => $this->icon('stack'),
                 'icon_name' => 'file-spreadsheet',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin'),
+                'can' => fn (User $currentUser) => $currentUser->tier() >= User::TIER_GLOBAL_ADMIN,
             ],
             [
                 'label' => 'Audit Log',

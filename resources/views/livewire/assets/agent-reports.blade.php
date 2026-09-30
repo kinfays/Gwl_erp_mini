@@ -76,11 +76,13 @@
                                         <button type="button" wire:click="linkReport" class="btn btn-primary btn-sm">Link</button>
                                         <button type="button" wire:click="cancelLink" class="btn btn-ghost btn-sm">Cancel</button>
                                     </div>
-                                @else
+                                @elseif ((! $regionLimited || (int) $report->reporting_region_id === (int) $ownRegionId))
                                     <button type="button" wire:click="startLink({{ $report->id }})" class="btn btn-sm">
                                         <x-ui.icon name="layers" class="icon-sm" />
                                         Link Asset
                                     </button>
+                                @else
+                                    <span class="ui-hint">Read only</span>
                                 @endif
                             @else
                                 <span class="ui-hint">Matched</span>

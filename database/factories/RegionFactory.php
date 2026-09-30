@@ -18,7 +18,6 @@ class RegionFactory extends Factory
             'region_name' => $this->faker->randomElement([
                 'Accra West', 'Accra East', 'Tema', 'Ashanti North', 'Ashanti South', 'Western', 'Eastern', 'Central', 'Volta', 'Northern',
             ]),
-            'hr_email' => $this->faker->unique()->safeEmail(),
         ];
     }
 }

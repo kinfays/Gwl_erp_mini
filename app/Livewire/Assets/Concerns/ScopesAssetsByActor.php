@@ -24,10 +24,8 @@ trait ScopesAssetsByActor
 
     protected function actorIsRegionScopedIct(): bool
     {
-        $user = $this->actor();
-
-        return $user->hasRoles(User::ROLE_ICT_TEAM)
-            && ! $user->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN);
+        // Thin wrapper: the definition lives in User::isScopedIct().
+        return $this->actor()->isScopedIct();
     }
 
     protected function actorRegionId(): ?int
@@ -83,6 +81,46 @@ trait ScopesAssetsByActor
         return Rule::exists('districts', 'id')->where('region_id', $this->actorRegionId() ?? 0);
     }
 
+    /**
+     * Who may READ every region's assets: super_admin, Global Admin, and the Head Office ICT team. A regional ICT
+     * user sees only their own region. Reading is wider than writing on purpose: scopeAssetsForActor() (and the
+     * form's own-region stamp) still confine creating, editing and MDM actions to the actor's own region.
+     */
+    protected function actorSeesAllRegions(): bool
+    {
+        $user = $this->actor();
+
+        return ! $user->isScopedIct() || ($user->ictScope()['type'] ?? null) === 'head_office';
+    }
+
+    /** True when the actor may change records that belong to $regionId (their own region, unless unscoped). */
+    protected function actorCanModifyInRegion(?int $regionId): bool
+    {
+        return ! $this->actorIsRegionScopedIct() || ($regionId !== null && $regionId === $this->actorRegionId());
+    }
+
+    /** Asset rows the actor may LIST or count (all regions for Head Office ICT). Use scopeAssetsForActor() for writes. */
+    protected function scopeAssetsForViewing(Builder $query): Builder
+    {
+        return $this->actorSeesAllRegions() ? $query : $this->scopeAssetsForActor($query);
+    }
+
+    /** Report rows the actor may LIST (all regions for Head Office ICT). Use scopeReportsForActor() for writes. */
+    protected function scopeReportsForViewing(Builder $query, string $regionColumn = 'reporting_region_id'): Builder
+    {
+        return $this->actorSeesAllRegions() ? $query : $this->scopeReportsForActor($query, $regionColumn);
+    }
+
+    /** Row-level data the list views need to hide actions on records the actor can see but not change. @return array<string, mixed> */
+    protected function regionViewData(): array
+    {
+        return [
+            'ownRegionId' => $this->actorRegionId(),
+            'regionLimited' => $this->actorIsRegionScopedIct(),
+            'seesAllRegions' => $this->actorSeesAllRegions(),
+        ];
+    }
+
     protected function scopeAssetsForActor(Builder $query): Builder
     {
         if (! $this->actorIsRegionScopedIct()) {
@@ -91,8 +129,9 @@ trait ScopesAssetsByActor
 
         $regionId = $this->actorRegionId();
 
+        // Qualified: the dashboard joins districts, which has a region_id of its own.
         return $regionId
-            ? $query->where('region_id', $regionId)
+            ? $query->where($query->getModel()->qualifyColumn('region_id'), $regionId)
             : $query->whereRaw('1 = 0');
     }
 

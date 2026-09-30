@@ -38,6 +38,7 @@ class ModuleAccessSeeder extends Seeder
             'district_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
+            'managing_director' => [Permission::MODULE_LEAVE],
             'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT, Permission::MODULE_CREDIT_UNION],
             'receptionist' => [Permission::MODULE_VISITORS],
         ];

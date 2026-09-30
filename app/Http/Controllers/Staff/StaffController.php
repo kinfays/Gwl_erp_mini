@@ -30,7 +30,7 @@ class StaffController extends Controller
 
     public function edit(Request $request, Employee $employee, EmployeeDirectory $directory): View
     {
-        abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
+        abort_if(! Employee::visibleTo($request->user())->whereKey($employee->id)->exists(), 404);
         abort_unless($directory->canAccess($request->user(), $employee), 403);
 
         return view('staff.form', compact('employee'));
@@ -68,7 +68,7 @@ class StaffController extends Controller
 
     public function toggleStatus(Request $request, Employee $employee, EmployeeDirectory $directory): RedirectResponse
     {
-        abort_if(! Employee::visibleInErp()->whereKey($employee->id)->exists(), 404);
+        abort_if(! Employee::visibleTo($request->user())->whereKey($employee->id)->exists(), 404);
         abort_unless($directory->canAccess($request->user(), $employee), 403);
 
         $old = $employee->toArray();
@@ -101,7 +101,8 @@ class StaffController extends Controller
 
     public function showUser(Request $request, User $user, EmployeeDirectory $directory, UserProfilePayload $profiles)
     {
-        abort_if($user->hasRoles('super_admin'), 404);
+        // A super_admin account doesn't exist for anyone else.
+        abort_unless(User::query()->visibleTo($request->user())->whereKey($user->id)->exists(), 404);
 
         $employee = $user->employee ?? $user->employeeByStaffId;
 

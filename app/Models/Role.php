@@ -16,10 +16,14 @@ class Role extends Model
         'display_name',
         'description',
         'is_system',
+        'ict_assignable',
+        'is_protected',
     ];
 
     protected $casts = [
         'is_system' => 'boolean',
+        'ict_assignable' => 'boolean',
+        'is_protected' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -62,5 +66,20 @@ class Role extends Model
     public function scopeSystem($query)
     {
         return $query->where('is_system', true);
+    }
+
+    /**
+     * Roles $viewer may see in role lists, pickers and counts. The implicit base `employee` role is never listed
+     * (it isn't managed through the UI), and `super_admin` is listed only to a super_admin.
+     */
+    public function scopeVisibleTo($query, ?User $viewer)
+    {
+        $query->where('roles.name', '!=', User::ROLE_EMPLOYEE);
+
+        if (! $viewer?->hasRoles(User::ROLE_SUPER_ADMIN)) {
+            $query->where('roles.name', '!=', User::ROLE_SUPER_ADMIN);
+        }
+
+        return $query;
     }
 }

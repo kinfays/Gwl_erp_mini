@@ -14,6 +14,9 @@ class LeaveRequest extends Model
         'total_days_applied',
         'leave_details',
         'manager_id',
+        'manager_user_id',
+        'chief_user_id',
+        'is_single_stage',
         'manager_comments',
         'manager_recommendation',
         'leave_status',
@@ -32,6 +35,7 @@ class LeaveRequest extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'request_year' => 'integer',
+        'is_single_stage' => 'boolean',
         'submitted_at' => 'datetime',
         'recommended_at' => 'datetime',
         'decided_at' => 'datetime',
@@ -50,6 +54,18 @@ class LeaveRequest extends Model
     public function approvedBy()
     {
         return $this->belongsTo(Employee::class, 'approved_by_id');
+    }
+
+    /** The recommender snapshotted at submission (null for a single-stage request); the one who acted, once someone has. */
+    public function managerUser()
+    {
+        return $this->belongsTo(User::class, 'manager_user_id');
+    }
+
+    /** The final approver snapshotted at submission; the one who acted, once someone has. */
+    public function chiefUser()
+    {
+        return $this->belongsTo(User::class, 'chief_user_id');
     }
 
     public function department()

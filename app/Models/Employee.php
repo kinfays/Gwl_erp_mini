@@ -74,16 +74,24 @@ class Employee extends Model
                 $districtName = District::query()->whereKey($employee->district_id)->value('district_name');
             }
 
-            $districtName = strtolower((string) $districtName);
-
-            if (str_contains($districtName, 'head office')) {
-                $employee->location_type = 'HeadOffice';
-            } elseif (str_contains($districtName, 'regional office')) {
-                $employee->location_type = 'Region';
-            } else {
-                $employee->location_type = 'District';
-            }
+            $employee->location_type = self::locationTypeFor($districtName);
         });
+    }
+
+    /**
+     * An employee's location_type follows the NAME of their district: "Head Office", a "... Regional Office", or
+     * anything else is an ordinary district. That is why renaming a district has to re-save its employees
+     * (see DistrictEmployeeSync).
+     */
+    public static function locationTypeFor(?string $districtName): string
+    {
+        $name = strtolower((string) $districtName);
+
+        return match (true) {
+            str_contains($name, 'head office') => 'HeadOffice',
+            str_contains($name, 'regional office') => 'Region',
+            default => 'District',
+        };
     }
 
     public function region(): BelongsTo
@@ -186,6 +194,12 @@ class Employee extends Model
     public function scopeVisibleInErp($query)
     {
         return $query->whereDoesntHave('userByStaffId.roles', fn ($roleQuery) => $roleQuery->where('name', 'super_admin'));
+    }
+
+    /** Employees $viewer may see in the UAC and staff contexts (see User::scopeVisibleTo()). */
+    public function scopeVisibleTo($query, ?User $viewer)
+    {
+        return $viewer?->isSuperAdmin() ? $query : $query->visibleInErp();
     }
 
     public function scopeAtLocation($query, string $locationType)

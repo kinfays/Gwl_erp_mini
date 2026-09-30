@@ -10,6 +10,7 @@ use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
+use App\Http\Controllers\Leave\LeaveHrContactsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
@@ -100,6 +101,9 @@ Route::middleware(['auth', 'active', 'module:leave'])
         Route::get('/compulsory', fn () => view('leave.compulsory'))
             ->middleware('permission:leave.manage_compulsory')
             ->name('compulsory');
+        Route::get('/hr-contacts', [LeaveHrContactsController::class, 'index'])
+            ->middleware('permission:leave.manage_hr_contacts')
+            ->name('hr-contacts');
     });
 
 Route::middleware([

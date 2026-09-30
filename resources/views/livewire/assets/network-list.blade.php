@@ -99,7 +99,7 @@
                         </td>
                         <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
                         <td class="actions">
-                            @if ($canEdit)
+                            @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
                                     <x-ui.icon name="pencil" />
                                 </button>

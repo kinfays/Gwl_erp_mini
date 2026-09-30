@@ -30,8 +30,8 @@ class MdmAccessGuard
 
     public function isRegionScopedIct(User $user): bool
     {
-        return $user->hasRoles(User::ROLE_ICT_TEAM)
-            && ! $user->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN);
+        // Thin wrapper: the definition lives in User::isScopedIct().
+        return $user->isScopedIct();
     }
 
     public function regionId(User $user): ?int

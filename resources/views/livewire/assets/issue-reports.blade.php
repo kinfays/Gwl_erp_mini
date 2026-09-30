@@ -61,9 +61,13 @@
                         <td><x-ui.status-pill domain="issue" :status="$report->status" /></td>
                         <td @class(['nowrap', 'cell-muted' => ! $report->date_solved])>{{ $report->date_solved?->format('d M Y') ?: '-' }}</td>
                         <td class="actions">
-                            <button type="button" wire:click="openEdit({{ $report->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $report->title }}">
-                                <x-ui.icon name="pencil" />
-                            </button>
+                            @if ((! $regionLimited || (int) $report->reporting_region_id === (int) $ownRegionId))
+                                <button type="button" wire:click="openEdit({{ $report->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $report->title }}">
+                                    <x-ui.icon name="pencil" />
+                                </button>
+                            @else
+                                <span class="ui-hint">Read only</span>
+                            @endif
                         </td>
                     </tr>
                 @empty

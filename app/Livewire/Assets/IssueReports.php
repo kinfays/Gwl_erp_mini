@@ -167,7 +167,7 @@ class IssueReports extends Component
 
     public function render()
     {
-        $reports = $this->scopeReportsForActor(
+        $reports = $this->scopeReportsForViewing(
             IctAssetIssueReport::query()->with(['asset', 'region', 'district', 'reporter'])
         )
             ->when($this->search, function ($query) {
@@ -212,6 +212,7 @@ class IssueReports extends Component
             'typeOptions' => $typeOptions,
             'statusOptions' => $statusOptions,
             'assets' => $assets,
+            ...$this->regionViewData(),
             'regions' => $regions,
             'districts' => $districts,
         ]);

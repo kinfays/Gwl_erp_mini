@@ -11,7 +11,7 @@ Employee records, staff directory views, and HR master data management.
 - Employee activation/deactivation with reason
 - Departments manager
 - Regions manager
-- Locations manager
+- Locations manager (editing a district re-syncs its employees: their `location_type` follows the district's name and their `region_id` its region, and Head Office-only roles are removed from anyone who ends up outside Head Office)
 - Job titles manager
 - Staff imports and exports
 

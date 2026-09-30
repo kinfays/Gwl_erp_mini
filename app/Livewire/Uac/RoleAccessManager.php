@@ -2,15 +2,25 @@
 
 namespace App\Livewire\Uac;
 
+use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Models\AuditLog;
 use App\Models\ModuleAccess;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
-use App\Support\Audit;
+use App\Services\Uac\RoleGrantPolicy;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
+/**
+ * The roles and permissions screen. Global Admin and super_admin only; every action is re-checked against
+ * RoleGrantPolicy on the server (the screen's buttons are only a convenience).
+ */
 class RoleAccessManager extends Component
 {
+    use EnforcesModuleAccess;
+
     public array $roles = [];
 
     public ?int $selectedRoleId = null;
@@ -21,6 +31,8 @@ class RoleAccessManager extends Component
     public array $selectedPermissionIds = []; // [1,2,3]
 
     public array $moduleAccess = []; // ['leave' => true, 'uac' => false...]
+
+    public bool $ictAssignable = false;
 
     public string $message = '';
 
@@ -50,17 +62,10 @@ class RoleAccessManager extends Component
 
     public function mount(): void
     {
+        $this->enforceLivewireModule('uac');
+        abort_unless($this->policy()->canAdministerRoles($this->actor()), 403, 'Only a Global Admin or Super Admin can manage roles.');
 
-        $this->roles = Role::query()
-                   ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
-                   ->orderBy('display_name')
-                   ->get()
-                   ->map(fn ($r) => [
-                       'id' => $r->id,
-                       'name' => $r->name,
-                       'display_name' => $r->display_name,
-                       'is_system' => (bool) $r->is_system,
-                   ])->toArray();
+        $this->loadRoles();
 
         $this->permissionsByModule = Permission::query()
             ->orderBy('module')
@@ -82,12 +87,9 @@ class RoleAccessManager extends Component
 
     public function createRole(): void
     {
-        $user = auth()->user();
+        $actor = $this->actor();
 
-        // ✅ admin and super_admin can create roles
-        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-            abort(403, 'Only Admin or Super Admin can create roles.');
-        }
+        abort_unless($this->policy()->canCreateRole($actor), 403, 'Only a Global Admin or Super Admin can create roles.');
 
         $this->validate([
             'newRoleSlug' => ['required', 'string', 'max:50', 'regex:/^[a-z0-9_]+$/', 'unique:roles,name'],
@@ -97,32 +99,38 @@ class RoleAccessManager extends Component
             'newRoleSlug.regex' => 'Slug must be lowercase letters, numbers, or underscores only (e.g. finance_manager).',
         ]);
 
-        $role = Role::create([
-            'name' => $this->newRoleSlug,
-            'display_name' => $this->newRoleDisplayName,
-            'description' => $this->newRoleDescription,
-            'is_system' => false,
-        ]);
+        $role = DB::transaction(function () use ($actor) {
+            $role = Role::create([
+                'name' => $this->newRoleSlug,
+                'display_name' => $this->newRoleDisplayName,
+                'description' => $this->newRoleDescription,
+                'is_system' => false,
+                'ict_assignable' => false,
+                'is_protected' => false,
+            ]);
 
-        // Create default module_access rows (all false by default)
-        foreach ($this->modules as $module) {
-            ModuleAccess::updateOrCreate(
-                ['role_id' => $role->id, 'module' => $module],
-                ['can_access' => false]
+            // Create default module_access rows (all false by default)
+            foreach ($this->modules as $module) {
+                ModuleAccess::updateOrCreate(
+                    ['role_id' => $role->id, 'module' => $module],
+                    ['can_access' => false]
+                );
+            }
+
+            AuditLog::record(
+                'create_role',
+                'uac.roles',
+                'roles',
+                $role->id,
+                null,
+                $this->roleSnapshot($role),
+                ['role' => $role->name, 'actor_id' => $actor->id]
             );
-        }
 
-        // Refresh roles list (still hiding super_admin)
-        $this->roles = Role::query()
-            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
-            ->orderBy('display_name')
-            ->get()
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'name' => $r->name,
-                'display_name' => $r->display_name,
-                'is_system' => (bool) $r->is_system,
-            ])->toArray();
+            return $role;
+        });
+
+        $this->loadRoles();
 
         // Select newly created role
         $this->selectRole($role->id);
@@ -140,10 +148,11 @@ class RoleAccessManager extends Component
     {
         $this->selectedRoleId = $roleId;
         $role = Role::with(['permissions', 'moduleAccesses'])
-            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
+            ->visibleTo($this->actor())
             ->findOrFail($roleId);
 
         $this->selectedPermissionIds = $role->permissions->pluck('id')->toArray();
+        $this->ictAssignable = (bool) $role->ict_assignable;
 
         // build module access map
         $this->moduleAccess = [];
@@ -179,70 +188,105 @@ class RoleAccessManager extends Component
         }
     }
 
+    public function toggleIctAssignable(): void
+    {
+        $role = $this->selectedRole();
+
+        if (! $role || ! $this->policy()->canSetIctAssignable($this->actor(), $role)) {
+            return;
+        }
+
+        $this->ictAssignable = ! $this->ictAssignable;
+    }
+
     public function getCanEditProperty(): bool
     {
-        $selectedRole = $this->selectedRoleId
-            ? Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->find($this->selectedRoleId)
-            : null;
+        $role = $this->selectedRole();
 
-        return auth()->check() && $this->canEditRole(auth()->user(), $selectedRole);
+        return $role !== null && $this->policy()->canEditRolePermissions($this->actor(), $role);
     }
 
     public function save(): void
     {
-        $user = auth()->user();
+        $actor = $this->actor();
 
         if (! $this->selectedRoleId) {
             return;
         }
 
         $role = Role::with(['permissions', 'moduleAccesses'])
-            ->whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])
+            ->visibleTo($actor)
             ->findOrFail($this->selectedRoleId);
 
-        if (! $user || ! $this->canEditRole($user, $role)) {
-            abort(403, 'You cannot modify this role.');
+        abort_unless($this->policy()->canEditRolePermissions($actor, $role), 403, 'You cannot modify this role.');
+
+        $newPermissionIds = collect($this->selectedPermissionIds)->map(fn ($id) => (int) $id)->unique()->values();
+        $added = $newPermissionIds->diff($role->permissions->pluck('id'));
+
+        // Anti-escalation: you can't put governance permissions into a role that you don't hold yourself.
+        if ($denial = $this->policy()->permissionGrantDenial($actor, $added)) {
+            throw ValidationException::withMessages(['selectedPermissionIds' => $denial]);
         }
 
-        $oldPermissions = $role->permissions->pluck('name')->toArray();
+        $ictAssignable = $this->policy()->canSetIctAssignable($actor, $role)
+            ? $this->ictAssignable
+            : (bool) $role->ict_assignable;
+
+        $oldPermissions = $role->permissions->pluck('name')->sort()->values()->toArray();
         $oldModules = $role->moduleAccesses->pluck('can_access', 'module')->toArray();
+        $oldIctAssignable = (bool) $role->ict_assignable;
 
-        $role->permissions()->sync($this->selectedPermissionIds);
+        DB::transaction(function () use ($role, $newPermissionIds, $ictAssignable, $actor, $oldPermissions, $oldModules, $oldIctAssignable) {
+            $role->permissions()->sync($newPermissionIds->all());
 
-        foreach ($this->modules as $module) {
-            ModuleAccess::updateOrCreate(
-                ['role_id' => $role->id, 'module' => $module],
-                ['can_access' => (bool) ($this->moduleAccess[$module] ?? false)]
+            foreach ($this->modules as $module) {
+                ModuleAccess::updateOrCreate(
+                    ['role_id' => $role->id, 'module' => $module],
+                    ['can_access' => (bool) ($this->moduleAccess[$module] ?? false)]
+                );
+            }
+
+            if ($ictAssignable !== $oldIctAssignable) {
+                $role->update(['ict_assignable' => $ictAssignable]);
+            }
+
+            $role->refresh()->load(['permissions', 'moduleAccesses']);
+
+            AuditLog::record(
+                'update_role_access',
+                'uac.roles',
+                'roles',
+                $role->id,
+                [
+                    'permissions' => $oldPermissions,
+                    'module_access' => $oldModules,
+                    'ict_assignable' => $oldIctAssignable,
+                ],
+                [
+                    'permissions' => $role->permissions->pluck('name')->sort()->values()->toArray(),
+                    'module_access' => $role->moduleAccesses->pluck('can_access', 'module')->toArray(),
+                    'ict_assignable' => (bool) $role->ict_assignable,
+                ],
+                [
+                    'role' => $role->name,
+                    'actor_id' => $actor->id,
+                    // Kept under the older keys too: the audit log viewer and earlier rows use them.
+                    'old_permissions' => $oldPermissions,
+                    'new_permissions' => $role->permissions->pluck('name')->sort()->values()->toArray(),
+                    'old_module_access' => $oldModules,
+                    'new_module_access' => $role->moduleAccesses->pluck('can_access', 'module')->toArray(),
+                ]
             );
-        }
-
-        $role->refresh()->load(['permissions', 'moduleAccesses']);
-
-        Audit::log(
-            action: 'update_role_access',
-            module: 'uac.roles',
-            targetType: 'roles',
-            targetId: $role->id,
-            metadata: [
-                'role' => $role->name,
-                'old_permissions' => $oldPermissions,
-                'new_permissions' => $role->permissions->pluck('name')->toArray(),
-                'old_module_access' => $oldModules,
-                'new_module_access' => $role->moduleAccesses->pluck('can_access', 'module')->toArray(),
-            ]
-        );
+        });
 
         $this->message = 'Changes saved successfully.';
     }
 
     public function openEditRole(): void
     {
-        $user = auth()->user();
-        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-            abort(403);
-        }
+        $role = $this->selectedRole();
 
-        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->selectedRoleId);
+        abort_unless($role && $this->policy()->canEditRolePermissions($this->actor(), $role), 403);
 
         if ($role->is_system) {
             $this->message = 'System roles cannot be edited.';
@@ -259,49 +303,47 @@ class RoleAccessManager extends Component
 
     public function updateRole(): void
     {
-        $user = auth()->user();
-        if (! $user || ! $user->hasRoles('admin', 'super_admin')) {
-            abort(403);
-        }
+        $actor = $this->actor();
+        $role = Role::query()->visibleTo($actor)->findOrFail($this->editRoleId);
 
-        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->editRoleId);
-
-        if ($role->is_system) {
-            abort(403);
-        }
+        abort_unless($this->policy()->canEditRoleDetails($actor, $role), 403);
 
         $this->validate([
             'editRoleDisplayName' => 'required|string|max:100',
             'editRoleDescription' => 'nullable|string|max:255',
         ]);
 
+        $old = ['display_name' => $role->display_name, 'description' => $role->description];
+
         $role->update([
             'display_name' => $this->editRoleDisplayName,
             'description' => $this->editRoleDescription,
         ]);
 
-        Audit::log(
-            action: 'update_role',
-            module: 'uac.roles',
-            targetType: 'roles',
-            targetId: $role->id,
-            metadata: ['role' => $role->name]
+        AuditLog::record(
+            'update_role',
+            'uac.roles',
+            'roles',
+            $role->id,
+            $old,
+            ['display_name' => $role->display_name, 'description' => $role->description],
+            ['role' => $role->name, 'actor_id' => $actor->id]
         );
 
+        $this->loadRoles();
         $this->showEditRole = false;
         $this->message = 'Role updated successfully.';
     }
 
     public function openDeleteRole(): void
     {
-        $user = auth()->user();
-        if (! $user || ! $user->hasRoles('super_admin')) {
-            abort(403);
-        }
+        $actor = $this->actor();
 
-        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->withCount('users')->findOrFail($this->selectedRoleId);
+        abort_unless($actor->isSuperAdmin(), 403);
 
-        if ($role->is_system) {
+        $role = Role::query()->visibleTo($actor)->withCount('users')->findOrFail($this->selectedRoleId);
+
+        if ($role->is_system || $role->is_protected) {
             $this->message = 'System roles cannot be deleted.';
 
             return;
@@ -320,10 +362,7 @@ class RoleAccessManager extends Component
 
     public function deleteRole(): void
     {
-        $user = auth()->user();
-        if (! $user || ! $user->hasRoles('super_admin')) {
-            abort(403);
-        }
+        $actor = $this->actor();
 
         if (trim($this->deleteConfirmText) !== 'DELETE') {
             $this->addError('deleteConfirmText', 'Type DELETE to confirm.');
@@ -331,22 +370,30 @@ class RoleAccessManager extends Component
             return;
         }
 
-        $role = Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->findOrFail($this->deleteRoleId);
+        $role = Role::query()->visibleTo($actor)->with(['permissions', 'moduleAccesses'])->findOrFail($this->deleteRoleId);
 
-        \DB::transaction(function () use ($role) {
+        abort_unless($this->policy()->canDeleteRole($actor, $role), 403);
+
+        $old = $this->roleSnapshot($role);
+
+        DB::transaction(function () use ($role, $old, $actor) {
             $role->permissions()->detach();
             $role->users()->detach();
             ModuleAccess::where('role_id', $role->id)->delete();
             $role->delete();
+
+            AuditLog::record(
+                'delete_role',
+                'uac.roles',
+                'roles',
+                $role->id,
+                $old,
+                null,
+                ['role' => $role->name, 'actor_id' => $actor->id]
+            );
         });
 
-        Audit::log(
-            action: 'delete_role',
-            module: 'uac.roles',
-            targetType: 'roles',
-            targetId: $this->deleteRoleId
-        );
-
+        $this->loadRoles();
         $this->showDeleteRole = false;
         $this->selectedRoleId = null;
         $this->message = 'Role deleted successfully.';
@@ -354,37 +401,87 @@ class RoleAccessManager extends Component
 
     public function render()
     {
-        $selectedRole = $this->selectedRoleId
-            ? Role::whereNotIn('name', [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE])->find($this->selectedRoleId)
-            : null;
+        $selectedRole = $this->selectedRole();
+        $actor = $this->actor();
 
-        $locked = $selectedRole ? $this->isLockedRole($selectedRole) : false;
-        $canEdit = auth()->check() && $this->canEditRole(auth()->user(), $selectedRole);
+        $canEdit = $selectedRole !== null && $this->policy()->canEditRolePermissions($actor, $selectedRole);
 
         return view('components.uac.role-access-manager', [
-            'locked' => $locked,
+            'locked' => $selectedRole !== null && ! $canEdit,
+            'lockReason' => $selectedRole ? $this->lockReason($selectedRole) : null,
             'canEdit' => $canEdit,
+            'canCreate' => $this->policy()->canCreateRole($actor),
+            'canEditDetails' => $selectedRole !== null && $this->policy()->canEditRoleDetails($actor, $selectedRole),
+            'canDelete' => $selectedRole !== null && $this->policy()->canDeleteRole($actor, $selectedRole),
+            'canSetIctAssignable' => $selectedRole !== null && $this->policy()->canSetIctAssignable($actor, $selectedRole),
             'selectedRole' => $selectedRole,
         ]);
     }
 
-    protected function isLockedRole(?Role $role): bool
+    protected function policy(): RoleGrantPolicy
     {
-        return $role
-            && $role->is_system
-            && in_array($role->name, [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_EMPLOYEE], true);
+        return app(RoleGrantPolicy::class);
     }
 
-    protected function canEditRole(?User $user, ?Role $role): bool
+    protected function actor(): User
     {
-        if (! $user || ! $role || $this->isLockedRole($role)) {
-            return false;
+        /** @var User $user */
+        $user = auth()->user();
+
+        abort_unless($user, 403, 'Unauthorized.');
+
+        return $user;
+    }
+
+    protected function selectedRole(): ?Role
+    {
+        return $this->selectedRoleId
+            ? Role::query()->visibleTo($this->actor())->find($this->selectedRoleId)
+            : null;
+    }
+
+    protected function loadRoles(): void
+    {
+        $this->roles = Role::query()
+            ->visibleTo($this->actor())
+            ->orderBy('display_name')
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->name,
+                'display_name' => $r->display_name,
+                'is_system' => (bool) $r->is_system,
+            ])->toArray();
+    }
+
+    /** @return array<string, mixed> */
+    protected function roleSnapshot(Role $role): array
+    {
+        $role->loadMissing(['permissions', 'moduleAccesses']);
+
+        return [
+            'name' => $role->name,
+            'display_name' => $role->display_name,
+            'description' => $role->description,
+            'is_system' => (bool) $role->is_system,
+            'ict_assignable' => (bool) $role->ict_assignable,
+            'permissions' => $role->permissions->pluck('name')->sort()->values()->all(),
+            'module_access' => $role->moduleAccesses->pluck('can_access', 'module')->all(),
+        ];
+    }
+
+    protected function lockReason(Role $role): ?string
+    {
+        $actor = $this->actor();
+
+        if ($this->policy()->canEditRolePermissions($actor, $role)) {
+            return null;
         }
 
-        if ($role->name === User::ROLE_ICT_TEAM) {
-            return $user->hasRoles(User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN);
-        }
-
-        return $user->hasRoles(User::ROLE_SUPER_ADMIN);
+        return match (true) {
+            in_array($role->name, [User::ROLE_SUPER_ADMIN, User::ROLE_EMPLOYEE], true) => 'This role is locked and cannot be modified.',
+            (bool) $role->is_protected => 'This is a protected role: only a Super Admin can change its permissions.',
+            default => 'You cannot modify this role.',
+        };
     }
 }
