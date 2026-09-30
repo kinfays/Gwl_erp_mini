@@ -22,6 +22,14 @@
             <x-ui.stat-tile label="Pending Review" :value="$stats['pending']" icon="hourglass" tone="warning" meta="Received or in review at your desk" />
             <x-ui.stat-tile label="Dispatch" :value="$stats['dispatched']" icon="send" tone="lagoon" meta="Dispatched, not yet closed" />
             <x-ui.stat-tile label="Closed" :value="$stats['closed']" icon="archive" tone="muted" meta="Closed at your desk" :href="route('letters.closed')" />
+            <x-ui.stat-tile
+                :label="'Unconfirmed > '.$alertDays.' '.\Illuminate\Support\Str::plural('day', $alertDays)"
+                :value="$unconfirmedOverdue"
+                icon="clock"
+                tone="warning"
+                meta="Hand-overs you sent that nobody has confirmed"
+                :href="route('letters.transmittals', ['tab' => 'sent', 'filter' => 'overdue'])"
+            />
         </div>
 
         <x-ui.card title="Requires your attention" description="Letters received or in review at your desk" :padded="false">

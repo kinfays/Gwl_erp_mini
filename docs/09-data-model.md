@@ -22,10 +22,14 @@
 ## Letters
 
 - `mail_letters` (`closed_at` / `closed_by_id`: closed is a state of the letter, `nullOnDelete` to employees)
-- `letter_status_logs` (one row per holder per stay; `is_closed` is no longer written)
+- `letter_status_logs` (one row per holder per stay; `is_closed` is no longer written; `routing_history_id` -> the hop
+  that created the log, `nullOnDelete`, indexed, so recall/reject delete exactly that log. It is set on every log
+  `recordHop()` creates and was backfilled only for hops still awaiting confirmation)
 - `routing_histories` (one row per hop; `received_confirm` plus `confirmed_at` / `confirmed_by_id` say when and by whom
-  it was confirmed; `batch_id` links it to a transmittal; `resolution`, `resolved_at`, `resolution_note` are reserved
-  for recall/reject and not written yet)
+  it was confirmed; `batch_id` links it to a transmittal; `resolution` (`recalled` | `rejected`), `resolved_at`,
+  `resolution_note` record a hop taken back; `reminded_at` is the last reminder to the recipient. A hop is **awaiting
+  confirmation** only when `received_confirm = 0` and `resolution IS NULL`: use `RoutingHistory::awaiting()`, never
+  `received_confirm = 0` alone)
 - `letter_dispatch_batches` (transmittals: see below)
 - `letter_remarks`
 - `letter_sn_counters` (`prefix`, `year`, `last_number`; unique `[prefix, year]`; the locked serial-number counter)

@@ -6935,3 +6935,8 @@ textarea.form-input {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
 }
+
+.reject-panel {
+    padding: 1rem;
+    border-top: 1px solid var(--color-line);
+}

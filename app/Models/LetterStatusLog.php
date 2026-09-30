@@ -13,6 +13,7 @@ class LetterStatusLog extends Model
     protected $fillable = [
         'letter_id',
         'secretariat_id',
+        'routing_history_id',
         'status',
         'is_closed',
         'out_date',
@@ -21,6 +22,7 @@ class LetterStatusLog extends Model
     protected $casts = [
         'letter_id' => 'integer',
         'secretariat_id' => 'integer',
+        'routing_history_id' => 'integer',
         'is_closed' => 'boolean',
         'out_date' => 'date',
         'created_at' => 'datetime',
@@ -35,5 +37,11 @@ class LetterStatusLog extends Model
     public function secretariat(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'secretariat_id');
+    }
+
+    /** The hop that created this log (null for the creator's first log and for hops that predate the link). */
+    public function routingHistory(): BelongsTo
+    {
+        return $this->belongsTo(RoutingHistory::class, 'routing_history_id');
     }
 }

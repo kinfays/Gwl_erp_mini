@@ -206,7 +206,7 @@ class TransmittalPageTest extends TestCase
             ->assertSee('0 of 1 confirmed')
             ->assertSee('Confirmed')
             ->assertSee('Awaiting hardcopy')
-            ->assertSee('unconfirmed for')
+            ->assertSee('waiting today')
             ->assertSee('Print sheet')
             ->assertSeeHtml(route('letters.transmittals.sheet', $batch));
 

@@ -12,6 +12,8 @@ use App\Models\LetterStatusLog;
 use App\Models\MailLetter;
 use App\Models\Region;
 use App\Models\RoutingHistory;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
@@ -164,9 +166,11 @@ class LetterWorkflowService
             'received_confirm' => false,
         ]);
 
+        // The link is what lets recall/reject delete exactly the log this hop created.
         LetterStatusLog::create([
             'letter_id' => $letter->id,
             'secretariat_id' => $to->id,
+            'routing_history_id' => $hop->id,
             'status' => 'Received',
         ]);
 
@@ -212,7 +216,7 @@ class LetterWorkflowService
         return DB::transaction(function () use ($actor, $ids, $batch) {
             $routes = RoutingHistory::query()
                 ->where('to_secretariat_id', $actor->id)
-                ->where('received_confirm', false)
+                ->awaiting()
                 ->whereIn('letter_id', $ids->all())
                 ->when($batch, fn (Builder $query) => $query->where('batch_id', $batch->id))
                 ->orderBy('id')
@@ -255,7 +259,7 @@ class LetterWorkflowService
         }
 
         $hops = $batch->routingHistories();
-        $pending = (clone $hops)->where('received_confirm', false)->count();
+        $pending = (clone $hops)->awaiting()->count();
 
         $batch->update([
             'confirmed_count' => (clone $hops)->where('received_confirm', true)->count(),
@@ -268,7 +272,7 @@ class LetterWorkflowService
     {
         return RoutingHistory::query()
             ->where('to_secretariat_id', $actor->id)
-            ->where('received_confirm', false)
+            ->awaiting()
             ->count();
     }
 
@@ -277,7 +281,7 @@ class LetterWorkflowService
     {
         return $letters->whereHas('routingHistories', fn (Builder $hops) => $hops
             ->where('to_secretariat_id', $actor->id)
-            ->where('received_confirm', false));
+            ->awaiting());
     }
 
     /**
@@ -291,7 +295,7 @@ class LetterWorkflowService
             ->whereNull('closed_at')
             ->whereDoesntHave('routingHistories', fn (Builder $hops) => $hops
                 ->where('to_secretariat_id', $actor->id)
-                ->where('received_confirm', false))
+                ->awaiting())
             ->whereHas('statusLogs', fn (Builder $logs) => $logs
                 ->where('secretariat_id', $actor->id)
                 ->whereIn('status', ['Received', 'In Review'])
@@ -307,6 +311,400 @@ class LetterWorkflowService
                             ->whereColumn('newer.id', '>', 'letter_status_logs.id')))));
     }
 
+    // ---- Recall, reject, remind ---------------------------------------------------------------------------
+    //
+    // Only a hop that is still awaiting confirmation can be taken back: once the recipient has confirmed, custody has
+    // changed and they must dispatch the letter back themselves. Whoever takes the row lock first wins a race between
+    // a confirm and a recall/reject; the other gets the message below (the D1 handling shows it).
+
+    /**
+     * The sender takes back a hand-over the recipient has not confirmed yet.
+     */
+    public function recall(RoutingHistory $hop, Employee $sender, ?string $note = null): void
+    {
+        $note = $this->cleanNote($note);
+
+        DB::transaction(function () use ($hop, $sender, $note) {
+            $locked = RoutingHistory::query()->lockForUpdate()->findOrFail($hop->id);
+
+            if ($locked->from_secretariat_id !== $sender->id) {
+                throw new \RuntimeException('Only the sender of a hand-over can recall it.');
+            }
+
+            $this->assertAwaiting($locked, recall: true);
+            $this->resolveHop($locked, 'recalled', $note);
+            $this->afterResolution(collect([$locked]));
+        });
+    }
+
+    /**
+     * Recall every line of a transmittal that is still unconfirmed, all or nothing ("the whole bag went to the wrong
+     * desk"). Lines the recipient already confirmed stay where they are. Returns the number of lines recalled.
+     */
+    public function recallBatch(LetterDispatchBatch $batch, Employee $sender, ?string $note = null): int
+    {
+        $note = $this->cleanNote($note);
+
+        return DB::transaction(function () use ($batch, $sender, $note) {
+            $locked = LetterDispatchBatch::query()->lockForUpdate()->findOrFail($batch->id);
+
+            if ($locked->from_secretariat_id !== $sender->id) {
+                throw new \RuntimeException('Only the sender of a transmittal can recall it.');
+            }
+
+            $hops = $locked->routingHistories()->awaiting()->orderBy('id')->lockForUpdate()->get();
+
+            if ($hops->isEmpty()) {
+                throw new \RuntimeException('Every line of this transmittal has been confirmed or already resolved, so there is nothing to recall.');
+            }
+
+            $hops->each(fn (RoutingHistory $hop) => $this->resolveHop($hop, 'recalled', $note));
+            $this->afterResolution($hops);
+
+            AuditLog::record('recall_letter_batch', 'letters', 'letter_dispatch_batches', $locked->id, null, [
+                'batch_no' => $locked->batch_no,
+                'routing_history_ids' => $hops->pluck('id')->all(),
+                'letter_ids' => $hops->pluck('letter_id')->all(),
+            ], array_filter(['note' => $note]) ?: null);
+
+            return $hops->count();
+        });
+    }
+
+    /**
+     * The recipient refuses a hand-over they will not take (wrong desk, not meant for them). The reason is mandatory and
+     * goes to the sender in a notification.
+     */
+    public function reject(RoutingHistory $hop, Employee $recipient, string $reason): void
+    {
+        $this->rejectLines($recipient, [$hop->id], $reason);
+    }
+
+    /**
+     * Reject several of the recipient's own awaiting hops with one reason ("Reject ticked"). Hop ids come from the
+     * client, so only hops addressed to $recipient that are still awaiting are touched; anything else is ignored. Each
+     * sender gets one notification per transmittal (or per letter for single dispatches). Returns the number rejected.
+     *
+     * @param  array<int|string>  $hopIds
+     */
+    public function rejectLines(Employee $recipient, array $hopIds, string $reason): int
+    {
+        $reason = $this->cleanReason($reason);
+        $ids = collect($hopIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        return DB::transaction(function () use ($recipient, $ids, $reason) {
+            $hops = RoutingHistory::query()
+                ->where('to_secretariat_id', $recipient->id)
+                ->awaiting()
+                ->whereIn('id', $ids->all())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($hops->isEmpty()) {
+                // Either someone else's hop, or it was confirmed/recalled since the page was drawn.
+                throw new \RuntimeException('No pending hardcopy receipt confirmation was found.');
+            }
+
+            $hops->each(fn (RoutingHistory $hop) => $this->resolveHop($hop, 'rejected', $reason));
+            $this->afterResolution($hops);
+            $this->notifySendersOfRejection($hops, $recipient, $reason);
+
+            $hops->whereNotNull('batch_id')->groupBy('batch_id')->each(function (Collection $lines, $batchId) use ($reason) {
+                AuditLog::record('reject_letter_batch', 'letters', 'letter_dispatch_batches', (int) $batchId, null, [
+                    'routing_history_ids' => $lines->pluck('id')->all(),
+                    'letter_ids' => $lines->pluck('letter_id')->all(),
+                ], ['note' => $reason]);
+            });
+
+            return $hops->count();
+        });
+    }
+
+    /**
+     * Nudge the recipient about a hand-over (one hop) or every awaiting line of a transmittal. Only the sender, only
+     * awaiting hops, and not again inside letters_remind_cooldown_hours. Returns the number of lines reminded.
+     */
+    public function remind(Employee $sender, RoutingHistory|LetterDispatchBatch $target): int
+    {
+        return DB::transaction(function () use ($sender, $target) {
+            if ($target instanceof LetterDispatchBatch) {
+                $batch = LetterDispatchBatch::query()->lockForUpdate()->findOrFail($target->id);
+
+                if ($batch->from_secretariat_id !== $sender->id) {
+                    throw new \RuntimeException('Only the sender of a transmittal can remind the recipient.');
+                }
+
+                $hops = $batch->routingHistories()->awaiting()->orderBy('id')->lockForUpdate()->get();
+            } else {
+                $batch = null;
+                $hop = RoutingHistory::query()->lockForUpdate()->findOrFail($target->id);
+
+                if ($hop->from_secretariat_id !== $sender->id) {
+                    throw new \RuntimeException('Only the sender of a hand-over can remind the recipient.');
+                }
+
+                $hops = collect([$hop])->filter(fn (RoutingHistory $line) => $line->isAwaiting());
+            }
+
+            if ($hops->isEmpty()) {
+                throw new \RuntimeException('Nothing is waiting for confirmation any more, so there is nobody to remind.');
+            }
+
+            $recipient = Employee::query()->find($hops->first()->to_secretariat_id);
+
+            if ($until = $this->remindCooldownEndsAt($hops)) {
+                throw new \RuntimeException('You already reminded '.($recipient?->full_name ?? 'the recipient').' '.$hops->max('reminded_at')->diffForHumans().'. You can remind again '.$this->waitUntilLabel($until).'.');
+            }
+
+            $now = now();
+            $hops->each(fn (RoutingHistory $line) => $line->update(['reminded_at' => $now]));
+
+            if ($batch) {
+                LetterNotification::create([
+                    'title' => 'Reminder: letters awaiting your confirmation',
+                    'message' => $hops->count().' '.Str::plural('letter', $hops->count()).' ('.$batch->batch_no.') sent '.$batch->dispatched_at->diffForHumans().' still need hardcopy receipt confirmation.',
+                    'secretariat_id' => $batch->to_secretariat_id,
+                    'letter_id' => null,
+                    'batch_id' => $batch->id,
+                ]);
+            } else {
+                $line = $hops->first();
+                LetterNotification::create([
+                    'title' => 'Reminder: letter awaiting your confirmation',
+                    'message' => ($line->letter?->sn_number ?? 'A letter').' sent '.$line->created_at->diffForHumans().' still needs hardcopy receipt confirmation.',
+                    'secretariat_id' => $line->to_secretariat_id,
+                    'letter_id' => $line->letter_id,
+                ]);
+            }
+
+            foreach ($hops as $line) {
+                AuditLog::record('remind_letter_recipient', 'letters', 'mail_letters', $line->letter_id, null, [
+                    'routing_history_id' => $line->id,
+                    'to_secretariat_id' => $line->to_secretariat_id,
+                ], $line->batch_id ? ['batch_id' => $line->batch_id] : null);
+            }
+
+            if ($batch) {
+                AuditLog::record('remind_letter_batch', 'letters', 'letter_dispatch_batches', $batch->id, null, [
+                    'batch_no' => $batch->batch_no,
+                    'routing_history_ids' => $hops->pluck('id')->all(),
+                ]);
+            }
+
+            return $hops->count();
+        });
+    }
+
+    /** When a reminder may next be sent for these hops, or null if one may be sent now. */
+    public function remindCooldownEndsAt(iterable $hops): ?Carbon
+    {
+        $hours = max(0, (int) config('gwl.letters_remind_cooldown_hours', 24));
+        $last = collect($hops)->pluck('reminded_at')->filter()->max();
+
+        if ($hours === 0 || ! $last) {
+            return null;
+        }
+
+        $until = Carbon::parse($last)->addHours($hours);
+
+        return $until->isFuture() ? $until : null;
+    }
+
+    /** "in 21 hours" / "in 40 minutes": rounded up, so the wait is never understated. */
+    public function waitUntilLabel(CarbonInterface $until): string
+    {
+        $minutes = max(1, (int) ceil(now()->diffInMinutes($until, true)));
+
+        if ($minutes < 60) {
+            return 'in '.$minutes.' '.Str::plural('minute', $minutes);
+        }
+
+        $hours = (int) ceil($minutes / 60);
+
+        return 'in '.$hours.' '.Str::plural('hour', $hours);
+    }
+
+    /** Days an unconfirmed hand-over may wait before it is overdue (amber); red at twice as long. */
+    public function alertDays(): int
+    {
+        return max(1, (int) config('gwl.letters_unconfirmed_alert_days', 2));
+    }
+
+    /** 'warning' once a hop has waited the alert days, 'danger' at twice that, null before. */
+    public function agingTone(?CarbonInterface $since): ?string
+    {
+        if (! $since) {
+            return null;
+        }
+
+        return match (true) {
+            $since->lte(now()->subDays($this->alertDays() * 2)) => 'danger',
+            $since->lte(now()->subDays($this->alertDays())) => 'warning',
+            default => null,
+        };
+    }
+
+    /** Whole days $since has been waiting, for "waiting 3 days" labels. */
+    public function waitingDays(CarbonInterface $since): int
+    {
+        return max(0, (int) floor($since->diffInDays(now(), true)));
+    }
+
+    /** Hops $actor sent that have waited at least the alert days: the dashboard tile and the Sent tab's Overdue filter. */
+    public function overdueSentCount(Employee $actor): int
+    {
+        return RoutingHistory::query()
+            ->where('from_secretariat_id', $actor->id)
+            ->overdue($this->alertDays())
+            ->count();
+    }
+
+    /**
+     * For each of $letters, the newest hop $actor sent that is still awaiting confirmation (with the recipient
+     * loaded), keyed by letter id: the "awaiting confirmation by X" hint and Recall link on the sender's row. One query.
+     *
+     * @param  Collection<int, MailLetter>  $letters
+     * @return Collection<int, RoutingHistory>
+     */
+    public function outgoingAwaiting(Collection $letters, Employee $actor): Collection
+    {
+        return RoutingHistory::query()
+            ->whereIn('letter_id', $letters->pluck('id')->all())
+            ->where('from_secretariat_id', $actor->id)
+            ->awaiting()
+            ->with('toSecretariat')
+            ->orderBy('id')
+            ->get()
+            ->keyBy('letter_id');
+    }
+
+    /** What a recall and a reject both do to one awaiting hop (already locked by the caller). */
+    protected function resolveHop(RoutingHistory $hop, string $resolution, ?string $note): void
+    {
+        $hop->update([
+            'resolution' => $resolution,
+            'resolved_at' => now(),
+            'resolution_note' => $note,
+        ]);
+
+        // The recipient never held the letter: take away the log (and so the visibility) this hop gave them...
+        $log = LetterStatusLog::query()->where('routing_history_id', $hop->id)->first()
+            // ...found by matching for hops that predate the link and were not backfilled.
+            ?? LetterStatusLog::query()
+                ->where('letter_id', $hop->letter_id)
+                ->where('secretariat_id', $hop->to_secretariat_id)
+                ->where('status', 'Received')
+                ->whereNull('routing_history_id')
+                ->where('created_at', '>=', $hop->created_at)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->first();
+
+        if ($log?->status === 'Received') {
+            $log->delete();
+        }
+
+        // ...and give the letter back to the sender's desk, so canDispatch() is true for them again.
+        $senderLog = LetterStatusLog::query()
+            ->where('letter_id', $hop->letter_id)
+            ->where('secretariat_id', $hop->from_secretariat_id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($senderLog?->status === 'Dispatched') {
+            $senderLog->update(['status' => 'Received', 'out_date' => null]);
+        }
+
+        // A single dispatch notified the recipient about this letter alone, and they can no longer open it.
+        if (! $hop->batch_id) {
+            LetterNotification::query()
+                ->where('secretariat_id', $hop->to_secretariat_id)
+                ->where('letter_id', $hop->letter_id)
+                ->whereNull('batch_id')
+                ->where('created_at', '>=', $hop->created_at)
+                ->delete();
+        }
+
+        AuditLog::record($resolution === 'recalled' ? 'recall_letter' : 'reject_letter', 'letters', 'mail_letters', $hop->letter_id, null, [
+            'routing_history_id' => $hop->id,
+            'from_secretariat_id' => $hop->from_secretariat_id,
+            'to_secretariat_id' => $hop->to_secretariat_id,
+        ], array_filter(['batch_id' => $hop->batch_id, 'note' => $note]) ?: null);
+    }
+
+    /** Batch counters and the recipient's batch notification follow the lines that were just resolved. */
+    protected function afterResolution(Collection $hops): void
+    {
+        $hops->pluck('batch_id')->filter()->unique()->each(function ($batchId) {
+            $this->refreshBatchProgress((int) $batchId);
+
+            $batch = LetterDispatchBatch::query()->find($batchId);
+            $awaiting = $batch->routingHistories()->awaiting()->count();
+
+            foreach (LetterNotification::query()->where('batch_id', $batch->id)->where('secretariat_id', $batch->to_secretariat_id)->get() as $notification) {
+                $awaiting === 0
+                    ? $notification->update(['is_read' => true])
+                    : $notification->update(['message' => $awaiting.' '.Str::plural('letter', $awaiting).' ('.$batch->batch_no.') need hardcopy receipt confirmation.']);
+            }
+        });
+    }
+
+    /** One notification to each sender: per transmittal for batched lines, per letter for single dispatches. */
+    protected function notifySendersOfRejection(Collection $hops, Employee $recipient, string $reason): void
+    {
+        foreach ($hops->whereNotNull('batch_id')->groupBy('batch_id') as $batchId => $lines) {
+            $batch = LetterDispatchBatch::query()->find($batchId);
+
+            LetterNotification::create([
+                'title' => 'Letters rejected',
+                'message' => $recipient->full_name.' rejected '.$lines->count().' '.Str::plural('letter', $lines->count()).' of '.$batch->batch_no.': '.$reason,
+                'secretariat_id' => $batch->from_secretariat_id,
+                'letter_id' => null,
+                'batch_id' => $batch->id,
+            ]);
+        }
+
+        foreach ($hops->whereNull('batch_id') as $hop) {
+            LetterNotification::create([
+                'title' => 'Letter rejected',
+                'message' => ($hop->letter?->sn_number ?? 'A letter').' was rejected by '.$recipient->full_name.': '.$reason,
+                'secretariat_id' => $hop->from_secretariat_id,
+                'letter_id' => $hop->letter_id,
+            ]);
+        }
+    }
+
+    protected function assertAwaiting(RoutingHistory $hop, bool $recall): void
+    {
+        if ($hop->isResolved()) {
+            throw new \RuntimeException('This hand-over was already '.$hop->resolution.'.');
+        }
+
+        if ($hop->received_confirm) {
+            throw new \RuntimeException($recall
+                ? 'The recipient has already confirmed this letter, so it can no longer be recalled. Ask them to dispatch it back.'
+                : 'You have already confirmed this letter.');
+        }
+    }
+
+    protected function cleanNote(?string $note): ?string
+    {
+        return filled($note) ? Str::limit(trim($note), 500, '') : null;
+    }
+
+    protected function cleanReason(string $reason): string
+    {
+        $reason = trim($reason);
+
+        if (mb_strlen($reason) < 5) {
+            throw new \RuntimeException('Give a reason of at least 5 characters so the sender knows why.');
+        }
+
+        return Str::limit($reason, 500, '');
+    }
+
     public function close(MailLetter $letter, Employee $actor): void
     {
         if ($letter->created_by_id !== $actor->id) {
@@ -320,7 +718,7 @@ class LetterWorkflowService
                 throw new \RuntimeException('This letter is already closed.');
             }
 
-            if ($locked->routingHistories()->where('received_confirm', false)->exists()) {
+            if ($locked->routingHistories()->awaiting()->exists()) {
                 throw new \RuntimeException('This letter is still waiting for hardcopy confirmation and cannot be closed yet.');
             }
 
@@ -477,7 +875,7 @@ class LetterWorkflowService
         $routes = RoutingHistory::query()
             ->whereIn('letter_id', $ids)
             ->where('to_secretariat_id', $actor->id)
-            ->where('received_confirm', false)
+            ->awaiting()
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get()
@@ -516,7 +914,7 @@ class LetterWorkflowService
         return RoutingHistory::query()
             ->where('letter_id', $letter->id)
             ->where('to_secretariat_id', $actor->id)
-            ->where('received_confirm', false)
+            ->awaiting()
             ->latest()
             ->orderByDesc('id')
             ->first();

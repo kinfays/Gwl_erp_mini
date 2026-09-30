@@ -24,6 +24,13 @@ return [
     // Letters: the most letters one transmittal (batch dispatch) may hold. 50 fits one printed sheet.
     'letters_max_batch_size' => (int) env('GWL_LETTERS_MAX_BATCH_SIZE', 50),
 
+    // Letters: a hand-over still unconfirmed after this many days is "overdue" (amber; red at twice as long) and counts
+    // towards the dashboard tile and the Sent tab's Overdue filter.
+    'letters_unconfirmed_alert_days' => (int) env('GWL_LETTERS_UNCONFIRMED_ALERT_DAYS', 2),
+
+    // Letters: the sender may remind a recipient about the same hand-over at most once in this many hours.
+    'letters_remind_cooldown_hours' => (int) env('GWL_LETTERS_REMIND_COOLDOWN_HOURS', 24),
+
     // Android Enterprise / MDM (Assets module). Off by default; when off the MDM routes (including the
     // Google webhook) don't register and the MDM sidebar entries are hidden. See docs/assets/mdm.md.
     'mdm_enabled' => (bool) env('GWL_MDM_ENABLED', false),

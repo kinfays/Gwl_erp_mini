@@ -6,6 +6,7 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Employee;
 use App\Models\LetterRemark;
 use App\Models\MailLetter;
+use App\Models\RoutingHistory;
 use App\Services\Letters\LetterWorkflowService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -345,6 +346,33 @@ class ActiveLetters extends Component
         $this->pruneStaleSelection($workflow);
     }
 
+    /** Take back a single dispatch the recipient has not confirmed (the Recall link on the sender's Dispatched row). */
+    public function recallHop(LetterWorkflowService $workflow, int $hopId): void
+    {
+        abort_if(! $this->canForward(), 403);
+
+        $employee = $this->requireEmployee();
+        $hop = RoutingHistory::query()->with('letter')->where('from_secretariat_id', $employee->id)->find($hopId);
+
+        if (! $hop) {
+            $this->failWith(new \RuntimeException('That hand-over was not found.'));
+
+            return;
+        }
+
+        try {
+            $workflow->recall($hop, $employee);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
+        $this->flashMessage = '';
+        $this->dispatch('toast', type: 'success', message: ($hop->letter?->sn_number ?? 'Letter').' recalled. It is back on your desk.');
+        $this->pruneStaleSelection($workflow);
+    }
+
     public function closeLetter(LetterWorkflowService $workflow): void
     {
         try {
@@ -629,6 +657,8 @@ class ActiveLetters extends Component
             'missingEmployee' => false,
             'letters' => $letters,
             'desk' => $desk,
+            'outgoing' => $workflow->outgoingAwaiting($letters->getCollection(), $employee),
+            'workflow' => $workflow,
             'allOnPageSelected' => $pageActionable !== [] && array_diff($pageActionable, $this->selectedIds()) === [],
             'hasActionableRows' => $pageActionable !== [],
             'bulk' => $bulk,

@@ -60,6 +60,8 @@ class Dashboard extends Component
             'missingEmployee' => false,
             'stats' => $stats,
             'attentionLetters' => $attentionLetters,
+            'unconfirmedOverdue' => $workflow->overdueSentCount($employee),
+            'alertDays' => $workflow->alertDays(),
         ]);
     }
 

@@ -78,15 +78,18 @@ class Notifications extends Component
 
         $notification->update(['is_read' => true]);
 
-        // One notification covers a whole transmittal: open it on the Transmittals page, focused on that batch.
+        // One notification covers a whole transmittal: open it on the Transmittals page, focused on that batch. The
+        // recipient of a dispatch or reminder works in Incoming; the sender told of a rejection looks in Sent.
         if ($notification->batch_id) {
-            return redirect()->route('letters.transmittals', ['tab' => 'incoming', 'batch' => $notification->batch_id]);
+            $isSender = $notification->batch?->from_secretariat_id === $employee->id;
+
+            return redirect()->route('letters.transmittals', ['tab' => $isSender ? 'sent' : 'incoming', 'batch' => $notification->batch_id]);
         }
 
         $prompt = $notification->letter
             ? $notification->letter->routingHistories()
                 ->where('to_secretariat_id', $employee->id)
-                ->where('received_confirm', false)
+                ->awaiting()
                 ->exists()
             : false;
 

@@ -88,6 +88,7 @@
                             $status = $letter->isClosed() ? 'Closed' : ($state['currentLog']?->status ?? 'Received');
                             $latestLog = $letter->statusLogs->sortByDesc('created_at')->first();
                             $tickable = $pendingRoute !== null || ($canForward && $state['canDispatch']);
+                            $outgoingHop = $outgoing->get($letter->id);
                         @endphp
                         <tr wire:key="letter-{{ $letter->id }}" @class(['is-selected' => $selectedLetter?->id === $letter->id])>
                             <td class="bulk-check">
@@ -106,7 +107,17 @@
                             </td>
                             <td @class(['mono', 'cell-muted' => ! $letter->ref_no])>{{ $letter->ref_no ?: '-' }}</td>
                             <td><x-ui.badge :tone="$letter->type === 'Internal' ? 'primary' : 'lagoon'">{{ $letter->type }}</x-ui.badge></td>
-                            <td><x-ui.status-pill domain="letter" :status="$status" /></td>
+                            <td>
+                                <x-ui.status-pill domain="letter" :status="$status" />
+                                @if ($outgoingHop)
+                                    <span class="ui-cell-stack">
+                                        <span class="ui-hint">
+                                            awaiting confirmation by {{ $outgoingHop->toSecretariat?->full_name }} ·
+                                            <x-ui.badge :tone="$workflow->agingTone($outgoingHop->created_at) ?? 'neutral'" title="Dispatched {{ $outgoingHop->created_at?->format('d M Y H:i') }}">{{ ($outgoingDays = $workflow->waitingDays($outgoingHop->created_at)) === 0 ? '<1 d' : $outgoingDays.' d' }}</x-ui.badge>
+                                        </span>
+                                    </span>
+                                @endif
+                            </td>
                             <td class="nowrap">{{ $latestLog?->secretariat?->full_name ?? '-' }}</td>
                             <td class="nowrap cell-muted">{{ $letter->date_on_letter?->format('d M Y') }}</td>
                             <td class="actions">
@@ -122,6 +133,24 @@
                                         <button type="button" wire:click="openLetter({{ $letter->id }})" class="btn btn-sm">
                                             <x-ui.icon name="send" class="icon-sm" />
                                             Dispatch
+                                        </button>
+                                    @endif
+
+                                    @if ($canForward && $outgoingHop)
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-ghost is-danger"
+                                            x-data
+                                            x-on:click.prevent="$dispatch('confirm-action', {
+                                                title: 'Recall this letter?',
+                                                message: @js($letter->sn_number.' goes back to your desk and '.$outgoingHop->toSecretariat?->full_name.' can no longer confirm it.'),
+                                                confirmLabel: 'Recall',
+                                                variant: 'danger',
+                                                action: () => $wire.recallHop({{ $outgoingHop->id }})
+                                            })"
+                                        >
+                                            <x-ui.icon name="undo-2" class="icon-sm" />
+                                            Recall
                                         </button>
                                     @endif
 
@@ -249,7 +278,7 @@
                 $isCreator = $selectedLetter->created_by_id === $employee->id;
                 $isClosed = $selectedLetter->isClosed();
                 $selectedStatus = $isClosed ? 'Closed' : ($selectedLog?->status ?? 'Received');
-                $hasUnconfirmedHop = $selectedLetter->routingHistories->contains('received_confirm', false);
+                $hasUnconfirmedHop = $selectedLetter->routingHistories->contains(fn ($route) => $route->isAwaiting());
             @endphp
 
             <x-ui.drawer
@@ -338,12 +367,24 @@
                             @else
                                 <ol class="ui-timeline">
                                     @foreach ($routes as $route)
-                                        <li @class(['is-done' => $route->received_confirm, 'is-current' => ! $route->received_confirm])>
+                                        <li @class(['is-done' => $route->received_confirm, 'is-current' => $route->isAwaiting(), 'is-resolved' => $route->isResolved()])>
                                             <div class="route-line">
                                                 <span><strong>{{ $route->fromSecretariat?->full_name }}</strong> <span class="cell-muted">to</span> <strong>{{ $route->toSecretariat?->full_name }}</strong></span>
-                                                <x-ui.status-pill :tone="$route->received_confirm ? 'success' : 'warning'" :label="$route->received_confirm ? 'Confirmed' : 'Awaiting hardcopy'" />
+                                                @if ($route->isResolved())
+                                                    <x-ui.status-pill tone="muted" :label="$route->resolution === 'recalled' ? 'Recalled' : 'Rejected'" />
+                                                @else
+                                                    <x-ui.status-pill :tone="$route->received_confirm ? 'success' : 'warning'" :label="$route->received_confirm ? 'Confirmed' : 'Awaiting hardcopy'" />
+                                                @endif
                                             </div>
                                             <span class="ui-hint">{{ $route->created_at?->format('d M Y H:i') }}</span>
+                                            @if ($route->isResolved())
+                                                <span class="ui-hint">
+                                                    {{ $route->resolution === 'recalled' ? 'Recalled by '.$route->fromSecretariat?->full_name : 'Rejected by '.$route->toSecretariat?->full_name }}
+                                                    on {{ $route->resolved_at?->format('d M Y H:i') }}@if ($route->resolution_note): “{{ $route->resolution_note }}”@endif
+                                                </span>
+                                            @elseif ($route->received_confirm && $route->confirmed_at)
+                                                <span class="ui-hint">Confirmed {{ $route->confirmed_at->format('d M Y H:i') }}</span>
+                                            @endif
                                         </li>
                                     @endforeach
                                 </ol>

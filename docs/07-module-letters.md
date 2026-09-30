@@ -94,6 +94,51 @@ Screens:
 No new permission: dispatching needs `letters.forward` (Livewire check, plus holder state in the service); confirming
 needs none, as before.
 
+## Recall, reject and remind (exceptions and aging)
+
+A hand-over can be taken back only while it is **awaiting confirmation** (`received_confirm = 0` and no `resolution`,
+the `RoutingHistory::awaiting()` scope). Once the recipient has confirmed, custody has changed and they must dispatch
+the letter back themselves. Every operation re-reads the hop `lockForUpdate` inside a transaction, so when a confirm
+and a recall/reject race, whoever takes the lock first wins and the other gets a message (shown as a toast).
+
+- **Recall** (`recall()`, `recallBatch()`): the sender only. The hop gets `resolution = recalled`, `resolved_at` and an
+  optional note; the recipient's never-held `Received` log is deleted (found through `letter_status_logs.routing_history_id`,
+  or by matching for hops that predate the link), so they stop seeing the letter; the sender's log goes back to
+  `Received` with `out_date` cleared, so `canDispatch()` is true again; a single dispatch's notification is deleted, and
+  a transmittal's notification is updated (or marked read when nothing is left to confirm). `recallBatch()` recalls
+  every still-unconfirmed line of a transmittal in one all-or-nothing transaction; confirmed lines stay.
+- **Reject** (`reject()`, `rejectLines()`): the recipient only, with a mandatory reason (5+ characters). Same effects
+  with `resolution = rejected`, plus one notification to the sender per transmittal (or per letter for single
+  dispatches) carrying the reason. `rejectLines()` only ever touches the recipient's own awaiting hops and ignores
+  anything else in the list.
+- **Remind** (`remind()`): the sender only, awaiting hops only, for one hop or every awaiting line of a transmittal.
+  Sets `reminded_at`, notifies the recipient, and is refused inside `letters_remind_cooldown_hours`
+  (env `GWL_LETTERS_REMIND_COOLDOWN_HOURS`, default 24; 0 switches the limit off).
+- **Batch counters:** `confirmed_count` counts confirmations only; `completed_at` is set once no line is awaiting, that
+  is when every line is confirmed or resolved.
+- **Audit:** `recall_letter` / `reject_letter` / `remind_letter_recipient` per letter (`metadata`: `batch_id`, `note`),
+  plus `recall_letter_batch` / `reject_letter_batch` / `remind_letter_batch` once per transmittal touched.
+- **Never pending:** `awaiting()` is used by `pendingIncomingRoute()`, `deskState()`, the quick filters, the Incoming
+  tab, the sidebar badge, the bell, the batch counters, the close-while-in-transit guard and the overdue counts.
+
+**Aging.** A hop that has waited `letters_unconfirmed_alert_days` (env `GWL_LETTERS_UNCONFIRMED_ALERT_DAYS`, default 2)
+is overdue: amber, and red at twice that (`agingTone()`).
+
+Screens:
+
+- **Transmittals > Sent** - per-line *Recall*, *Recall unconfirmed lines*, *Remind* (disabled inside the cooldown, the
+  tooltip says when it was last sent), an age pill and "waiting N days" on each line, recalled/rejected lines with who,
+  when and why, and an **Overdue** filter (also opened from the dashboard tile with `?tab=sent&filter=overdue`). Single
+  dispatches that are still unconfirmed are listed in an "Individual letters" card so they can be recalled and reminded
+  too, and so the filter and the tile count the same hops.
+- **Transmittals > Incoming** - "waiting N days" on each line and *Reject ticked…* with a mandatory reason (only the
+  ticked lines).
+- **Active Letters** - the sender's row shows "awaiting confirmation by X · N d" and a *Recall* link; the letter drawer's
+  timeline shows recalled/rejected hops with who, when and the note.
+- **Dashboard** - tile *Unconfirmed > N days*: hops the viewer sent that are awaiting and at least that old.
+
+Recall and remind need `letters.forward` and being the sender; reject, like confirm, needs only being the recipient.
+
 On close / reopen:
 
 - Closed is a state of the letter (`mail_letters.closed_at`, `closed_by_id`); the Active/Closed tabs and the
