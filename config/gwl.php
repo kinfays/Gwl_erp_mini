@@ -31,6 +31,20 @@ return [
     // Letters: the sender may remind a recipient about the same hand-over at most once in this many hours.
     'letters_remind_cooldown_hours' => (int) env('GWL_LETTERS_REMIND_COOLDOWN_HOURS', 24),
 
+    // Letters: the most rows one register (preview, Excel or PDF) may have; over it the user is asked to narrow the range.
+    'letters_register_max_rows' => (int) env('GWL_LETTERS_REGISTER_MAX_ROWS', 5000),
+
+    // Letters: optional scanned copies of the hardcopy (PDF, JPG, PNG). Off by default: with it off the Scans tab and the
+    // file pickers are hidden, LetterScanService refuses and /letters/scans/{scan} is a 404. Scans go on a PRIVATE
+    // disk (never 'public'), so back up storage/app/private/letters with the database.
+    'letters_scans_enabled' => (bool) env('GWL_LETTERS_SCANS_ENABLED', false),
+    'letters_scan_disk' => env('GWL_LETTERS_SCAN_DISK', 'local'),
+    // Keep this at or below PHP's upload_max_filesize / post_max_size and Livewire's temporary-upload limit (about 12 MB).
+    'letters_scan_max_kb' => (int) env('GWL_LETTERS_SCAN_MAX_KB', 10240),
+    'letters_scan_max_files' => (int) env('GWL_LETTERS_SCAN_MAX_FILES', 10),
+    // true: a recipient may read a scan while the hardcopy is still in transit (remarks still wait for the confirmation).
+    'letters_scan_preview_before_confirm' => (bool) env('GWL_LETTERS_SCAN_PREVIEW_BEFORE_CONFIRM', false),
+
     // Android Enterprise / MDM (Assets module). Off by default; when off the MDM routes (including the
     // Google webhook) don't register and the MDM sidebar entries are hidden. See docs/assets/mdm.md.
     'mdm_enabled' => (bool) env('GWL_MDM_ENABLED', false),

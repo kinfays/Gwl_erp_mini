@@ -71,6 +71,9 @@
                                         <th>From</th>
                                     @endunless
                                     <th>Waiting</th>
+                                    @if ($showScanLinks)
+                                        <th>Scan</th>
+                                    @endif
                                 </tr>
                             </x-slot:head>
                             @foreach ($hops as $hop)
@@ -93,6 +96,20 @@
                                     <td class="nowrap">
                                         <x-ui.badge :tone="$workflow->agingTone($hop->created_at) ?? 'neutral'" title="Dispatched {{ $hop->created_at?->format('d M Y H:i') }}">{{ $waiting($hop->created_at) }}</x-ui.badge>
                                     </td>
+                                    @if ($showScanLinks)
+                                        @php
+                                            $lineScans = $hop->letter?->scans ?? collect();
+                                        @endphp
+                                        <td class="nowrap">
+                                            @if ($lineScans->count() === 1)
+                                                <a href="{{ route('letters.scans.show', $lineScans->first()) }}" target="_blank" rel="noopener" class="row-link"><x-ui.icon name="paperclip" class="icon-sm" /> View scan</a>
+                                            @elseif ($lineScans->count() > 1)
+                                                <a href="{{ route('letters.active', ['letter' => $hop->letter_id, 'prompt' => 1]) }}" class="row-link"><x-ui.icon name="paperclip" class="icon-sm" /> View scans ({{ $lineScans->count() }})</a>
+                                            @else
+                                                <span class="cell-muted">-</span>
+                                            @endif
+                                        </td>
+                                    @endif
                                 </tr>
                             @endforeach
                         </x-ui.table>

@@ -49,6 +49,30 @@
                     </x-ui.select>
                 </div>
 
+                @if ($scansEnabled)
+                    <div class="ui-stack" x-data="{ camera: window.matchMedia('(pointer: coarse)').matches }">
+                        <div class="ui-field">
+                            <label class="ui-label" for="new-letter-scans">Scans of the hardcopy (optional)</label>
+                            <input
+                                id="new-letter-scans"
+                                type="file"
+                                class="form-input"
+                                wire:model="scans"
+                                multiple
+                                accept="image/*,application/pdf"
+                                x-bind:capture="camera ? 'environment' : false"
+                            >
+                            <span class="ui-hint">PDF, JPG or PNG, up to {{ round(config('gwl.letters_scan_max_kb') / 1024, 1) }} MB each. A scan never replaces the hardcopy.</span>
+                            <button type="button" class="btn btn-sm btn-ghost" x-show="camera" x-cloak x-on:click="camera = false">Pick files instead of using the camera</button>
+                        </div>
+                        <div wire:loading wire:target="scans" class="ui-hint">Uploading…</div>
+                        @error('scans') <x-ui.alert tone="danger">{{ $message }}</x-ui.alert> @enderror
+                        @foreach ($errors->get('scans.*') as $messages)
+                            <x-ui.alert tone="danger">{{ $messages[0] }}</x-ui.alert>
+                        @endforeach
+                    </div>
+                @endif
+
                 <x-slot:footer>
                     <div class="ui-form-actions">
                         <a href="{{ route('letters.active') }}" class="btn btn-secondary">Cancel</a>

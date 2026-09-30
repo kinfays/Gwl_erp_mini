@@ -5,18 +5,23 @@ namespace App\Livewire\Letters;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Employee;
 use App\Models\LetterRemark;
+use App\Models\LetterScan;
 use App\Models\MailLetter;
 use App\Models\RoutingHistory;
+use App\Services\Letters\LetterScanService;
 use App\Services\Letters\LetterWorkflowService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 class ActiveLetters extends Component
 {
     use EnforcesModuleAccess;
+    use WithFileUploads;
     use WithPagination;
 
     public string $tab = 'active';
@@ -108,6 +113,17 @@ class ActiveLetters extends Component
     public string $deliverAt = '';
 
     public string $deliverNote = '';
+
+    /** Scans tab (only with gwl.letters_scans_enabled): files picked, what they are, a note, and a scan being voided. */
+    public array $scans = [];
+
+    public string $scanKind = 'original';
+
+    public string $scanNote = '';
+
+    public ?int $voidingScanId = null;
+
+    public string $voidReason = '';
 
     public string $editSubject = '';
 
@@ -403,6 +419,86 @@ class ActiveLetters extends Component
         $this->flashMessage = 'Letter dispatched to '.$recipient->full_name.'.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
         $this->pruneStaleSelection($workflow);
+    }
+
+    /** Attach the picked files to the open letter. Only the current, confirmed holder can (the service decides). */
+    public function uploadScans(LetterScanService $scanService, LetterWorkflowService $workflow): void
+    {
+        abort_unless($scanService->enabled(), 404);
+
+        $employee = $this->requireEmployee();
+        $letter = $this->selectedLetter($workflow);
+
+        $this->validate([
+            'scans' => ['required', 'array', 'min:1', 'max:'.max(1, (int) config('gwl.letters_scan_max_files', 10))],
+            'scans.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:'.max(1, (int) config('gwl.letters_scan_max_kb', 10240))],
+            'scanKind' => ['required', Rule::in(array_keys(LetterScan::KINDS))],
+            'scanNote' => ['nullable', 'string', 'max:255'],
+        ], [
+            'scans.required' => 'Choose at least one file.',
+            'scans.*.mimes' => 'Scans must be PDF, JPG or PNG files.',
+            'scans.*.max' => 'A file is too large (the limit is '.round(max(1, (int) config('gwl.letters_scan_max_kb', 10240)) / 1024, 1).' MB each).',
+        ]);
+
+        $added = 0;
+        $problems = [];
+
+        foreach ($this->scans as $file) {
+            try {
+                $scanService->add($letter, $employee, $file, $this->scanKind, $this->scanNote);
+                $added++;
+            } catch (\RuntimeException $e) {
+                $problems[] = $file->getClientOriginalName().': '.$e->getMessage();
+            }
+        }
+
+        $this->scans = [];
+
+        if ($added > 0) {
+            $this->scanNote = '';
+            $this->dispatch('toast', type: 'success', message: $added.' '.\Illuminate\Support\Str::plural('scan', $added).' attached.');
+        }
+
+        if ($problems !== []) {
+            $this->failWith(new \RuntimeException(implode(' ', array_slice($problems, 0, 3))));
+        }
+    }
+
+    public function startVoidScan(int $scanId): void
+    {
+        $this->voidingScanId = $scanId;
+        $this->voidReason = '';
+        $this->resetErrorBag('voidReason');
+    }
+
+    public function cancelVoidScan(): void
+    {
+        $this->voidingScanId = null;
+        $this->voidReason = '';
+    }
+
+    /** Hide a scan (the file is kept). The scan is looked up through the letters the actor can see. */
+    public function voidScan(LetterScanService $scanService, LetterWorkflowService $workflow): void
+    {
+        abort_unless($scanService->enabled(), 404);
+        abort_if($this->voidingScanId === null, 404);
+
+        $employee = $this->requireEmployee();
+        $letter = $this->selectedLetter($workflow);
+        $scan = $letter->scans()->active()->findOrFail($this->voidingScanId);
+
+        $this->validate(['voidReason' => ['required', 'string', 'max:255']], ['voidReason.required' => 'Give a reason for voiding this scan.']);
+
+        try {
+            $scanService->void($scan, $employee, $this->voidReason);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
+        $this->cancelVoidScan();
+        $this->dispatch('toast', type: 'success', message: 'Scan voided. It is hidden; the file is kept.');
     }
 
     /** Take back a single dispatch the recipient has not confirmed (the Recall link on the sender's Dispatched row). */
@@ -740,6 +836,11 @@ class ActiveLetters extends Component
         $selectedDesk = $selectedLetter
             ? $workflow->deskState(collect([$selectedLetter]), $employee)->get($selectedLetter->id)
             : null;
+        $scanService = app(LetterScanService::class);
+        $scansEnabled = $scanService->enabled();
+        $selectedScans = $selectedLetter && $scansEnabled
+            ? $selectedLetter->scans()->active()->with('uploadedBy')->orderBy('created_at')->orderBy('id')->get()
+            : collect();
         $tier = $workflow->reviewerTier($employee);
         $showReviewers = $selectedLetter !== null && $this->detailTab === 'remarks';
 
@@ -763,6 +864,12 @@ class ActiveLetters extends Component
                 ? $workflow->recipientPicker($employee, collect([$selectedLetter]), $this->recipientSearch, $this->dispatchScope)
                 : null,
             'reviewerTier' => $tier,
+            'scansEnabled' => $scansEnabled,
+            'previewScansBeforeConfirm' => $scanService->previewBeforeConfirm(),
+            'selectedScans' => $selectedScans,
+            'voidableScanIds' => $selectedScans->filter(fn (LetterScan $scan) => $scanService->canVoid($scan->setRelation('letter', $selectedLetter), $employee))->pluck('id')->all(),
+            'canAddScans' => $selectedLetter && $scansEnabled && $selectedDesk['holdsLetter'],
+            'scanKinds' => LetterScan::KINDS,
             'managerOptions' => $showReviewers && $tier === null
                 ? $this->employeeOptions($workflow->regionalManagersQuery($employee)->with(['department', 'region'])->get())
                 : [],
@@ -804,6 +911,7 @@ class ActiveLetters extends Component
     protected function lettersQuery(LetterWorkflowService $workflow, Employee $employee): Builder
     {
         return $workflow->visibleLettersQuery($employee)
+            ->when(app(LetterScanService::class)->enabled(), fn ($query) => $query->withCount(['scans as active_scans_count' => fn ($scans) => $scans->whereNull('voided_at')]))
             ->when($this->tab === 'active', fn ($query) => $query->whereNull('closed_at'))
             ->when($this->tab === 'closed', fn ($query) => $query->whereNotNull('closed_at'))
             ->when($this->quickFilter === 'awaiting', fn ($query) => $workflow->whereAwaitingConfirmation($query, $employee))

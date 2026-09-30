@@ -440,6 +440,15 @@ class ErpNavigation
                 'icon' => $this->icon('check'),
                 'icon_name' => 'archive',
             ],
+            [
+                // The holder's own register (Excel / PDF); only for people who may export it.
+                'label' => 'My register',
+                'route' => 'letters.register',
+                'active' => ['letters.register'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'file-spreadsheet',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('letters.export'),
+            ],
         ];
     }
 

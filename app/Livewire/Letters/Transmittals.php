@@ -260,12 +260,17 @@ class Transmittals extends Component
         if (! $employee) {
             return view('livewire.letters.transmittals', [
                 'missingEmployee' => true, 'groups' => collect(), 'sent' => null, 'sentSingles' => collect(),
-                'pendingTotal' => 0, 'overdueCount' => 0, 'workflow' => $workflow, 'canForward' => false,
+                'pendingTotal' => 0, 'overdueCount' => 0, 'workflow' => $workflow, 'canForward' => false, 'showScanLinks' => false,
             ]);
         }
 
+        // "View scan" on a line still waiting for confirmation is only offered when scans may be read before confirming.
+        $scanService = app(\App\Services\Letters\LetterScanService::class);
+        $showScanLinks = $scanService->enabled() && $scanService->previewBeforeConfirm();
+
         $pending = $this->pendingHops($employee)
             ->with(['letter.memoSender', 'fromSecretariat', 'batch'])
+            ->when($showScanLinks, fn ($query) => $query->with(['letter.scans' => fn ($scans) => $scans->whereNull('voided_at')->orderBy('id')]))
             ->orderBy('id')
             ->get();
 
@@ -307,6 +312,7 @@ class Transmittals extends Component
             'sent' => $sent,
             'sentSingles' => $sentSingles,
             'pendingTotal' => $pending->count(),
+            'showScanLinks' => $showScanLinks,
             'overdueCount' => $workflow->overdueSentCount($employee),
             'workflow' => $workflow,
             'canForward' => $this->canForward(),

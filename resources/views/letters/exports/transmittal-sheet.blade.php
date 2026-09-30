@@ -49,6 +49,9 @@
                     <th>Date on letter</th>
                     <th>Subject</th>
                     <th>Sender</th>
+                    @if (config('gwl.letters_scans_enabled'))
+                        <th>Scan</th>
+                    @endif
                     <th class="remarks">Remarks</th>
                 </tr>
             </thead>
@@ -61,6 +64,9 @@
                         <td>{{ $hop->letter?->date_on_letter?->format('d M Y') }}</td>
                         <td>{{ $hop->letter?->subject }}</td>
                         <td>{{ $hop->letter?->sender_name }}</td>
+                        @if (config('gwl.letters_scans_enabled'))
+                            <td>{{ ($hop->letter?->active_scans_count ?? 0) > 0 ? 'Yes' : '-' }}</td>
+                        @endif
                         <td>&nbsp;</td>
                     </tr>
                 @endforeach

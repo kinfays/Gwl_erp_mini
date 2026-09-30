@@ -34,7 +34,9 @@ class TransmittalSheetController extends Controller
             'fromSecretariat.department',
             'toSecretariat.department',
             'routingHistories' => fn ($hops) => $hops->orderBy('id'),
-            'routingHistories.letter.memoSender',
+            'routingHistories.letter' => fn ($letter) => $letter
+                ->with('memoSender')
+                ->when(config('gwl.letters_scans_enabled'), fn ($query) => $query->withCount(['scans as active_scans_count' => fn ($scans) => $scans->whereNull('voided_at')])),
         ]);
 
         $options = new Options;

@@ -11,6 +11,8 @@ use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
 use App\Http\Controllers\Leave\LeaveHrContactsController;
+use App\Http\Controllers\Letters\LetterRegisterExportController;
+use App\Http\Controllers\Letters\LetterScanController;
 use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
@@ -170,6 +172,22 @@ Route::middleware(['auth', 'active', 'module:letters'])
         Route::get('/transmittals/{batch}/sheet', [TransmittalSheetController::class, 'show'])
             ->whereNumber('batch')
             ->name('transmittals.sheet');
+
+        // Scans of the hardcopy (behind gwl.letters_scans_enabled; 404 when off). Private disk: this is the only way to a file.
+        Route::get('/scans/{scan}', [LetterScanController::class, 'show'])
+            ->whereNumber('scan')
+            ->name('scans.show');
+
+        // The holder's own register: preview page and the Excel / PDF exports.
+        Route::middleware('permission:letters.export')->group(function () {
+            Route::get('/register', fn () => view('letters.register'))->name('register');
+            Route::get('/register/excel', [LetterRegisterExportController::class, 'excel'])
+                ->middleware('permission:letters.export')
+                ->name('register.excel');
+            Route::get('/register/pdf', [LetterRegisterExportController::class, 'pdf'])
+                ->middleware('permission:letters.export')
+                ->name('register.pdf');
+        });
     });
 
 Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team'])

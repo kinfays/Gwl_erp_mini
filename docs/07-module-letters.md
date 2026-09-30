@@ -147,6 +147,90 @@ and records who took the hardcopy and when; the addressee needs no login, the ho
   creator, and a later delivery adds another row (history is kept).
 - No new permission: being the confirmed holder is the rule.
 
+## Letter scans (optional, off by default)
+
+An optional scanned copy of the hardcopy (PDF, JPG, PNG), so a manager can read a letter while the paper is still in the
+courier's bag and there is a picture of the handwritten comment next to the typed remark. **A scan never replaces
+custody:** the signed hand-over and the confirm-before-acting rule are unchanged. Everything is behind
+`config('gwl.letters_scans_enabled')` (env `GWL_LETTERS_SCANS_ENABLED`, default false); with it off the Scans tab and the
+file pickers are hidden, `LetterScanService` refuses and `GET /letters/scans/{scan}` is a 404.
+
+- **Who can attach.** `LetterScanService::add()` needs the same holder rule as remarks: the actor has the letter on their
+  desk (confirmed, nothing pending, letter open). At intake that is the creator; later it is the current confirmed
+  holder. The service re-checks; the drawer only offers the form to the holder.
+- **What is accepted.** PDF, JPG or PNG, judged by the file's content (the `mimes` rule and the content-sniffed mime
+  type, not the extension), at most `letters_scan_max_kb` (10240) each and `letters_scan_max_files` (10) active scans per
+  letter; the same file (`sha256`) cannot be attached twice to a letter (a voided one no longer counts).
+- **Where it is stored.** On the private disk `letters_scan_disk` (default `local`, i.e. `storage/app/private`) at
+  `letters/scans/{yyyy}/{mm}/{letter_id}/{uuid}.{ext}`; the extension comes from the content type and the client's file
+  name is kept only as display text. The service refuses the `public` disk (Transport uses it, letters must not) and any
+  disk configured with public visibility. **Back up `storage/app/private/letters` together with the database.**
+  Keep `letters_scan_max_kb` at or below PHP's `upload_max_filesize` / `post_max_size` and Livewire's temporary-upload
+  limit (about 12 MB; there is no `config/livewire.php`).
+- **How it is served.** Only by `LetterScanController` (`letters.scans.show`): the scan is resolved through
+  `visibleLettersQuery($actor)` (a scan of a letter you cannot see is a 404), a voided scan is a 404, and a recipient
+  who has not confirmed the hardcopy gets a 403 **unless** `letters_scan_preview_before_confirm` is on. The response is
+  `Storage::disk(...)->response()` with `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` and
+  `Cache-Control: private, no-store`. There is no public URL. Views are not audited.
+- **Voiding.** `void()` (with a reason) hides a scan and keeps the file and the row: the person who attached it while
+  they still hold the letter, the letter's creator, or a `super_admin`. Nothing is hard-deleted by the app.
+- **Audit:** `add_letter_scan` (scan id, kind, name, size, sha256) and `void_letter_scan` (scan id, name, sha256, reason).
+- **Screens.** A *Scans* tab in the letter drawer (multiple files via Livewire uploads, kind *Original / With comments /
+  Enclosure*, note, void with a reason); an optional picker on *New Letter* (files are attached after the letter is
+  saved; a file that cannot be attached is reported and never loses the letter); a paperclip count on the list row. On a
+  phone the picker uses the camera (`accept="image/*,application/pdf" capture="environment" multiple`), with a button to
+  pick files instead.
+- **Touchpoints.** The transmittal sheet gets a *Scan* column (Yes / -); the Incoming checklist gets *View scan* /
+  *View scans (n)* when reading before confirming is allowed; the register gets a *Scanned* column (all only while scans
+  are on); on the confirm prompt the drawer lists the scans when the preview switch is on.
+- **Not built:** OCR, thumbnails, virus scanning, or stripping EXIF data from phone photos (it stays in the file).
+
+## My register (Excel and PDF)
+
+Each holder can get their own register back from the app, so the parallel Excel sheet can be retired. One register row
+is one `letter_status_logs` row of the holder, i.e. one stay of one letter on their desk. A letter that comes back to
+the same desk makes a second row.
+
+`LetterRegisterService::rows(Employee $holder, CarbonInterface $from, CarbonInterface $to, string $scope = 'all')` feeds
+the Livewire preview, the Excel export and the PDF, so they cannot disagree. It loads the holder's logs, the letters,
+their hops, their remarks and their deliveries in one query each and matches them in PHP (no per-row queries).
+
+- **What is a row.** The holder's own intake (the creator's first log), or a hand-over they **confirmed**. Hops that are
+  unconfirmed, recalled or rejected were never received and are not rows. A log is linked to its hop through
+  `letter_status_logs.routing_history_id`; hops confirmed before that link existed (it was only backfilled for hops
+  still awaiting) are matched by time, each hop claimed once. A hop-less log that is not the creator's intake (for
+  example the log an old reopen added) is not a receipt.
+- **Columns:** No. · Date received · SN · Ref no. · Type · Date on letter · Sender · Received from · Subject · Date out ·
+  Sent to · Transmittal no. · Status · Remarks I recorded. *Date received* is the incoming hop's `confirmed_at` (the
+  recording date for intake). *Received from* is the person who handed it over (the letter's sender for intake).
+  *Date out*, *Sent to* and *Transmittal no.* come from the hand-over that ended the stay (a single dispatch has no
+  transmittal). *Remarks I recorded* are the holder's own remarks made during the stay, joined with ` / ` (a
+  secretary note is shown as `Secretary: ...`).
+- **Status:** *With me*, *Dispatched*, *Closed*, or *Delivered to ...* when the holder delivered the letter (Phase 3's
+  `letter_deliveries`). A *Scanned* column (Yes when the letter has an active scan) is added only while letter scans are
+  enabled.
+- **Filters:** a date range on *date received* (default: the current month) and scope chips *All / Still with me /
+  Dispatched / Closed*. `config('gwl.letters_register_max_rows')` (env `GWL_LETTERS_REGISTER_MAX_ROWS`, default 5000)
+  caps the rows after the filters; over it the user is told to narrow the range (the preview shows the message, the
+  exports redirect back to the page with it).
+- **Screens and routes** (Letters group, all behind `permission:letters.export`): `letters.register` ("My register", a
+  sidebar entry shown with `letters.export`) with the filters, a 25-row preview and *Export Excel* / *Export PDF* links
+  that carry the filters; `letters.register.excel` and `letters.register.pdf`
+  (`LetterRegisterExportController`, modelled on the visitors exports). The PDF is A4 landscape (Dompdf, DejaVu Sans,
+  remote resources off) with the holder, office, period, time generated, row count and *Prepared by / Checked by*
+  lines; remarks are shortened to 120 characters there (the Excel file has them in full). Both download as
+  `letter_register_<staff id>_<from>_to_<to>.<ext>`.
+- **Own register only.** An `employee_id` request parameter is honoured for `super_admin` and answered with 403 for
+  everyone else, even for their own id.
+- **Spreadsheet formula injection.** Subjects, senders and remarks are typed by people, and PhpSpreadsheet's default
+  value binder turns a cell that starts with `=` into a formula. `LetterRegisterExport` is its own string value binder
+  (`WithCustomValueBinder`), so such text stays text; the row number stays numeric. `LetterRegisterTest` reads the
+  generated `.xlsx` to prove it.
+- **Audit:** `export_letter_register_excel` / `export_letter_register_pdf` (`letter_status_logs`, no target id) with the
+  holder, range, scope and row count. A refused or over-the-cap request audits nothing.
+- **Permission:** `letters.export` is still seeded for `secretary` only; a manager who should have a register gets it
+  from the role editor.
+
 ## Recall, reject and remind (exceptions and aging)
 
 A hand-over can be taken back only while it is **awaiting confirmation** (`received_confirm = 0` and no `resolution`,

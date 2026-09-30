@@ -57,6 +57,12 @@ class MailLetter extends Model
         return $this->belongsTo(Employee::class, 'closed_by_id');
     }
 
+    /** All scans of the hardcopy, voided ones included (use ->active() for what people see). */
+    public function scans(): HasMany
+    {
+        return $this->hasMany(LetterScan::class, 'letter_id');
+    }
+
     public function deliveries(): HasMany
     {
         return $this->hasMany(LetterDelivery::class, 'letter_id');

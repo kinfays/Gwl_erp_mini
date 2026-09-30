@@ -37,6 +37,10 @@
   nullable `nullOnDelete`, `delivered_to_name` nullable - exactly one of the two is set, enforced in the service -,
   `delivered_by_id` `restrictOnDelete`, `delivered_at`, `note`; no unique index on `letter_id`, so a letter that is
   reopened and delivered again keeps its history)
+- `letter_scans` (optional scans of the hardcopy, behind `gwl.letters_scans_enabled`: `letter_id` cascade, `kind`
+  (original | commented | enclosure), `disk`, `path`, `original_name`, `mime`, `size_bytes`, `sha256` indexed, `note`,
+  `uploaded_by_id` `restrictOnDelete`, `voided_at`, `voided_by_id` `nullOnDelete`, `void_reason`; the file is on a
+  private disk and is never hard-deleted by the app: voiding only hides it)
 - `letter_notifications` (`letter_id` is nullable; `batch_id` is set on the one notification a transmittal sends)
 
 ### `letter_dispatch_batches`

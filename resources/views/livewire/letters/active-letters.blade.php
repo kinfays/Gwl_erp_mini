@@ -102,6 +102,9 @@
                             <td>
                                 <span class="ui-cell-stack">
                                     <span class="ui-person-name">{{ $letter->subject }}</span>
+                                    @if ($scansEnabled && ($letter->active_scans_count ?? 0) > 0)
+                                        <span class="ui-hint" title="{{ $letter->active_scans_count }} {{ \Illuminate\Support\Str::plural('scan', $letter->active_scans_count) }} attached"><x-ui.icon name="paperclip" class="icon-sm" /> {{ $letter->active_scans_count }}</span>
+                                    @endif
                                     <span class="ui-person-sub">{{ $letter->sender_name }}</span>
                                 </span>
                             </td>
@@ -337,6 +340,14 @@
                                 </button>
                             </div>
                         </x-ui.alert>
+
+                        @if ($scansEnabled && $previewScansBeforeConfirm && $selectedScans->isNotEmpty())
+                            <section class="letter-section" aria-labelledby="letter-preview-scans-title">
+                                <h3 id="letter-preview-scans-title" class="ui-panel-title">Scans of the hardcopy</h3>
+                                <p class="ui-hint">You can read the scan while the hardcopy is on its way. Remarks and dispatch still wait for your confirmation.</p>
+                                @include('livewire.letters.partials.scan-list')
+                            </section>
+                        @endif
                     @else
                         <dl class="ui-dl">
                             <div>
@@ -403,6 +414,11 @@
                             <button type="button" wire:click="$set('detailTab', 'dispatch')" @class(['tab', 'active' => $detailTab === 'dispatch']) aria-pressed="{{ $detailTab === 'dispatch' ? 'true' : 'false' }}">Dispatch</button>
                             @if ($selectedDesk['holdsLetter'])
                                 <button type="button" wire:click="$set('detailTab', 'deliver')" @class(['tab', 'active' => $detailTab === 'deliver']) aria-pressed="{{ $detailTab === 'deliver' ? 'true' : 'false' }}">Deliver</button>
+                            @endif
+                            @if ($scansEnabled)
+                                <button type="button" wire:click="$set('detailTab', 'scans')" @class(['tab', 'active' => $detailTab === 'scans']) aria-pressed="{{ $detailTab === 'scans' ? 'true' : 'false' }}">
+                                    Scans @if ($selectedScans->isNotEmpty())<x-ui.badge>{{ $selectedScans->count() }}</x-ui.badge>@endif
+                                </button>
                             @endif
                             @if ($isCreator)
                                 <button type="button" wire:click="$set('detailTab', 'edit')" @class(['tab', 'active' => $detailTab === 'edit']) aria-pressed="{{ $detailTab === 'edit' ? 'true' : 'false' }}">Edit</button>
@@ -552,6 +568,56 @@
                                             </button>
                                         </div>
                                     </div>
+                                @endif
+                            </section>
+                        @elseif ($detailTab === 'scans' && $scansEnabled)
+                            <section class="letter-section" aria-labelledby="letter-scans-title">
+                                <h3 id="letter-scans-title" class="ui-panel-title">Scans of the hardcopy</h3>
+                                <p class="ui-hint">An optional picture of the letter, for reading while the paper is on its way. It never replaces the signed hand-over: the hardcopy still has to be confirmed.</p>
+
+                                @include('livewire.letters.partials.scan-list', ['voidableScanIds' => $voidableScanIds, 'voidingScanId' => $voidingScanId])
+
+                                @if ($canAddScans)
+                                    <div class="remark-compose ui-stack" x-data="{ camera: window.matchMedia('(pointer: coarse)').matches }">
+                                        <h4 class="remark-compose-title">Add scans</h4>
+                                        <div class="ui-field">
+                                            <label class="ui-label" for="scan-files">Files (PDF, JPG or PNG; up to {{ round(config('gwl.letters_scan_max_kb') / 1024, 1) }} MB each, {{ config('gwl.letters_scan_max_files') }} per letter)</label>
+                                            <input
+                                                id="scan-files"
+                                                type="file"
+                                                class="form-input"
+                                                wire:model="scans"
+                                                multiple
+                                                accept="image/*,application/pdf"
+                                                x-bind:capture="camera ? 'environment' : false"
+                                            >
+                                            <button type="button" class="btn btn-sm btn-ghost" x-show="camera" x-cloak x-on:click="camera = false">Pick files instead of using the camera</button>
+                                        </div>
+
+                                        <div wire:loading wire:target="scans" class="ui-hint">Uploading…</div>
+                                        @error('scans') <x-ui.alert tone="danger">{{ $message }}</x-ui.alert> @enderror
+                                        @foreach ($errors->get('scans.*') as $messages)
+                                            <x-ui.alert tone="danger">{{ $messages[0] }}</x-ui.alert>
+                                        @endforeach
+
+                                        <div class="ui-form-grid">
+                                            <x-ui.select label="What is it?" wire:model="scanKind">
+                                                @foreach ($scanKinds as $key => $label)
+                                                    <option value="{{ $key }}">{{ $label }}</option>
+                                                @endforeach
+                                            </x-ui.select>
+                                            <x-ui.input label="Note (optional)" wire:model="scanNote" maxlength="255" placeholder="e.g. After the CM's comment" />
+                                        </div>
+
+                                        <div class="ui-form-actions">
+                                            <button type="button" wire:click="uploadScans" wire:loading.attr="disabled" wire:target="uploadScans,scans" class="btn btn-primary">
+                                                <x-ui.icon name="upload" />
+                                                Attach scans
+                                            </button>
+                                        </div>
+                                    </div>
+                                @else
+                                    <p class="ui-hint">Scans can be added by whoever currently holds this open letter.</p>
                                 @endif
                             </section>
                         @elseif ($detailTab === 'deliver' && $selectedDesk['holdsLetter'])
