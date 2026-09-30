@@ -78,6 +78,48 @@ class ActiveLettersBulkSelectionTest extends TestCase
             ->assertSet('selected', []);
     }
 
+    public function test_a_single_letter_action_drops_ticks_that_are_no_longer_actionable(): void
+    {
+        [$a, $b] = $this->createLetters($this->hrSec, 2)->all();
+
+        $this->as($this->hrSec)
+            ->set('selected', [$a->id, $b->id])
+            ->call('openLetter', $a->id)
+            ->set('dispatchToId', $this->cmSec->id)
+            ->call('dispatchLetter')
+            ->assertDispatched('toast', type: 'success', message: 'Letter dispatched to '.$this->cmSec->full_name.'.')
+            ->assertSet('selected', [$b->id])
+            ->assertSee('1 selected');
+    }
+
+    public function test_confirming_one_letter_in_the_drawer_keeps_it_ticked_because_it_is_now_ready_to_dispatch(): void
+    {
+        $incoming = $this->createLetter($this->hrSec);
+        $this->lettersWorkflow()->dispatch($incoming, $this->hrSec, $this->cmSec);
+
+        $this->as($this->cmSec)
+            ->set('selected', [$incoming->id])
+            ->call('openLetter', $incoming->id, true)
+            ->call('confirmHardcopy')
+            ->assertSet('selected', [$incoming->id]);
+    }
+
+    public function test_closing_or_reopening_a_letter_switches_tab_and_clears_the_selection(): void
+    {
+        [$a, $b] = $this->createLetters($this->hrSec, 2)->all();
+
+        $this->as($this->hrSec)
+            ->set('selected', [$a->id, $b->id])
+            ->call('openLetter', $a->id)
+            ->call('closeLetter')
+            ->assertSet('tab', 'closed')
+            ->assertSet('selected', [])
+            ->set('selected', [$a->id])
+            ->call('reopenLetter')
+            ->assertSet('tab', 'active')
+            ->assertSet('selected', []);
+    }
+
     public function test_the_quick_filter_toggles_off_when_clicked_again(): void
     {
         $this->as($this->hrSec)

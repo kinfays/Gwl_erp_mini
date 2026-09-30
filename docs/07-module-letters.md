@@ -7,7 +7,7 @@ Letter intake, routing, hardcopy confirmation, remarks, and closure.
 ## Main Features
 
 - Create internal/external letters
-- Auto serial number generation per region/year
+- Auto serial number generation per region prefix/year (see Serial numbers)
 - Active and closed queues
 - Dispatch between secretariats, one letter at a time or many at once as a transmittal
 - Hardcopy receipt confirmation, singly or in bulk (partial receipt allowed)
@@ -21,6 +21,23 @@ On create:
 
 - Creates `mail_letters` record
 - Creates initial `letter_status_logs` entry as `Received`
+
+## Serial numbers
+
+`PREFIX-YYYY-NNN`, e.g. `GA-2026-001`, issued inside `create()`'s transaction by `LetterWorkflowService::nextSnNumber()`.
+
+- **Prefix.** `regions.letter_prefix` (unique), edited on the Staff > Regions screen (`staff.manage_regions`). A region
+  that has none (seeders, imports, fresh installs) is given one the first time a letter needs it: the initials of its
+  name, made unique by appending the region id, and it keeps it from then on, so renaming a region does not change it.
+  A name with no words falls back to `REG`. Logic lives in `Region::assignLetterPrefix()`.
+- **Counter.** `letter_sn_counters` holds the last number for each (prefix, year). The row is `lockForUpdate`d, created
+  on demand from the highest number already issued (parsed numerically in PHP), and incremented; a number that is already
+  taken is skipped. It is keyed on the prefix, so regions never share a sequence by accident. The year rolls the
+  sequence back to `001`.
+- **Format.** The number is zero-padded to three digits and continues past them: `...-999`, `...-1000`, `...-1001`.
+  Serial numbers are never ordered as strings.
+- **Changing a prefix** starts that prefix's own counter and leaves every issued number alone; going back to an old
+  prefix resumes where it stopped.
 
 On dispatch:
 
@@ -61,7 +78,8 @@ Screens:
   quick filters *Awaiting my confirmation* / *Ready to dispatch* (both in SQL; `whereReadyToDispatch()` is the SQL twin
   of `deskState()`), a sticky bar (*Dispatch selected*, *Confirm hardcopies*, *Clear*) and a dispatch drawer
   (recipient, optional note). Each button acts on its eligible subset and says how many it skipped. The selection is
-  cleared on tab, filter, search or page change and after every action. The drawer freezes the list it shows, so a
+  cleared on tab, filter, search or page change and after every bulk action; a single-letter action in the letter
+  drawer unticks only the rows it made non-actionable (and closing/reopening, which switches tab, clears it). The drawer freezes the list it shows, so a
   letter that changed meanwhile refuses the whole dispatch rather than sending fewer letters than were confirmed.
   The selection is client state: every action re-resolves it through `visibleLettersQuery` / the actor's own hops.
 - **Transmittals** (`/letters/transmittals`) - *Incoming*: pending hops grouped by transmittal (single dispatches under

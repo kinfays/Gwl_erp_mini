@@ -314,6 +314,7 @@ class ActiveLetters extends Component
         $this->flashMessage = 'Hardcopy receipt confirmed.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
         $this->fillEditForm($letter->fresh());
+        $this->pruneStaleSelection($workflow);
     }
 
     public function dispatchLetter(LetterWorkflowService $workflow): void
@@ -341,6 +342,7 @@ class ActiveLetters extends Component
         $this->secretarySearch = '';
         $this->flashMessage = 'Letter dispatched to '.$recipient->full_name.'.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
+        $this->pruneStaleSelection($workflow);
     }
 
     public function closeLetter(LetterWorkflowService $workflow): void
@@ -353,7 +355,10 @@ class ActiveLetters extends Component
             return;
         }
 
+        // The tab changes under the page: same rule as setTab(), ticks never follow a letter to another list.
         $this->tab = 'closed';
+        $this->resetPage();
+        $this->clearSelection();
         $this->flashMessage = 'Letter closed.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
@@ -369,6 +374,8 @@ class ActiveLetters extends Component
         }
 
         $this->tab = 'active';
+        $this->resetPage();
+        $this->clearSelection();
         $this->flashMessage = 'Letter reopened.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
     }
@@ -715,6 +722,16 @@ class ActiveLetters extends Component
             ->keys()
             ->map(fn ($id) => (int) $id)
             ->all();
+    }
+
+    /** After a single-letter action from the drawer: untick rows that action made non-actionable (e.g. just dispatched). */
+    protected function pruneStaleSelection(LetterWorkflowService $workflow): void
+    {
+        if ($this->selectedIds() === []) {
+            return;
+        }
+
+        $this->pruneSelection(...$this->selectionState($workflow, $this->requireEmployee()));
     }
 
     /** After a refused or stale bulk action: keep only the ticks that are still actionable. */

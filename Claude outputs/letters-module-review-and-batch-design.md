@@ -4,6 +4,8 @@ Status: **proposal, nothing implemented** · Prepared: 2026-09-30 · Verified ag
 
 > **2026-09-30, revision 2** — two decisions folded in: **(1) managers hold letters in the app (Phase 3)** — now specified in §6, including a prerequisite found in the code (the letters notification bell only renders inside the Letters module, so a manager working in Leave would never see a hand-over); **(2) letter scans are added as an optional, feature-flagged attachment (Phase 5)** — §7. Newly verified for this revision: `database/seeders/ModuleAccessSeeder.php`, `resources/views/layouts/erp.blade.php`, `app/Livewire/Notifications/GeneralBell.php`, `app/Notifications/GeneralDatabaseNotification.php`, `config/filesystems.php`, `.env.example`, `composer.json`, and the existing upload code (`app/Livewire/Transport/{Issues,Vehicles}.php`, `app/Services/Transport/TransportService.php`, `app/Livewire/CreditUnion/Deductions.php`). Sections 8-10 were renumbered (Phased delivery, Kickoff prompts, Open decisions).
 
+> **2026-09-30, revision 3** — **(1) the Managing Director does not hold letters** (recorded in §6; Phase 3 carries a guard test; the open question of where the MD's written comment goes is §10 item 1). **(2) The kickoff-prompt set is now complete:** Phases 0, 0b (serial numbers), 1, 2, 3, 4 and 5 are all in §9, with an overview table in §8 and design notes for the three phases that had none (§8.1 serial numbers, §8.2 exceptions & aging, §8.3 register export). **The Phase 0 and Phase 1 prompts are unchanged** — they were already pasted into Claude Code — so anything those phases do not cover was moved to Phase 2 or later (for example the `letter_status_logs.routing_history_id` link and `routing_histories.reminded_at`). Every prompt after Phase 1 begins by telling Claude Code to read what the earlier phases really built. Newly read for this revision: `VisitorExportController`, `ApprovedLeavesExport`, `RegionsManager`, the Letters `dashboard.blade.php` and the visitors export routes.
+
 ---
 
 ## 0. Summary
@@ -12,7 +14,7 @@ Status: **proposal, nothing implemented** · Prepared: 2026-09-30 · Verified ag
 2. **Four places the app does not match how GWCL works:** (a) recipients must be secretaries, but in the regions letters go straight to the Materials manager / ICT and finally to the staff member; (b) no batching — the ask; (c) no way to undo a wrong or lost dispatch; (d) not enough timestamps, and no register export, so secretaries will keep typing Excel in parallel.
 3. **Batch dispatch + batch confirmation** is best built as a **transmittal**: a numbered, printable hand-over sheet that groups several hops to one recipient. The receiver ticks off what physically arrived and confirms once (partial receipt allowed). It is additive — three small migrations, one new service method pair, one multi-select on the existing list, one new "Transmittals" page. The existing single-letter flow keeps working unchanged. (§5)
 4. **Fix a handful of real defects first/alongside** (§3.3): uncaught exceptions on stale clicks, close/reopen rewriting every holder's history, serial-number generation that can 500, the "confirm before commenting" rule only enforced in the UI, reviewer lists scoped by region only.
-5. **Decided: managers hold letters (Phase 3, §6).** It is mostly a recipient-rule change (eligibility by the existing `letters.view` permission, which all five manager tiers already have, and they already have the Letters module), plus making the hand-over visible to them outside the Letters module, a remark form that knows the holder *is* the reviewer, and a terminal "deliver to addressee" step.
+5. **Decided: managers hold letters (Phase 3, §6); the Managing Director does not.** It is mostly a recipient-rule change (eligibility by the existing `letters.view` permission, which all five manager tiers already have, and they already have the Letters module), plus making the hand-over visible to them outside the Letters module, a remark form that knows the holder *is* the reviewer, and a terminal "deliver to addressee" step.
 6. **Letter scans are an optional add-on (Phase 5, §7):** scanned PDF/JPG/PNG copies attached to a letter, stored on the **private** disk and served only through an authorised route, behind `GWL_LETTERS_SCANS_ENABLED` (off by default). A scan never replaces the signed hardcopy hand-over.
 
 ---
@@ -96,7 +98,7 @@ The picker lists `Name · staff_id` only (view line 355) from an org-wide, alpha
 
 **E. Optional letter scans** (attach a scanned copy so a manager can read a letter before the hardcopy reaches them, and there is an image of the handwritten comments). Independent of A-D; specified in §7.
 
-**Recommendation:** Phase 0 (tests + defects) → Phase 1 (B: batch) → Phase 2 (undo + in-transit) → Phase 3 (**decided:** managers hold letters + deliver-to-addressee; desks (C) decided afterwards) → Phase 4 (register export) → Phase 5 (optional scans, can start any time after Phase 0).
+**Recommendation:** Phase 0 (tests + defects) → Phase 0b (serial numbers) → Phase 1 (B: batch) → Phase 2 (undo + in-transit) → Phase 3 (**decided:** managers hold letters + deliver-to-addressee; desks (C) decided afterwards) → Phase 4 (register export) → Phase 5 (optional scans, can start any time after Phase 0).
 
 ---
 
@@ -154,6 +156,8 @@ letter_notifications  (alter)                         -- 2026_10_01_000003
   batch_id  FK letter_dispatch_batches nullable nullOnDelete
 ```
 
+Two columns this design needs are deliberately **not** in these three migrations: `letter_status_logs.routing_history_id` and `routing_histories.reminded_at` arrive with Phase 2 (§8.2).
+
 `received_confirm` stays (every current query and the timeline use it). Status is **derived** (open = `completed_at IS NULL`; partial = `0 < confirmed_count < letters_count`) rather than stored, so it cannot drift. No new enum values on `letter_status_logs` (SQLite enums are CHECK constraints — avoid touching them).
 
 ### 5.4 Service API (`app/Services/Letters/`)
@@ -167,14 +171,14 @@ Keep the existing class; extract and share, don't duplicate.
   - **All-or-nothing.** If any letter is no longer dispatchable, nothing is created and the exception lists the SNs, so the printed sheet can never disagree with what was handed over. The UI then refreshes the selection.
 - `confirmHardcopies(Employee $actor, array $letterIds, ?LetterDispatchBatch $batch = null): int` — the only confirm code path. The existing `confirmHardcopy()` becomes a one-line wrapper. Locks the actor's open, unresolved incoming hops, sets `received_confirm`, `confirmed_at`, `confirmed_by_id`, calls `markInReview`, bumps `confirmed_count`, sets `completed_at` when all lines are accounted for, and audits **per letter** (`confirm_letter_hardcopy`, `metadata.batch_id`). Throws the existing "No pending hardcopy receipt confirmation was found." if nothing qualified.
 - `deskState(Collection $letters, Employee $actor): Collection` — `{currentLog, pendingRoute, canDispatch}` per letter in two queries; used by the list (fixes D7) and by bulk eligibility.
-- Phase 2: `recall(RoutingHistory, Employee $sender, ?string $note)` and `reject(RoutingHistory, Employee $recipient, string $reason)`. Both only while the hop is unconfirmed: set `resolution`/`resolved_at`, **delete the recipient's never-held `Received` log** created by that hop, restore the sender's log to `Received` and clear `out_date`, resolve the recipient's notification, update batch counters, audit. (Deleting an unheld log avoids a new enum value; the hop row keeps the history.)
+- Phase 2 (§8.2): `recall(RoutingHistory, Employee $sender, ?string $note)` and `reject(RoutingHistory, Employee $recipient, string $reason)`. Both only while the hop is unconfirmed: set `resolution`/`resolved_at`, **delete the recipient's never-held `Received` log** created by that hop (found through the new `letter_status_logs.routing_history_id`), restore the sender's log to `Received` and clear `out_date`, resolve the recipient's notification, update batch counters, audit. (Deleting an unheld log avoids a new enum value; the hop row keeps the history.)
 
 ### 5.5 Authorization, audit, notifications
 
 - Dispatch needs `letters.forward` (same as single) — checked in the Livewire action **and** holder-state-checked in the service. Confirm needs no permission (as today) but the service only touches hops where `to_secretariat_id = actor`. The sheet PDF is available to the sender, the recipient and `super_admin` only. Route `module:letters` + `enforceLivewireModule('letters')`, per the layered pattern.
 - Audit: one `dispatch_letter` row per letter (`metadata.batch_id`, `batch_no`) — so "who moved letter X" still answers from a single table — plus one `dispatch_letter_batch` row on the batch. `AuditLog::record()` already takes a `metadata` argument; the Letters code just doesn't use it yet.
 - Notifications: one per transmittal; `Notifications::openNotification` (69-92) redirects to Transmittals when `batch_id` is set.
-- Config in `config/gwl.php` (not `gwcl.php`): `letters_max_batch_size` (env `GWL_LETTERS_MAX_BATCH_SIZE`, 50); Phase 2 adds `letters_unconfirmed_alert_days` (2).
+- Config in `config/gwl.php` (not `gwcl.php`): `letters_max_batch_size` (env `GWL_LETTERS_MAX_BATCH_SIZE`, 50); Phase 2 adds `letters_unconfirmed_alert_days` (2) and `letters_remind_cooldown_hours` (24); Phase 4 adds `letters_register_max_rows` (5000).
 
 ### 5.6 Edge cases
 
@@ -218,7 +222,9 @@ Add `tests/Feature/Letters/Concerns/BuildsLettersOrg.php` (inline builders like 
 
 **Terminal step — Deliver to addressee (closes G2).** New table `letter_deliveries`: `letter_id` (FK cascade), `delivered_to_employee_id` (nullable FK employees, `nullOnDelete`), `delivered_to_name` (string, nullable — outside parties), `delivered_by_id` (FK employees, `restrictOnDelete`), `delivered_at`, `note` (string 500, nullable), timestamps. The **current, confirmed holder** (not only the creator) records who took the hardcopy and when; the addressee needs no login — the holder records the paper signature. It closes the letter at letter level using Phase 0's `closed_at` / `closed_by_id` (closer = the deliverer; manual close/reopen stays creator-only). One of the two addressee fields is required, enforced in the service. Audit `deliver_letter`.
 
-**Not included:** ordinary `employee`-role staff holding letters (they'd need the Letters module and `letters.view`); `managing_director` currently has only the Leave module (`ModuleAccessSeeder` 41), so if the MD should hold letters that is a one-line seeding migration — see §10.
+**Managing Director does not hold letters (decided 2026-09-30).** `managing_director` has only the Leave module today (`ModuleAccessSeeder` 41) and stays that way: no Letters module, no `letters.*` permission, so `recipientsQuery()` can never return the MD. Letters for the MD are held by the MD's office secretary (an ordinary `secretary` desk) and **Deliver to addressee** records the paper hand-over to the MD; the MD's written comment is recorded by that secretary. The Phase 3 prompt carries a guard test so a later seeder change cannot grant it by accident. Consequence to decide: the remark form only offers *Manager* / *Chief Manager* reviewers, so the MD's comment has no reviewer slot — see §10 item 1.
+
+**Not included:** ordinary `employee`-role staff holding letters (they'd need the Letters module and `letters.view`).
 
 **Tests:** a manager can be dispatched to and confirm; an employee without `letters.view` cannot be chosen even with a crafted id; the remark form pre-selects the acting manager and the service rejects a mismatched reviewer; the bell renders outside the Letters module for users with access and not for users without; deliver-to-addressee by a non-creator holder closes the letter, by a non-holder is refused, and requires one addressee field; `DemoDataSeeder` still runs (it calls `regionalManagersQuery` / `regionalChiefManagersQuery`, 1578-1579).
 
@@ -284,12 +290,62 @@ Nothing is hard-deleted in the app: voiding hides a scan and keeps the file (aud
 
 ## 8. Phased delivery
 
-0. **Safety net + defects** — characterization tests; D1, D2 (closed at letter level, small migration), D4, D5, D7, D8. (D3 serial numbers and D6 reviewer scoping are independent and can go any time; D3 is a latent 500 so sooner is better.)
-1. **Batch core** — §5.3 migrations, `recordHop` extraction, `dispatchBatch`, `confirmHardcopies`, multi-select + bulk bar + quick filters on Active Letters, Transmittals page (Incoming/Sent), batch notification, sheet PDF, config key, docs (`docs/07-module-letters.md`, `docs/09-data-model.md`), tests.
-2. **Exceptions & aging** — recall / reject, "in transit > N days" tile on the Letters dashboard and a Sent-tab highlight, remind-recipient.
-3. **Managers hold letters (decided) — §6.** Permission-based recipient eligibility (`letters.view`), picker improvements, bell + nav badge outside the Letters module, manager-aware remark form, **Deliver to addressee** (closes the letter at letter level), D6 reviewer scoping done first. Then decide on desks (Alternative C).
-4. **Register export** — Excel/PDF "my register" (received, SN, ref, from, to, subject, date out, to whom) per holder and date range via Maatwebsite Excel / Dompdf, wiring `letters.export`; this is what lets secretaries retire their parallel Excel sheets.
-5. **Letter scans (optional) — §7.** One table, `LetterScanService`, Scans tab + optional picker on New Letter, authorised streaming route, flag off by default. Needs only Phase 0 (holder rule); can run in parallel with Phases 2-4. Sheet/checklist/export columns are added in whichever of Phases 1 and 4 has shipped by then.
+**Overview** — every phase has a ready-to-paste prompt in §9. Each prompt after Phase 1 starts by telling Claude Code to read what the earlier phases actually built (`git log` plus the real files), because the code on disk, not this document, is the truth once a phase has run.
+
+| Phase | What it delivers | Needs | State |
+|---|---|---|---|
+| **0** | Safety net + defects: characterization tests, D1, D2 (closed at letter level), D4, D5, D7, D8 | — | Prompt pasted into Claude Code 2026-09-30 |
+| **0b** | Serial numbers (D3): prefix per region, locked counter, numeric sequence — §8.1 | Phase 0 test builders | Prompt in §9, not yet run. A latent 500 — run it soon |
+| **1** | Batch core: transmittals, multi-select, bulk confirm, sheet PDF — §5 | 0 | Prompt pasted into Claude Code 2026-09-30 |
+| **2** | Exceptions & aging: recall, reject, remind, "unconfirmed > N days" — §8.2 | 1 | Prompt in §9 |
+| **3** | **Managers hold letters** + Deliver to addressee + D6 reviewer scoping (Managing Director excluded) — §6 | 0-2 | Prompt in §9 |
+| **4** | Register export: Excel/PDF "my register", wires `letters.export` — §8.3 | 1-2 | Prompt in §9 |
+| **5** | **Letter scans** (optional, flag off by default) — §7 | 0 | Prompt in §9 |
+
+**Order.** 0 → 0b (any time after 0; it touches `create()`, not dispatch, so it does not collide with Phase 1) → 1 → 2 → then 3, 4 and 5 in any order: 3 is the priority, 4 is what lets secretaries retire their Excel sheets, 5 can start right after Phase 0 and ships dark. Desks (Alternative C) are decided after Phase 3. D6 (reviewer scoping) is done first inside Phase 3.
+
+### 8.1 Phase 0b — serial numbers (D3)
+
+- **Prefix.** `regions.letter_prefix` (string 10, nullable, **unique**, `hasColumn` guarded). The migration backfills every region with the prefix today's initials rule produces, de-duplicating clashes deterministically (order by id; append the id on a clash). Already-issued `sn_number`s are never rewritten. Editable in the Regions manager (`staff.manage_regions`, the existing `create_region` / `update_region` audit rows); a region created without one gets a derived, de-duplicated prefix the first time a letter needs it (covers seeders and fresh installs). Validation: uppercase letters/digits, 2-6 characters, unique. Changing a prefix affects future letters only.
+- **Counter.** New table `letter_sn_counters` (`prefix` string 10, `year` unsigned small int, `last_number` unsigned int default 0, timestamps, **unique [prefix, year]**), seeded by the migration from existing letters by parsing the numeric suffix of `sn_number` in PHP (no SQL string functions, so it behaves the same on SQLite and the production engine). Keyed on the *prefix*, not the region, so even if two regions ever shared a prefix they share a counter and cannot collide.
+- **Allocation.** In `create()`'s existing transaction: `lockForUpdate` the `(prefix, year)` row; if it does not exist create it (seeded from the highest existing suffix) with one retry on a unique-violation; increment; format `PREFIX-YYYY-NNN` with `str_pad(n, 3, '0')` so 1000 follows 999 — numeric, never string-sorted. `lockForUpdate` is a no-op on SQLite (single writer), so in tests the unique index is the guard; on a server database the row lock serialises two secretaries saving at once.
+- **Letters with no region** keep today's fallback prefix, with its own counter.
+- **Tests** (`tests/Feature/Letters/SerialNumberTest.php`): two one-word regions (*Ashanti*, *Ahafo*) get different backfilled prefixes and both can issue their first letter of the year; legacy letters (`AW-2026-005`) → the next one is `006`; the sequence continues 999 → 1000 → 1001; creating letters in a loop never duplicates; a duplicate or malformed prefix is rejected in the Regions manager; changing a prefix starts the new prefix's own counter and leaves old numbers untouched; a region with a null prefix is given one on first use.
+
+### 8.2 Phase 2 — exceptions & aging
+
+**Schema** (one migration, guarded): `letter_status_logs.routing_history_id` (FK `routing_histories`, nullable, `nullOnDelete`, indexed) — `recordHop()` sets it on the recipient's log from now on, which is what lets recall delete exactly the log that hop created; `routing_histories.reminded_at` (timestamp, nullable). The migration backfills `routing_history_id` **only for currently unconfirmed hops** (the only ones that can be recalled) by matching the recipient's most recent `Received` log on that letter created at or after the hop. Config: `letters_unconfirmed_alert_days` (env `GWL_LETTERS_UNCONFIRMED_ALERT_DAYS`, **2**), `letters_remind_cooldown_hours` (env `GWL_LETTERS_REMIND_COOLDOWN_HOURS`, **24**).
+
+**Service** (`LetterWorkflowService`, same transaction + `lockForUpdate` re-read pattern):
+- `recall(RoutingHistory $hop, Employee $sender, ?string $note = null)` — the sender of the hop only, hop still unconfirmed and unresolved. Sets `resolution='recalled'`, `resolved_at`, `resolution_note`; deletes the recipient's never-held `Received` log; restores the sender's log to `Received` and clears `out_date` (check `canDispatch()` is true again afterwards); resolves the recipient's notification; updates the batch (`completed_at` once every line is confirmed **or** resolved); audit `recall_letter` per letter (`metadata.batch_id`, note). `recallBatch(LetterDispatchBatch, Employee)` recalls every still-unconfirmed line in one all-or-nothing transaction ("the whole bag went to the wrong desk").
+- `reject(RoutingHistory $hop, Employee $recipient, string $reason)` — the recipient only, same guards, reason required (min 5 characters). Same effects with `resolution='rejected'`, **plus** a notification to the sender (one per action). `rejectLines(Employee, array $hopIds, string $reason)` for "Reject ticked" on the Incoming checklist. Audit `reject_letter`.
+- `remind(Employee $sender, RoutingHistory|LetterDispatchBatch $target)` — unconfirmed hops of that sender only; sets `reminded_at`; new notification to the recipient; refused inside the cooldown; audit `remind_letter_recipient`.
+- **A recalled or rejected hop must never look pending.** Every place that treats `received_confirm = 0` as "awaiting confirmation" has to exclude resolved hops (`resolution IS NULL`): `pendingIncomingRoute()`, `deskState()`, the Incoming tab, the sidebar badge, the dashboard counts, `Notifications`, and the close-while-in-transit guard. Grep `received_confirm` across `app/` and `resources/` and add one `unresolved()` scope on `RoutingHistory` instead of repeating the condition.
+- Not recallable: a **confirmed** hop (custody has changed — the recipient must dispatch it back). Race (recipient confirms while the sender recalls): whoever takes the lock first wins, the other gets the friendly message from the D1 fix.
+
+**Screens.** *Sent tab*: per-line **Recall**, **Recall unconfirmed lines** per transmittal, **Remind** (disabled inside the cooldown with "reminded 3 h ago"), an age pill on unconfirmed lines (amber after the alert days, red at twice that) and a quick filter **Overdue**. *Incoming tab*: "waiting 3 days" on each line and **Reject ticked…** with a mandatory reason. *Active Letters*: a sender's Dispatched row shows "awaiting confirmation by X · 3 d" with a Recall link for single hops. *Letter drawer timeline*: recalled/rejected hops are shown with who, when and the note. *Letters dashboard* (`dashboard.blade.php`, `x-ui.stat-tile`): tile **Unconfirmed > N days** (my sent hops older than the alert days, `tone` warning, `:href` to Sent → Overdue).
+
+**Authorization.** No new permission: recall/remind need `letters.forward` (same as dispatching) plus being the sender; reject, like confirm, needs only being the recipient. Livewire `enforceLivewireModule('letters')` and service-level actor checks.
+
+**Tests** (`RecallRejectTest`, `LetterAgingTest`): recall restores the sender's desk (status, `out_date`, `canDispatch()` true) and removes the recipient's log; hop resolution fields set; batch counters and `completed_at`; recalled/rejected hops absent from Incoming, badge and counts; `close()` allowed again; cannot recall a confirmed hop or someone else's hop; reject needs a reason and notifies the sender; legacy unconfirmed hop handled through the backfill; partial batch (recall only the unconfirmed lines); remind throttled by the cooldown and notifies the recipient; dashboard tile count using `Carbon::setTestNow`; audit rows written.
+
+### 8.3 Phase 4 — register export
+
+**Purpose.** Give each holder their own register back from the app, so the parallel Excel sheet can be retired. One register row = one `letter_status_logs` row of that holder (one stay).
+
+**One query, three outputs.** `app/Services/Letters/LetterRegisterService::rows(Employee $holder, CarbonInterface $from, CarbonInterface $to, string $scope = 'all'): Collection` feeds the Livewire preview, the Excel export and the PDF, so they can never disagree. It loads the letters' hops in **one** query and matches them in PHP (no per-row queries).
+
+**Columns** (map to the real `MailLetter` column names): No. · Date received (the incoming hop's `confirmed_at` via the log's `routing_history_id`; for the creator's own intake, the recording date) · SN · Ref no. · Type · Date on letter · Sender · Received from · Subject · Date out · Sent to · Transmittal no. · Status (*With me* / *Dispatched* / *Closed*, and *Delivered to …* if Phase 3 shipped) · Remarks I recorded (joined; truncated to about 120 characters in the PDF). A *Scanned* column only if Phase 5 shipped. Hops that are unconfirmed, recalled or rejected are **not** register entries — they were never received.
+
+**Filters.** Date range on *date received* (default: current month); scope chips *All / Still with me / Dispatched / Closed*. Row cap `letters_register_max_rows` (env `GWL_LETTERS_REGISTER_MAX_ROWS`, **5000**): over it, ask the user to narrow the range.
+
+**Screens and routes** (existing letters group, `module:letters`): page `letters.register` ("My register", sidebar entry visible with `letters.export`) with the filters, a paginated preview (25 rows) and **Export Excel / Export PDF** links carrying the current filters; `letters.register.excel` and `letters.register.pdf` with `->middleware('permission:letters.export')`, following `VisitorExportController`. Own register only; an `employee_id` parameter is honoured for `super_admin` and answered with 403 for everyone else.
+
+**Implementation pattern (copied from Visitors / Leave).** Controller `app/Http/Controllers/Letters/LetterRegisterExportController`; Excel class `app/Exports/Letters/LetterRegisterExport` (`FromCollection`, `ShouldAutoSize`, `WithHeadings`, like `ApprovedLeavesExport`); PDF through `new Dompdf($options)` with `DejaVu Sans`, `isRemoteEnabled=false`, A4 landscape, view `resources/views/letters/exports/register-pdf.blade.php` (holder, office, period, generated time, row count, "Prepared by / Checked by" lines), `Content-Disposition: attachment`. Copy the small date helpers into the new controller; do **not** refactor the Visitors controller in this phase. **Spreadsheet-formula injection:** subjects, senders and remarks are user text, and PhpSpreadsheet's default value binder turns a cell beginning with `=` into a formula — add `WithCustomValueBinder` with a string binder (or neutralise leading `= + - @`) and prove it with a test that reads the generated `.xlsx`.
+
+**Audit and permissions.** `AuditLog::record('export_letter_register_excel' | 'export_letter_register_pdf', 'letters', 'letter_status_logs', null, null, [employee_id, from, to, scope, rows])`. `letters.export` is seeded for `secretary` only; managers who hold letters in Phase 3 get it from the role editor if wanted — do not change the seeds here.
+
+**Tests** (`LetterRegisterTest`): rows are only the holder's own; the date range applies to date received; a dispatched row shows the recipient, date out and transmittal no.; unconfirmed/recalled hops excluded; scope chips; 403 without `letters.export`; `employee_id` allowed for `super_admin` only; Excel download (`Excel::fake()`) and a PDF that starts with `%PDF` with the right headers; formula-injection test (subject `=1+1` stays text); row cap; audit rows written.
 
 ---
 
@@ -328,6 +384,43 @@ active-letters.blade.php first.
 7. Update tests for every behaviour change; run php artisan test.
 Do not start batch dispatch yet. Do not touch serial-number generation or reviewer
 scoping in this phase.
+```
+
+### Phase 0b — serial numbers (D3)
+
+```
+Phase 0b of the Letters module work — serial numbers (defect D3) — per
+letters-module-review-and-batch-design.md §3.3 (D3) and §8.1, and CLAUDE.md. Independent of
+Phases 1-5; it needs only the Phase 0 test builders. Earlier phases were implemented in
+earlier Claude Code runs, so the code on disk is the truth: run git log --oneline -20, then
+read LetterWorkflowService (create(), nextSnNumber(), regionPrefix()), app/Models/Region.php,
+app/Livewire/Staff/RegionsManager.php and its blade view, tests/Feature/Letters/Concerns/
+BuildsLettersOrg.php, and grep for every other use of sn_number (orderBy, LIKE, exports,
+views). Where this prompt and the code disagree, follow the code and tell me.
+
+- Migration A (hasTable/hasColumn guarded, never edit an existing migration):
+  regions.letter_prefix string(10) nullable + unique index. Backfill each region with the
+  prefix today's initials rule produces, de-duplicating clashes deterministically (order by
+  id; on a clash append the region id). Never rewrite an already-issued sn_number.
+- Migration B: letter_sn_counters (id, prefix string(10), year unsignedSmallInteger,
+  last_number unsignedInteger default 0, timestamps, unique [prefix, year]). Seed one row per
+  prefix/year from the existing letters by parsing the numeric suffix of sn_number in PHP —
+  no SQL string functions, it must behave the same on SQLite and the production engine.
+- Service: regionPrefix() returns region->letter_prefix; if null (seeders, fresh installs,
+  any path that creates a region) derive it with the existing rule, de-duplicate, persist it
+  and return it. Keep today's fallback for a letter with no region, with its own counter.
+  nextSnNumber() runs inside create()'s existing transaction: lockForUpdate the counter row
+  for (prefix, year); create it (seeded from the highest existing suffix) if missing, with one
+  retry on a unique-violation; increment; return PREFIX-YYYY-NNN using str_pad(n, 3, '0') so
+  1000 follows 999. No string sort on sn_number anywhere.
+- RegionsManager (+ blade): show letter_prefix, let staff.manage_regions users set it on
+  create (blank = derived) and on edit; validate uppercase letters/digits, 2-6 chars,
+  unique:regions,letter_prefix; audit through the existing create_region / update_region
+  records. Add helper text: changing a prefix only affects future letters. Add letter_prefix
+  to Region's fillable.
+- Tests in tests/Feature/Letters/SerialNumberTest.php per §8.1; run php artisan test; update
+  docs/07-module-letters.md and the Staff module doc (find it under docs/).
+Do not touch dispatch, batches, reviewer scoping or anything else in this phase.
 ```
 
 ### Phase 1
@@ -374,13 +467,69 @@ app/Support/ErpNavigation.php, and LettersRolePermissionSeeder first.
 Do not build recall/reject, aging, recipient widening, desks or exports in this phase.
 ```
 
+### Phase 2 — exceptions & aging (recall, reject, remind)
+
+```
+Phase 2 of the Letters module work — recall, reject, remind and "unconfirmed > N days" —
+per letters-module-review-and-batch-design.md §5.4 and §8.2, and CLAUDE.md. Assumes Phases 0
+and 1 have shipped. Those were implemented in earlier Claude Code runs, so the code on disk
+is the truth, not the design doc: run git log --oneline -30 and read what they actually
+added (recordHop(), dispatchBatch(), confirmHardcopies(), deskState(), closed_at/closed_by_id,
+the batch tables, Livewire/Letters/Transmittals + view, the sidebar count, Notifications) before
+changing anything. Where this prompt and the code disagree, follow the code and tell me. Then
+read resources/views/livewire/letters/dashboard.blade.php and its component, RoutingHistory,
+LetterStatusLog, LetterNotification, config/gwl.php and .env.example.
+
+- One migration (hasTable/hasColumn guarded, explicit FK behaviour, never edit an existing
+  migration): letter_status_logs.routing_history_id (FK routing_histories nullable,
+  nullOnDelete, indexed); routing_histories.reminded_at (timestamp nullable). Backfill
+  routing_history_id ONLY for hops with received_confirm = 0, by matching the recipient's most
+  recent Received log on that letter created at or after the hop. Update recordHop() to set
+  routing_history_id on the recipient's log from now on.
+- config/gwl.php + .env.example: letters_unconfirmed_alert_days (GWL_LETTERS_UNCONFIRMED_ALERT_DAYS,
+  2) and letters_remind_cooldown_hours (GWL_LETTERS_REMIND_COOLDOWN_HOURS, 24).
+- LetterWorkflowService, same DB::transaction + lockForUpdate re-read pattern as the rest:
+  recall(RoutingHistory, Employee $sender, ?string $note), recallBatch(LetterDispatchBatch,
+  Employee) (all-or-nothing), reject(RoutingHistory, Employee $recipient, string $reason)
+  with rejectLines(Employee, array $hopIds, string $reason), remind(Employee $sender,
+  RoutingHistory|LetterDispatchBatch) — exactly as specified in §8.2: unconfirmed, unresolved
+  hops only; delete the recipient's never-held Received log; restore the sender's log to
+  Received and clear out_date (canDispatch() must be true afterwards); set resolution,
+  resolved_at, resolution_note; resolve the recipient's notification; notify the sender on
+  reject; update confirmed/completed counters (completed_at once every line is confirmed or
+  resolved); audit recall_letter / reject_letter / remind_letter_recipient per letter with
+  metadata.batch_id, plus one batch-level audit row for batch actions.
+- Add a RoutingHistory scope unresolved() (resolution IS NULL) and apply it everywhere
+  received_confirm = 0 means "awaiting confirmation": grep received_confirm across app/ and
+  resources/ — pendingIncomingRoute(), deskState(), the Incoming tab, the sidebar badge, the
+  dashboard counts, Notifications, the close-while-in-transit guard. A recalled or rejected hop
+  must never look pending, block canDispatch() or block close().
+- UI: Sent tab — per-line Recall, Recall unconfirmed lines, Remind (disabled inside the
+  cooldown with a "reminded 3 h ago" tooltip), age pill (amber after the alert days, red at
+  twice that) and an Overdue quick filter. Incoming tab — "waiting N days" per line and
+  "Reject ticked…" with a mandatory reason. Active Letters — "awaiting confirmation by X · N d"
+  with a Recall link on the sender's Dispatched row. Drawer timeline — show recalled/rejected
+  hops with who, when and the note. Letters dashboard — stat tile "Unconfirmed > N days"
+  (x-ui.stat-tile, tone warning, :href to Transmittals → Sent → Overdue). Catch
+  \RuntimeException in every new action and show the message with the existing toast event.
+- Authorization: no new permission. recall/remind need letters.forward and being the sender;
+  reject (like confirm) needs only being the recipient. Keep enforceLivewireModule('letters').
+- Tests per §8.2 (RecallRejectTest, LetterAgingTest) using the Phase 0 builders; run php
+  artisan test; update docs/07-module-letters.md and docs/09-data-model.md.
+Do not build recipient widening, desks, the register export or scans in this phase.
+```
+
 ### Phase 3
 
 ```
 Phase 3 of the Letters module work — managers and chief managers hold letters, plus
 deliver-to-addressee — per letters-module-review-and-batch-design.md §6 and CLAUDE.md.
 Assumes Phases 0-2 have shipped (Phase 0's letter-level closed_at/closed_by_id and the
-holder rule are required). Read LetterWorkflowService, ActiveLetters (PHP + blade),
+holder rule are required). Those phases were implemented in earlier Claude Code runs, so
+the code on disk is the truth, not the design doc: run git log --oneline -30 and read what
+they actually added (recordHop, dispatchBatch, deskState, recall/reject, the Transmittals
+component) before changing anything; where this prompt and the code disagree, follow the
+code and tell me. Then read LetterWorkflowService, ActiveLetters (PHP + blade),
 Livewire/Letters/Notifications.php, resources/views/layouts/erp.blade.php (bell block,
 ~146-150), Livewire/Notifications/GeneralBell.php, ErpNavigation::moduleDefinitions(),
 LettersRolePermissionSeeder, ModuleAccessSeeder and DemoDataSeeder (~line 1578) first.
@@ -410,10 +559,69 @@ LettersRolePermissionSeeder, ModuleAccessSeeder and DemoDataSeeder (~line 1578) 
   MailLetter, Employee $holder, array $data) — holder with confirmed custody, no pending hop,
   letter not closed, exactly one of the two addressee fields; sets closed_at/closed_by_id
   (closer = holder); audit deliver_letter; action in the drawer for the current holder.
-- Do NOT add roles or permissions in this phase. If managing_director should hold
-  letters, stop and ask.
+- The Managing Director does NOT hold letters (decided 2026-09-30): do not give
+  managing_director the Letters module or any letters.* permission in any seeder or
+  migration. Add a test that a seeded managing_director has no Letters module access and is
+  never returned by recipientsQuery() and is rejected by dispatch() even with a crafted id.
+  Do not add any other roles or permissions in this phase either.
 - Tests per §6; run php artisan test; update docs/07-module-letters.md and
   docs/09-data-model.md.
+```
+
+### Phase 4 — register export
+
+```
+Phase 4 of the Letters module work — the holder's register as Excel and PDF — per
+letters-module-review-and-batch-design.md §8.3 and CLAUDE.md. Assumes Phases 0-2 have shipped
+(the register needs routing_histories.confirmed_at from Phase 1 and
+letter_status_logs.routing_history_id from Phase 2). Those were implemented in earlier Claude
+Code runs, so the code on disk is the truth, not the design doc: run git log --oneline -30 and
+read what they actually added before changing anything; where this prompt and the code
+disagree, follow the code and tell me. Then read app/Http/Controllers/Visitors/
+VisitorExportController.php (Excel + Dompdf pattern, audit call), app/Exports/Leave/
+ApprovedLeavesExport.php, the export routes in routes/web.php (the visitors group), the
+MailLetter / LetterStatusLog / RoutingHistory / LetterRemark models,
+LettersRolePermissionSeeder, lettersSidebar() in app/Support/ErpNavigation.php, and
+config/gwl.php first.
+
+- app/Services/Letters/LetterRegisterService::rows(Employee $holder, CarbonInterface $from,
+  CarbonInterface $to, string $scope = 'all'): Collection — one register row per
+  letter_status_logs row of the holder, columns exactly as in §8.3 mapped to the real
+  MailLetter column names. Date received = the incoming hop's confirmed_at (via the log's
+  routing_history_id; the creator's own intake uses the recording date). Load the hops and
+  remarks for the whole result set in one query each and match in PHP — no per-row queries.
+  Exclude hops that are unconfirmed, recalled or rejected. Scopes: all / with_me / dispatched /
+  closed. Enforce config('gwl.letters_register_max_rows') (env GWL_LETTERS_REGISTER_MAX_ROWS,
+  5000; add to config/gwl.php and .env.example) with a clear "narrow the range" message.
+- Livewire page app/Livewire/Letters/Register.php + view: date range (default current month),
+  scope chips, paginated preview (25 rows) from the same service, and Export Excel / Export PDF
+  links carrying the filters. Route letters.register in the existing letters group behind
+  permission:letters.export; sidebar entry "My register" shown only with letters.export;
+  enforceLivewireModule('letters').
+- app/Http/Controllers/Letters/LetterRegisterExportController with excel() and pdf(), routes
+  letters.register.excel / letters.register.pdf with ->middleware('permission:letters.export'),
+  modelled on VisitorExportController: Excel::download(new LetterRegisterExport($rows), …),
+  and new Dompdf($options) with defaultFont DejaVu Sans, isRemoteEnabled false, A4 landscape,
+  view resources/views/letters/exports/register-pdf.blade.php (holder, office, period,
+  generated time, row count, "Prepared by / Checked by" lines), Content-Disposition
+  attachment, filename letter_register_<staff id>_<from>_to_<to>.<ext>. Copy the small date
+  helpers into the new controller; do NOT refactor the Visitors controller. Own register only;
+  an employee_id parameter is honoured for super_admin and answered with 403 for everyone else.
+- app/Exports/Letters/LetterRegisterExport implements FromCollection, ShouldAutoSize,
+  WithHeadings (collection(): Collection, headings(): array — as in ApprovedLeavesExport) and
+  WithCustomValueBinder with a string binder, because subjects/senders/remarks are user text and
+  the default binder turns a cell starting with = into a formula. Prove it with a test that
+  reads the generated .xlsx and checks that a subject of "=1+1" is stored as a string.
+- Audit: AuditLog::record('export_letter_register_excel' / 'export_letter_register_pdf',
+  'letters', 'letter_status_logs', null, null, ['employee_id'=>…, 'from'=>…, 'to'=>…,
+  'scope'=>…, 'rows'=>…]).
+- Statuses: add "Delivered to …" only if Phase 3's letter_deliveries table exists; add the
+  "Scanned" column only if Phase 5 shipped (MailLetter::scans()). Do not build either here.
+- Do NOT change LettersRolePermissionSeeder — letters.export stays secretary-only; managers get
+  it from the role editor if wanted.
+- Tests per §8.3 (LetterRegisterTest) using the Phase 0 builders; run php artisan test; update
+  docs/07-module-letters.md.
+Do not build recall/reject, recipient widening, desks or scans in this phase.
 ```
 
 ### Phase 5 (optional)
@@ -421,7 +629,10 @@ LettersRolePermissionSeeder, ModuleAccessSeeder and DemoDataSeeder (~line 1578) 
 ```
 Phase 5 of the Letters module work — optional letter scans — per
 letters-module-review-and-batch-design.md §7 and CLAUDE.md. Assumes Phase 0 has shipped
-(holder rule). Read LetterWorkflowService, ActiveLetters, NewLetter (PHP + blade),
+(holder rule). Earlier phases were implemented in earlier Claude Code runs, so the code on
+disk is the truth: run git log --oneline -30 and read what exists (holder rule, Transmittals,
+register export if present) before changing anything; where this prompt and the code
+disagree, follow the code and tell me. Read LetterWorkflowService, ActiveLetters, NewLetter (PHP + blade),
 app/Livewire/Transport/Issues.php (the WithFileUploads pattern), config/filesystems.php,
 config/gwl.php and .env.example first.
 
@@ -446,6 +657,9 @@ config/gwl.php and .env.example first.
   optional file picker on NewLetter; paperclip count in the list row. On mobile the input
   uses accept="image/*,application/pdf" capture="environment" multiple.
 - Do not build OCR, thumbnails, AV scanning or EXIF stripping.
+- If the Phase 1 transmittal sheet/Incoming checklist or the Phase 4 register export already
+  exist, add the touchpoints listed at the end of §7 (sheet "Scan" column, "View scan" link,
+  register "Scanned" column); if they do not exist yet, leave them for those phases.
 - Tests per §7 (Storage::fake('local')); run php artisan test; update docs.
 ```
 
@@ -453,13 +667,15 @@ config/gwl.php and .env.example first.
 
 ## 10. Open decisions (defaults I would take)
 
-1. **Regional direct hand-offs — DECIDED 2026-09-30: managers hold letters (Phase 3, §6).** Still open inside that: should `managing_director` (Leave module only today) hold letters, and should other non-manager roles (for example ICT officers) be able to? *Default: no; grant `letters.view` plus the Letters module to those roles from the role editor only where wanted — recipient eligibility follows the permission automatically.*
+1. **Regional direct hand-offs — DECIDED 2026-09-30: managers hold letters (Phase 3, §6); the Managing Director does not.** Still open inside that:
+   - **Other non-manager roles** (for example ICT officers) — may they hold letters? *Default: no; grant `letters.view` plus the Letters module to those roles from the role editor only where wanted — recipient eligibility follows the permission automatically.*
+   - **Recording the MD's comment.** The remark form's reviewer fields are *Manager* and *Chief Manager* (`letter_remarks.manager_id` / `chief_manager_id`), so an MD comment has no slot. (a) The MD-office secretary types "MD: …" in the *Secretary remarks* field — works today, no change; or (b) add the MD as a third reviewer choice (schema change). *Default: (a); revisit if MD comments need to be reported on.*
 2. **Partial receipt** — allowed per line? *Default: yes.*
 3. **Sheet** — available but never mandatory? *Default: yes.* Should it carry a QR/SN scan box? *Default: later.*
 4. **Max letters per transmittal** — *default 50.*
 5. **Should a single-letter dispatch also become a transmittal of one?** One code path and one inbox, but it changes today's flow. *Default: no, revisit after Phase 1.*
 6. **Who may annotate a letter** — only the current holder (my default for D4), or any past holder too?
-7. **Serial-number prefixes** — are two regions' initials ever the same in your real data (D3)? An admin-editable prefix per region is the safe default.
+7. **Serial-number prefixes** — are two regions' initials ever the same in your real data (D3)? An admin-editable prefix per region is the safe default, and it is what Phase 0b (§8.1) builds.
 8. **Letter scans (§7):**
    - **Where do the files live and who backs them up?** Default: server private disk (`storage/app/private/letters`) included in the server backup; a network share or S3 disk is a config change (`letters_scan_disk`). *The flag stays off until this is answered.*
    - **Preview before confirm** — may a recipient read the scan while the hardcopy is still in transit? *Default: no (same discipline as today); one switch to allow it.*
@@ -467,3 +683,5 @@ config/gwl.php and .env.example first.
    - **Log who opens a scan?** *Default: no, only add/void are audited.*
    - **Phone photos keep EXIF location data** unless re-encoded. *Default: leave as is; internal tool.*
    - **Size/count limits** — *default 10 MB per file, 10 files per letter.*
+9. **Register export for managers (Phase 4, §8.3):** `letters.export` is seeded for `secretary` only. Should managers and chief managers who hold letters in Phase 3 also be able to export their own register? *Default: no seed change; grant it per role from the role editor where wanted.*
+10. **Unconfirmed-letter thresholds (Phase 2, §8.2):** alert after 2 days, reminders at most every 24 hours? *Default: yes; both are config values (`letters_unconfirmed_alert_days`, `letters_remind_cooldown_hours`).*

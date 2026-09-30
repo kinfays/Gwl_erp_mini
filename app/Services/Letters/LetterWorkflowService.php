@@ -7,11 +7,13 @@ use App\Models\Employee;
 use App\Models\LetterDispatchBatch;
 use App\Models\LetterNotification;
 use App\Models\LetterRemark;
+use App\Models\LetterSnCounter;
 use App\Models\LetterStatusLog;
 use App\Models\MailLetter;
 use App\Models\Region;
 use App\Models\RoutingHistory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -585,32 +587,82 @@ class LetterWorkflowService
             ->first();
     }
 
+    /**
+     * PREFIX-YYYY-NNN from the locked (prefix, year) counter. Must run inside a transaction (create() provides it): the
+     * row lock is what makes two secretaries saving at once take different numbers, and it is held until that commit.
+     */
     protected function nextSnNumber(int $regionId): string
     {
-        $region = Region::findOrFail($regionId);
-        $prefix = $this->regionPrefix($region->region_name);
+        $prefix = $this->regionPrefix(Region::findOrFail($regionId));
         $year = now()->year;
-        $base = $prefix . '-' . $year . '-';
+        $counter = $this->lockedSnCounter($prefix, $year);
 
-        $last = MailLetter::query()
-            ->where('region_id', $regionId)
-            ->where('sn_number', 'like', $base . '%')
-            ->orderByDesc('sn_number')
-            ->value('sn_number');
+        do {
+            $counter->last_number++;
+            $sn = $this->formatSn($prefix, $year, $counter->last_number);
+            // A number taken outside the counter (hand-entered, imported) is skipped rather than colliding with the unique index.
+        } while (MailLetter::query()->where('sn_number', $sn)->exists());
 
-        $next = $last ? ((int) Str::afterLast($last, '-')) + 1 : 1;
+        $counter->save();
 
-        return $base . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+        return $sn;
     }
 
-    protected function regionPrefix(string $regionName): string
+    /** The serial-number prefix of $region; one without a prefix yet is given one here (see Region::assignLetterPrefix()). */
+    protected function regionPrefix(Region $region): string
     {
-        $words = collect(preg_split('/\s+/', trim($regionName)) ?: [])
-            ->filter()
-            ->map(fn (string $word) => Str::upper(Str::substr($word, 0, 1)))
-            ->join('');
+        return $region->assignLetterPrefix();
+    }
 
-        return $words ?: 'REG';
+    /** Numbers are padded to three digits and go on past them: ...-999, ...-1000, ...-1001. */
+    protected function formatSn(string $prefix, int $year, int $number): string
+    {
+        return $prefix.'-'.$year.'-'.str_pad((string) $number, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * The (prefix, year) counter row, locked. A missing row is created seeded from the highest number already issued
+     * under that prefix and year; if another request creates it first (unique [prefix, year]) we read theirs once.
+     */
+    protected function lockedSnCounter(string $prefix, int $year): LetterSnCounter
+    {
+        $find = fn () => LetterSnCounter::query()->where('prefix', $prefix)->where('year', $year)->lockForUpdate()->first();
+
+        if ($counter = $find()) {
+            return $counter;
+        }
+
+        try {
+            $this->createSnCounter($prefix, $year);
+        } catch (UniqueConstraintViolationException $e) {
+            if (! ($counter = $find())) {
+                throw $e;
+            }
+        }
+
+        return $counter ?? $find();
+    }
+
+    /** In its own (savepoint) transaction so losing the race to the unique index cannot poison the caller's. */
+    protected function createSnCounter(string $prefix, int $year): void
+    {
+        DB::transaction(fn () => LetterSnCounter::query()->create([
+            'prefix' => $prefix,
+            'year' => $year,
+            'last_number' => $this->highestIssuedNumber($prefix, $year),
+        ]));
+    }
+
+    /** Numerically, in PHP: never by sorting the sn_number strings. The LIKE only narrows the rows the regex then checks. */
+    protected function highestIssuedNumber(string $prefix, int $year): int
+    {
+        $pattern = '/^'.preg_quote($prefix, '/').'-'.$year.'-(\d+)$/';
+
+        return MailLetter::query()
+            ->where('sn_number', 'like', $prefix.'-'.$year.'-%')
+            ->pluck('sn_number')
+            ->map(fn (string $sn) => preg_match($pattern, $sn, $m) ? (int) $m[1] : 0)
+            ->max() ?? 0;
     }
 
     protected function regionalRoleQuery(Employee $actor, array $roles): Builder

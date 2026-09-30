@@ -15,6 +15,7 @@
                 <x-slot:head>
                     <tr>
                         <th>Region</th>
+                        <th>Letter prefix</th>
                         <th class="num">Locations</th>
                         <th class="num">Employees</th>
                         <th class="actions"><span class="sr-only-text">Actions</span></th>
@@ -24,6 +25,7 @@
                 @forelse ($regions as $region)
                     <tr wire:key="region-{{ $region->id }}" @class(['is-selected' => $editingId === $region->id])>
                         <td>{{ $region->region_name }}</td>
+                        <td @class(['mono', 'cell-muted' => ! $region->letter_prefix])>{{ $region->letter_prefix ?: 'Set on first letter' }}</td>
                         <td class="num">{{ $region->districts_count }}</td>
                         <td class="num">{{ $region->employees_count }}</td>
                         <td class="actions">
@@ -51,7 +53,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="4" icon="map" title="No regions found." description="Add the first one with the form alongside." />
+                    <x-ui.empty-row :colspan="5" icon="map" title="No regions found." description="Add the first one with the form alongside." />
                 @endforelse
             </x-ui.table>
         </x-ui.card>
@@ -60,8 +62,10 @@
             <div class="ui-stack">
                 @if ($editingId)
                     <x-ui.input label="Region Name" wire:model="editingName" placeholder="Enter region name" wire:key="region-edit-{{ $editingId }}" x-init="$nextTick(() => $el.focus())" />
+                    <x-ui.input label="Letter prefix" wire:model="editingPrefix" class="mono" placeholder="e.g. GA" hint="Starts this region's letter serial numbers (GA-2026-001). Changing it only affects future letters; numbers already issued are never rewritten." wire:key="region-edit-prefix-{{ $editingId }}" />
                 @else
                     <x-ui.input label="Region Name" wire:model="region_name" placeholder="Enter region name" wire:key="region-new" />
+                    <x-ui.input label="Letter prefix" wire:model="letter_prefix" class="mono" maxlength="6" placeholder="Leave blank to derive from the name" hint="2-6 capital letters or digits. Starts this region's letter serial numbers (GA-2026-001). Changing it later only affects future letters." wire:key="region-new-prefix" />
                 @endif
 
                 <div class="ui-form-actions">

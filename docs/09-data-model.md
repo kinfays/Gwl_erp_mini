@@ -28,6 +28,7 @@
   for recall/reject and not written yet)
 - `letter_dispatch_batches` (transmittals: see below)
 - `letter_remarks`
+- `letter_sn_counters` (`prefix`, `year`, `last_number`; unique `[prefix, year]`; the locked serial-number counter)
 - `letter_notifications` (`letter_id` is nullable; `batch_id` is set on the one notification a transmittal sends)
 
 ### `letter_dispatch_batches`
@@ -45,6 +46,8 @@ ordinary `routing_histories` row, so timelines, status logs and audit rows work 
 | `dispatched_at`, `completed_at` | `completed_at` is set once no hop of the batch is left unconfirmed |
 
 Deleting a batch nulls `routing_histories.batch_id` (the hops and their history stay) and cascades its notification.
+
+`regions.letter_prefix` (nullable, unique) is the prefix of the region's letter serial numbers.
 
 ## Visitors
 
