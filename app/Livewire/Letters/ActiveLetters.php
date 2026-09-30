@@ -7,6 +7,9 @@ use App\Models\Employee;
 use App\Models\LetterRemark;
 use App\Models\MailLetter;
 use App\Services\Letters\LetterWorkflowService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -21,7 +24,41 @@ class ActiveLetters extends Component
 
     public string $search = '';
 
+    /** '' | 'awaiting' (Awaiting my confirmation) | 'ready' (Ready to dispatch) - applied in SQL. */
+    public string $quickFilter = '';
+
     public int $perPage = 15;
+
+    /**
+     * Letter ids ticked on the current page. Client-controlled, so every bulk action re-resolves them through
+     * visibleLettersQuery + deskState and acts only on the rows the actor may act on.
+     *
+     * @var array<int, int|string>
+     */
+    public array $selected = [];
+
+    public bool $bulkDispatchOpen = false;
+
+    /**
+     * The letters the open drawer lists, frozen when it opened, so what the user confirms is what is dispatched. The
+     * service re-checks every one (visibility and holder state) and refuses the whole batch if any went stale.
+     *
+     * @var array<int, int>
+     */
+    public array $bulkLetterIds = [];
+
+    /** How many ticked letters were left out of the drawer because they cannot be dispatched. */
+    public int $bulkSkipped = 0;
+
+    public int|string $bulkDispatchToId = '';
+
+    public string $bulkSearch = '';
+
+    public string $bulkNote = '';
+
+    public ?int $lastBatchId = null;
+
+    public string $lastBatchNo = '';
 
     public ?int $selectedLetterId = null;
 
@@ -82,17 +119,157 @@ class ActiveLetters extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['tab', 'typeFilter', 'search'], true)) {
+        if (in_array($name, ['tab', 'typeFilter', 'search', 'quickFilter'], true)) {
             $this->resetPage();
+            $this->clearSelection();
         }
+    }
+
+    /** Any page change (next, previous, goto, resetPage) drops the ticks: selection never spans pages. */
+    public function updatingPaginators(): void
+    {
+        $this->clearSelection();
     }
 
     public function setTab(string $tab): void
     {
         $this->tab = $tab === 'closed' ? 'closed' : 'active';
         $this->resetPage();
+        $this->clearSelection();
     }
 
+    public function setQuickFilter(string $filter): void
+    {
+        // Clicking the active filter turns it off.
+        $filter = in_array($filter, ['awaiting', 'ready'], true) && $filter !== $this->quickFilter ? $filter : '';
+
+        $this->quickFilter = $filter;
+        $this->resetPage();
+        $this->clearSelection();
+    }
+
+    public function clearSelection(): void
+    {
+        $this->selected = [];
+        $this->closeBulkDispatch();
+    }
+
+    /** Header checkbox: tick every row on this page the actor can act on, or untick them all if they already are. */
+    public function togglePage(LetterWorkflowService $workflow): void
+    {
+        $employee = $this->requireEmployee();
+        $page = $this->lettersQuery($workflow, $employee)->paginate($this->perPage);
+        $desk = $workflow->deskState($page->getCollection(), $employee);
+        $actionable = $this->actionableIds($desk);
+
+        $current = $this->selectedIds();
+        $allTicked = $actionable !== [] && array_diff($actionable, $current) === [];
+
+        $this->selected = $allTicked ? [] : $actionable;
+    }
+
+    /** Confirm the hardcopy of every ticked letter that is awaiting the actor's confirmation. */
+    public function confirmSelected(LetterWorkflowService $workflow): void
+    {
+        $employee = $this->requireEmployee();
+        [$letters, $desk] = $this->selectionState($workflow, $employee);
+
+        $confirmable = $letters->filter(fn (MailLetter $letter) => $desk[$letter->id]['pendingRoute'] !== null)->pluck('id')->all();
+
+        if ($confirmable === []) {
+            $this->pruneSelection($letters, $desk);
+            $this->failWith(new \RuntimeException('None of the selected letters is awaiting your confirmation.'));
+
+            return;
+        }
+
+        try {
+            $confirmed = $workflow->confirmHardcopies($employee, $confirmable);
+        } catch (\RuntimeException $e) {
+            $this->pruneSelection($letters, $desk);
+            $this->failWith($e);
+
+            return;
+        }
+
+        $skipped = count($this->selectedIds()) - $confirmed;
+        $this->clearSelection();
+        $this->flashMessage = '';
+        $this->dispatch('toast', type: 'success', message: 'Confirmed hardcopy receipt for '.$confirmed.' '.Str::plural('letter', $confirmed).'.'.($skipped > 0 ? " {$skipped} selected ".Str::plural('letter', $skipped).' skipped (not awaiting your confirmation).' : ''));
+    }
+
+    public function openBulkDispatch(LetterWorkflowService $workflow): void
+    {
+        abort_if(! $this->canForward(), 403);
+
+        $employee = $this->requireEmployee();
+        [$letters, $desk] = $this->selectionState($workflow, $employee);
+        $dispatchable = $letters->filter(fn (MailLetter $letter) => $desk[$letter->id]['canDispatch']);
+
+        if ($dispatchable->isEmpty()) {
+            $this->pruneSelection($letters, $desk);
+            $this->failWith(new \RuntimeException('None of the selected letters can be dispatched by you right now.'));
+
+            return;
+        }
+
+        $this->selectedLetterId = null;
+        $this->bulkLetterIds = $dispatchable->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $this->bulkSkipped = count($this->selectedIds()) - count($this->bulkLetterIds);
+        $this->bulkDispatchOpen = true;
+    }
+
+    public function closeBulkDispatch(): void
+    {
+        $this->bulkDispatchOpen = false;
+        $this->bulkLetterIds = [];
+        $this->bulkSkipped = 0;
+        $this->bulkDispatchToId = '';
+        $this->bulkSearch = '';
+        $this->bulkNote = '';
+    }
+
+    public function dispatchSelected(LetterWorkflowService $workflow): void
+    {
+        abort_if(! $this->canForward(), 403);
+
+        $employee = $this->requireEmployee();
+
+        $this->validate([
+            'bulkDispatchToId' => ['required', 'exists:employees,id'],
+            'bulkNote' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $recipient = $workflow->secretaryQuery()->findOrFail($this->bulkDispatchToId);
+        $skipped = $this->bulkSkipped;
+
+        try {
+            $batch = $workflow->dispatchBatch($employee, $recipient, $this->bulkLetterIds, $this->bulkNote);
+        } catch (\RuntimeException $e) {
+            // The page changed under the drawer (another tab, another device), or a rule such as the size limit
+            // applies: show why, drop what is no longer actionable and let the user look at the list again.
+            // Nothing was dispatched.
+            $this->closeBulkDispatch();
+            $this->pruneSelection(...$this->selectionState($workflow, $employee));
+            $this->failWith($e);
+
+            return;
+        }
+
+        $this->clearSelection();
+        $this->lastBatchId = $batch->id;
+        $this->lastBatchNo = $batch->batch_no;
+        $this->flashMessage = '';
+        $this->dispatch('toast', type: 'success', message: "Transmittal {$batch->batch_no} created: {$batch->letters_count} ".Str::plural('letter', $batch->letters_count).' dispatched to '.$recipient->full_name.'.'.($skipped > 0 ? " {$skipped} selected ".Str::plural('letter', $skipped).' skipped (not ready to dispatch).' : ''));
+    }
+
+    public function dismissBatchNotice(): void
+    {
+        $this->lastBatchId = null;
+        $this->lastBatchNo = '';
+    }
+
+    /** $fromNotification is kept for the callers that pass it (notification links, the Confirm Hardcopy button); both paths behave the same. */
     public function openLetter(int $letterId, bool $fromNotification = false, ?LetterWorkflowService $workflow = null): void
     {
         $workflow ??= app(LetterWorkflowService::class);
@@ -101,12 +278,6 @@ class ActiveLetters extends Component
 
         $this->selectedLetterId = $letter->id;
         $this->flashMessage = '';
-
-        if ($fromNotification && $workflow->pendingIncomingRoute($letter, $employee)) {
-            $this->confirmPrompt = true;
-
-            return;
-        }
 
         if ($workflow->pendingIncomingRoute($letter, $employee)) {
             $this->confirmPrompt = true;
@@ -131,7 +302,14 @@ class ActiveLetters extends Component
         $letter = $this->selectedLetter($workflow);
         $employee = $this->requireEmployee();
 
-        $workflow->confirmHardcopy($letter, $employee);
+        try {
+            $workflow->confirmHardcopy($letter, $employee);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
         $this->confirmPrompt = false;
         $this->flashMessage = 'Hardcopy receipt confirmed.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
@@ -150,7 +328,14 @@ class ActiveLetters extends Component
         ]);
 
         $recipient = $workflow->secretaryQuery()->findOrFail($this->dispatchToId);
-        $workflow->dispatch($letter, $employee, $recipient);
+
+        try {
+            $workflow->dispatch($letter, $employee, $recipient);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
 
         $this->dispatchToId = '';
         $this->secretarySearch = '';
@@ -160,7 +345,14 @@ class ActiveLetters extends Component
 
     public function closeLetter(LetterWorkflowService $workflow): void
     {
-        $workflow->close($this->selectedLetter($workflow), $this->requireEmployee());
+        try {
+            $workflow->close($this->selectedLetter($workflow), $this->requireEmployee());
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
         $this->tab = 'closed';
         $this->flashMessage = 'Letter closed.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
@@ -168,7 +360,14 @@ class ActiveLetters extends Component
 
     public function reopenLetter(LetterWorkflowService $workflow): void
     {
-        $workflow->reopen($this->selectedLetter($workflow), $this->requireEmployee());
+        try {
+            $workflow->reopen($this->selectedLetter($workflow), $this->requireEmployee());
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
         $this->tab = 'active';
         $this->flashMessage = 'Letter reopened.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
@@ -231,12 +430,18 @@ class ActiveLetters extends Component
             return;
         }
 
-        $workflow->addRemark($this->selectedLetter($workflow), $employee, [
-            'manager_id' => $manager?->id,
-            'chief_manager_id' => $chiefManager?->id,
-            'remark_content' => $hasManagerRemark ? $remarkContent : '',
-            'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
-        ]);
+        try {
+            $workflow->addRemark($this->selectedLetter($workflow), $employee, [
+                'manager_id' => $manager?->id,
+                'chief_manager_id' => $chiefManager?->id,
+                'remark_content' => $hasManagerRemark ? $remarkContent : '',
+                'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
 
         $this->resetRemarkForm();
         $this->flashMessage = 'Remark added.';
@@ -313,12 +518,18 @@ class ActiveLetters extends Component
         }
 
         $remark = LetterRemark::query()->findOrFail($this->editingRemarkId);
-        $workflow->updateRemark($remark, $employee, [
-            'manager_id' => $manager?->id,
-            'chief_manager_id' => $chiefManager?->id,
-            'remark_content' => $hasManagerRemark ? $remarkContent : '',
-            'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
-        ]);
+        try {
+            $workflow->updateRemark($remark, $employee, [
+                'manager_id' => $manager?->id,
+                'chief_manager_id' => $chiefManager?->id,
+                'remark_content' => $hasManagerRemark ? $remarkContent : '',
+                'secretary_remark_content' => $hasSecretaryRemark ? $secretaryRemarkContent : null,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
 
         $this->resetEditingRemarkForm();
         $this->flashMessage = 'Remark updated.';
@@ -339,14 +550,20 @@ class ActiveLetters extends Component
             'editDateOnLetter' => ['required', 'date'],
         ]);
 
-        $workflow->updateLetter($letter, $this->requireEmployee(), [
-            'subject' => $validated['editSubject'],
-            'ref_no' => $validated['editRefNo'],
-            'type' => $validated['editType'],
-            'memo_sender_id' => $validated['editMemoSenderId'],
-            'company_sender' => $validated['editCompanySender'],
-            'date_on_letter' => $validated['editDateOnLetter'],
-        ]);
+        try {
+            $workflow->updateLetter($letter, $this->requireEmployee(), [
+                'subject' => $validated['editSubject'],
+                'ref_no' => $validated['editRefNo'],
+                'type' => $validated['editType'],
+                'memo_sender_id' => $validated['editMemoSenderId'],
+                'company_sender' => $validated['editCompanySender'],
+                'date_on_letter' => $validated['editDateOnLetter'],
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
 
         $this->flashMessage = 'Letter details updated.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
@@ -370,7 +587,7 @@ class ActiveLetters extends Component
             ]);
         }
 
-        $letters = $workflow->visibleLettersQuery($employee)
+        $letters = $this->lettersQuery($workflow, $employee)
             ->with([
                 'region',
                 'memoSender',
@@ -379,29 +596,11 @@ class ActiveLetters extends Component
                 'routingHistories.fromSecretariat',
                 'routingHistories.toSecretariat',
             ])
-            ->when($this->tab === 'active', function ($query) use ($employee) {
-                $query->whereHas('statusLogs', fn ($statusQuery) => $statusQuery
-                    ->where('secretariat_id', $employee->id)
-                    ->where('is_closed', false));
-            })
-            ->when($this->tab === 'closed', function ($query) use ($employee) {
-                $query->whereHas('statusLogs', fn ($statusQuery) => $statusQuery
-                    ->where('secretariat_id', $employee->id)
-                    ->where('is_closed', true));
-            })
-            ->when($this->typeFilter, fn ($query) => $query->where('type', $this->typeFilter))
-            ->when($this->search, function ($query) {
-                $query->where(function ($searchQuery) {
-                    $searchQuery
-                        ->where('subject', 'like', '%'.$this->search.'%')
-                        ->orWhere('ref_no', 'like', '%'.$this->search.'%')
-                        ->orWhere('sn_number', 'like', '%'.$this->search.'%')
-                        ->orWhere('company_sender', 'like', '%'.$this->search.'%')
-                        ->orWhereHas('memoSender', fn ($senderQuery) => $senderQuery->where('full_name', 'like', '%'.$this->search.'%'));
-                });
-            })
-            ->latest()
             ->paginate($this->perPage);
+
+        $desk = $workflow->deskState($letters->getCollection(), $employee);
+        $pageActionable = $this->actionableIds($desk);
+        $bulk = $this->bulkSummary($workflow, $employee);
 
         $selectedLetter = $this->selectedLetterId
             ? MailLetter::query()
@@ -422,7 +621,18 @@ class ActiveLetters extends Component
         return view('livewire.letters.active-letters', [
             'missingEmployee' => false,
             'letters' => $letters,
+            'desk' => $desk,
+            'allOnPageSelected' => $pageActionable !== [] && array_diff($pageActionable, $this->selectedIds()) === [],
+            'hasActionableRows' => $pageActionable !== [],
+            'bulk' => $bulk,
+            'maxBatchSize' => max(1, (int) config('gwl.letters_max_batch_size', 50)),
+            'bulkSecretaries' => $this->bulkDispatchOpen
+                ? $workflow->secretaryQuery($this->bulkSearch)->limit(30)->get()
+                : collect(),
             'selectedLetter' => $selectedLetter,
+            'selectedDesk' => $selectedLetter
+                ? $workflow->deskState(collect([$selectedLetter]), $employee)->get($selectedLetter->id)
+                : null,
             'secretaries' => $workflow->secretaryQuery($this->secretarySearch)->limit(30)->get(),
             'managerOptions' => $this->employeeOptions($workflow->regionalManagersQuery($employee)->with(['department', 'region'])->get()),
             'chiefManagerOptions' => $this->employeeOptions($workflow->regionalChiefManagersQuery($employee)->with(['department', 'region'])->get()),
@@ -442,8 +652,111 @@ class ActiveLetters extends Component
             'canRemark' => $this->canRemark(),
             'canForward' => $this->canForward(),
             'employee' => $employee,
-            'workflow' => $workflow,
         ]);
+    }
+
+    /** The list behind the page: what the actor can see, narrowed by tab, type, search and the quick filter. */
+    protected function lettersQuery(LetterWorkflowService $workflow, Employee $employee): Builder
+    {
+        return $workflow->visibleLettersQuery($employee)
+            ->when($this->tab === 'active', fn ($query) => $query->whereNull('closed_at'))
+            ->when($this->tab === 'closed', fn ($query) => $query->whereNotNull('closed_at'))
+            ->when($this->quickFilter === 'awaiting', fn ($query) => $workflow->whereAwaitingConfirmation($query, $employee))
+            ->when($this->quickFilter === 'ready', fn ($query) => $workflow->whereReadyToDispatch($query, $employee))
+            ->when($this->typeFilter, fn ($query) => $query->where('type', $this->typeFilter))
+            ->when($this->search, function ($query) {
+                $query->where(function ($searchQuery) {
+                    $searchQuery
+                        ->where('subject', 'like', '%'.$this->search.'%')
+                        ->orWhere('ref_no', 'like', '%'.$this->search.'%')
+                        ->orWhere('sn_number', 'like', '%'.$this->search.'%')
+                        ->orWhere('company_sender', 'like', '%'.$this->search.'%')
+                        ->orWhereHas('memoSender', fn ($senderQuery) => $senderQuery->where('full_name', 'like', '%'.$this->search.'%'));
+                });
+            })
+            ->latest();
+    }
+
+    /** The ticked ids as unique ints, capped so a tampered payload cannot make a huge IN (...). */
+    protected function selectedIds(): array
+    {
+        return collect($this->selected)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->take(200)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The ticked letters the actor can actually see (anything else is dropped silently) with their desk state.
+     *
+     * @return array{0: Collection<int, MailLetter>, 1: Collection}
+     */
+    protected function selectionState(LetterWorkflowService $workflow, Employee $employee): array
+    {
+        $ids = $this->selectedIds();
+
+        $letters = $ids === []
+            ? new \Illuminate\Database\Eloquent\Collection
+            : $workflow->visibleLettersQuery($employee)->whereIn('id', $ids)->get();
+
+        return [$letters, $workflow->deskState($letters, $employee)];
+    }
+
+    /** Rows the actor can tick: awaiting their confirmation, or (with letters.forward) ready to dispatch. */
+    protected function actionableIds(Collection $desk): array
+    {
+        $canForward = $this->canForward();
+
+        return $desk
+            ->filter(fn (array $state) => $state['pendingRoute'] !== null || ($canForward && $state['canDispatch']))
+            ->keys()
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /** After a refused or stale bulk action: keep only the ticks that are still actionable. */
+    protected function pruneSelection(Collection $letters, Collection $desk): void
+    {
+        $actionable = $this->actionableIds($desk);
+
+        $this->selected = $letters->pluck('id')->map(fn ($id) => (int) $id)->intersect($actionable)->values()->all();
+    }
+
+    /**
+     * What the sticky bar and the dispatch drawer show for the current ticks. Empty (no queries) when nothing is ticked.
+     *
+     * @return array{count: int, confirmable: int, dispatchable: int, dispatchLetters: Collection}
+     */
+    protected function bulkSummary(LetterWorkflowService $workflow, Employee $employee): array
+    {
+        $summary = ['count' => 0, 'confirmable' => 0, 'dispatchable' => 0, 'dispatchLetters' => collect()];
+
+        if ($this->selectedIds() === []) {
+            return $summary;
+        }
+
+        [$letters, $desk] = $this->selectionState($workflow, $employee);
+        $canForward = $this->canForward();
+
+        return [
+            'count' => $letters->count(),
+            'confirmable' => $letters->filter(fn (MailLetter $letter) => $desk[$letter->id]['pendingRoute'] !== null)->count(),
+            'dispatchable' => $letters->filter(fn (MailLetter $letter) => $canForward && $desk[$letter->id]['canDispatch'])->count(),
+            // The drawer lists what it froze on opening, not a fresh recount (see $bulkLetterIds).
+            'dispatchLetters' => $this->bulkDispatchOpen
+                ? $letters->whereIn('id', $this->bulkLetterIds)->sortBy(fn (MailLetter $letter) => array_search($letter->id, $this->bulkLetterIds, true))->values()
+                : collect(),
+        ];
+    }
+
+    /** A rule the service enforces (stale tab, double click, another device): show it instead of a 500. */
+    protected function failWith(\RuntimeException $e): void
+    {
+        $this->flashMessage = '';
+        $this->dispatch('toast', type: 'error', message: $e->getMessage());
     }
 
     protected function selectedLetter(LetterWorkflowService $workflow): MailLetter

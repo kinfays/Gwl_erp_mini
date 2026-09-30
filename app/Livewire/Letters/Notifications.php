@@ -78,6 +78,11 @@ class Notifications extends Component
 
         $notification->update(['is_read' => true]);
 
+        // One notification covers a whole transmittal: open it on the Transmittals page, focused on that batch.
+        if ($notification->batch_id) {
+            return redirect()->route('letters.transmittals', ['tab' => 'incoming', 'batch' => $notification->batch_id]);
+        }
+
         $prompt = $notification->letter
             ? $notification->letter->routingHistories()
                 ->where('to_secretariat_id', $employee->id)
@@ -100,7 +105,7 @@ class Notifications extends Component
 
         if ($employee) {
             $base = LetterNotification::query()
-                ->with('letter')
+                ->with(['letter', 'batch'])
                 ->where('secretariat_id', $employee->id);
 
             $unreadCount = (clone $base)->where('is_read', false)->count();

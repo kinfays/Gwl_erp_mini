@@ -21,13 +21,17 @@ class MailLetter extends Model
         'date_on_letter',
         'region_id',
         'created_by_id',
+        'closed_at',
+        'closed_by_id',
     ];
 
     protected $casts = [
         'memo_sender_id' => 'integer',
         'region_id' => 'integer',
         'created_by_id' => 'integer',
+        'closed_by_id' => 'integer',
         'date_on_letter' => 'date',
+        'closed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -45,6 +49,16 @@ class MailLetter extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'created_by_id');
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'closed_by_id');
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->closed_at !== null;
     }
 
     public function statusLogs(): HasMany

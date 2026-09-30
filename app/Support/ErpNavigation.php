@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Permission;
 use App\Models\User;
+use App\Services\Letters\LetterWorkflowService;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
@@ -164,10 +165,13 @@ class ErpNavigation
 
                 return (bool) $condition($user);
             })
-            ->map(function (array $item) {
+            ->map(function (array $item) use ($user) {
                 if (($item['type'] ?? 'item') === 'section') {
                     return $item;
                 }
+
+                // An item may carry a `badge` closure returning a count to show next to its label (0 hides it).
+                $item['badge'] = isset($item['badge']) ? (int) $item['badge']($user) : 0;
 
                 $patterns = $item['active'] ?? [$item['route']];
                 $item['url'] = $this->safeRoute($item['route']) ?? '#';
@@ -402,6 +406,19 @@ class ErpNavigation
                 'active' => ['letters.active'],
                 'icon' => $this->icon('list'),
                 'icon_name' => 'inbox',
+            ],
+            [
+                'label' => 'Transmittals',
+                'route' => 'letters.transmittals',
+                'active' => ['letters.transmittals'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'send',
+                // Hardcopies handed to this desk that are still waiting for a confirmation.
+                'badge' => function (User $currentUser) {
+                    $employee = $currentUser->employee ?? $currentUser->employeeByStaffId;
+
+                    return $employee ? app(LetterWorkflowService::class)->pendingIncomingCount($employee) : 0;
+                },
             ],
             [
                 'label' => 'New Letter',

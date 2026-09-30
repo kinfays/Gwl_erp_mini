@@ -21,6 +21,9 @@ return [
     'credit_union_loan_annual_interest_rate_percent' => (float) env('GWL_CREDIT_UNION_LOAN_INTEREST_RATE', 15.0),
     'credit_union_loan_multiple_without_guarantor' => (float) env('GWL_CREDIT_UNION_LOAN_MULTIPLE_WITHOUT_GUARANTOR', 2),
 
+    // Letters: the most letters one transmittal (batch dispatch) may hold. 50 fits one printed sheet.
+    'letters_max_batch_size' => (int) env('GWL_LETTERS_MAX_BATCH_SIZE', 50),
+
     // Android Enterprise / MDM (Assets module). Off by default; when off the MDM routes (including the
     // Google webhook) don't register and the MDM sidebar entries are hidden. See docs/assets/mdm.md.
     'mdm_enabled' => (bool) env('GWL_MDM_ENABLED', false),

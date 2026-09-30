@@ -10,7 +10,7 @@ Main groups:
 - UAC: `/uac/*`
 - Staff: `/staff/*`
 - Leave: `/leave/*`
-- Letters: `/letters/*`
+- Letters: `/letters/*` (incl. `letters.transmittals` and the PDF hand-over sheet `letters.transmittals.sheet`)
 - Visitors: `/visitors/*`
 - Public kiosk: `/kiosk`
 - Auth/profile flows from Breeze

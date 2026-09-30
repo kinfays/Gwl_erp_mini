@@ -5231,6 +5231,59 @@ textarea.form-input {
     font-size: 0.8125rem;
 }
 
+/* Filter bar: one line on wide screens (search grows, selects keep a readable width, the date
+   range stays in one piece); it wraps as space runs out, and on phones the selects pair up. */
+.filter-bar {
+    gap: 10px;
+}
+
+.filter-search {
+    flex: 3 1 16rem;
+    min-width: min(16rem, 100%);
+}
+
+.filter-select {
+    flex: 1 1 10rem;
+    min-width: 0;
+    max-width: 18rem;
+}
+
+.filter-dates {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+.filter-dates .form-input {
+    flex: 1 1 9rem;
+    min-width: 0;
+}
+
+/* Dates sharing the status-tabs row: pushed to the end, sized to the tab pills. */
+.toolbar-tabs .filter-dates {
+    margin-left: auto;
+}
+
+.toolbar-tabs .filter-dates .form-input {
+    min-height: 2.375rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+/* Phones: the search takes a line, the two selects share one, the dates fill another.
+   (Two classes deep to beat the phone rule that stretches every .ui-toolbar child.) */
+@media (max-width: 639.98px) {
+    .filter-bar > .filter-select {
+        flex: 1 1 calc(50% - 5px);
+        max-width: none;
+    }
+
+    .ui-toolbar > .filter-dates {
+        flex: 1 1 100%;
+        margin-left: 0;
+    }
+}
+
 /* Signatures are dark strokes on a transparent canvas: keep a white ground in both themes. */
 .signature-image {
     display: block;
@@ -6822,4 +6875,63 @@ textarea.form-input {
     overflow-x: auto;
     background: var(--color-muted-soft);
     border-radius: var(--radius-control);
+}
+
+/* Letters: bulk selection column, sticky bulk bar, sidebar count */
+.ui-table th.bulk-check,
+.ui-table td.bulk-check {
+    width: 2.5rem;
+    padding-inline: 0.75rem 0;
+}
+
+.bulk-check input[type='checkbox'] {
+    width: 1.05rem;
+    height: 1.05rem;
+    cursor: pointer;
+}
+
+.bulk-check input[type='checkbox']:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.bulk-bar {
+    position: sticky;
+    bottom: 1rem;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-overlay);
+}
+
+.bulk-bar-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.side-count {
+    margin-left: auto;
+    min-width: 1.25rem;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--color-badge);
+    color: #fff;
+    font-size: 0.6875rem;
+    line-height: 1.25rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ui-card.is-focused {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }

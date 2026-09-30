@@ -4,6 +4,7 @@ namespace App\Services\Letters;
 
 use App\Models\AuditLog;
 use App\Models\Employee;
+use App\Models\LetterDispatchBatch;
 use App\Models\LetterNotification;
 use App\Models\LetterRemark;
 use App\Models\LetterStatusLog;
@@ -11,6 +12,7 @@ use App\Models\MailLetter;
 use App\Models\Region;
 use App\Models\RoutingHistory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -47,7 +49,7 @@ class LetterWorkflowService
     {
         $log = $this->currentLog($letter, $actor);
 
-        if ($log && $log->status === 'Received' && ! $log->is_closed && ! $this->pendingIncomingRoute($letter, $actor)) {
+        if ($log && $log->status === 'Received' && ! $letter->isClosed() && ! $this->pendingIncomingRoute($letter, $actor)) {
             $log->update(['status' => 'In Review']);
         }
     }
@@ -62,53 +64,245 @@ class LetterWorkflowService
             throw new \RuntimeException('Dispatch recipient must be different from the current secretariat.');
         }
 
-        DB::transaction(function () use ($letter, $from, $to) {
-            RoutingHistory::create([
-                'letter_id' => $letter->id,
+        DB::transaction(fn () => $this->recordHop($letter, $from, $to));
+    }
+
+    /**
+     * Hand many letters from $from to $to at once as one numbered transmittal. All-or-nothing: if any letter is not
+     * dispatchable by $from any more, nothing is created, so the printed sheet can never disagree with what was
+     * handed over. Letter ids come from the client, so they are only ever resolved through visibleLettersQuery.
+     *
+     * @param  array<int|string>  $letterIds
+     */
+    public function dispatchBatch(Employee $from, Employee $to, array $letterIds, ?string $note = null): LetterDispatchBatch
+    {
+        $ids = collect($letterIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $max = max(1, (int) config('gwl.letters_max_batch_size', 50));
+
+        if ($ids->isEmpty()) {
+            throw new \RuntimeException('Select at least one letter to dispatch.');
+        }
+
+        if ($ids->count() > $max) {
+            throw new \RuntimeException("A transmittal can hold at most {$max} letters; you selected {$ids->count()}.");
+        }
+
+        if ($from->id === $to->id) {
+            throw new \RuntimeException('Dispatch recipient must be different from the current secretariat.');
+        }
+
+        if (! $this->secretaryQuery()->whereKey($to->id)->exists()) {
+            throw new \RuntimeException('The selected recipient cannot receive letters.');
+        }
+
+        $note = filled($note) ? Str::limit(trim($note), 500, '') : null;
+
+        return DB::transaction(function () use ($from, $to, $ids, $note) {
+            $letters = $this->visibleLettersQuery($from)
+                ->whereIn('id', $ids->all())
+                ->lockForUpdate()
+                ->get()
+                ->sortBy(fn (MailLetter $letter) => $ids->search($letter->id))
+                ->values();
+
+            // Ids that are not visible to $from are indistinguishable from ids that do not exist: say nothing about them.
+            if ($letters->count() !== $ids->count()) {
+                throw new \RuntimeException('Some of the selected letters are no longer available to you. Refresh and select again.');
+            }
+
+            $desk = $this->deskState($letters, $from);
+            $blocked = $letters->reject(fn (MailLetter $letter) => $desk[$letter->id]['canDispatch']);
+
+            if ($blocked->isNotEmpty()) {
+                throw new \RuntimeException('These letters can no longer be dispatched by you: '.$blocked->pluck('sn_number')->join(', ').'. Nothing was dispatched.');
+            }
+
+            $batch = LetterDispatchBatch::create([
                 'from_secretariat_id' => $from->id,
                 'to_secretariat_id' => $to->id,
-                'received_confirm' => false,
+                'note' => $note,
+                'letters_count' => $letters->count(),
+                'confirmed_count' => 0,
+                'dispatched_at' => now(),
             ]);
+            $batch->update(['batch_no' => LetterDispatchBatch::numberFor($batch->id, $batch->dispatched_at)]);
 
-            LetterStatusLog::create([
-                'letter_id' => $letter->id,
+            foreach ($letters as $letter) {
+                $this->recordHop($letter, $from, $to, $batch, notify: false);
+            }
+
+            LetterNotification::create([
+                'title' => 'Letters dispatched to you',
+                'message' => $letters->count().' '.Str::plural('letter', $letters->count()).' ('.$batch->batch_no.') need hardcopy receipt confirmation.',
                 'secretariat_id' => $to->id,
-                'status' => 'Received',
+                'letter_id' => null,
+                'batch_id' => $batch->id,
             ]);
 
+            AuditLog::record('dispatch_letter_batch', 'letters', 'letter_dispatch_batches', $batch->id, null, [
+                'batch_no' => $batch->batch_no,
+                'from_secretariat_id' => $from->id,
+                'to_secretariat_id' => $to->id,
+                'letters_count' => $letters->count(),
+                'letter_ids' => $letters->pluck('id')->all(),
+            ]);
+
+            return $batch;
+        });
+    }
+
+    /** One hop: the routing row, the recipient's log, the sender's Dispatched log and the audit row. */
+    protected function recordHop(MailLetter $letter, Employee $from, Employee $to, ?LetterDispatchBatch $batch = null, bool $notify = true): RoutingHistory
+    {
+        $hop = RoutingHistory::create([
+            'letter_id' => $letter->id,
+            'from_secretariat_id' => $from->id,
+            'to_secretariat_id' => $to->id,
+            'batch_id' => $batch?->id,
+            'received_confirm' => false,
+        ]);
+
+        LetterStatusLog::create([
+            'letter_id' => $letter->id,
+            'secretariat_id' => $to->id,
+            'status' => 'Received',
+        ]);
+
+        if ($notify) {
             LetterNotification::create([
                 'title' => 'Letter dispatched to you',
                 'message' => $letter->sn_number . ' needs hardcopy receipt confirmation.',
                 'secretariat_id' => $to->id,
                 'letter_id' => $letter->id,
             ]);
+        }
 
-            $this->currentLog($letter, $from)?->update([
-                'status' => 'Dispatched',
-                'out_date' => today(),
-            ]);
+        $this->currentLog($letter, $from)?->update([
+            'status' => 'Dispatched',
+            'out_date' => today(),
+        ]);
 
-            AuditLog::record('dispatch_letter', 'letters', 'mail_letters', $letter->id, null, [
-                'from_secretariat_id' => $from->id,
-                'to_secretariat_id' => $to->id,
-            ]);
-        });
+        AuditLog::record('dispatch_letter', 'letters', 'mail_letters', $letter->id, null, [
+            'from_secretariat_id' => $from->id,
+            'to_secretariat_id' => $to->id,
+        ], $batch ? ['batch_id' => $batch->id, 'batch_no' => $batch->batch_no] : null);
+
+        return $hop;
     }
 
     public function confirmHardcopy(MailLetter $letter, Employee $actor): void
     {
-        $route = $this->pendingIncomingRoute($letter, $actor);
+        $this->confirmHardcopies($actor, [$letter->id]);
+    }
 
-        if (! $route) {
-            throw new \RuntimeException('No pending hardcopy receipt confirmation was found.');
+    /**
+     * Confirm receipt of the hardcopy of every letter in $letterIds that has a pending hop addressed to $actor (and,
+     * when $batch is given, belongs to that transmittal). Anything else in the list is ignored, never an error, so a
+     * stale or tampered selection can only ever confirm the actor's own pending hops. This is the only confirm path.
+     * Returns the number of hops confirmed.
+     *
+     * @param  array<int|string>  $letterIds
+     */
+    public function confirmHardcopies(Employee $actor, array $letterIds, ?LetterDispatchBatch $batch = null): int
+    {
+        $ids = collect($letterIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        return DB::transaction(function () use ($actor, $ids, $batch) {
+            $routes = RoutingHistory::query()
+                ->where('to_secretariat_id', $actor->id)
+                ->where('received_confirm', false)
+                ->whereIn('letter_id', $ids->all())
+                ->when($batch, fn (Builder $query) => $query->where('batch_id', $batch->id))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($routes->isEmpty()) {
+                throw new \RuntimeException('No pending hardcopy receipt confirmation was found.');
+            }
+
+            $letters = MailLetter::query()->whereIn('id', $routes->pluck('letter_id')->unique()->all())->get()->keyBy('id');
+
+            foreach ($routes as $route) {
+                $route->update([
+                    'received_confirm' => true,
+                    'confirmed_at' => now(),
+                    'confirmed_by_id' => $actor->id,
+                ]);
+
+                $this->markInReview($letters[$route->letter_id], $actor);
+
+                AuditLog::record('confirm_letter_hardcopy', 'letters', 'mail_letters', $route->letter_id, null, [
+                    'routing_history_id' => $route->id,
+                ], $route->batch_id ? ['batch_id' => $route->batch_id] : null);
+            }
+
+            $routes->pluck('batch_id')->filter()->unique()->each(fn ($batchId) => $this->refreshBatchProgress((int) $batchId));
+
+            return $routes->count();
+        });
+    }
+
+    /** confirmed_count / completed_at are recomputed from the hops, never incremented, so they cannot drift. */
+    protected function refreshBatchProgress(int $batchId): void
+    {
+        $batch = LetterDispatchBatch::query()->find($batchId);
+
+        if (! $batch) {
+            return;
         }
 
-        $route->update(['received_confirm' => true]);
-        $this->markInReview($letter, $actor);
+        $hops = $batch->routingHistories();
+        $pending = (clone $hops)->where('received_confirm', false)->count();
 
-        AuditLog::record('confirm_letter_hardcopy', 'letters', 'mail_letters', $letter->id, null, [
-            'routing_history_id' => $route->id,
+        $batch->update([
+            'confirmed_count' => (clone $hops)->where('received_confirm', true)->count(),
+            'completed_at' => $pending === 0 ? ($batch->completed_at ?? now()) : null,
         ]);
+    }
+
+    /** Hops addressed to $actor that still wait for their confirmation: the number on the Transmittals sidebar entry. */
+    public function pendingIncomingCount(Employee $actor): int
+    {
+        return RoutingHistory::query()
+            ->where('to_secretariat_id', $actor->id)
+            ->where('received_confirm', false)
+            ->count();
+    }
+
+    /** Quick filter "Awaiting my confirmation": letters with an unconfirmed hop addressed to $actor. */
+    public function whereAwaitingConfirmation(Builder $letters, Employee $actor): Builder
+    {
+        return $letters->whereHas('routingHistories', fn (Builder $hops) => $hops
+            ->where('to_secretariat_id', $actor->id)
+            ->where('received_confirm', false));
+    }
+
+    /**
+     * Quick filter "Ready to dispatch": the SQL twin of holdsLetter()/deskState() - the letter is open, no hop is
+     * waiting for $actor, and $actor's newest log for it (created_at, then id, as everywhere else) is Received or
+     * In Review.
+     */
+    public function whereReadyToDispatch(Builder $letters, Employee $actor): Builder
+    {
+        return $letters
+            ->whereNull('closed_at')
+            ->whereDoesntHave('routingHistories', fn (Builder $hops) => $hops
+                ->where('to_secretariat_id', $actor->id)
+                ->where('received_confirm', false))
+            ->whereHas('statusLogs', fn (Builder $logs) => $logs
+                ->where('secretariat_id', $actor->id)
+                ->whereIn('status', ['Received', 'In Review'])
+                ->whereNotExists(fn ($newer) => $newer
+                    ->select(DB::raw(1))
+                    ->from('letter_status_logs as newer')
+                    ->whereColumn('newer.letter_id', 'letter_status_logs.letter_id')
+                    ->whereColumn('newer.secretariat_id', 'letter_status_logs.secretariat_id')
+                    ->where(fn ($later) => $later
+                        ->whereColumn('newer.created_at', '>', 'letter_status_logs.created_at')
+                        ->orWhere(fn ($tie) => $tie
+                            ->whereColumn('newer.created_at', 'letter_status_logs.created_at')
+                            ->whereColumn('newer.id', '>', 'letter_status_logs.id')))));
     }
 
     public function close(MailLetter $letter, Employee $actor): void
@@ -117,12 +311,23 @@ class LetterWorkflowService
             throw new \RuntimeException('Only the creator can close this letter.');
         }
 
-        $letter->statusLogs()->update([
-            'status' => 'Closed',
-            'is_closed' => true,
-        ]);
+        DB::transaction(function () use ($letter, $actor) {
+            $locked = MailLetter::query()->lockForUpdate()->findOrFail($letter->id);
 
-        AuditLog::record('close_letter', 'letters', 'mail_letters', $letter->id);
+            if ($locked->isClosed()) {
+                throw new \RuntimeException('This letter is already closed.');
+            }
+
+            if ($locked->routingHistories()->where('received_confirm', false)->exists()) {
+                throw new \RuntimeException('This letter is still waiting for hardcopy confirmation and cannot be closed yet.');
+            }
+
+            $locked->update(['closed_at' => now(), 'closed_by_id' => $actor->id]);
+
+            AuditLog::record('close_letter', 'letters', 'mail_letters', $locked->id);
+        });
+
+        $letter->refresh();
     }
 
     public function reopen(MailLetter $letter, Employee $actor): void
@@ -132,17 +337,28 @@ class LetterWorkflowService
         }
 
         DB::transaction(function () use ($letter, $actor) {
-            $letter->statusLogs()->update(['is_closed' => false]);
+            $locked = MailLetter::query()->lockForUpdate()->findOrFail($letter->id);
 
-            LetterStatusLog::create([
-                'letter_id' => $letter->id,
-                'secretariat_id' => $actor->id,
-                'status' => 'In Review',
-                'is_closed' => false,
-            ]);
+            if (! $locked->isClosed()) {
+                throw new \RuntimeException('This letter is not closed.');
+            }
 
-            AuditLog::record('reopen_letter', 'letters', 'mail_letters', $letter->id);
+            $locked->update(['closed_at' => null, 'closed_by_id' => null]);
+
+            // Letters closed before closed_at existed had every holder's log rewritten to Closed, so nobody could
+            // act on them once reopened; hand those back to the creator. Otherwise the holder simply carries on.
+            if ($this->latestLogOf($locked)?->status === 'Closed') {
+                LetterStatusLog::create([
+                    'letter_id' => $locked->id,
+                    'secretariat_id' => $actor->id,
+                    'status' => 'In Review',
+                ]);
+            }
+
+            AuditLog::record('reopen_letter', 'letters', 'mail_letters', $locked->id);
         });
+
+        $letter->refresh();
     }
 
     public function updateLetter(MailLetter $letter, Employee $actor, array $data): void
@@ -167,6 +383,8 @@ class LetterWorkflowService
 
     public function addRemark(MailLetter $letter, Employee $actor, array $data): LetterRemark
     {
+        $this->assertMayAnnotate($letter, $actor);
+
         $remark = LetterRemark::create([
             'letter_id' => $letter->id,
             'author_id' => $actor->id,
@@ -193,6 +411,11 @@ class LetterWorkflowService
             throw new \RuntimeException('Only the remark creator can edit it.');
         }
 
+        $this->assertMayAnnotate($remark->letter, $actor);
+
+        $fields = ['manager_id', 'chief_manager_id', 'remark_content', 'secretary_remark_content'];
+        $old = $remark->only($fields);
+
         $remark->update([
             'manager_id' => $data['manager_id'] ?? null,
             'chief_manager_id' => $data['chief_manager_id'] ?? null,
@@ -201,16 +424,79 @@ class LetterWorkflowService
                 ? trim($data['secretary_remark_content'])
                 : null,
         ]);
+
+        AuditLog::record(
+            'update_letter_remark',
+            'letters',
+            'mail_letters',
+            $remark->letter_id,
+            $old,
+            $remark->only($fields),
+            ['remark_id' => $remark->id],
+        );
     }
 
-    public function canDispatch(MailLetter $letter, Employee $actor): bool
+    /** Whether $actor has the letter on their desk: confirmed, not yet dispatched, and the letter is open. */
+    public function holdsLetter(MailLetter $letter, Employee $actor): bool
     {
         $log = $this->currentLog($letter, $actor);
 
         return $log
             && in_array($log->status, ['Received', 'In Review'], true)
-            && ! $log->is_closed
+            && ! $letter->isClosed()
             && ! $this->pendingIncomingRoute($letter, $actor);
+    }
+
+    public function canDispatch(MailLetter $letter, Employee $actor): bool
+    {
+        return $this->holdsLetter($letter, $actor);
+    }
+
+    /**
+     * The actor's desk state for a whole page of letters in two queries (their status logs, their unconfirmed
+     * incoming hops), keyed by letter id: currentLog, pendingRoute, holdsLetter, canDispatch. Same rules as
+     * currentLog()/pendingIncomingRoute()/canDispatch(), without the per-row lookups.
+     *
+     * @param  Collection<int, MailLetter>  $letters
+     * @return Collection<int, array{currentLog: ?LetterStatusLog, pendingRoute: ?RoutingHistory, holdsLetter: bool, canDispatch: bool}>
+     */
+    public function deskState(Collection $letters, Employee $actor): Collection
+    {
+        $ids = $letters->pluck('id')->all();
+
+        $logs = LetterStatusLog::query()
+            ->whereIn('letter_id', $ids)
+            ->where('secretariat_id', $actor->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('letter_id');
+
+        $routes = RoutingHistory::query()
+            ->whereIn('letter_id', $ids)
+            ->where('to_secretariat_id', $actor->id)
+            ->where('received_confirm', false)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('letter_id');
+
+        return $letters->mapWithKeys(function (MailLetter $letter) use ($logs, $routes) {
+            $log = $logs->get($letter->id)?->first();
+            $pending = $routes->get($letter->id)?->first();
+
+            $holds = $log !== null
+                && in_array($log->status, ['Received', 'In Review'], true)
+                && ! $letter->isClosed()
+                && $pending === null;
+
+            return [$letter->id => [
+                'currentLog' => $log,
+                'pendingRoute' => $pending,
+                'holdsLetter' => $holds,
+                'canDispatch' => $holds,
+            ]];
+        });
     }
 
     public function currentLog(MailLetter $letter, Employee $actor): ?LetterStatusLog
@@ -219,6 +505,7 @@ class LetterWorkflowService
             ->where('letter_id', $letter->id)
             ->where('secretariat_id', $actor->id)
             ->latest()
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -229,6 +516,7 @@ class LetterWorkflowService
             ->where('to_secretariat_id', $actor->id)
             ->where('received_confirm', false)
             ->latest()
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -270,6 +558,31 @@ class LetterWorkflowService
             'chief_manager',
             'regional_chief_manager',
         ]);
+    }
+
+    /** Remarks are written by whoever has the letter on their desk, after confirming the hardcopy. */
+    protected function assertMayAnnotate(MailLetter $letter, Employee $actor): void
+    {
+        if ($letter->isClosed()) {
+            throw new \RuntimeException('This letter is closed. Re-open it before adding remarks.');
+        }
+
+        if ($this->pendingIncomingRoute($letter, $actor)) {
+            throw new \RuntimeException('Confirm hardcopy receipt before adding remarks to this letter.');
+        }
+
+        if (! $this->holdsLetter($letter, $actor)) {
+            throw new \RuntimeException('Only the current holder of this letter can add remarks.');
+        }
+    }
+
+    protected function latestLogOf(MailLetter $letter): ?LetterStatusLog
+    {
+        return LetterStatusLog::query()
+            ->where('letter_id', $letter->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     protected function nextSnNumber(int $regionId): string

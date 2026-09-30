@@ -39,7 +39,7 @@
                         <span>
                             <strong>{{ $notification->title }}</strong>
                             <small>{{ Str::limit($notification->message, 88) }}</small>
-                            <em><span class="mono">{{ $notification->letter?->sn_number ?: 'Letter' }}</span> · {{ $notification->created_at?->diffForHumans() }}</em>
+                            <em><span class="mono">{{ $notification->letter?->sn_number ?: ($notification->batch?->batch_no ?: 'Letter') }}</span> · {{ $notification->created_at?->diffForHumans() }}</em>
                         </span>
                     </button>
                 @empty

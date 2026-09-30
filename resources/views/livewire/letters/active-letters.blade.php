@@ -17,6 +17,20 @@
             <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
         @endif
 
+        @if ($lastBatchId)
+            <x-ui.alert tone="success" role="status" title="Transmittal {{ $lastBatchNo }} created">
+                The letters were handed over and the recipient has been notified.
+                <div class="alert-cta">
+                    <a href="{{ route('letters.transmittals.sheet', $lastBatchId) }}" target="_blank" rel="noopener" class="btn btn-sm">
+                        <x-ui.icon name="printer" class="icon-sm" />
+                        Print sheet
+                    </a>
+                    <a href="{{ route('letters.transmittals', ['tab' => 'sent', 'batch' => $lastBatchId]) }}" class="btn btn-sm btn-ghost">View transmittal</a>
+                    <button type="button" wire:click="dismissBatchNotice" class="btn btn-sm btn-ghost">Dismiss</button>
+                </div>
+            </x-ui.alert>
+        @endif
+
         <x-ui.card :padded="false">
             <div class="ui-toolbar">
                 <div class="tabs" role="group" aria-label="Show letters">
@@ -25,6 +39,12 @@
                 </div>
 
                 <div class="toolbar-filters">
+                    <div class="tabs" role="group" aria-label="Quick filters">
+                        <button type="button" wire:click="setQuickFilter('awaiting')" @class(['tab', 'active' => $quickFilter === 'awaiting']) aria-pressed="{{ $quickFilter === 'awaiting' ? 'true' : 'false' }}">Awaiting my confirmation</button>
+                        @if ($canForward)
+                            <button type="button" wire:click="setQuickFilter('ready')" @class(['tab', 'active' => $quickFilter === 'ready']) aria-pressed="{{ $quickFilter === 'ready' ? 'true' : 'false' }}">Ready to dispatch</button>
+                        @endif
+                    </div>
                     <select wire:model.live="typeFilter" class="form-input" aria-label="Letter type">
                         <option value="">All types</option>
                         <option value="Internal">Internal</option>
@@ -41,6 +61,15 @@
                 <x-ui.table label="Letters" pin-first>
                     <x-slot:head>
                         <tr>
+                            <th class="bulk-check">
+                                <input
+                                    type="checkbox"
+                                    wire:click="togglePage"
+                                    @checked($allOnPageSelected)
+                                    @disabled(! $hasActionableRows)
+                                    aria-label="Select every letter on this page that you can act on"
+                                >
+                            </th>
                             <th>SN#</th>
                             <th>Subject</th>
                             <th>Ref No</th>
@@ -54,12 +83,20 @@
 
                     @forelse ($letters as $letter)
                         @php
-                            $currentLog = $workflow->currentLog($letter, $employee);
-                            $pendingRoute = $workflow->pendingIncomingRoute($letter, $employee);
-                            $status = $currentLog?->status ?? 'Received';
+                            $state = $desk[$letter->id];
+                            $pendingRoute = $state['pendingRoute'];
+                            $status = $letter->isClosed() ? 'Closed' : ($state['currentLog']?->status ?? 'Received');
                             $latestLog = $letter->statusLogs->sortByDesc('created_at')->first();
+                            $tickable = $pendingRoute !== null || ($canForward && $state['canDispatch']);
                         @endphp
                         <tr wire:key="letter-{{ $letter->id }}" @class(['is-selected' => $selectedLetter?->id === $letter->id])>
+                            <td class="bulk-check">
+                                @if ($tickable)
+                                    <input type="checkbox" wire:model.live="selected" value="{{ $letter->id }}" aria-label="Select {{ $letter->sn_number }}">
+                                @else
+                                    <input type="checkbox" disabled title="Not awaiting your confirmation and not on your desk to dispatch" aria-label="{{ $letter->sn_number }} cannot be selected">
+                                @endif
+                            </td>
                             <td class="mono nowrap">{{ $letter->sn_number }}</td>
                             <td>
                                 <span class="ui-cell-stack">
@@ -81,7 +118,7 @@
                                         </button>
                                     @endif
 
-                                    @if ($canForward && $workflow->canDispatch($letter, $employee))
+                                    @if ($canForward && $state['canDispatch'])
                                         <button type="button" wire:click="openLetter({{ $letter->id }})" class="btn btn-sm">
                                             <x-ui.icon name="send" class="icon-sm" />
                                             Dispatch
@@ -96,7 +133,7 @@
                             </td>
                         </tr>
                     @empty
-                        <x-ui.empty-row :colspan="8" icon="inbox" :title="$tab === 'closed' ? 'No closed letters found.' : 'No letters found.'" description="Letters routed to your desk appear here." />
+                        <x-ui.empty-row :colspan="9" icon="inbox" :title="$tab === 'closed' ? 'No closed letters found.' : 'No letters found.'" description="Letters routed to your desk appear here." />
                     @endforelse
 
                     @if (method_exists($letters, 'links'))
@@ -117,13 +154,102 @@
             </div>
         </x-ui.card>
 
+        @if ($bulk['count'] > 0)
+            <div class="bulk-bar" role="region" aria-label="Bulk actions" wire:key="bulk-bar">
+                <div class="bulk-bar-text">
+                    <strong>{{ $bulk['count'] }} selected</strong>
+                    <span class="ui-hint">
+                        @if ($bulk['confirmable'] > 0 && $bulk['dispatchable'] > 0)
+                            {{ $bulk['confirmable'] }} to confirm, {{ $bulk['dispatchable'] }} to dispatch. Each button skips the rest.
+                        @elseif ($bulk['confirmable'] > 0)
+                            {{ $bulk['confirmable'] }} awaiting your confirmation{{ $bulk['count'] > $bulk['confirmable'] ? '; the other '.($bulk['count'] - $bulk['confirmable']).' will be skipped' : '' }}.
+                        @elseif ($bulk['dispatchable'] > 0)
+                            {{ $bulk['dispatchable'] }} ready to dispatch{{ $bulk['count'] > $bulk['dispatchable'] ? '; the other '.($bulk['count'] - $bulk['dispatchable']).' will be skipped' : '' }}.
+                        @else
+                            None of these can be acted on right now.
+                        @endif
+                    </span>
+                </div>
+                <div class="row-actions">
+                    @if ($canForward)
+                        <button type="button" wire:click="openBulkDispatch" wire:loading.attr="disabled" class="btn btn-primary btn-sm" @disabled($bulk['dispatchable'] === 0)>
+                            <x-ui.icon name="send" class="icon-sm" />
+                            Dispatch selected ({{ $bulk['dispatchable'] }})
+                        </button>
+                    @endif
+                    <button type="button" wire:click="confirmSelected" wire:loading.attr="disabled" class="btn btn-sm" @disabled($bulk['confirmable'] === 0)>
+                        <x-ui.icon name="clipboard-check" class="icon-sm" />
+                        Confirm hardcopies ({{ $bulk['confirmable'] }})
+                    </button>
+                    <button type="button" wire:click="clearSelection" class="btn btn-sm btn-ghost">Clear</button>
+                </div>
+            </div>
+        @endif
+
+        @if ($bulkDispatchOpen)
+            <x-ui.drawer
+                title="Dispatch selected letters"
+                :description="count($bulkLetterIds).' '.\Illuminate\Support\Str::plural('letter', count($bulkLetterIds)).' in one transmittal'"
+                show="true"
+                close="$wire.closeBulkDispatch()"
+                width="42rem"
+                wire:key="bulk-dispatch-panel"
+            >
+                <div class="ui-stack">
+                    @if ($bulkSkipped > 0)
+                        <x-ui.alert tone="warning">{{ $bulkSkipped }} of the selected {{ \Illuminate\Support\Str::plural('letter', $bulkSkipped) }} cannot be dispatched by you right now and {{ $bulkSkipped === 1 ? 'is' : 'are' }} left out.</x-ui.alert>
+                    @endif
+
+                    @if (count($bulkLetterIds) > $maxBatchSize)
+                        <x-ui.alert tone="danger">A transmittal can hold at most {{ $maxBatchSize }} letters. Untick some and try again.</x-ui.alert>
+                    @endif
+
+                    <x-ui.table label="Letters in this transmittal" :sticky="false" dense>
+                        <x-slot:head>
+                            <tr>
+                                <th>SN#</th>
+                                <th>Subject</th>
+                                <th>Ref No</th>
+                            </tr>
+                        </x-slot:head>
+                        @foreach ($bulk['dispatchLetters'] as $dispatchLetter)
+                            <tr wire:key="bulk-letter-{{ $dispatchLetter->id }}">
+                                <td class="mono nowrap">{{ $dispatchLetter->sn_number }}</td>
+                                <td>{{ $dispatchLetter->subject }}</td>
+                                <td @class(['mono', 'cell-muted' => ! $dispatchLetter->ref_no])>{{ $dispatchLetter->ref_no ?: '-' }}</td>
+                            </tr>
+                        @endforeach
+                    </x-ui.table>
+
+                    <div class="ui-form-grid">
+                        <x-ui.input label="Search secretariat" wire:model.live="bulkSearch" placeholder="Name or staff ID" icon="search" />
+                        <x-ui.select label="Recipient" wire:model="bulkDispatchToId">
+                            <option value="">Select secretary</option>
+                            @foreach ($bulkSecretaries as $secretary)
+                                <option value="{{ $secretary->id }}">{{ $secretary->full_name }} · {{ $secretary->staff_id }}</option>
+                            @endforeach
+                        </x-ui.select>
+                    </div>
+                    <x-ui.textarea label="Note (optional)" wire:model="bulkNote" rows="2" maxlength="500" placeholder="e.g. Morning mail, CM minutes" />
+
+                    <div class="ui-form-actions">
+                        <button type="button" wire:click="dispatchSelected" wire:loading.attr="disabled" class="btn btn-primary" @disabled(count($bulkLetterIds) === 0 || count($bulkLetterIds) > $maxBatchSize)>
+                            <x-ui.icon name="send" />
+                            Dispatch {{ count($bulkLetterIds) }} {{ \Illuminate\Support\Str::plural('letter', count($bulkLetterIds)) }}
+                        </button>
+                    </div>
+                </div>
+            </x-ui.drawer>
+        @endif
+
         @if ($selectedLetter)
             @php
-                $selectedLog = $workflow->currentLog($selectedLetter, $employee);
-                $selectedStatus = $selectedLog?->status ?? 'Received';
-                $selectedPendingRoute = $workflow->pendingIncomingRoute($selectedLetter, $employee);
+                $selectedLog = $selectedDesk['currentLog'];
+                $selectedPendingRoute = $selectedDesk['pendingRoute'];
                 $isCreator = $selectedLetter->created_by_id === $employee->id;
-                $isClosed = (bool) $selectedLog?->is_closed;
+                $isClosed = $selectedLetter->isClosed();
+                $selectedStatus = $isClosed ? 'Closed' : ($selectedLog?->status ?? 'Received');
+                $hasUnconfirmedHop = $selectedLetter->routingHistories->contains('received_confirm', false);
             @endphp
 
             <x-ui.drawer
@@ -142,7 +268,9 @@
                         </div>
 
                         <div class="row-actions">
-                            @if ($isCreator && ! $isClosed)
+                            @if ($isCreator && ! $isClosed && $hasUnconfirmedHop)
+                                <span class="ui-hint">Waiting for hardcopy confirmation before this letter can be closed.</span>
+                            @elseif ($isCreator && ! $isClosed)
                                 <button
                                     type="button"
                                     class="btn btn-sm btn-danger"
@@ -293,7 +421,7 @@
                                                     <p>{{ $remark->secretary_remark_content }}</p>
                                                 </div>
                                             @endif
-                                            @if ($remark->author_id === $employee->id)
+                                            @if ($remark->author_id === $employee->id && $selectedDesk['holdsLetter'])
                                                 <div>
                                                     <button type="button" wire:click="startEditRemark({{ $remark->id }})" class="btn btn-sm btn-ghost">
                                                         <x-ui.icon name="pencil" class="icon-sm" />
@@ -307,7 +435,9 @@
                                     <p class="ui-hint">No remarks yet.</p>
                                 @endforelse
 
-                                @if ($canRemark)
+                                @if ($canRemark && ! $selectedDesk['holdsLetter'])
+                                    <p class="ui-hint">Remarks can be added by whoever currently holds this open letter.</p>
+                                @elseif ($canRemark)
                                     <div class="remark-compose ui-stack">
                                         <h4 class="remark-compose-title">Add a remark</h4>
                                         <div class="ui-form-grid">
@@ -343,7 +473,7 @@
 
                                 @if (! $canForward)
                                     <x-ui.alert tone="warning">You do not have permission to dispatch letters.</x-ui.alert>
-                                @elseif (! $workflow->canDispatch($selectedLetter, $employee))
+                                @elseif (! $selectedDesk['canDispatch'])
                                     <x-ui.alert tone="warning">Dispatch is disabled until hardcopy receipt is confirmed or while this letter is closed/dispatched.</x-ui.alert>
                                 @else
                                     <div class="ui-stack">

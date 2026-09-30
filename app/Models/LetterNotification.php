@@ -15,12 +15,14 @@ class LetterNotification extends Model
         'message',
         'secretariat_id',
         'letter_id',
+        'batch_id',
         'is_read',
     ];
 
     protected $casts = [
         'secretariat_id' => 'integer',
         'letter_id' => 'integer',
+        'batch_id' => 'integer',
         'is_read' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -34,5 +36,10 @@ class LetterNotification extends Model
     public function letter(): BelongsTo
     {
         return $this->belongsTo(MailLetter::class, 'letter_id');
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(LetterDispatchBatch::class, 'batch_id');
     }
 }

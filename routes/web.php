@@ -11,6 +11,7 @@ use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
 use App\Http\Controllers\Leave\LeaveHrContactsController;
+use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
@@ -165,6 +166,10 @@ Route::middleware(['auth', 'active', 'module:letters'])
             ->middleware('permission:letters.create')
             ->name('create');
         Route::get('/closed', fn () => view('letters.active', ['closed' => true]))->name('closed');
+        Route::get('/transmittals', fn () => view('letters.transmittals'))->name('transmittals');
+        Route::get('/transmittals/{batch}/sheet', [TransmittalSheetController::class, 'show'])
+            ->whereNumber('batch')
+            ->name('transmittals.sheet');
     });
 
 Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team'])

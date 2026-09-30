@@ -265,6 +265,9 @@
                                 >
                                     <x-ui.icon :name="$item['icon_name'] ?? 'circle'" />
                                     <span class="side-label">{{ $item['label'] ?? '' }}</span>
+                                    @if (($item['badge'] ?? 0) > 0)
+                                        <span class="side-label side-count"><span class="sr-only-text">{{ __('Pending: ') }}</span>{{ $item['badge'] > 99 ? '99+' : $item['badge'] }}</span>
+                                    @endif
                                 </a>
                             @endif
                         @endforeach

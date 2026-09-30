@@ -34,28 +34,23 @@ class Dashboard extends Component
 
         $stats = [
             'total' => (clone $visible)->count(),
-            'pending' => (clone $visible)->whereHas('statusLogs', function ($query) use ($employee) {
+            'pending' => (clone $visible)->whereNull('closed_at')->whereHas('statusLogs', function ($query) use ($employee) {
                 $query->where('secretariat_id', $employee->id)
-                    ->whereIn('status', ['Received', 'In Review'])
-                    ->where('is_closed', false);
+                    ->whereIn('status', ['Received', 'In Review']);
             })->count(),
-            'dispatched' => (clone $visible)->whereHas('statusLogs', function ($query) use ($employee) {
+            'dispatched' => (clone $visible)->whereNull('closed_at')->whereHas('statusLogs', function ($query) use ($employee) {
                 $query->where('secretariat_id', $employee->id)
-                    ->where('status', 'Dispatched')
-                    ->where('is_closed', false);
+                    ->where('status', 'Dispatched');
             })->count(),
-            'closed' => (clone $visible)->whereHas('statusLogs', function ($query) use ($employee) {
-                $query->where('secretariat_id', $employee->id)
-                    ->where('is_closed', true);
-            })->count(),
+            'closed' => (clone $visible)->whereNotNull('closed_at')->count(),
         ];
 
         $attentionLetters = MailLetter::query()
             ->with(['region', 'memoSender', 'statusLogs.secretariat'])
+            ->whereNull('closed_at')
             ->whereHas('statusLogs', function ($query) use ($employee) {
                 $query->where('secretariat_id', $employee->id)
-                    ->whereIn('status', ['Received', 'In Review'])
-                    ->where('is_closed', false);
+                    ->whereIn('status', ['Received', 'In Review']);
             })
             ->latest()
             ->limit(8)
