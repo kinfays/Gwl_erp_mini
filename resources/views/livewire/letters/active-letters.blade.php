@@ -250,15 +250,13 @@
                         @endforeach
                     </x-ui.table>
 
-                    <div class="ui-form-grid">
-                        <x-ui.input label="Search secretariat" wire:model.live="bulkSearch" placeholder="Name or staff ID" icon="search" />
-                        <x-ui.select label="Recipient" wire:model="bulkDispatchToId">
-                            <option value="">Select secretary</option>
-                            @foreach ($bulkSecretaries as $secretary)
-                                <option value="{{ $secretary->id }}">{{ $secretary->full_name }} · {{ $secretary->staff_id }}</option>
-                            @endforeach
-                        </x-ui.select>
-                    </div>
+                    @include('livewire.letters.partials.recipient-picker', [
+                        'picker' => $bulkPicker,
+                        'toModel' => 'bulkDispatchToId',
+                        'searchModel' => 'bulkSearch',
+                        'scopeModel' => 'bulkScope',
+                        'scopeValue' => $bulkScope,
+                    ])
                     <x-ui.textarea label="Note (optional)" wire:model="bulkNote" rows="2" maxlength="500" placeholder="e.g. Morning mail, CM minutes" />
 
                     <div class="ui-form-actions">
@@ -357,6 +355,15 @@
                                 <dt>Current Location</dt>
                                 <dd>{{ $selectedLetter->statusLogs->sortByDesc('created_at')->first()?->secretariat?->full_name ?? '-' }}</dd>
                             </div>
+                            @if ($isClosed && $selectedLetter->latestDelivery)
+                                <div>
+                                    <dt>Delivered to</dt>
+                                    <dd>
+                                        {{ $selectedLetter->latestDelivery->addresseeName() }}
+                                        <span class="ui-hint">{{ $selectedLetter->latestDelivery->delivered_at?->format('d M Y H:i') }} · by {{ $selectedLetter->latestDelivery->deliveredBy?->full_name }}@if ($selectedLetter->latestDelivery->note) · {{ $selectedLetter->latestDelivery->note }}@endif</span>
+                                    </dd>
+                                </div>
+                            @endif
                         </dl>
 
                         <section aria-labelledby="letter-routing-title">
@@ -394,6 +401,9 @@
                         <div class="tabs" role="group" aria-label="Letter actions">
                             <button type="button" wire:click="$set('detailTab', 'remarks')" @class(['tab', 'active' => $detailTab === 'remarks']) aria-pressed="{{ $detailTab === 'remarks' ? 'true' : 'false' }}">Remarks</button>
                             <button type="button" wire:click="$set('detailTab', 'dispatch')" @class(['tab', 'active' => $detailTab === 'dispatch']) aria-pressed="{{ $detailTab === 'dispatch' ? 'true' : 'false' }}">Dispatch</button>
+                            @if ($selectedDesk['holdsLetter'])
+                                <button type="button" wire:click="$set('detailTab', 'deliver')" @class(['tab', 'active' => $detailTab === 'deliver']) aria-pressed="{{ $detailTab === 'deliver' ? 'true' : 'false' }}">Deliver</button>
+                            @endif
                             @if ($isCreator)
                                 <button type="button" wire:click="$set('detailTab', 'edit')" @class(['tab', 'active' => $detailTab === 'edit']) aria-pressed="{{ $detailTab === 'edit' ? 'true' : 'false' }}">Edit</button>
                             @endif
@@ -415,6 +425,10 @@
 
                                         @if ($editingRemarkId === $remark->id)
                                             <div class="ui-stack">
+                                                @if ($reviewerTier)
+                                                    <x-ui.input :label="$reviewerTier === 'chief' ? 'Chief Manager' : 'Manager'" :value="$employee->full_name" readonly disabled hint="Recorded as you." />
+                                                    <x-ui.textarea label="Your remark" wire:model="editingRemarkContent" rows="3" />
+                                                @else
                                                 <div class="ui-form-grid">
                                                     <x-form.combobox
                                                         label="Manager"
@@ -433,6 +447,7 @@
                                                 </div>
                                                 <x-ui.textarea label="Manager remarks" wire:model="editingRemarkContent" rows="3" />
                                                 <x-ui.textarea label="Secretary remarks" wire:model="editingSecretaryRemarkContent" rows="2" placeholder="Optional" />
+                                                @endif
                                                 <div class="ui-form-actions">
                                                     <button type="button" wire:click="updateRemark" class="btn btn-primary btn-sm">Save</button>
                                                 </div>
@@ -481,6 +496,10 @@
                                 @elseif ($canRemark)
                                     <div class="remark-compose ui-stack">
                                         <h4 class="remark-compose-title">Add a remark</h4>
+                                        @if ($reviewerTier)
+                                            <x-ui.input :label="$reviewerTier === 'chief' ? 'Chief Manager' : 'Manager'" :value="$employee->full_name" readonly disabled hint="You are holding this letter, so the remark is recorded as yours." />
+                                            <x-ui.textarea label="Your remark" wire:model="remarkContent" rows="3" placeholder="Add remark" />
+                                        @else
                                         <div class="ui-form-grid">
                                             <x-form.combobox
                                                 label="Manager"
@@ -499,6 +518,7 @@
                                         </div>
                                         <x-ui.textarea label="Manager remarks" wire:model="remarkContent" rows="3" placeholder="Add remark" />
                                         <x-ui.textarea label="Secretary remarks" wire:model="secretaryRemarkContent" rows="2" placeholder="Optional" />
+                                        @endif
                                         <div class="ui-form-actions">
                                             <button type="button" wire:click="addRemark" class="btn btn-primary">
                                                 <x-ui.icon name="plus" />
@@ -518,15 +538,13 @@
                                     <x-ui.alert tone="warning">Dispatch is disabled until hardcopy receipt is confirmed or while this letter is closed/dispatched.</x-ui.alert>
                                 @else
                                     <div class="ui-stack">
-                                        <div class="ui-form-grid">
-                                            <x-ui.input label="Search secretariat" wire:model.live="secretarySearch" placeholder="Name or staff ID" icon="search" />
-                                            <x-ui.select label="Recipient" wire:model="dispatchToId">
-                                                <option value="">Select secretary</option>
-                                                @foreach ($secretaries as $secretary)
-                                                    <option value="{{ $secretary->id }}">{{ $secretary->full_name }} · {{ $secretary->staff_id }}</option>
-                                                @endforeach
-                                            </x-ui.select>
-                                        </div>
+                                        @include('livewire.letters.partials.recipient-picker', [
+                                            'picker' => $picker,
+                                            'toModel' => 'dispatchToId',
+                                            'searchModel' => 'recipientSearch',
+                                            'scopeModel' => 'dispatchScope',
+                                            'scopeValue' => $dispatchScope,
+                                        ])
                                         <div class="ui-form-actions">
                                             <button type="button" wire:click="dispatchLetter" class="btn btn-primary">
                                                 <x-ui.icon name="send" />
@@ -535,6 +553,44 @@
                                         </div>
                                     </div>
                                 @endif
+                            </section>
+                        @elseif ($detailTab === 'deliver' && $selectedDesk['holdsLetter'])
+                            <section class="letter-section" aria-labelledby="letter-deliver-title">
+                                <h3 id="letter-deliver-title" class="ui-panel-title">Deliver to addressee</h3>
+                                <p class="ui-hint">Record who took the hardcopy. This is the last step: the letter is closed. The addressee needs no login; you record the paper signature.</p>
+
+                                <div class="ui-stack">
+                                    <div class="tabs" role="group" aria-label="Who received it">
+                                        <button type="button" wire:click="$set('deliverMode', 'employee')" @class(['tab', 'active' => $deliverMode === 'employee']) aria-pressed="{{ $deliverMode === 'employee' ? 'true' : 'false' }}">Staff member</button>
+                                        <button type="button" wire:click="$set('deliverMode', 'name')" @class(['tab', 'active' => $deliverMode === 'name']) aria-pressed="{{ $deliverMode === 'name' ? 'true' : 'false' }}">Someone else</button>
+                                    </div>
+
+                                    @if ($deliverMode === 'employee')
+                                        <div class="ui-form-grid">
+                                            <x-ui.input label="Search staff" wire:model.live="deliverEmployeeSearch" placeholder="Name or staff ID" icon="search" />
+                                            <x-ui.select label="Received by" wire:model="deliverEmployeeId">
+                                                <option value="">Select staff member</option>
+                                                @foreach ($deliverEmployees as $person)
+                                                    <option value="{{ $person->id }}">{{ $workflow->recipientLabel($person) }}</option>
+                                                @endforeach
+                                            </x-ui.select>
+                                        </div>
+                                    @else
+                                        <x-ui.input label="Received by (name)" wire:model="deliverName" placeholder="Full name of the person who took the letter" />
+                                    @endif
+
+                                    <div class="ui-form-grid">
+                                        <x-ui.input label="Delivered at" type="datetime-local" wire:model="deliverAt" hint="Leave blank for now." />
+                                        <x-ui.input label="Note (optional)" wire:model="deliverNote" maxlength="500" placeholder="e.g. Collected from the front desk" />
+                                    </div>
+
+                                    <div class="ui-form-actions">
+                                        <button type="button" wire:click="deliverLetter" wire:loading.attr="disabled" class="btn btn-primary">
+                                            <x-ui.icon name="check" />
+                                            Record delivery and close
+                                        </button>
+                                    </div>
+                                </div>
                             </section>
                         @elseif ($detailTab === 'edit' && $isCreator)
                             <section class="letter-section" aria-labelledby="letter-edit-title">

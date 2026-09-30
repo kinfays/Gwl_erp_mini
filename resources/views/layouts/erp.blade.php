@@ -124,7 +124,7 @@
                                 class="app-module"
                                 title="{{ $moduleTab['title'] ?? '' }}"
                                 @if ($moduleTab['active'] ?? false) aria-current="page" @endif
-                            >{{ $moduleTab['short'] ?? ($moduleTab['title'] ?? '') }}</a>
+                            >{{ $moduleTab['short'] ?? ($moduleTab['title'] ?? '') }}@if (($moduleTab['badge'] ?? 0) > 0)<span class="module-count"><span class="sr-only-text">{{ __('Pending: ') }}</span>{{ $moduleTab['badge'] > 99 ? '99+' : $moduleTab['badge'] }}</span>@endif</a>
                         @endforeach
                     </nav>
                 @endif
@@ -145,7 +145,8 @@
 
                     <livewire:notifications.general-bell />
 
-                    @if (($module ?? null) === 'letters')
+                    {{-- The letters bell on every page for anyone with the Letters module: a manager handed a letter is usually in Leave. --}}
+                    @if (collect($modules)->contains('slug', 'letters'))
                         <livewire:letters.notifications />
                     @endif
 
@@ -247,6 +248,9 @@
                                 >
                                     <x-ui.icon :name="$moduleLink['icon_name'] ?? 'layout-dashboard'" />
                                     <span class="side-label">{{ $moduleLink['title'] ?? '' }}</span>
+                                    @if (($moduleLink['badge'] ?? 0) > 0)
+                                        <span class="side-label side-count"><span class="sr-only-text">{{ __('Pending: ') }}</span>{{ $moduleLink['badge'] > 99 ? '99+' : $moduleLink['badge'] }}</span>
+                                    @endif
                                 </a>
                             @endforeach
                         </nav>

@@ -4,12 +4,14 @@ namespace App\Services\Letters;
 
 use App\Models\AuditLog;
 use App\Models\Employee;
+use App\Models\LetterDelivery;
 use App\Models\LetterDispatchBatch;
 use App\Models\LetterNotification;
 use App\Models\LetterRemark;
 use App\Models\LetterSnCounter;
 use App\Models\LetterStatusLog;
 use App\Models\MailLetter;
+use App\Models\Permission;
 use App\Models\Region;
 use App\Models\RoutingHistory;
 use Carbon\Carbon;
@@ -68,7 +70,17 @@ class LetterWorkflowService
             throw new \RuntimeException('Dispatch recipient must be different from the current secretariat.');
         }
 
+        $this->assertEligibleRecipient($from, $to);
+
         DB::transaction(fn () => $this->recordHop($letter, $from, $to));
+    }
+
+    /** The id behind the picker is never trusted: the recipient must be someone recipientsQuery() would list for $from. */
+    protected function assertEligibleRecipient(Employee $from, Employee $to): void
+    {
+        if (! $this->recipientsQuery(null, $from)->whereKey($to->id)->exists()) {
+            throw new \RuntimeException('The selected recipient cannot receive letters.');
+        }
     }
 
     /**
@@ -95,9 +107,7 @@ class LetterWorkflowService
             throw new \RuntimeException('Dispatch recipient must be different from the current secretariat.');
         }
 
-        if (! $this->secretaryQuery()->whereKey($to->id)->exists()) {
-            throw new \RuntimeException('The selected recipient cannot receive letters.');
-        }
+        $this->assertEligibleRecipient($from, $to);
 
         $note = filled($note) ? Str::limit(trim($note), 500, '') : null;
 
@@ -730,6 +740,74 @@ class LetterWorkflowService
         $letter->refresh();
     }
 
+    /**
+     * The last step: the current holder hands the hardcopy to its addressee and records who took it and when. The
+     * addressee needs no login; the holder records the paper signature. Exactly one of a staff member
+     * (`delivered_to_employee_id`) or an outside party's name (`delivered_to_name`). Closes the letter at letter level
+     * (closer = the holder); a manual close/reopen stays with the creator. `delivered_at` defaults to now and cannot be
+     * in the future; `note` is optional.
+     *
+     * @param  array{delivered_to_employee_id?: int|string|null, delivered_to_name?: ?string, delivered_at?: mixed, note?: ?string}  $data
+     */
+    public function deliver(MailLetter $letter, Employee $holder, array $data): LetterDelivery
+    {
+        $toEmployeeId = filled($data['delivered_to_employee_id'] ?? null) ? (int) $data['delivered_to_employee_id'] : null;
+        $toName = filled($data['delivered_to_name'] ?? null) ? trim((string) $data['delivered_to_name']) : null;
+
+        if (($toEmployeeId === null) === ($toName === null)) {
+            throw new \RuntimeException('Record who received the letter: choose a staff member or type the name of the person, not both and not neither.');
+        }
+
+        if ($toEmployeeId !== null && ! Employee::query()->whereKey($toEmployeeId)->exists()) {
+            throw new \RuntimeException('The selected addressee was not found.');
+        }
+
+        $deliveredAt = filled($data['delivered_at'] ?? null) ? Carbon::parse($data['delivered_at']) : now();
+
+        if ($deliveredAt->isAfter(now()->addMinutes(5))) {
+            throw new \RuntimeException('The delivery time cannot be in the future.');
+        }
+
+        return DB::transaction(function () use ($letter, $holder, $toEmployeeId, $toName, $deliveredAt, $data) {
+            $locked = MailLetter::query()->lockForUpdate()->findOrFail($letter->id);
+
+            if ($locked->isClosed()) {
+                throw new \RuntimeException('This letter is already closed.');
+            }
+
+            if ($this->pendingIncomingRoute($locked, $holder)) {
+                throw new \RuntimeException('Confirm hardcopy receipt before delivering this letter.');
+            }
+
+            if (! $this->holdsLetter($locked, $holder)) {
+                throw new \RuntimeException('Only the current holder of this letter can record its delivery.');
+            }
+
+            $delivery = LetterDelivery::create([
+                'letter_id' => $locked->id,
+                'delivered_to_employee_id' => $toEmployeeId,
+                'delivered_to_name' => $toName,
+                'delivered_by_id' => $holder->id,
+                'delivered_at' => $deliveredAt,
+                'note' => $this->cleanNote($data['note'] ?? null),
+            ]);
+
+            $locked->update(['closed_at' => now(), 'closed_by_id' => $holder->id]);
+
+            AuditLog::record('deliver_letter', 'letters', 'mail_letters', $locked->id, null, [
+                'delivery_id' => $delivery->id,
+                'delivered_to_employee_id' => $toEmployeeId,
+                'delivered_to_name' => $toName,
+                'delivered_by_id' => $holder->id,
+                'delivered_at' => $deliveredAt->toDateTimeString(),
+            ], $delivery->note ? ['note' => $delivery->note] : null);
+
+            $letter->refresh();
+
+            return $delivery;
+        });
+    }
+
     public function reopen(MailLetter $letter, Employee $actor): void
     {
         if ($letter->created_by_id !== $actor->id) {
@@ -784,6 +862,7 @@ class LetterWorkflowService
     public function addRemark(MailLetter $letter, Employee $actor, array $data): LetterRemark
     {
         $this->assertMayAnnotate($letter, $actor);
+        $this->assertReviewerMatchesHolder($actor, $data);
 
         $remark = LetterRemark::create([
             'letter_id' => $letter->id,
@@ -812,8 +891,9 @@ class LetterWorkflowService
         }
 
         $this->assertMayAnnotate($remark->letter, $actor);
+        $this->assertReviewerMatchesHolder($actor, $data);
 
-        $fields = ['manager_id', 'chief_manager_id', 'remark_content', 'secretary_remark_content'];
+        $fields =['manager_id', 'chief_manager_id', 'remark_content', 'secretary_remark_content'];
         $old = $remark->only($fields);
 
         $remark->update([
@@ -926,38 +1006,187 @@ class LetterWorkflowService
             ->whereHas('statusLogs', fn (Builder $query) => $query->where('secretariat_id', $actor->id));
     }
 
-    public function secretaryQuery(?string $search = null): Builder
+    /**
+     * Who $actor may hand a letter to: active, visible employees whose user can sign in and holds `letters.view` through
+     * a role that also gives the Letters module. By permission, not by role name, so an admin can extend it from the role
+     * editor. $scope narrows by place: 'mine' (the actor's own office), 'head_office', or null / 'any' for everyone.
+     * The actor is never their own recipient.
+     */
+    public function recipientsQuery(?string $search, Employee $actor, ?string $scope = null): Builder
     {
         return Employee::query()
             ->active()
             ->visibleInErp()
-            ->where(fn (Builder $query) => $this->whereHasAnyUserRole($query, ['secretary']))
-            ->when($search, function (Builder $query) use ($search) {
-                $query->where(function (Builder $searchQuery) use ($search) {
-                    $searchQuery
-                        ->where('full_name', 'like', '%' . $search . '%')
-                        ->orWhere('staff_id', 'like', '%' . $search . '%')
-                        ->orWhere('email', 'like', '%' . $search . '%');
-                });
+            ->whereKeyNot($actor->id)
+            ->where(fn (Builder $query) => $this->whereHasUserWithPermission($query, 'letters.view', withModule: true))
+            ->when($scope === 'mine', fn (Builder $query) => $query->where(fn (Builder $office) => $this->whereInActorsOffice($office, $actor, sameDepartment: false)))
+            ->when($scope === 'head_office', fn (Builder $query) => $query->where('location_type', 'HeadOffice'))
+            ->when(filled($search), function (Builder $query) use ($search) {
+                $like = '%'.trim($search).'%';
+
+                $query->where(fn (Builder $match) => $match
+                    ->where('full_name', 'like', $like)
+                    ->orWhere('staff_id', 'like', $like)
+                    ->orWhereHas('department', fn (Builder $department) => $department->where('department_name', 'like', $like)));
             })
             ->orderBy('full_name');
     }
 
+    /** "Name · Department · Location", the label every recipient carries in the picker. */
+    public function recipientLabel(Employee $employee): string
+    {
+        return collect([
+            $employee->full_name,
+            $employee->department?->department_name,
+            $employee->district?->district_name,
+        ])->filter()->join(' · ');
+    }
+
+    /**
+     * The recipient picker for one or several letters the actor is about to hand on: the previous holder (who handed
+     * the letter(s) to the actor, when it is the same person for all of them) and recent recipients pinned on top, then
+     * the matches for $search and $scope split into Secretaries (people who can record letters) and Managers (the
+     * rest). Every one of them is an eligible recipient (recipientsQuery), but the picker is never trusted: dispatch()
+     * and dispatchBatch() check again.
+     *
+     * @param  Collection<int, MailLetter>  $letters
+     * @return array{previous: ?Employee, recent: Collection<int, Employee>, secretaries: Collection<int, Employee>, managers: Collection<int, Employee>}
+     */
+    public function recipientPicker(Employee $actor, Collection $letters, ?string $search, string $scope): array
+    {
+        $with = ['department', 'district'];
+        $previous = $this->previousHolderFor($letters, $actor);
+
+        $recentIds = RoutingHistory::query()
+            ->where('from_secretariat_id', $actor->id)
+            ->unresolved()
+            ->groupBy('to_secretariat_id')
+            ->selectRaw('to_secretariat_id, max(id) as last_hop')
+            ->orderByDesc('last_hop')
+            ->limit(8)
+            ->pluck('to_secretariat_id');
+
+        $recent = $this->recipientsQuery(null, $actor)
+            ->whereIn('id', $recentIds->all())
+            ->when($previous, fn (Builder $query) => $query->whereKeyNot($previous->id))
+            ->with($with)
+            ->get()
+            ->sortBy(fn (Employee $employee) => $recentIds->search($employee->id))
+            ->take(5)
+            ->values();
+
+        $pinned = $recent->pluck('id')->when($previous, fn (Collection $ids) => $ids->push($previous->id))->all();
+
+        $matches = $this->recipientsQuery($search, $actor, $scope)
+            ->when($pinned !== [], fn (Builder $query) => $query->whereNotIn('id', $pinned))
+            ->with($with)
+            ->limit(40)
+            ->get();
+
+        // "Secretary" is what people who can record letters are; everyone else eligible is shown as a manager.
+        $secretaryIds = $matches->isEmpty() ? collect() : Employee::query()
+            ->whereIn('id', $matches->pluck('id')->all())
+            ->where(fn (Builder $query) => $this->whereHasUserWithPermission($query, 'letters.create', withModule: false))
+            ->pluck('id');
+
+        [$secretaries, $managers] = $matches->partition(fn (Employee $employee) => $secretaryIds->contains($employee->id));
+
+        return [
+            'previous' => $previous,
+            'recent' => $recent,
+            'secretaries' => $secretaries->values(),
+            'managers' => $managers->values(),
+        ];
+    }
+
+    /**
+     * The one person who handed all of $letters to $actor, if they are still an eligible recipient: "Return to
+     * previous holder". Null when any letter never reached the actor by a hand-over (they recorded it themselves) or
+     * when they came from different people.
+     *
+     * @param  Collection<int, MailLetter>  $letters
+     */
+    public function previousHolderFor(Collection $letters, Employee $actor): ?Employee
+    {
+        if ($letters->isEmpty()) {
+            return null;
+        }
+
+        $senders = RoutingHistory::query()
+            ->whereIn('letter_id', $letters->pluck('id')->all())
+            ->where('to_secretariat_id', $actor->id)
+            ->unresolved()
+            ->orderByDesc('id')
+            ->get()
+            ->unique('letter_id')
+            ->pluck('from_secretariat_id', 'letter_id');
+
+        if ($senders->count() !== $letters->count() || $senders->unique()->count() !== 1) {
+            return null;
+        }
+
+        return $this->recipientsQuery(null, $actor)->with(['department', 'district'])->find($senders->first());
+    }
+
+    /** The roles whose holders may be named as a letter's Manager reviewer, and as its Chief Manager reviewer. */
+    public const MANAGER_REVIEWER_ROLES = ['manager', 'departmental_manager', 'district_manager'];
+
+    public const CHIEF_REVIEWER_ROLES = ['chief_manager', 'regional_chief_manager'];
+
     public function regionalManagersQuery(Employee $actor): Builder
     {
-        return $this->regionalRoleQuery($actor, [
-            'manager',
-            'departmental_manager',
-            'district_manager',
-        ]);
+        return $this->regionalRoleQuery($actor, self::MANAGER_REVIEWER_ROLES);
     }
 
     public function regionalChiefManagersQuery(Employee $actor): Builder
     {
-        return $this->regionalRoleQuery($actor, [
-            'chief_manager',
-            'regional_chief_manager',
-        ]);
+        return $this->regionalRoleQuery($actor, self::CHIEF_REVIEWER_ROLES);
+    }
+
+    /**
+     * Whether $actor holds letters as a reviewer rather than as a secretary: 'chief' for a (regional) chief manager,
+     * 'manager' for a unit / departmental / district manager, null for everyone else. A reviewer writes remarks as
+     * themselves, so the remark form locks the reviewer to them and hides the secretary field.
+     */
+    public function reviewerTier(Employee $actor): ?string
+    {
+        $user = $actor->user ?? $actor->userByStaffId;
+
+        return match (true) {
+            $user === null => null,
+            $user->hasRoles(self::CHIEF_REVIEWER_ROLES) => 'chief',
+            $user->hasRoles(self::MANAGER_REVIEWER_ROLES) => 'manager',
+            default => null,
+        };
+    }
+
+    /**
+     * A manager or chief manager holding the letter writes the remark as themselves: they are the reviewer, there is no
+     * secretary typing someone else's comment, and they cannot name a different reviewer. Secretaries (anyone who is not
+     * a manager tier) keep the original rules. The form enforces this too; this is the authority.
+     */
+    protected function assertReviewerMatchesHolder(Employee $actor, array $data): void
+    {
+        $tier = $this->reviewerTier($actor);
+
+        if ($tier === null) {
+            return;
+        }
+
+        if (filled($data['secretary_remark_content'] ?? null)) {
+            throw new \RuntimeException('Secretary remarks can only be added by a secretary. Write your remark in the manager remarks.');
+        }
+
+        if (blank(trim((string) ($data['remark_content'] ?? '')))) {
+            throw new \RuntimeException('Enter your remark.');
+        }
+
+        $manager = (int) ($data['manager_id'] ?? 0);
+        $chief = (int) ($data['chief_manager_id'] ?? 0);
+
+        if ($manager !== ($tier === 'manager' ? $actor->id : 0) || $chief !== ($tier === 'chief' ? $actor->id : 0)) {
+            throw new \RuntimeException('As '.($tier === 'chief' ? 'a chief manager' : 'a manager').' you can only record remarks as yourself.');
+        }
     }
 
     /** Remarks are written by whoever has the letter on their desk, after confirming the hardcopy. */
@@ -1063,18 +1292,42 @@ class LetterWorkflowService
             ->max() ?? 0;
     }
 
+    /**
+     * Reviewers for $actor's remarks: holders of $roles in the actor's own office, resolved the way Leave resolves its
+     * chain. Head Office is a district that can share a region with a regional office, so it is never scoped by region
+     * alone: at Head Office it is the same department at Head Office, everywhere else the same region without Head Office.
+     */
     protected function regionalRoleQuery(Employee $actor, array $roles): Builder
     {
         return Employee::query()
             ->active()
             ->visibleInErp()
-            ->when(
-                $actor->region_id,
-                fn (Builder $query) => $query->where('region_id', $actor->region_id),
-                fn (Builder $query) => $query->whereNull('region_id')
-            )
+            ->where(fn (Builder $query) => $this->whereInActorsOffice($query, $actor, sameDepartment: true))
             ->where(fn (Builder $query) => $this->whereHasAnyUserRole($query, $roles))
             ->orderBy('full_name');
+    }
+
+    /**
+     * Employees in the same office as $actor. location_type first (it follows the district's name, see
+     * Employee::locationTypeFor()): Head Office staff are matched among Head Office staff only (and, with
+     * $sameDepartment, in their department); regional-office and district staff are matched by region among non-Head
+     * Office staff. A location-less actor falls back to the plain region match this module always used.
+     */
+    protected function whereInActorsOffice(Builder $query, Employee $actor, bool $sameDepartment): Builder
+    {
+        return match ($actor->location_type) {
+            'HeadOffice' => $query
+                ->where('location_type', 'HeadOffice')
+                ->when($sameDepartment, fn (Builder $scoped) => $scoped->where('department_id', $actor->department_id)),
+            'Region', 'District' => $query
+                ->whereIn('location_type', ['Region', 'District'])
+                ->where('region_id', $actor->region_id),
+            default => $query->when(
+                $actor->region_id,
+                fn (Builder $scoped) => $scoped->where('region_id', $actor->region_id),
+                fn (Builder $scoped) => $scoped->whereNull('region_id')
+            ),
+        };
     }
 
     protected function whereHasAnyUserRole(Builder $query, array $roles): Builder
@@ -1082,5 +1335,25 @@ class LetterWorkflowService
         return $query
             ->whereHas('user.roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles))
             ->orWhereHas('userByStaffId.roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles));
+    }
+
+    /**
+     * Users (linked to the employee by employee_id or by staff_id) who can sign in and hold, through one role,
+     * $permission. With $withModule the same role must also give access to the Letters module: someone who cannot open
+     * the module must not be handed a letter.
+     */
+    protected function whereHasUserWithPermission(Builder $query, string $permission, bool $withModule): Builder
+    {
+        $eligibleUser = fn (Builder $user) => $user
+            ->where('is_active', true)
+            ->whereHas('roles', fn (Builder $role) => $role
+                ->whereHas('permissions', fn (Builder $permissions) => $permissions->where('name', $permission))
+                ->when($withModule, fn (Builder $scoped) => $scoped->whereHas('moduleAccesses', fn (Builder $access) => $access
+                    ->where('module', Permission::MODULE_LETTERS)
+                    ->where('can_access', true))));
+
+        return $query
+            ->whereHas('user', $eligibleUser)
+            ->orWhereHas('userByStaffId', $eligibleUser);
     }
 }

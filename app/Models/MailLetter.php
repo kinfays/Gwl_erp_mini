@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class MailLetter extends Model
 {
@@ -54,6 +55,17 @@ class MailLetter extends Model
     public function closedBy(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'closed_by_id');
+    }
+
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(LetterDelivery::class, 'letter_id');
+    }
+
+    /** The hardcopy hand-over that closed the letter, if it was closed by delivering it. */
+    public function latestDelivery(): HasOne
+    {
+        return $this->hasOne(LetterDelivery::class, 'letter_id')->latestOfMany('delivered_at');
     }
 
     public function isClosed(): bool

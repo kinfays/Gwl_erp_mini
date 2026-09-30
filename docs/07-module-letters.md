@@ -63,7 +63,8 @@ that letter.
 `LetterWorkflowService::dispatchBatch($from, $to, $letterIds, $note)`:
 
 - 1 to `config('gwl.letters_max_batch_size')` letters (env `GWL_LETTERS_MAX_BATCH_SIZE`, default 50); recipient
-  different from the sender and an active secretary (re-checked in the service, not just the picker).
+  different from the sender and an eligible recipient (see Who can hold a letter; re-checked in the service, not just
+  the picker).
 - **All-or-nothing.** Ids are re-read `lockForUpdate` through `visibleLettersQuery($from)` and every letter must pass
   the same check as a single dispatch. If any fails, nothing is created and the message lists the letters that failed.
   Ids the actor cannot see get a generic message that names nothing.
@@ -93,6 +94,58 @@ Screens:
 
 No new permission: dispatching needs `letters.forward` (Livewire check, plus holder state in the service); confirming
 needs none, as before.
+
+## Who can hold a letter (managers and secretaries)
+
+Secretaries remain the default holders, and managers and chief managers can hold letters too; both work on the same
+letter, so an office whose managers do not use the portal keeps working secretary to secretary.
+
+- **Eligibility is by permission, not role name.** `LetterWorkflowService::recipientsQuery(?string $search, Employee
+  $actor, ?string $scope = null)` lists active, `visibleInErp()` employees whose user (linked by `employee_id` or by
+  `staff_id`, and able to sign in) has a role that holds `letters.view` **and** gives access to the Letters module - so
+  nobody is handed a letter they cannot open. Today that is `secretary`, `manager`, `departmental_manager`,
+  `district_manager`, `chief_manager` and `regional_chief_manager` (`LettersRolePermissionSeeder`,
+  `ModuleAccessSeeder`); an admin can extend it from the role editor. The actor is never their own recipient.
+  `dispatch()` and `dispatchBatch()` call it again and refuse an ineligible id ("The selected recipient cannot receive
+  letters."), so a crafted id from the picker never works.
+- **The Managing Director does not hold letters** (decided 2026-09-30): `managing_director` has the Leave module only and
+  no `letters.*` permission, so they can never be returned or dispatched to. Letters for the MD are held by the MD's
+  office secretary and *Deliver to addressee* records the hand-over. `ManagingDirectorGuardTest` runs the real seeders
+  and fails if a later change grants it by accident.
+- **Picker** (single dispatch tab and the dispatch-selected drawer): *Return to previous holder* (when the same person
+  handed every selected letter to you) and up to five recent recipients are pinned on top; then the matches for the
+  search (name, staff ID, department) grouped *Secretaries* (people who can record letters, `letters.create`) and
+  *Managers* (everyone else eligible). Each label is "Name · Department · Location". Chips: *My location* (default: your
+  own office, see below), *Head Office*, *Any*.
+- **Reviewers (D6).** The Manager / Chief Manager lists (`regionalManagersQuery()` / `regionalChiefManagersQuery()`) are
+  scoped the way Leave resolves its chain: by `location_type` first, then the department at Head Office, or the region
+  for regional offices and districts. Head Office shares a `region_id` with its regional office, so it is never scoped by
+  region alone. "My location" in the picker uses the same office rule without the department.
+- **Remarks by a manager who holds the letter.** `reviewerTier()` is `manager` (unit / departmental / district manager),
+  `chief` ((regional) chief manager) or null (secretaries and everyone else). A tier holder's form shows themselves,
+  locked, in the Manager or Chief Manager field and has no *Secretary remarks*; whatever the client sends, the remark is
+  recorded as theirs. The service is the authority: it rejects another reviewer, a missing reviewer, a secretary remark
+  or an empty remark from a tier holder. Secretaries keep the original form and rules.
+- **Bell and badge.** The letters bell renders on every ERP page for users with the Letters module (the general bell is
+  unchanged and still excludes letters notifications), and the Letters tab in the top navigation (and the mobile module
+  list) carries the number of hops waiting for the user to confirm. Users with a single module have no module tabs; the
+  Transmittals sidebar count covers them inside Letters.
+
+## Deliver to addressee
+
+The last step of a letter. The **current, confirmed holder** (not only the creator) opens the *Deliver* tab in the drawer
+and records who took the hardcopy and when; the addressee needs no login, the holder records the paper signature.
+`LetterWorkflowService::deliver($letter, $holder, $data)`:
+
+- Requires that the holder has the letter on their desk (confirmed, nothing pending, letter open); otherwise the
+  usual messages ("Confirm hardcopy receipt before delivering this letter.", "Only the current holder ...", "This letter
+  is already closed.").
+- Exactly one of `delivered_to_employee_id` (a staff member) or `delivered_to_name` (an outside party); `delivered_at`
+  defaults to now and cannot be in the future; `note` is optional (500 characters).
+- Writes a `letter_deliveries` row, closes the letter at letter level (`closed_at`, `closed_by_id` = the deliverer) and
+  audits `deliver_letter`. Manual close and reopen stay creator-only; a delivered letter can still be reopened by its
+  creator, and a later delivery adds another row (history is kept).
+- No new permission: being the confirmed holder is the rule.
 
 ## Recall, reject and remind (exceptions and aging)
 

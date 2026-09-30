@@ -6940,3 +6940,22 @@ textarea.form-input {
     padding: 1rem;
     border-top: 1px solid var(--color-line);
 }
+
+.module-count {
+    margin-left: 6px;
+    min-width: 1.125rem;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-badge);
+    color: #fff;
+    font-size: 0.6875rem;
+    line-height: 1.125rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.recipient-pins {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}

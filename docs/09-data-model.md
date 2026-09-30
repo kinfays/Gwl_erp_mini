@@ -33,6 +33,10 @@
 - `letter_dispatch_batches` (transmittals: see below)
 - `letter_remarks`
 - `letter_sn_counters` (`prefix`, `year`, `last_number`; unique `[prefix, year]`; the locked serial-number counter)
+- `letter_deliveries` (the hand-over of the hardcopy to its addressee: `letter_id` cascade, `delivered_to_employee_id`
+  nullable `nullOnDelete`, `delivered_to_name` nullable - exactly one of the two is set, enforced in the service -,
+  `delivered_by_id` `restrictOnDelete`, `delivered_at`, `note`; no unique index on `letter_id`, so a letter that is
+  reopened and delivered again keeps its history)
 - `letter_notifications` (`letter_id` is nullable; `batch_id` is set on the one notification a transmittal sends)
 
 ### `letter_dispatch_batches`

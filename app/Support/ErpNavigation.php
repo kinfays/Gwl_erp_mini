@@ -43,8 +43,13 @@ class ErpNavigation
         $employee = $user->employee ?? $user->employeeByStaffId;
         $modules = collect($this->moduleDefinitions())
             ->filter(fn (array $module) => $this->userCanAccessModule($user, $module['slug']))
-            ->map(function (array $module) use ($currentModule, $user) {
+            ->map(function (array $module) use ($currentModule, $user, $employee) {
                 $module['active'] = $module['slug'] === $currentModule;
+
+                // Hardcopies handed to this person that still wait for their confirmation, on the Letters tab.
+                if ($module['slug'] === Permission::MODULE_LETTERS) {
+                    $module['badge'] = $employee ? app(LetterWorkflowService::class)->pendingIncomingCount($employee) : 0;
+                }
 
                 if ($module['slug'] === Permission::MODULE_ASSETS) {
                     $module['route'] = $this->safeRoute($this->assetsLandingRoute($user));

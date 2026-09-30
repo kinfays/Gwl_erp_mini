@@ -181,7 +181,7 @@ class BatchDispatchTest extends TestCase
         $this->assertSame(50, config('gwl.letters_max_batch_size'));
     }
 
-    public function test_the_recipient_must_be_a_different_active_secretary(): void
+    public function test_the_recipient_must_be_a_different_active_holder_of_letters_view(): void
     {
         $letters = $this->createLetters($this->hrSec, 2);
         $ids = $letters->pluck('id')->all();
@@ -189,7 +189,7 @@ class BatchDispatchTest extends TestCase
         $cases = [
             'the sender themselves' => [$this->hrSec, 'Dispatch recipient must be different from the current secretariat.'],
             'an inactive secretary' => [$this->letterStaff('OFF01', $this->accraOffice, null, employeeActive: false), 'The selected recipient cannot receive letters.'],
-            'someone who is not a secretary' => [$this->letterStaff('MGR01', $this->accraOffice, ['manager']), 'The selected recipient cannot receive letters.'],
+            'someone without letters.view' => [$this->letterStaff('EMP01', $this->accraOffice, ['leave_applicant']), 'The selected recipient cannot receive letters.'],
         ];
 
         foreach ($cases as $label => [$recipient, $message]) {

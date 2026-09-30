@@ -87,9 +87,27 @@ class ActiveLetters extends Component
 
     public string $editingSecretaryRemarkContent = '';
 
-    public string $secretarySearch = '';
+    public string $recipientSearch = '';
 
     public int|string $dispatchToId = '';
+
+    /** Picker chips: 'mine' (my location), 'head_office' or 'any'. */
+    public string $dispatchScope = 'mine';
+
+    public string $bulkScope = 'mine';
+
+    /** "Deliver to addressee": who took the hardcopy (a staff member, or an outside party by name), when, and a note. */
+    public string $deliverMode = 'employee';
+
+    public int|string $deliverEmployeeId = '';
+
+    public string $deliverEmployeeSearch = '';
+
+    public string $deliverName = '';
+
+    public string $deliverAt = '';
+
+    public string $deliverNote = '';
 
     public string $editSubject = '';
 
@@ -230,6 +248,46 @@ class ActiveLetters extends Component
         $this->bulkNote = '';
     }
 
+    /** The last step: record who took the hardcopy and when. Only the current, confirmed holder can (the service decides). */
+    public function deliverLetter(LetterWorkflowService $workflow): void
+    {
+        $employee = $this->requireEmployee();
+        $letter = $this->selectedLetter($workflow);
+
+        $this->validate([
+            'deliverMode' => ['required', 'in:employee,name'],
+            'deliverEmployeeId' => ['required_if:deliverMode,employee', 'nullable', 'exists:employees,id'],
+            'deliverName' => ['required_if:deliverMode,name', 'nullable', 'string', 'max:255'],
+            'deliverAt' => ['nullable', 'date'],
+            'deliverNote' => ['nullable', 'string', 'max:500'],
+        ], [
+            'deliverEmployeeId.required_if' => 'Choose the staff member who received the letter.',
+            'deliverName.required_if' => 'Type the name of the person who received the letter.',
+        ]);
+
+        try {
+            $delivery = $workflow->deliver($letter, $employee, [
+                'delivered_to_employee_id' => $this->deliverMode === 'employee' ? $this->deliverEmployeeId : null,
+                'delivered_to_name' => $this->deliverMode === 'name' ? $this->deliverName : null,
+                'delivered_at' => $this->deliverAt,
+                'note' => $this->deliverNote,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->failWith($e);
+
+            return;
+        }
+
+        // The letter is closed now: it moves to the Closed tab, and ticks never follow a letter to another list.
+        $this->tab = 'closed';
+        $this->resetPage();
+        $this->clearSelection();
+        $this->resetDeliverForm();
+        $this->detailTab = 'remarks';
+        $this->flashMessage = 'Delivered to '.$delivery->addresseeName().'. Letter closed.';
+        $this->dispatch('toast', type: 'success', message: $this->flashMessage);
+    }
+
     public function dispatchSelected(LetterWorkflowService $workflow): void
     {
         abort_if(! $this->canForward(), 403);
@@ -241,7 +299,8 @@ class ActiveLetters extends Component
             'bulkNote' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $recipient = $workflow->secretaryQuery()->findOrFail($this->bulkDispatchToId);
+        // Eligibility is the service's call (it re-checks), so a crafted id gets the same message as a stale one.
+        $recipient = Employee::query()->findOrFail($this->bulkDispatchToId);
         $skipped = $this->bulkSkipped;
 
         try {
@@ -329,7 +388,7 @@ class ActiveLetters extends Component
             'dispatchToId' => ['required', 'exists:employees,id'],
         ]);
 
-        $recipient = $workflow->secretaryQuery()->findOrFail($this->dispatchToId);
+        $recipient = Employee::query()->findOrFail($this->dispatchToId);
 
         try {
             $workflow->dispatch($letter, $employee, $recipient);
@@ -340,7 +399,7 @@ class ActiveLetters extends Component
         }
 
         $this->dispatchToId = '';
-        $this->secretarySearch = '';
+        $this->recipientSearch = '';
         $this->flashMessage = 'Letter dispatched to '.$recipient->full_name.'.';
         $this->dispatch('toast', type: 'success', message: $this->flashMessage);
         $this->pruneStaleSelection($workflow);
@@ -413,6 +472,15 @@ class ActiveLetters extends Component
         abort_if(! $this->canRemark(), 403);
 
         $employee = $this->requireEmployee();
+        $tier = $workflow->reviewerTier($employee);
+
+        // A manager or chief manager holding the letter is the reviewer: whatever the client sent, the reviewer is them
+        // and there is no secretary field. (The service enforces the same.)
+        if ($tier !== null) {
+            $this->remarkManagerId = $tier === 'manager' ? $employee->id : '';
+            $this->remarkChiefManagerId = $tier === 'chief' ? $employee->id : '';
+            $this->secretaryRemarkContent = '';
+        }
 
         $this->validate([
             'remarkManagerId' => ['nullable', 'exists:employees,id'],
@@ -454,11 +522,15 @@ class ActiveLetters extends Component
         $chiefManager = null;
 
         if ($hasManager) {
-            $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkManagerId, 'remarkManagerId', 'manager');
+            $manager = $tier === 'manager'
+                ? $employee
+                : $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkManagerId, 'remarkManagerId', 'manager');
         }
 
         if ($hasChiefManager) {
-            $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkChiefManagerId, 'remarkChiefManagerId', 'chief');
+            $chiefManager = $tier === 'chief'
+                ? $employee
+                : $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->remarkChiefManagerId, 'remarkChiefManagerId', 'chief');
         }
 
         if ($this->getErrorBag()->isNotEmpty()) {
@@ -500,6 +572,13 @@ class ActiveLetters extends Component
         abort_if(! $this->editingRemarkId, 404);
 
         $employee = $this->requireEmployee();
+        $tier = $workflow->reviewerTier($employee);
+
+        if ($tier !== null) {
+            $this->editingRemarkManagerId = $tier === 'manager' ? $employee->id : '';
+            $this->editingRemarkChiefManagerId = $tier === 'chief' ? $employee->id : '';
+            $this->editingSecretaryRemarkContent = '';
+        }
 
         $this->validate([
             'editingRemarkManagerId' => ['nullable', 'exists:employees,id'],
@@ -541,11 +620,15 @@ class ActiveLetters extends Component
         $chiefManager = null;
 
         if ($hasManager) {
-            $manager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkManagerId, 'editingRemarkManagerId', 'manager');
+            $manager = $tier === 'manager'
+                ? $employee
+                : $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkManagerId, 'editingRemarkManagerId', 'manager');
         }
 
         if ($hasChiefManager) {
-            $chiefManager = $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkChiefManagerId, 'editingRemarkChiefManagerId', 'chief');
+            $chiefManager = $tier === 'chief'
+                ? $employee
+                : $this->resolveRegionalRemarkReviewer($workflow, $employee, $this->editingRemarkChiefManagerId, 'editingRemarkChiefManagerId', 'chief');
         }
 
         if ($this->getErrorBag()->isNotEmpty()) {
@@ -613,7 +696,6 @@ class ActiveLetters extends Component
                 'missingEmployee' => true,
                 'letters' => collect(),
                 'selectedLetter' => null,
-                'secretaries' => collect(),
                 'senders' => collect(),
                 'managerOptions' => [],
                 'chiefManagerOptions' => [],
@@ -649,9 +731,17 @@ class ActiveLetters extends Component
                     'remarks.author',
                     'remarks.manager',
                     'remarks.chiefManager',
+                    'latestDelivery.deliveredTo',
+                    'latestDelivery.deliveredBy',
                 ])
                 ->find($this->selectedLetterId)
             : null;
+
+        $selectedDesk = $selectedLetter
+            ? $workflow->deskState(collect([$selectedLetter]), $employee)->get($selectedLetter->id)
+            : null;
+        $tier = $workflow->reviewerTier($employee);
+        $showReviewers = $selectedLetter !== null && $this->detailTab === 'remarks';
 
         return view('livewire.letters.active-letters', [
             'missingEmployee' => false,
@@ -663,16 +753,34 @@ class ActiveLetters extends Component
             'hasActionableRows' => $pageActionable !== [],
             'bulk' => $bulk,
             'maxBatchSize' => max(1, (int) config('gwl.letters_max_batch_size', 50)),
-            'bulkSecretaries' => $this->bulkDispatchOpen
-                ? $workflow->secretaryQuery($this->bulkSearch)->limit(30)->get()
-                : collect(),
-            'selectedLetter' => $selectedLetter,
-            'selectedDesk' => $selectedLetter
-                ? $workflow->deskState(collect([$selectedLetter]), $employee)->get($selectedLetter->id)
+            'bulkPicker' => $this->bulkDispatchOpen
+                ? $workflow->recipientPicker($employee, $bulk['dispatchLetters'], $this->bulkSearch, $this->bulkScope)
                 : null,
-            'secretaries' => $workflow->secretaryQuery($this->secretarySearch)->limit(30)->get(),
-            'managerOptions' => $this->employeeOptions($workflow->regionalManagersQuery($employee)->with(['department', 'region'])->get()),
-            'chiefManagerOptions' => $this->employeeOptions($workflow->regionalChiefManagersQuery($employee)->with(['department', 'region'])->get()),
+            'selectedLetter' => $selectedLetter,
+            'selectedDesk' => $selectedDesk,
+            // The pickers and reviewer lists are only built when the panel that shows them is open.
+            'picker' => $selectedLetter && $selectedDesk['canDispatch'] && $this->detailTab === 'dispatch' && $this->canForward()
+                ? $workflow->recipientPicker($employee, collect([$selectedLetter]), $this->recipientSearch, $this->dispatchScope)
+                : null,
+            'reviewerTier' => $tier,
+            'managerOptions' => $showReviewers && $tier === null
+                ? $this->employeeOptions($workflow->regionalManagersQuery($employee)->with(['department', 'region'])->get())
+                : [],
+            'chiefManagerOptions' => $showReviewers && $tier === null
+                ? $this->employeeOptions($workflow->regionalChiefManagersQuery($employee)->with(['department', 'region'])->get())
+                : [],
+            'deliverEmployees' => $selectedLetter && $selectedDesk['holdsLetter'] && $this->detailTab === 'deliver' && $this->deliverMode === 'employee'
+                ? Employee::query()
+                    ->active()
+                    ->visibleInErp()
+                    ->with(['department', 'district'])
+                    ->when(filled($this->deliverEmployeeSearch), fn ($query) => $query->where(fn ($match) => $match
+                        ->where('full_name', 'like', '%'.trim($this->deliverEmployeeSearch).'%')
+                        ->orWhere('staff_id', 'like', '%'.trim($this->deliverEmployeeSearch).'%')))
+                    ->orderBy('full_name')
+                    ->limit(30)
+                    ->get()
+                : collect(),
             'senders' => Employee::query()
                 ->active()
                 ->visibleInErp()
@@ -846,12 +954,23 @@ class ActiveLetters extends Component
         $this->editingSecretaryRemarkContent = '';
     }
 
+    protected function resetDeliverForm(): void
+    {
+        $this->deliverMode = 'employee';
+        $this->deliverEmployeeId = '';
+        $this->deliverEmployeeSearch = '';
+        $this->deliverName = '';
+        $this->deliverAt = '';
+        $this->deliverNote = '';
+    }
+
     protected function resetDetailInputs(): void
     {
         $this->resetRemarkForm();
         $this->resetEditingRemarkForm();
+        $this->resetDeliverForm();
         $this->dispatchToId = '';
-        $this->secretarySearch = '';
+        $this->recipientSearch = '';
         $this->flashMessage = '';
     }
 
@@ -898,8 +1017,8 @@ class ActiveLetters extends Component
 
         if (! $reviewer) {
             $this->addError($field, $type === 'chief'
-                ? 'Select a chief manager in your region.'
-                : 'Select a manager in your region.');
+                ? 'Select a chief manager from your office.'
+                : 'Select a manager from your office.');
         }
 
         return $reviewer;

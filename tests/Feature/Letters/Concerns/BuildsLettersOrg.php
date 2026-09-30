@@ -35,10 +35,25 @@ trait BuildsLettersOrg
 
     protected Department $registry;
 
+    protected Department $finance;
+
+    /** A second region (its regional office and a district) and a district in Greater Accra, for the office-scoping tests. */
+    protected Region $north;
+
+    protected District $northOffice;
+
+    protected District $northDistrict;
+
+    protected District $temaDistrict;
+
     /** @var array<string, list<string>> role => permission slugs (mirrors LettersRolePermissionSeeder) */
     protected array $lettersRoleMap = [
         'secretary' => ['letters.view', 'letters.create', 'letters.forward', 'letters.remark', 'letters.close', 'letters.export'],
         'manager' => ['letters.view', 'letters.forward', 'letters.remark'],
+        'departmental_manager' => ['letters.view', 'letters.forward', 'letters.remark'],
+        'district_manager' => ['letters.view', 'letters.forward', 'letters.remark'],
+        'chief_manager' => ['letters.view', 'letters.forward', 'letters.remark', 'letters.close'],
+        'regional_chief_manager' => ['letters.view', 'letters.forward', 'letters.remark', 'letters.close'],
         'letters_viewer' => ['letters.view'],
     ];
 
@@ -48,6 +63,11 @@ trait BuildsLettersOrg
         $this->headOffice = District::query()->create(['district_name' => 'Head Office', 'region_id' => $this->accra->id]);
         $this->accraOffice = District::query()->create(['district_name' => 'Accra Regional Office', 'region_id' => $this->accra->id]);
         $this->registry = Department::query()->create(['department_name' => 'Registry']);
+        $this->finance = Department::query()->create(['department_name' => 'Finance']);
+        $this->temaDistrict = District::query()->create(['district_name' => 'Tema District', 'region_id' => $this->accra->id]);
+        $this->north = Region::query()->create(['region_name' => 'Northern Zone']);
+        $this->northOffice = District::query()->create(['district_name' => 'Tamale Regional Office', 'region_id' => $this->north->id]);
+        $this->northDistrict = District::query()->create(['district_name' => 'Yendi District', 'region_id' => $this->north->id]);
 
         foreach ($this->lettersRoleMap as $roleName => $slugs) {
             $role = Role::query()->firstOrCreate(
@@ -80,6 +100,7 @@ trait BuildsLettersOrg
         ?District $district = null,
         ?array $roles = null,
         bool $employeeActive = true,
+        ?Department $department = null,
     ): Employee {
         $district ??= $this->headOffice;
         $roles ??= ['secretary'];
@@ -91,10 +112,10 @@ trait BuildsLettersOrg
             'category' => 'Senior Staff',
             'email' => strtolower($staffId).'@example.com',
             'job_title_id' => JobTitle::query()->firstOrCreate(['job_title_name' => 'Officer'])->id,
-            'department_id' => $this->registry->id,
+            'department_id' => ($department ?? $this->registry)->id,
             'region_id' => $district->region_id,
             'district_id' => $district->id,
-            'location_type' => str_contains(strtolower($district->district_name), 'head office') ? 'HeadOffice' : 'Region',
+            'location_type' => Employee::locationTypeFor($district->district_name),
             'date_of_birth' => '1990-01-01',
             'date_joined' => '2020-01-06',
             'is_active' => $employeeActive,
