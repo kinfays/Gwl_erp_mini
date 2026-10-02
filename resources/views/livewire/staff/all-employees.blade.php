@@ -49,6 +49,18 @@
                 @endforeach
             </select>
 
+            <select wire:model.live="grade" class="form-input" aria-label="Grade">
+                <option value="">All grades</option>
+                <option value="none">No grade set</option>
+                @foreach ($gradeGroups as $group => $grades)
+                    <optgroup label="{{ $group }}">
+                        @foreach ($grades as $gradeName)
+                            <option value="{{ $gradeName }}">{{ $gradeName }}</option>
+                        @endforeach
+                    </optgroup>
+                @endforeach
+            </select>
+
             <select wire:model.live="location_type" class="form-input" aria-label="Location">
                 <option value="">All locations</option>
                 <option value="HeadOffice">Head Office</option>
@@ -77,7 +89,7 @@
                         <th>Name</th>
                         <th>Staff ID</th>
                         <th>Department</th>
-                        <th>Category</th>
+                        <th>Category / Grade</th>
                         <th>Location</th>
                         <th class="num">Annual Leave Balance</th>
                         <th>Status</th>
@@ -112,7 +124,12 @@
                                 <span class="ui-person-sub">{{ $employee->jobTitle?->job_title_name ?? '-' }}</span>
                             </span>
                         </td>
-                        <td class="nowrap"><x-ui.badge>{{ $employee->category }}</x-ui.badge></td>
+                        <td class="nowrap">
+                            <span class="ui-cell-stack">
+                                <span><x-ui.badge>{{ $employee->category }}</x-ui.badge></span>
+                                <span @class(['ui-person-sub', 'cell-muted' => ! $employee->grade])>{{ $employee->grade ?? 'No grade set' }}</span>
+                            </span>
+                        </td>
                         <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $employee->region?->region_name ?? '-' }}</span>

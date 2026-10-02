@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\District;
@@ -23,6 +24,7 @@ use Livewire\WithPagination;
 class PhonesList extends Component
 {
     use EnforcesModuleAccess;
+    use FiltersByAnalytics;
     use ScopesAssetsByActor;
     use WithPagination;
 
@@ -68,6 +70,7 @@ class PhonesList extends Component
         'imei' => '',
         'ict_asset_model_id' => null,
         'status' => 'Active',
+        'condition' => null,
         'assigned_to_employee_id' => null,
         'region_id' => null,
         'district_id' => null,
@@ -84,7 +87,7 @@ class PhonesList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'perPage'], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
     }
@@ -117,6 +120,7 @@ class PhonesList extends Component
             'imei' => (string) $asset->imei,
             'ict_asset_model_id' => $asset->ict_asset_model_id,
             'status' => (string) $asset->status,
+            'condition' => $asset->condition,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
@@ -257,6 +261,7 @@ class PhonesList extends Component
             'form.imei' => ['nullable', 'string', 'max:50'],
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
+            'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
             'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.user_phone_number' => ['nullable', 'string', 'max:30'],
@@ -290,6 +295,7 @@ class PhonesList extends Component
             'imei' => '',
             'ict_asset_model_id' => null,
             'status' => 'Active',
+            'condition' => null,
             'assigned_to_employee_id' => null,
             'region_id' => $this->actorRegionId(),
             'district_id' => null,
@@ -317,6 +323,7 @@ class PhonesList extends Component
             })
             ->when($this->status, fn ($query) => $query->where('status', $this->status))
             ->when($this->assetType, fn ($query) => $query->where('asset_type', $this->assetType))
+            ->tap(fn ($query) => $this->applyAnalyticsFilters($query))
             ->latest()
             ->paginate($this->perPage);
 
@@ -336,6 +343,8 @@ class PhonesList extends Component
         $mdmEnabled = (bool) config('gwl.mdm_enabled');
 
         return view('livewire.assets.phones-list', [
+            'analyticsChips' => $this->analyticsFilterChips(),
+            'conditionOptions' => IctAsset::CONDITIONS,
             'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
             'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
                 ? app(MdmAccessGuard::class)->devices($this->actor())->with('asset.assignedTo')->find($this->mdmPromptDeviceId)

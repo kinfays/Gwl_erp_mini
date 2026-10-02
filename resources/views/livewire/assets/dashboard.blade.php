@@ -90,6 +90,52 @@
         </x-ui.card>
     </div>
 
+    <div class="ui-grid ui-grid-2 dash-row">
+        <x-ui.card title="Asset Age" description="Years since purchase date, across assets, phones and network devices." :padded="false">
+            <x-assets.bucket-table label="Assets by age" first-column="Age" :rows="$ageBuckets" />
+        </x-ui.card>
+
+        <x-ui.card title="Warranty Status" description="By warranty expiry date; Unknown means no expiry is recorded." :padded="false">
+            <x-assets.bucket-table label="Assets by warranty status" first-column="Warranty" :rows="$warrantyBuckets" />
+        </x-ui.card>
+    </div>
+
+    <div class="ui-grid ui-grid-2 dash-row">
+        <x-ui.card title="Unassigned Assets" description="Devices with no employee recorded as the holder.">
+            <x-ui.stat-tile label="Unassigned" :value="$unassigned['total']" icon="laptop" tone="warning">
+                <span class="ui-tags stat-breakdown">
+                    @foreach (['asset' => 'Assets', 'phone' => 'Phones', 'network' => 'Network'] as $category => $name)
+                        @if ($unassigned['by_category'][$category] > 0)
+                            <a href="{{ route(\App\Services\Assets\AssetDashboardService::CATEGORY_ROUTES[$category], $unassigned['params']) }}"><x-ui.badge>{{ $name }}: {{ $unassigned['by_category'][$category] }}</x-ui.badge></a>
+                        @else
+                            <x-ui.badge>{{ $name }}: 0</x-ui.badge>
+                        @endif
+                    @endforeach
+                </span>
+            </x-ui.stat-tile>
+        </x-ui.card>
+
+        <x-ui.card title="Employees With the Most Assets" description="Top 10 holders across all three categories." :padded="false">
+            <x-ui.table label="Employees with the most assets" :sticky="false">
+                <x-slot:head>
+                    <tr>
+                        <th>Employee</th>
+                        <th class="num">Assets held</th>
+                    </tr>
+                </x-slot:head>
+
+                @forelse ($topAssignees as $row)
+                    <tr>
+                        <td><a href="{{ route('assets.employee', $row['employee_id']) }}">{{ $row['name'] }}</a></td>
+                        <td class="num"><strong>{{ $row['total'] }}</strong></td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="2" icon="users" title="No assets are assigned yet." />
+                @endforelse
+            </x-ui.table>
+        </x-ui.card>
+    </div>
+
     <x-ui.card title="Recently Updated Assets" :padded="false">
         <x-slot:actions>
             <a href="{{ route('assets.assets') }}" class="btn btn-ghost btn-sm">

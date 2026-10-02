@@ -262,7 +262,7 @@ class StaffRegionScopeTest extends TestCase
             ->set('full_name', 'Esi Asante')
             ->set('gender', 'Female')
             ->set('date_of_birth', '1992-05-05')
-            ->set('category', 'Senior Staff')
+            ->set('grade', 'Snr. Gd. Level 1')
             ->set('job_title_id', JobTitle::query()->value('id'))
             ->set('department_id', Department::query()->value('id'))
             ->set('district_id', $district->id)

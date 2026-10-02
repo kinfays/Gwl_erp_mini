@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\IctAsset;
@@ -14,6 +15,7 @@ use Livewire\WithPagination;
 class NetworkList extends Component
 {
     use EnforcesModuleAccess;
+    use FiltersByAnalytics;
     use ScopesAssetsByActor;
     use WithPagination;
 
@@ -56,6 +58,7 @@ class NetworkList extends Component
         'serial_number' => '',
         'actual_location' => '',
         'status' => 'Active',
+            'condition' => null,
     ];
 
     public function mount(): void
@@ -67,7 +70,7 @@ class NetworkList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'perPage'], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
 
@@ -118,6 +121,7 @@ class NetworkList extends Component
             'serial_number' => (string) $asset->serial_number,
             'actual_location' => (string) $asset->actual_location,
             'status' => (string) $asset->status,
+            'condition' => $asset->condition,
         ];
     }
 
@@ -178,6 +182,7 @@ class NetworkList extends Component
             ],
             'form.actual_location' => ['nullable', 'string', 'max:255'],
             'form.status' => ['required', 'string', 'max:120'],
+            'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
         ];
     }
 
@@ -213,6 +218,7 @@ class NetworkList extends Component
             'serial_number' => '',
             'actual_location' => '',
             'status' => 'Active',
+            'condition' => null,
         ];
     }
 
@@ -238,6 +244,7 @@ class NetworkList extends Component
             })
             ->when($this->status, fn ($query) => $query->where('status', $this->status))
             ->when($this->assetType, fn ($query) => $query->where('asset_type', $this->assetType))
+            ->tap(fn ($query) => $this->applyAnalyticsFilters($query))
             ->latest()
             ->paginate($this->perPage);
 
@@ -249,6 +256,8 @@ class NetworkList extends Component
             ->get();
 
         return view('livewire.assets.network-list', [
+            'analyticsChips' => $this->analyticsFilterChips(),
+            'conditionOptions' => IctAsset::CONDITIONS,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],

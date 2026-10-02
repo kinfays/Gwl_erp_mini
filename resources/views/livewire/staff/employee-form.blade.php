@@ -54,13 +54,30 @@
 
                 <div class="ui-form-grid">
                     <x-ui.input label="Date Joined" type="date" wire:model.defer="date_joined" />
-                    <x-ui.select label="Category" wire:model.defer="category" required>
-                        <option value="Senior Staff">Senior Staff</option>
-                        <option value="Junior Staff">Junior Staff</option>
-                        <option value="Management">Management</option>
-                        <option value="Senior Management">Senior Management</option>
-                        <option value="Charwoman">Charwoman</option>
+                    <x-ui.select
+                        label="Grade"
+                        wire:model.live="grade"
+                        :required="$gradeRequired"
+                        :hint="$gradeCategory ? 'Category: '.$gradeCategory : ($gradeRequired ? null : 'Not graded yet: HR can set it here.')"
+                    >
+                        <option value="">Select grade</option>
+                        @foreach ($gradeGroups as $group => $grades)
+                            <optgroup label="{{ $group }}">
+                                @foreach ($grades as $gradeName)
+                                    <option value="{{ $gradeName }}">{{ $gradeName }}</option>
+                                @endforeach
+                            </optgroup>
+                        @endforeach
                     </x-ui.select>
+
+                    @if (! $gradeCategory)
+                        {{-- Staff recorded before grades existed keep their category until they are graded. --}}
+                        <x-ui.select label="Category" wire:model.defer="category" required hint="Set automatically once a grade is chosen.">
+                            @foreach (\App\Enums\StaffGrade::allCategories() as $option)
+                                <option value="{{ $option }}">{{ $option }}</option>
+                            @endforeach
+                        </x-ui.select>
+                    @endif
 
                     <x-form.combobox
                         label="Job Title"

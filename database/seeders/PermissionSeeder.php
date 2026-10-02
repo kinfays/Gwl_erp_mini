@@ -119,11 +119,14 @@ class PermissionSeeder extends Seeder
 
         foreach ($permissions as $module => $slugs) {
             foreach ($slugs as $slug) {
-                $display = Str::of($slug)
-                    ->after('.')
-                    ->replace('_', ' ')
-                    ->title()
-                    ->toString();
+                $display = match ($slug) {
+                    'staff.view_reports' => 'View Staff Reports',
+                    default => Str::of($slug)
+                        ->after('.')
+                        ->replace('_', ' ')
+                        ->title()
+                        ->toString(),
+                };
 
                 Permission::query()->updateOrCreate(
                     ['name' => $slug],

@@ -3,10 +3,10 @@
 namespace App\Livewire\Staff;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
-use App\Services\Staff\StaffLeaveReportService;
+use App\Services\Staff\StaffReportService;
 use Livewire\Component;
 
-class LeaveReports extends Component
+class StaffReports extends Component
 {
     use EnforcesModuleAccess;
 
@@ -43,14 +43,14 @@ class LeaveReports extends Component
 
         if (in_array($name, ['datePreset', 'customFrom', 'customTo', 'departmentId', 'regionId', 'districtId'], true)) {
             $this->loadReportData();
-            $this->dispatch('staff-leave-report-data-updated', charts: $this->payload);
+            $this->dispatch('staff-report-data-updated', charts: $this->payload);
         }
     }
 
     protected function loadReportData(): void
     {
-        /** @var StaffLeaveReportService $reports */
-        $reports = app(StaffLeaveReportService::class);
+        /** @var StaffReportService $reports */
+        $reports = app(StaffReportService::class);
         [$from, $to] = $reports->resolveDateRange($this->datePreset, $this->customFrom ?: null, $this->customTo ?: null);
 
         if ($from->gt($to)) {
@@ -71,22 +71,20 @@ class LeaveReports extends Component
 
     protected function authorizeReports(): void
     {
-        $user = auth()->user();
-
-        if (! $user || (! $user->hasRoles('super_admin') && ! $user->hasPermission('staff.view_reports'))) {
-            abort(403);
-        }
-
-        $employee = $user->employee ?? $user->employeeByStaffId;
-
-        if ($user->hasRoles('hr_region') && ! $user->hasRoles('super_admin', 'hr_headoffice') && ! $employee?->region_id) {
-            abort(403, 'Employee region is required for regional staff reports.');
-        }
+        app(StaffReportService::class)->authorize(auth()->user());
     }
 
-    public function render(StaffLeaveReportService $reports)
+    public function render(StaffReportService $reports)
     {
-        return view('livewire.staff.leave-reports', [
+        return view('livewire.staff.staff-reports', [
+            'exportUrl' => route('staff.reports.export', array_filter([
+                'datePreset' => $this->datePreset,
+                'customFrom' => $this->customFrom,
+                'customTo' => $this->customTo,
+                'departmentId' => $this->departmentId,
+                'regionId' => $this->regionId,
+                'districtId' => $this->districtId,
+            ], fn ($value) => $value !== '')),
             'filters' => $reports->filterOptions(
                 auth()->user(),
                 $this->regionId !== '' ? (int) $this->regionId : null

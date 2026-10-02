@@ -1,5 +1,5 @@
-<x-erp-layout module="leave" title="Compulsory Leave">
+<x-erp-layout module="staff" title="Compulsory Leave">
     <div class="content">
-        <livewire:leave.compulsory-deductions />
+        <livewire:leave.compulsory-leave />
     </div>
 </x-erp-layout>

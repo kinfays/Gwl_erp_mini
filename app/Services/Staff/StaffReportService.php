@@ -2,6 +2,7 @@
 
 namespace App\Services\Staff;
 
+use App\Enums\StaffGrade;
 use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
@@ -15,9 +16,26 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
-class StaffLeaveReportService
+class StaffReportService
 {
     public function __construct(protected EmployeeDirectory $directory) {}
+
+    /**
+     * Who may open Staff Reports: super_admin, or a role holding staff.view_reports. Regional HR also need an employee
+     * record with a region, because that region is their scope.
+     */
+    public function authorize(?User $user): void
+    {
+        if (! $user || (! $user->hasRoles('super_admin') && ! $user->hasPermission('staff.view_reports'))) {
+            abort(403);
+        }
+
+        $employee = $user->employee ?? $user->employeeByStaffId;
+
+        if ($user->hasRoles('hr_region') && ! $user->hasRoles('super_admin', 'hr_headoffice') && ! $employee?->region_id) {
+            abort(403, 'Employee region is required for regional staff reports.');
+        }
+    }
 
     public function resolveDateRange(string $preset, ?string $customFrom = null, ?string $customTo = null): array
     {
@@ -76,6 +94,7 @@ class StaffLeaveReportService
                 'staffByRegion' => $this->staffByRegion($activeEmployees),
                 'staffByDepartment' => $this->staffByDepartment($activeEmployees),
                 'staffByCategory' => $this->staffByCategory($activeEmployees),
+                'gradeBreakdown' => $this->gradeBreakdown($activeEmployees),
                 'leaveStatusBreakdown' => $this->leaveStatusBreakdown($periodLeaves),
                 'leaveTypeDays' => $this->leaveTypeDays($periodLeaves),
                 'monthlyLeaveRequests' => $this->monthlyLeaveRequests($periodLeaves, $from, $to),
@@ -278,10 +297,71 @@ class StaffLeaveReportService
         ];
     }
 
+    /**
+     * Active staff by category and by grade: the four categories (the pre-grade "Senior Management" counts as Management,
+     * "Charwoman" as Contract), each level of Senior, Junior and Management grades, and the staff with no grade yet.
+     * Plain arrays only: this lands in the cached payload.
+     *
+     * @return array{total: int, categories: list<array{label: string, count: int}>, senior: list<array{grade: string, level: int, count: int}>, junior: list<array{grade: string, level: int, count: int}>, management: list<array{grade: string, level: int, count: int}>, no_grade: array{count: int, by_category: array<string, int>}}
+     */
+    protected function gradeBreakdown(Collection $employees): array
+    {
+        $byCategory = $employees->countBy(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) ?: 'Unassigned');
+        $byGrade = $employees->whereNotNull('grade')->countBy('grade');
+        $levels = fn (callable $filter) => collect(StaffGrade::cases())
+            ->filter($filter)
+            ->map(fn (StaffGrade $grade) => ['grade' => $grade->value, 'level' => (int) $grade->level(), 'count' => (int) ($byGrade[$grade->value] ?? 0)])
+            ->values()
+            ->all();
+        $ungraded = $employees->filter(fn (Employee $employee) => blank($employee->grade));
+
+        return [
+            'total' => $employees->count(),
+            'categories' => collect(StaffGrade::categories())
+                ->map(fn (string $category) => ['label' => $category, 'count' => (int) ($byCategory[$category] ?? 0)])
+                ->all(),
+            'senior' => $levels(fn (StaffGrade $grade) => $grade->isSenior()),
+            'junior' => $levels(fn (StaffGrade $grade) => $grade->isJunior()),
+            'management' => $levels(fn (StaffGrade $grade) => $grade->isManagement()),
+            'no_grade' => [
+                'count' => $ungraded->count(),
+                'by_category' => $ungraded
+                    ->countBy(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) ?: 'Unassigned')
+                    ->map(fn ($count) => (int) $count)
+                    ->all(),
+            ],
+        ];
+    }
+
+    /**
+     * The staff behind the report, for the Excel export: one row per employee in scope (active and inactive), with grade.
+     *
+     * @return list<list<mixed>>
+     */
+    public function exportStaffRows(User $user, ?int $departmentId = null, ?int $regionId = null, ?int $districtId = null): array
+    {
+        return $this->reportEmployeeQuery($user, $departmentId, $regionId, $districtId)
+            ->with(['department', 'region', 'district'])
+            ->orderBy('full_name')
+            ->get()
+            ->map(fn (Employee $employee) => [
+                $employee->staff_id,
+                $employee->full_name,
+                $employee->department?->department_name,
+                $employee->region?->region_name,
+                $employee->district?->district_name,
+                StaffGrade::reportCategory($employee->category),
+                $employee->grade ?? 'Not set',
+                $this->normalizeGender($employee->gender),
+                $employee->is_active ? 'Active' : 'Inactive',
+            ])
+            ->all();
+    }
+
     protected function staffByCategory(Collection $employees): array
     {
         $rows = $employees
-            ->groupBy(fn (Employee $employee) => $employee->category ?: 'Unassigned')
+            ->groupBy(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) ?: 'Unassigned')
             ->map(fn (Collection $items, string $category) => [
                 'category' => $category,
                 'count' => $items->count(),
@@ -373,6 +453,11 @@ class StaffLeaveReportService
                     'male' => $male,
                     'female' => $female,
                     'on_leave' => $items->whereIn('id', $currentLeaveEmployeeIds)->count(),
+                    'junior' => $items->filter(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) === StaffGrade::CATEGORY_JUNIOR)->count(),
+                    'senior' => $items->filter(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) === StaffGrade::CATEGORY_SENIOR)->count(),
+                    'management' => $items->filter(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) === StaffGrade::CATEGORY_MANAGEMENT)->count(),
+                    'contract' => $items->filter(fn (Employee $employee) => StaffGrade::reportCategory($employee->category) === StaffGrade::CATEGORY_CONTRACT)->count(),
+                    'no_grade' => $items->filter(fn (Employee $employee) => blank($employee->grade))->count(),
                 ];
             })
             ->sortBy('district')
@@ -461,7 +546,7 @@ class StaffLeaveReportService
             ->all();
 
         return Cache::remember(
-            'staff_leave_reports:'.$method.':'.md5(json_encode($normalized)),
+            'staff_reports:v2:'.$method.':'.md5(json_encode($normalized)),
             now()->addMinutes(5),
             $callback
         );

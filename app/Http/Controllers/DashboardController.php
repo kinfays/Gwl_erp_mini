@@ -24,17 +24,6 @@ class DashboardController extends Controller
 
         $modules = collect([
             [
-                'slug' => Permission::MODULE_LEAVE,
-                'title' => 'Leave Management',
-                'description' => 'Apply for leave, track balances, and manage approvals',
-                'route' => route('leave.home'),
-                'badge' => 'Everyone',
-                'accent' => 'border-t-4 border-[#185FA5]',
-                'icon_bg' => 'bg-blue-50',
-                'icon_color' => 'text-[#185FA5]',
-                'always' => true,
-            ],
-            [
                 'slug' => Permission::MODULE_STAFF,
                 'title' => 'Staff Management',
                 'description' => 'Manage employee records, import staff data, update profiles',
@@ -44,6 +33,17 @@ class DashboardController extends Controller
                 'icon_bg' => 'bg-sky-50',
                 'icon_color' => 'text-sky-700',
                 'always' => false,
+            ],
+            [
+                'slug' => Permission::MODULE_LEAVE,
+                'title' => 'Leave Management',
+                'description' => 'Apply for leave, track balances, and manage approvals',
+                'route' => route('leave.home'),
+                'badge' => 'Everyone',
+                'accent' => 'border-t-4 border-[#185FA5]',
+                'icon_bg' => 'bg-blue-50',
+                'icon_color' => 'text-[#185FA5]',
+                'always' => true,
             ],
             [
                 'slug' => Permission::MODULE_LETTERS,

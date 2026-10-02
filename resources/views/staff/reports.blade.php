@@ -1,5 +1,5 @@
-<x-erp-layout module="staff" title="Staff Leave Reports">
+<x-erp-layout module="staff" title="Staff Reports">
     <div class="content">
-        <livewire:staff.leave-reports />
+        <livewire:staff.staff-reports />
     </div>
 </x-erp-layout>

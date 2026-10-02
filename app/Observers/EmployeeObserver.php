@@ -2,9 +2,11 @@
 
 namespace App\Observers;
 
+use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\User;
 use App\Notifications\InviteUserNotification;
+use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Uac\RoleAssignmentService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -15,6 +17,10 @@ class EmployeeObserver
     public function created(Employee $employee): void
     {
         $this->syncUser($employee, sendInviteForNewUser: true);
+
+        if (filled($employee->grade)) {
+            $this->auditGrade($employee, null);
+        }
     }
 
     public function updated(Employee $employee): void
@@ -25,6 +31,30 @@ class EmployeeObserver
         // takes the role away. Every path that saves an employee (staff form, import, renaming a district, scripts)
         // lands here, which is why it lives in the observer.
         app(RoleAssignmentService::class)->stripHeadOfficeRolesOnTransfer($employee);
+
+        if ($employee->wasChanged('grade')) {
+            $this->auditGrade($employee, $employee->getOriginal('grade'), $employee->getOriginal('category'));
+        }
+
+        // What the Annual entitlement is worked out from: grade, hire date, where they work, whether they are still here.
+        // Years that have a stored entitlement are brought up to date (and the change is audited there).
+        if ($changed = array_intersect(['grade', 'date_joined', 'location_type', 'category', 'is_active'], array_keys($employee->getChanges()))) {
+            app(AnnualEntitlementService::class)->recalculate($employee, 'employee_changed:'.implode(',', $changed));
+        }
+    }
+
+    /** Every grade change is audited with the old and new grade (and the category it fixes), whichever screen made it. */
+    protected function auditGrade(Employee $employee, mixed $oldGrade, mixed $oldCategory = null): void
+    {
+        AuditLog::record(
+            'employee_grade_changed',
+            'staff',
+            'employees',
+            $employee->id,
+            ['grade' => $oldGrade, 'category' => $oldCategory],
+            ['grade' => $employee->grade, 'category' => $employee->category],
+            ['staff_id' => $employee->staff_id]
+        );
     }
 
     protected function syncUser(Employee $employee, bool $sendInviteForNewUser = false): User

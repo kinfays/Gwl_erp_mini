@@ -4,6 +4,7 @@ use App\Events\Transport\DocumentExpiryDetected;
 use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
+use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
 use Illuminate\Foundation\Inspiring;
@@ -36,6 +37,33 @@ Artisan::command('leave:forfeit-expired-carry-over {--dry-run : Report what woul
 })->purpose('Forfeit annual leave carry-over still unused after its expiry date');
 
 Schedule::command('leave:forfeit-expired-carry-over')->dailyAt('00:30');
+
+Artisan::command('leave:generate-entitlements {year? : Leave year, default the current one}', function (AnnualEntitlementService $entitlements) {
+    $year = (int) ($this->argument('year') ?: now()->format('Y'));
+
+    if ($year < 2000 || $year > 2100) {
+        $this->error('Give a four-digit leave year, e.g. 2027.');
+
+        return 1;
+    }
+
+    $counts = $entitlements->generate($year, 'artisan');
+
+    $this->info(sprintf(
+        '%d: %d created, %d updated, %d unchanged, %d skipped (contract staff, no leave).',
+        $year,
+        $counts['created'],
+        $counts['updated'],
+        $counts['unchanged'],
+        $counts['skipped']
+    ));
+
+    return 0;
+})->purpose('Generate (or bring up to date) every active employee\'s Annual leave entitlement for a year; safe to run again');
+
+// Idempotent: on 1 January it creates the new year's entitlements, on any other day it only picks up staff who joined or
+// were graded since. Runs before the carry-over forfeiture below so both see the same entitlements.
+Schedule::command('leave:generate-entitlements')->dailyAt('00:20');
 
 Artisan::command('transport:check-expiries', function () {
     $count = 0;

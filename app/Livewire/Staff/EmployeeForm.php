@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Staff;
 
+use App\Enums\StaffGrade;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\AuditLog;
 use App\Models\Department;
@@ -34,6 +35,9 @@ class EmployeeForm extends Component
     public string $date_joined = '';
 
     public string $category = 'Senior Staff';
+
+    /** One of StaffGrade; it fixes the category. Blank only for a record that predates grades. */
+    public string $grade = '';
 
     public ?int $job_title_id = null;
 
@@ -74,6 +78,7 @@ class EmployeeForm extends Component
         $this->date_of_birth = optional($this->employee->date_of_birth)->toDateString() ?? '';
         $this->date_joined = optional($this->employee->date_joined)->toDateString() ?? '';
         $this->category = $this->employee->category;
+        $this->grade = (string) ($this->employee->grade ?? '');
         $this->job_title_id = $this->employee->job_title_id;
         $this->department_id = $this->employee->department_id;
         $this->unit = $this->employee->unit ?? '';
@@ -81,6 +86,14 @@ class EmployeeForm extends Component
         $this->region_id = $this->employee->region_id;
         $this->present_appointment = $this->employee->present_appointment ?? '';
         $this->email = $this->employee->email;
+    }
+
+    /** The category follows the grade, so it is shown (not chosen) once a grade is picked. */
+    public function updatedGrade($value): void
+    {
+        if ($grade = StaffGrade::tryFrom((string) $value)) {
+            $this->category = $grade->category();
+        }
     }
 
     public function updatedDistrictId($value): void
@@ -105,6 +118,12 @@ class EmployeeForm extends Component
         $validated['date_joined'] = $validated['date_joined'] ?: null;
         $validated['present_appointment'] = $validated['present_appointment'] ?: null;
         $validated['unit'] = $validated['unit'] ?: null;
+        $validated['grade'] = $validated['grade'] ?: null;
+
+        // The grade fixes the category: it is never stored as something else.
+        if ($grade = StaffGrade::tryFrom((string) $validated['grade'])) {
+            $validated['category'] = $grade->category();
+        }
 
         $oldValues = $this->employee
             ? Arr::only($this->employee->toArray(), array_keys($validated))
@@ -184,7 +203,13 @@ class EmployeeForm extends Component
                 ? optional(District::query()->with('region')->find($this->district_id)?->region)->region_name
                 : null,
             'age' => $this->date_of_birth ? Carbon::parse($this->date_of_birth)->age : null,
-            'retirementAge' => Employee::RETIREMENT_AGE,
+            'retirementAge' => Employee::retirementAge(),
+            'gradeGroups' => collect(StaffGrade::cases())
+                ->groupBy(fn (StaffGrade $grade) => $grade->category())
+                ->map(fn ($grades) => $grades->map(fn (StaffGrade $grade) => $grade->value)->all())
+                ->all(),
+            'gradeCategory' => StaffGrade::tryFrom($this->grade)?->category(),
+            'gradeRequired' => $this->gradeIsRequired(),
             'retirementDate' => optional(Employee::retirementDateFromBirthDate($this->date_of_birth))->toDateString(),
             'leaveBalances' => $this->employee?->leaveBalances ?? collect(),
         ]);
@@ -206,7 +231,10 @@ class EmployeeForm extends Component
             'gender' => ['required', 'in:Male,Female'],
             'date_of_birth' => ['required', 'date'],
             'date_joined' => ['nullable', 'date'],
-            'category' => ['required', 'in:Senior Staff,Junior Staff,Management,Senior Management,Charwoman'],
+            // New staff must be graded; an existing record without a grade can still be edited until HR grades it.
+            'grade' => [$this->gradeIsRequired() ? 'required' : 'nullable', Rule::in(StaffGrade::values())],
+            // The category is derived from the grade; it is only entered for a record that has no grade.
+            'category' => [blank($this->grade) ? 'required' : 'nullable', Rule::in(StaffGrade::allCategories())],
             'job_title_id' => ['required', 'exists:job_titles,id'],
             'department_id' => ['required', 'exists:departments,id'],
             'unit' => ['nullable', 'string', 'max:255'],
@@ -216,11 +244,18 @@ class EmployeeForm extends Component
         ];
     }
 
+    protected function gradeIsRequired(): bool
+    {
+        return ! $this->employee || filled($this->employee->grade);
+    }
+
     protected function validationMessages(): array
     {
+        $messages = ['grade.in' => 'Choose a grade from the list.'];
+
         return $this->assignableRegionIds() === null
-            ? []
-            : ['district_id.exists' => 'Choose a district in your own region.'];
+            ? $messages
+            : $messages + ['district_id.exists' => 'Choose a district in your own region.'];
     }
 
     protected function assignableRegionIds(): ?array

@@ -27,6 +27,14 @@
                             <p class="lb-sub">Used {{ $card['used'] }} of {{ $card['total'] }}</p>
                         </div>
                     </div>
+
+                    @if ($card['figures'] && $card['figures']['gross'] > 0)
+                        <dl class="lb-breakdown">
+                            <div><dt>Gross entitlement</dt><dd>{{ $card['figures']['gross'] }}</dd></div>
+                            <div><dt>Compulsory leave</dt><dd>{{ $card['figures']['compulsory'] > 0 ? '−' : '' }}{{ $card['figures']['compulsory'] }}</dd></div>
+                            <div><dt>Available entitlement</dt><dd>{{ $card['figures']['net'] }}</dd></div>
+                        </dl>
+                    @endif
                 </section>
             @endforeach
         </div>

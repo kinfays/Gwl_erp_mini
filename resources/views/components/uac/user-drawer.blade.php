@@ -139,6 +139,7 @@ function userDrawer() {
                 { label: 'Region', value: employee.region ?? '-' },
                 { label: 'Location', value: employee.district ?? '-' },
                 { label: 'Category', value: employee.category ?? '-' },
+                { label: 'Grade', value: employee.grade ?? 'Not set' },
                 { label: 'Employee Status', value: employee.status ?? '-' },
                 { label: 'Deactivation Reason', value: employee.deactivation_reason_label ?? '-' },
                 { label: 'Gender', value: employee.gender ?? '-' },

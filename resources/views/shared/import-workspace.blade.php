@@ -177,6 +177,9 @@
             <div class="import-summary">
                 <x-ui.status-pill tone="success" :label="$preview['valid_count'].' rows validated'" />
                 <x-ui.status-pill :tone="$errorCount > 0 ? 'danger' : 'muted'" :label="$errorCount.' issues found'" />
+                @if (! empty($preview['grade_missing_count']))
+                    <x-ui.status-pill tone="warning" :label="$preview['grade_missing_count'].' grade missing'" />
+                @endif
                 <span class="ui-hint">{{ $preview['failure_percent'] ?? 0 }}% failure rate; max {{ $preview['max_failure_percent'] ?? config('gwl.max_import_failure_percent', 20) }}%</span>
             </div>
 
@@ -204,6 +207,21 @@
                         </tr>
                     @endforeach
                 </x-ui.table>
+            @endif
+
+            @if (! empty($preview['warnings']))
+                <section class="import-issues" aria-labelledby="import-warnings-{{ $context }}">
+                    <h3 id="import-warnings-{{ $context }}" class="ui-panel-title">Grade missing ({{ count($preview['warnings']) }})</h3>
+                    <p class="ui-hint">These rows are valid and will be imported without a grade. Set their grade later from the staff list (filter: No grade set) or import the file again with the grade filled in.</p>
+                    <ul class="import-issue-list">
+                        @foreach ($preview['warnings'] as $warning)
+                            <li>
+                                <x-ui.icon name="triangle-alert" />
+                                <span><strong>Row {{ $warning['row'] }}:</strong> {{ $warning['message'] }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </section>
             @endif
 
             @if (! empty($preview['errors']))

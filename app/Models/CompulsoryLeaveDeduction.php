@@ -18,6 +18,13 @@ class CompulsoryLeaveDeduction extends Model
         'applied_at',
     ];
 
+    protected static function booted(): void
+    {
+        // The new compulsory leave days read this table to leave years already deducted the old way alone.
+        static::saved(fn (self $deduction) => CompulsoryLeavePeriod::forgetYear((int) $deduction->year));
+        static::deleted(fn (self $deduction) => CompulsoryLeavePeriod::forgetYear((int) $deduction->year));
+    }
+
     protected $casts = [
         'year' => 'integer',
         'start_date' => 'date',

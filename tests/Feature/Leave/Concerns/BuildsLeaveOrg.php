@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Leave\Concerns;
 
+use App\Enums\StaffGrade;
 use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
@@ -71,6 +72,8 @@ trait BuildsLeaveOrg
         ?string $unit = null,
         bool $employeeActive = true,
         bool $userActive = true,
+        ?string $grade = null,
+        ?string $joined = null,
     ): Employee {
         $name = strtolower($district->district_name);
         $locationType = str_contains($name, 'head office') ? 'HeadOffice' : (str_contains($name, 'regional office') ? 'Region' : 'District');
@@ -79,7 +82,8 @@ trait BuildsLeaveOrg
             'staff_id' => $staffId,
             'full_name' => 'Employee '.$staffId,
             'gender' => 'Female',
-            'category' => 'Senior Staff',
+            'grade' => $grade,
+            'category' => $grade ? StaffGrade::from($grade)->category() : 'Senior Staff',
             'email' => strtolower($staffId).'@example.com',
             'job_title_id' => JobTitle::query()->firstOrCreate(['job_title_name' => 'Officer'])->id,
             'department_id' => $department->id,
@@ -88,7 +92,7 @@ trait BuildsLeaveOrg
             'location_type' => $locationType,
             'unit' => $unit,
             'date_of_birth' => '1990-01-01',
-            'date_joined' => '2020-01-06',
+            'date_joined' => $joined ?? '2020-01-06',
             'is_active' => $employeeActive,
         ]));
 

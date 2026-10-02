@@ -17,6 +17,23 @@ class IctAsset extends Model
     public const STATUS_RETIRED = 'Retired';
     public const STATUS_LOST = 'Lost';
 
+    public const CONDITION_NEW = 'New';
+    public const CONDITION_EXCELLENT = 'Excellent';
+    public const CONDITION_GOOD = 'Good';
+    public const CONDITION_FAIR = 'Fair';
+    public const CONDITION_POOR = 'Poor';
+    public const CONDITION_DAMAGED = 'Damaged';
+
+    /** Optional physical condition, best to worst. Distinct from status (Active/In Repair/...). */
+    public const CONDITIONS = [
+        self::CONDITION_NEW,
+        self::CONDITION_EXCELLENT,
+        self::CONDITION_GOOD,
+        self::CONDITION_FAIR,
+        self::CONDITION_POOR,
+        self::CONDITION_DAMAGED,
+    ];
+
     public const DEVICE_CATEGORY_ASSET = 'asset';
     public const DEVICE_CATEGORY_PHONE = 'phone';
     public const DEVICE_CATEGORY_NETWORK = 'network';
@@ -65,6 +82,7 @@ class IctAsset extends Model
         'device_category',
         'ict_asset_model_id',
         'status',
+        'condition',
         'assigned_to_employee_id',
         'previous_assigned_to_employee_id',
         'department_id',

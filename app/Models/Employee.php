@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\StaffGrade;
+use App\Services\Leave\LeaveEntitlementCalculator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,17 +17,38 @@ class Employee extends Model
 
     public const RETIREMENT_AGE = 60;
 
+    /** Why an employee was deactivated (employees.deactivation_reason): the options on the deactivation form. */
     public const DEACTIVATION_REASONS = [
+        'retired' => 'Retirement',
+        'resigned' => 'Resignation',
+        'contract_ended' => 'Contract ended',
+        'transfer' => 'Transfer',
         'left' => 'Left',
-        'retired' => 'Retired',
         'dead' => 'Dead',
+        'other' => 'Other',
     ];
+
+    /**
+     * How the HR analytics groups those reasons. A transfer is an internal move, not someone leaving the company: it is
+     * shown in the exit-reasons chart but left out of the exit count and the turnover rate (EXIT_REASON_TRANSFER). The
+     * reasons recorded before the list grew (left, dead) and a missing one fall under Other.
+     */
+    public const EXIT_REASON_GROUPS = [
+        'Retirement' => ['retired'],
+        'Resignation' => ['resigned'],
+        'Contract ended' => ['contract_ended'],
+        'Transfer' => ['transfer'],
+        'Other' => ['left', 'dead', 'other'],
+    ];
+
+    public const EXIT_REASON_TRANSFER = 'transfer';
 
     protected $fillable = [
         'staff_id',
         'full_name',
         'gender',
         'category',
+        'grade',
         'email',
         'job_title_id',
         'district_id',
@@ -38,6 +61,7 @@ class Employee extends Model
         'unit',
         'is_active',
         'deactivation_reason',
+        'deactivated_at',
     ];
 
     protected $attributes = [
@@ -58,6 +82,7 @@ class Employee extends Model
         'department_id' => 'integer',
         'date_of_birth' => 'date',
         'date_joined' => 'date',
+        'deactivated_at' => 'date',
         'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -75,6 +100,16 @@ class Employee extends Model
             }
 
             $employee->location_type = self::locationTypeFor($districtName);
+
+            // The grade fixes the category: it is never stored as something else. Staff with no grade yet keep theirs.
+            if ($grade = StaffGrade::tryFrom((string) $employee->grade)) {
+                $employee->category = $grade->category();
+            }
+
+            // When they left: stamped when the account is deactivated (unless a date was given), cleared on reactivation.
+            if ($employee->isDirty('is_active')) {
+                $employee->deactivated_at = $employee->is_active ? null : ($employee->deactivated_at ?? today());
+            }
         });
     }
 
@@ -148,18 +183,40 @@ class Employee extends Model
         return self::retirementDateFromBirthDate($this->date_of_birth);
     }
 
+    /** The age staff retire at: config gwl.retirement_age (default RETIREMENT_AGE, 60). */
+    public static function retirementAge(): int
+    {
+        return (int) config('gwl.retirement_age', self::RETIREMENT_AGE);
+    }
+
     public static function retirementDateFromBirthDate(mixed $dateOfBirth): ?Carbon
     {
         if (! $dateOfBirth) {
             return null;
         }
 
-        return Carbon::parse($dateOfBirth)->addYearsNoOverflow(self::RETIREMENT_AGE);
+        return Carbon::parse($dateOfBirth)->addYearsNoOverflow(self::retirementAge());
     }
 
+    /**
+     * Annual days available this year: the grade's entitlement less compulsory leave (LeaveEntitlementCalculator).
+     * Worked out, not read from leave_entitlements, so listing employees costs no query per row.
+     */
     public function getAnnualLeaveDaysAttribute(): int
     {
-        return 31;
+        return app(LeaveEntitlementCalculator::class)->netEntitlement($this, (int) now()->format('Y'));
+    }
+
+    /** The StaffGrade this employee holds, or null (not graded yet, or a value that is no longer a grade). */
+    public function staffGrade(): ?StaffGrade
+    {
+        return StaffGrade::tryFrom((string) $this->grade);
+    }
+
+    /** Contract staff have no leave: see LeaveEntitlementCalculator::isEligible(). */
+    public function isLeaveEligible(): bool
+    {
+        return app(LeaveEntitlementCalculator::class)->isEligible($this);
     }
 
     public function getCasualLeaveDaysAttribute(): int

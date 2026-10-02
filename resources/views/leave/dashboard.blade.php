@@ -1,4 +1,4 @@
-<x-erp-layout module="leave" title="Leave Management">
+<x-erp-layout module="staff" title="HR Dashboard">
     <div class="content">
         <livewire:leave.hr-dashboard />
     </div>

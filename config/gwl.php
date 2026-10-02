@@ -13,6 +13,34 @@ return [
         'GWL_LEAVE_HR_EMAIL_NOTIFICATIONS_ENABLED',
         env('GWL_LEAVE_EMAIL_NOTIFICATIONS_ENABLED', true)
     ),
+
+    // Annual leave by grade (App\Enums\StaffGrade), worked out by LeaveEntitlementCalculator. Tenure is the whole years
+    // between the hire date (employees.date_joined) and 1 January of the leave year.
+    'leave_annual_days' => [
+        // Junior Gd. Levels 1-3: fewer days until they have served `leave_junior_lower_tenure_years` years.
+        'junior_lower_short_tenure' => (int) env('GWL_LEAVE_DAYS_JUNIOR_LOWER_SHORT', 26),
+        'junior_lower_long_tenure' => (int) env('GWL_LEAVE_DAYS_JUNIOR_LOWER_LONG', 31),
+        // Junior Gd. Levels 4-6.
+        'junior_upper' => (int) env('GWL_LEAVE_DAYS_JUNIOR_UPPER', 31),
+        // Snr. Gd. and Mgt. Gd., every level.
+        'senior_and_management' => (int) env('GWL_LEAVE_DAYS_SENIOR_MANAGEMENT', 36),
+        // Staff with no grade yet keep the flat entitlement they had before grades existed.
+        'ungraded' => (int) env('GWL_LEAVE_DAYS_UNGRADED', 31),
+    ],
+    'leave_junior_lower_tenure_years' => (int) env('GWL_LEAVE_JUNIOR_LOWER_TENURE_YEARS', 10),
+
+    // Compulsory leave: the days taken off gross entitlement for a year with no compulsory_leave_periods record, and
+    // the staff it applies to (employees.location_type). District staff and contract staff are exempt.
+    'leave_compulsory_default_days' => (int) env('GWL_LEAVE_COMPULSORY_DEFAULT_DAYS', 11),
+    'leave_compulsory_location_types' => ['HeadOffice', 'Region'],
+
+    // Retirement: the age (Employee::retirementAge()) and how far ahead the HR analytics looks for people approaching it.
+    'retirement_age' => (int) env('GWL_RETIREMENT_AGE', 60),
+    'retirement_window_months' => (int) env('GWL_RETIREMENT_WINDOW_MONTHS', 12),
+
+    // HR analytics (App\Services\Hr\HrAnalyticsService): how long a computed dashboard is reused. 0 turns the cache off.
+    'hr_analytics_cache_seconds' => (int) env('GWL_HR_ANALYTICS_CACHE_SECONDS', 120),
+
     'visitor_kiosk_reset_seconds' => (int) env('GWL_VISITOR_KIOSK_RESET_SECONDS', 5),
     'max_import_failure_percent' => (int) env('GWL_MAX_IMPORT_FAILURE_PERCENT', 20),
     'credit_union_module_enabled' => (bool) env('GWL_CREDIT_UNION_MODULE_ENABLED', false),

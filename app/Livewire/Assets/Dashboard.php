@@ -31,6 +31,10 @@ class Dashboard extends Component
             ->get();
 
         return view('livewire.assets.dashboard', [
+            'ageBuckets' => $dashboard['ageBuckets'],
+            'warrantyBuckets' => $dashboard['warrantyBuckets'],
+            'unassigned' => $dashboard['unassigned'],
+            'topAssignees' => $dashboard['topAssignees'],
             'cards' => $dashboard['cards'],
             'districtBreakdown' => $dashboard['districtBreakdown'],
             'allocation' => $dashboard['allocation'],

@@ -50,7 +50,7 @@ class ChartAssetsTest extends TestCase
         $hr = $this->userWithRole('HR001', 'hr_headoffice');
 
         $pages = [
-            [$hr, route('leave.home')],
+            [$hr, route('leave.hr-dashboard')],
             [$hr, route('staff.reports')],
             [$this->managerWithEmployee(), route('leave.team-dashboard')],
             [$this->userWithRole('TRM001', 'transport_manager'), route('transport.reports')],

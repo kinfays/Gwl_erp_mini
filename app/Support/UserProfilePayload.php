@@ -42,6 +42,7 @@ class UserProfilePayload
                 'email' => $employee->email,
                 'gender' => $employee->gender,
                 'category' => $employee->category,
+                'grade' => $employee->grade,
                 'location_type' => $employee->location_type,
                 'unit' => $employee->unit,
                 'present_appointment' => $employee->present_appointment,

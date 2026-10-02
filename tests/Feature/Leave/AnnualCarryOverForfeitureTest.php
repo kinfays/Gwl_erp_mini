@@ -267,7 +267,9 @@ class AnnualCarryOverForfeitureTest extends TestCase
             ->with(['leaveBalances' => fn ($query) => $query->where('leave_type', 'Annual')->where('current_year', now()->year)])
             ->findOrFail($this->employee->id);
 
-        return (new EmployeesExport(collect([$employee])))->map($employee)[8];
+        $export = new EmployeesExport(collect([$employee]));
+
+        return $export->map($employee)[array_search('Annual Leave Balance', $export->headings(), true)];
     }
 
     protected function createEmployee(): Employee

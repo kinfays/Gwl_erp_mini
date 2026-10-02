@@ -38,12 +38,13 @@ class EmployeeDeactivationTest extends TestCase
 
         $this->assertFalse($employee->is_active);
         $this->assertSame('retired', $employee->deactivation_reason);
+        $this->assertSame(today()->toDateString(), $employee->deactivated_at->toDateString());
         $this->assertFalse($employee->user()->first()->is_active);
 
         Livewire::test(AllEmployees::class)
             ->set('status', 'inactive')
             ->assertSee('Deactivated')
-            ->assertSee('Reason: Retired');
+            ->assertSee('Reason: Retirement');
     }
 
     public function test_reactivating_employee_clears_reason_and_restores_login_access(): void
@@ -62,6 +63,7 @@ class EmployeeDeactivationTest extends TestCase
 
         $this->assertTrue($employee->is_active);
         $this->assertNull($employee->deactivation_reason);
+        $this->assertNull($employee->deactivated_at);
         $this->assertTrue($employee->user()->first()->is_active);
     }
 

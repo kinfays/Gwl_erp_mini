@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Assets;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use Illuminate\View\View;
 
 class AssetModuleController extends Controller
@@ -25,6 +26,11 @@ class AssetModuleController extends Controller
     public function network(): View
     {
         return view('assets.network');
+    }
+
+    public function employee(Employee $employee): View
+    {
+        return view('assets.employee', ['employee' => $employee]);
     }
 
     public function maintenance(): View

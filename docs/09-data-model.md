@@ -76,3 +76,10 @@ Deleting a batch nulls `routing_histories.batch_id` (the hops and their history 
 - Leave requests reference requester, manager, and final approver as employee records; the approvers chosen at
   submission are also kept as user ids (`manager_user_id`, `chief_user_id`, both nullable, `nullOnDelete`).
 - Letters record per-secretariat statuses and explicit route hops; a transmittal groups several hops.
+
+## Grades, entitlements and compulsory leave
+
+- `employees.grade` (nullable string, indexed): a `StaffGrade` value. `employees.category` is now a plain string (it was an enum) that follows the grade; the old `Charwoman` category became `Contract`. `employees.deactivated_at` (nullable date, indexed) is when the employee was deactivated; inactive records were backfilled from `updated_at`.
+- `leave_entitlements`: `employee_id` (cascade), `year`, `grade_snapshot`, `tenure_years`, `gross_days`, `compulsory_days`, `net_days`; unique on (`employee_id`, `year`).
+- `compulsory_leave_periods`: `year` (unique), `days` (default 11), `start_date`, `resume_date`, `notes`, `updated_by` (users, null on delete).
+- Permission `leave.manage_compulsory` is granted to `super_admin`, `admin` and `hr_headoffice` (migration `2026_10_01_000005`, mirrored in `LeaveApprovalRolePermissionSeeder`).

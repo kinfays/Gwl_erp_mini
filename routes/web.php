@@ -8,8 +8,10 @@ use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
+use App\Http\Controllers\Leave\LeaveCompulsoryController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
+use App\Http\Controllers\Leave\LeaveHrAnalyticsController;
 use App\Http\Controllers\Leave\LeaveHrContactsController;
 use App\Http\Controllers\Letters\LetterRegisterExportController;
 use App\Http\Controllers\Letters\LetterScanController;
@@ -86,6 +88,10 @@ Route::middleware(['auth', 'active', 'module:leave'])
     ->name('leave.')
     ->group(function () {
         Route::get('/', [LeaveHomeController::class, 'index'])->name('home');
+        // The HR dashboard (listed under Staff Management along with the HR tools).
+        Route::get('/hr-dashboard', [LeaveHomeController::class, 'hrDashboard'])
+            ->middleware('role:hr_headoffice,hr_region,admin,super_admin')
+            ->name('hr-dashboard');
         Route::get('/requests', fn () => view('leave.requests'))->name('requests');
         Route::get('/my-history', fn () => view('leave.my-history'))->name('my-history');
         Route::get('/apply', fn () => view('leave.apply'))->name('apply');
@@ -101,9 +107,14 @@ Route::middleware(['auth', 'active', 'module:leave'])
         Route::get('/export/team/excel', [LeaveExportController::class, 'teamExcel'])
             ->middleware('permission:leave.export')
             ->name('export.team.excel');
-        Route::get('/compulsory', fn () => view('leave.compulsory'))
-            ->middleware('permission:leave.manage_compulsory')
+        // Head Office HR and Global Admin only (super_admin passes every role check). Regional HR have no access.
+        Route::get('/compulsory', [LeaveCompulsoryController::class, 'index'])
+            ->middleware(['role:hr_headoffice,admin,super_admin', 'permission:leave.manage_compulsory'])
             ->name('compulsory');
+        // Workforce analytics: Head Office HR, Global Admin and super_admin see every region, regional HR their own.
+        Route::get('/hr-analytics', [LeaveHrAnalyticsController::class, 'index'])
+            ->middleware('role:hr_headoffice,hr_region,admin,super_admin')
+            ->name('hr-analytics');
         Route::get('/hr-contacts', [LeaveHrContactsController::class, 'index'])
             ->middleware('permission:leave.manage_hr_contacts')
             ->name('hr-contacts');
@@ -128,6 +139,9 @@ Route::middleware([
             Route::get('/reports', [StaffController::class, 'reports'])
                 ->middleware('permission:staff.view_reports')
                 ->name('reports');
+            Route::get('/reports/export', [StaffController::class, 'reportsExport'])
+                ->middleware('permission:staff.view_reports')
+                ->name('reports.export');
 
             Route::get('/import', [ImportController::class, 'staff'])->name('import');
             Route::get('/import/template/{type}', [ImportController::class, 'downloadTemplate'])
@@ -209,6 +223,10 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/network', [AssetModuleController::class, 'network'])
             ->middleware('permission:assets.view_inventory')
             ->name('network');
+
+        Route::get('/employees/{employee}', [AssetModuleController::class, 'employee'])
+            ->middleware('permission:assets.view_inventory')
+            ->name('employee');
 
         Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
             ->middleware('permission:assets.manage_maintenance')

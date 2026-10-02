@@ -30,18 +30,18 @@ if (! function_exists('dashboardModules')) {
 
         $allModules = [
             [
-                'slug' => 'leave',
-                'title' => 'Leave Management',
-                'description' => 'Apply for leave, track balances, and manage approvals',
-                'icon' => 'LV',
-                'route' => route('leave.home'),
-            ],
-            [
                 'slug' => 'staff',
                 'title' => 'Staff Management',
                 'description' => 'Manage employee records, import staff data, update profiles',
                 'icon' => 'ST',
                 'route' => route('staff.index'),
+            ],
+            [
+                'slug' => 'leave',
+                'title' => 'Leave Management',
+                'description' => 'Apply for leave, track balances, and manage approvals',
+                'icon' => 'LV',
+                'route' => route('leave.home'),
             ],
             [
                 'slug' => 'letters',

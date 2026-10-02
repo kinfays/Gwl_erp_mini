@@ -47,6 +47,8 @@
             </select>
         </div>
 
+        <x-assets.filter-chips :chips="$analyticsChips" />
+
         <div class="ui-loading-host">
             <x-ui.table label="Assets" pin-first>
                 <x-slot:head>
@@ -155,6 +157,12 @@
                 <x-ui.input label="Date" type="date" wire:model.defer="form.purchased_at" />
 
                 <x-assets.actor-region :region="$actorRegion" />
+                <x-ui.select label="Condition" wire:model.defer="form.condition">
+                    <option value="">Not recorded</option>
+                    @foreach ($conditionOptions as $option)
+                        <option value="{{ $option }}">{{ $option }}</option>
+                    @endforeach
+                </x-ui.select>
 
                 <div class="span-2">
                     <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />

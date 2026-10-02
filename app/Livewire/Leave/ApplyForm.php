@@ -5,6 +5,7 @@ namespace App\Livewire\Leave;
 use App\Models\CompulsoryLeaveDeduction;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Services\Leave\CompulsoryLeaveService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Leave\LeaveWorkflowService;
 use App\Services\Leave\WorkingDaysCalculator;
@@ -97,26 +98,40 @@ class ApplyForm extends Component
                 abort(403, 'This request cannot be edited.');
             }
 
-            $workflow->updatePlanned($this->requester(), $req, [
-                'leave_type' => $this->leave_type,
-                'start_date' => $this->start_date,
-                'end_date' => $this->end_date,
-                'leave_details' => $this->leave_details,
-                'file_attachment' => $path ?? $req->file_attachment,
-            ]);
+            try {
+                $workflow->updatePlanned($this->requester(), $req, [
+                    'leave_type' => $this->leave_type,
+                    'start_date' => $this->start_date,
+                    'end_date' => $this->end_date,
+                    'leave_details' => $this->leave_details,
+                    'file_attachment' => $path ?? $req->file_attachment,
+                ]);
+            } catch (\RuntimeException $e) {
+                $this->addError('leave_type', $e->getMessage());
+                $this->dispatch('toast', type: 'error', message: $e->getMessage());
+
+                return;
+            }
 
             session()->flash('success', 'Planned leave request updated.');
 
             return redirect()->route('leave.my-history');
         }
 
-        $workflow->savePlanned($this->requester(), [
-            'leave_type' => $this->leave_type,
-            'start_date' => $this->start_date,
-            'end_date' => $this->end_date,
-            'leave_details' => $this->leave_details,
-            'file_attachment' => $path,
-        ]);
+        try {
+            $workflow->savePlanned($this->requester(), [
+                'leave_type' => $this->leave_type,
+                'start_date' => $this->start_date,
+                'end_date' => $this->end_date,
+                'leave_details' => $this->leave_details,
+                'file_attachment' => $path,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->addError('leave_type', $e->getMessage());
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+
+            return;
+        }
 
         session()->flash('success', 'Saved as planned.');
 
@@ -260,12 +275,16 @@ class ApplyForm extends Component
     protected function refreshCompulsoryRanges(): void
     {
         $this->compulsoryRanges = $this->matchingCompulsoryDeductions()
+            ->toBase()
             ->map(fn (CompulsoryLeaveDeduction $deduction) => [
                 'start' => $deduction->start_date?->toDateString(),
                 'end' => $deduction->end_date?->toDateString(),
                 'label' => $deduction->start_date?->format('d M Y').' - '.$deduction->end_date?->format('d M Y'),
                 'days' => (int) $deduction->deduction_days,
             ])
+            // The year's compulsory leave (Compulsory Leave page): staff it applies to can't book over the shutdown.
+            ->merge(app(CompulsoryLeaveService::class)->windowsFor($this->requester()))
+            ->sortBy('start')
             ->values()
             ->all();
     }

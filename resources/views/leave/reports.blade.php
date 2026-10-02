@@ -1,4 +1,4 @@
-<x-erp-layout module="leave" title="Leave Reports">
+<x-erp-layout module="staff" title="Leave Reports">
     <div class="content">
         <livewire:leave.leave-reports />
     </div>

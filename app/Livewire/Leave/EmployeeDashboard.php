@@ -6,6 +6,7 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Leave\LeaveBalanceService;
 use Livewire\Component;
 
@@ -64,6 +65,8 @@ class EmployeeDashboard extends Component
                 'available' => $available,
                 'used' => $used,
                 'used_percent' => $usedPercent,
+                // Annual only: how the entitlement is made up (gross less the year's compulsory leave).
+                'figures' => $card['type'] === 'Annual' ? app(AnnualEntitlementService::class)->figuresFor($employee, $year) : null,
             ];
         })->all();
     }

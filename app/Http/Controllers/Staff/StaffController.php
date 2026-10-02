@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Staff;
 
 use App\Exports\Staff\EmployeesExport;
+use App\Exports\Staff\StaffReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\User;
 use App\Services\Staff\EmployeeDirectory;
+use App\Services\Staff\StaffReportService;
 use App\Support\UserProfilePayload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,6 +46,46 @@ class StaffController extends Controller
     public function reports(): View
     {
         return view('staff.reports');
+    }
+
+    /** Staff Reports as a workbook: the figures on screen plus the staff behind them, with grade columns. */
+    public function reportsExport(Request $request, StaffReportService $reports)
+    {
+        $reports->authorize($request->user());
+
+        $filters = $request->validate([
+            'datePreset' => ['nullable', 'in:this_month,last_3_months,last_6_months,last_12_months,custom'],
+            'customFrom' => ['nullable', 'date'],
+            'customTo' => ['nullable', 'date'],
+            'departmentId' => ['nullable', 'integer'],
+            'regionId' => ['nullable', 'integer'],
+            'districtId' => ['nullable', 'integer'],
+        ]);
+
+        [$from, $to] = $reports->resolveDateRange($filters['datePreset'] ?? 'this_month', $filters['customFrom'] ?? null, $filters['customTo'] ?? null);
+
+        if ($from->gt($to)) {
+            [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+        }
+
+        $department = ($filters['departmentId'] ?? null) ? (int) $filters['departmentId'] : null;
+        $region = ($filters['regionId'] ?? null) ? (int) $filters['regionId'] : null;
+        $district = ($filters['districtId'] ?? null) ? (int) $filters['districtId'] : null;
+
+        $payload = $reports->reportPayload($request->user(), $from, $to, $department, $region, $district);
+
+        AuditLog::record('export_staff_reports', 'staff', 'staff_reports', null, null, $filters + [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+        ]);
+
+        return Excel::download(
+            new StaffReportExport($payload, $reports->exportStaffRows($request->user(), $department, $region, $district), [
+                'from' => $from->format('d M Y'),
+                'to' => $to->format('d M Y'),
+            ]),
+            'staff_reports_'.now()->format('Y_m_d_His').'.xlsx'
+        );
     }
 
     public function departments(): View
@@ -118,7 +160,9 @@ class StaffController extends Controller
             ->applyFilters($directory->queryFor($request->user()), $request->only([
                 'search',
                 'department_id',
+                'region_id',
                 'category',
+                'grade',
                 'location_type',
                 'status',
             ]))
@@ -131,7 +175,7 @@ class StaffController extends Controller
             'employees',
             null,
             null,
-            $request->only(['search', 'department_id', 'category', 'location_type', 'status'])
+            $request->only(['search', 'department_id', 'region_id', 'category', 'grade', 'location_type', 'status'])
         );
 
         return Excel::download(

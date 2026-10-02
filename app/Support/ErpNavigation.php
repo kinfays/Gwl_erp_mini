@@ -51,6 +51,10 @@ class ErpNavigation
                     $module['badge'] = $employee ? app(LetterWorkflowService::class)->pendingIncomingCount($employee) : 0;
                 }
 
+                if ($module['slug'] === Permission::MODULE_STAFF && ! $this->canViewStaff($user)) {
+                    $module['route'] = $this->safeRoute('leave.hr-dashboard');
+                }
+
                 if ($module['slug'] === Permission::MODULE_ASSETS) {
                     $module['route'] = $this->safeRoute($this->assetsLandingRoute($user));
                 }
@@ -81,18 +85,18 @@ class ErpNavigation
     {
         $definitions = [
             [
-                'slug' => Permission::MODULE_LEAVE,
-                'title' => 'Leave Management',
-                'short' => 'Leave',
-                'icon_name' => 'calendar-days',
-                'route' => $this->safeRoute('leave.home'),
-            ],
-            [
                 'slug' => Permission::MODULE_STAFF,
                 'title' => 'Staff Management',
                 'short' => 'Staff',
                 'icon_name' => 'users',
                 'route' => $this->safeRoute('staff.index'),
+            ],
+            [
+                'slug' => Permission::MODULE_LEAVE,
+                'title' => 'Leave Management',
+                'short' => 'Leave',
+                'icon_name' => 'calendar-days',
+                'route' => $this->safeRoute('leave.home'),
             ],
             [
                 'slug' => Permission::MODULE_LETTERS,
@@ -195,18 +199,11 @@ class ErpNavigation
         $canReview = fn (User $currentUser) => $this->isHrViewer($currentUser)
             || $this->isManagerialUser($currentUser)
             || $currentUser->hasRoles('managing_director');
-        $canManageHrTools = fn (User $currentUser) => $currentUser->hasPermission('leave.manage_compulsory')
-            || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
-        $canExport = fn (User $currentUser) => $currentUser->hasPermission('leave.export')
-            || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
-        // Regional HR edit only their own region: that limit is enforced by the screen and LeaveHrContactService.
-        $canManageHrContacts = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin')
-            || ($currentUser->hasRoles('hr_headoffice', 'hr_region') && $currentUser->hasPermission('leave.manage_hr_contacts'));
         $homeRoute = $this->leaveHomeRoute($user);
 
         return [
             [
-                'label' => $this->isHrViewer($user) ? 'HR Dashboard' : 'Leave Home',
+                'label' => 'Leave Home',
                 'route' => $homeRoute,
                 'active' => ['leave.home', 'leave.team-dashboard'],
                 'icon' => $this->icon('dashboard'),
@@ -246,34 +243,6 @@ class ErpNavigation
                 'icon_name' => 'square-check-big',
                 'can' => $canReview,
             ],
-            [
-                'type' => 'section',
-                'label' => 'HR Tools',
-            ],
-            [
-                'label' => 'Compulsory Leave',
-                'route' => 'leave.compulsory',
-                'active' => ['leave.compulsory'],
-                'icon' => $this->icon('spark'),
-                'icon_name' => 'calendar-x',
-                'can' => $canManageHrTools,
-            ],
-            [
-                'label' => 'HR Contacts',
-                'route' => 'leave.hr-contacts',
-                'active' => ['leave.hr-contacts'],
-                'icon' => $this->icon('user-plus'),
-                'icon_name' => 'mail',
-                'can' => $canManageHrContacts,
-            ],
-            [
-                'label' => 'Reports',
-                'route' => 'leave.reports',
-                'active' => ['leave.reports'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'chart-column',
-                'can' => $canExport,
-            ],
         ];
     }
 
@@ -285,14 +254,33 @@ class ErpNavigation
         $canManageLocations = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_locations');
         $canManageJobTitles = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.manage_job_titles');
         $canViewReports = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('staff.view_reports');
+        $canViewStaff = fn (User $currentUser) => $this->canViewStaff($currentUser);
+        $isHrViewer = fn (User $currentUser) => $this->isHrViewer($currentUser);
+        // The HR dashboard and HR tools (moved here from Leave). The routes and permissions are the leave module's own.
+        $canManageCompulsory = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin')
+            || ($currentUser->hasRoles('hr_headoffice') && $currentUser->hasPermission('leave.manage_compulsory'));
+        $canExportLeave = fn (User $currentUser) => $currentUser->hasPermission('leave.export')
+            || $currentUser->hasRoles('super_admin', 'admin', 'hr_headoffice', 'hr_region');
+        // Regional HR edit only their own region: that limit is enforced by the screen and LeaveHrContactService.
+        $canManageHrContacts = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'admin')
+            || ($currentUser->hasRoles('hr_headoffice', 'hr_region') && $currentUser->hasPermission('leave.manage_hr_contacts'));
 
         return [
+            [
+                'label' => 'HR Dashboard',
+                'route' => 'leave.hr-dashboard',
+                'active' => ['leave.hr-dashboard'],
+                'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
+                'can' => $isHrViewer,
+            ],
             [
                 'label' => 'All Employees',
                 'route' => 'staff.index',
                 'active' => ['staff.index'],
                 'icon' => $this->icon('user'),
                 'icon_name' => 'users',
+                'can' => $canViewStaff,
             ],
             [
                 'label' => 'Add Employee',
@@ -304,15 +292,53 @@ class ErpNavigation
             ],
             [
                 'type' => 'section',
-                'label' => 'Data',
+                'label' => 'HR Tools',
+                'can' => $isHrViewer,
             ],
             [
-                'label' => 'Reports',
+                'label' => 'HR Analytics',
+                'route' => 'leave.hr-analytics',
+                'active' => ['leave.hr-analytics'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => $isHrViewer,
+            ],
+            [
+                'label' => 'Compulsory Leave',
+                'route' => 'leave.compulsory',
+                'active' => ['leave.compulsory'],
+                'icon' => $this->icon('spark'),
+                'icon_name' => 'calendar-x',
+                'can' => $canManageCompulsory,
+            ],
+            [
+                'label' => 'HR Contacts',
+                'route' => 'leave.hr-contacts',
+                'active' => ['leave.hr-contacts'],
+                'icon' => $this->icon('user-plus'),
+                'icon_name' => 'mail',
+                'can' => $canManageHrContacts,
+            ],
+            [
+                'label' => 'Leave Reports',
+                'route' => 'leave.reports',
+                'active' => ['leave.reports'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => $canExportLeave,
+            ],
+            [
+                'label' => 'Staff Reports',
                 'route' => 'staff.reports',
                 'active' => ['staff.reports'],
                 'icon' => $this->icon('report'),
                 'icon_name' => 'chart-column',
                 'can' => $canViewReports,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Data',
+                'can' => $canViewStaff,
             ],
             [
                 'label' => 'Import / Export',
@@ -837,6 +863,11 @@ class ErpNavigation
     protected function userCanAccessModule(User $user, string $module): bool
     {
         if ($module === Permission::MODULE_LEAVE) {
+            return true;
+        }
+
+        // The HR dashboard and HR tools are in the Staff module, and Global Admin may use them (not the staff list itself).
+        if ($module === Permission::MODULE_STAFF && $user->hasRoles('admin')) {
             return true;
         }
 

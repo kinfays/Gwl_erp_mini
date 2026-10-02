@@ -22,6 +22,7 @@ This folder contains split documentation pages for easier maintenance.
 - Data model: [09-data-model.md](09-data-model.md)
 - Routes and tests: [10-routes-and-testing.md](10-routes-and-testing.md)
 - UI components and design tokens: [11-ui-components.md](11-ui-components.md)
+- HR analytics: [12-hr-analytics.md](12-hr-analytics.md)
 
 ## Full Single-File Guide
 

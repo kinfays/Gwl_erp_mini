@@ -22,8 +22,14 @@ class LeaveHomeController extends Controller
     {
         $user = $request->user();
 
+        // HR viewers have their own dashboard under Staff Management; Leave Home is their personal one, so an HR
+        // account with no employee record (nothing of its own to show) is sent there instead.
+        if ($user->hasRoles('hr_headoffice', 'hr_region', 'super_admin', 'admin') && ! ($user->employee ?? $user->employeeByStaffId)) {
+            return redirect()->route('leave.hr-dashboard');
+        }
+
         if ($user->hasRoles('hr_headoffice', 'hr_region', 'super_admin', 'admin')) {
-            return view('leave.dashboard');
+            return view('leave.home');
         }
 
         if ($user->hasRoles('manager', 'departmental_manager', 'district_manager', 'chief_manager', 'regional_chief_manager')) {
@@ -31,5 +37,10 @@ class LeaveHomeController extends Controller
         }
 
         return view('leave.home');
+    }
+
+    public function hrDashboard(Request $request)
+    {
+        return view('leave.dashboard');
     }
 }

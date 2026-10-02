@@ -15,6 +15,10 @@
         :description="($viewer->isHeadOfficeHr() ? 'Head Office Zone' : 'Regional Zone').' · '.now()->format('F Y')"
     >
         <x-slot:actions>
+            <x-ui.button :href="route('leave.hr-analytics')" icon="chart-column">HR Analytics</x-ui.button>
+            @if ($viewer->hasRoles('super_admin') || $viewer->hasPermission('staff.view_reports'))
+                <x-ui.button :href="route('staff.reports')" icon="chart-column">Staff Reports</x-ui.button>
+            @endif
             @if ($canExport)
                 <x-ui.button :href="route('leave.export.approved.excel')" icon="download">Export Excel</x-ui.button>
             @endif

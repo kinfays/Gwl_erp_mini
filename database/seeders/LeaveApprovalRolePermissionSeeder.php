@@ -22,8 +22,9 @@ class LeaveApprovalRolePermissionSeeder extends Seeder
         $map = [
             'managing_director' => ['leave.view_own', 'leave.apply', 'leave.approve_final'],
             'super_admin' => ['leave.manage_hr_contacts'],
-            'admin' => ['leave.manage_hr_contacts'],
-            'hr_headoffice' => ['leave.manage_hr_contacts'],
+            'admin' => ['leave.manage_hr_contacts', 'leave.manage_compulsory'],
+            // Compulsory Leave page: Head Office HR and Global Admin (admin is granted it by UacRolePermissionSeeder).
+            'hr_headoffice' => ['leave.manage_hr_contacts', 'leave.manage_compulsory'],
             'hr_region' => ['leave.manage_hr_contacts'],
         ];
 

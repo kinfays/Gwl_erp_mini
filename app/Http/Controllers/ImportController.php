@@ -106,7 +106,9 @@ class ImportController extends Controller
             $result['processed'],
             $result['created'],
             $result['updated']
-        ));
+        ).(($result['grade_missing'] ?? 0) > 0
+            ? sprintf(' %d imported with the grade missing.', $result['grade_missing'])
+            : ''));
     }
 
     public function clear(Request $request): RedirectResponse

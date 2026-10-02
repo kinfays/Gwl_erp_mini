@@ -2,6 +2,7 @@
 
 namespace App\Services\Import;
 
+use App\Enums\StaffGrade;
 use App\Exports\ImportTemplateExport;
 use App\Imports\RawRowsImport;
 use App\Models\Department;
@@ -83,8 +84,12 @@ class DataImportService
             ->values()
             ->all();
 
-        $missingHeadings = array_diff($definition['headings'], $headings);
+        $missingHeadings = array_diff(
+            array_diff($definition['headings'], $definition['optional_headings'] ?? []),
+            $headings
+        );
         $errors = [];
+        $warnings = [];
 
         if (! empty($missingHeadings)) {
             $errors[] = [
@@ -111,6 +116,14 @@ class DataImportService
                 $previewRows[] = $mapped;
             }
 
+            // Staff without a grade still import, but they are listed so HR can grade them afterwards.
+            if ($type === 'employees' && $rowErrors === [] && blank($normalized['grade'] ?? null)) {
+                $warnings[] = [
+                    'row' => $index + 2,
+                    'message' => 'Grade missing'.(filled($normalized['staff_id'] ?? null) ? ' for staff ID '.$normalized['staff_id'] : '').': imported without a grade.',
+                ];
+            }
+
             if ($rowErrors !== []) {
                 $errors = [...$errors, ...$rowErrors];
 
@@ -126,6 +139,8 @@ class DataImportService
             'preview_rows' => $previewRows,
             'valid_rows' => $validRows,
             'errors' => $errors,
+            'warnings' => $warnings,
+            'grade_missing_count' => count($warnings),
             'total_rows' => $processedRows,
             'valid_count' => count($validRows),
             'error_count' => count($errors),
@@ -138,8 +153,9 @@ class DataImportService
 
         $created = 0;
         $updated = 0;
+        $gradeMissing = 0;
 
-        DB::transaction(function () use ($type, $rows, $actor, &$created, &$updated) {
+        DB::transaction(function () use ($type, $rows, $actor, &$created, &$updated, &$gradeMissing) {
             foreach ($rows as $row) {
                 [$wasRecentlyCreated] = match ($type) {
                     'departments' => [$this->upsertDepartment($row)],
@@ -156,6 +172,10 @@ class DataImportService
                 } else {
                     $updated++;
                 }
+
+                if ($type === 'employees' && blank($row['grade'] ?? null)) {
+                    $gradeMissing++;
+                }
             }
         });
 
@@ -163,7 +183,7 @@ class DataImportService
             'created' => $created,
             'updated' => $updated,
             'processed' => count($rows),
-        ];
+        ] + ($type === 'employees' ? ['grade_missing' => $gradeMissing] : []);
     }
 
     protected function validateRow(string $type, array $row, int $rowNumber, ?User $actor = null): array
@@ -195,10 +215,20 @@ class DataImportService
         }
 
         if ($type === 'employees') {
-            foreach (['full_name', 'gender', 'category', 'email', 'job_title_name', 'department_name', 'district_name', 'region_name', 'unit', 'present_appointment'] as $field) {
+            foreach (['full_name', 'gender', 'category', 'grade', 'email', 'job_title_name', 'department_name', 'district_name', 'region_name', 'unit', 'present_appointment'] as $field) {
                 if (array_key_exists($field, $normalized)) {
                     $normalized[$field] = $this->normalizeCellText($normalized[$field]);
                 }
+            }
+
+            // Spelling and case variants of a grade ("snr gd level 2", "Junior Grade L3") are read as the real grade; anything
+            // that isn't one is kept as typed so the row is rejected with it named. A grade fixes the category.
+            $normalized['grade'] = ($normalized['grade'] ?? '') === ''
+                ? null
+                : (StaffGrade::fromInput($normalized['grade'])?->value ?? $normalized['grade']);
+
+            if (($normalized['category'] ?? '') !== '') {
+                $normalized['category'] = $this->canonicalCategory($normalized['category']);
             }
         }
 
@@ -212,6 +242,15 @@ class DataImportService
         }
 
         return $normalized;
+    }
+
+    /** The category as the app stores it: any case is accepted, and the old "Charwoman" category is Contract. */
+    protected function canonicalCategory(string $category): string
+    {
+        $match = collect([...StaffGrade::allCategories(), 'Charwoman'])
+            ->first(fn (string $known) => strcasecmp($known, $category) === 0);
+
+        return $match === 'Charwoman' ? StaffGrade::CATEGORY_CONTRACT : ($match ?? $category);
     }
 
     protected function rulesFor(string $type, array $row, ?User $actor = null): array
@@ -243,7 +282,27 @@ class DataImportService
                 ],
                 'full_name' => ['required', 'string', 'max:255'],
                 'gender' => ['required', 'in:Male,Female'],
-                'category' => ['required', 'in:Senior Staff,Junior Staff,Management,Senior Management,Charwoman'],
+                // A grade fixes the category, so the category column only has to be filled for rows with no grade.
+                'grade' => [
+                    'nullable',
+                    function (string $attribute, mixed $value, Closure $fail): void {
+                        if (! StaffGrade::tryFrom((string) $value)) {
+                            $fail('The grade "'.$value.'" is not recognised. Use one of: '.implode(', ', StaffGrade::values()).'.');
+                        }
+                    },
+                ],
+                'category' => [
+                    Rule::requiredIf(blank($row['grade'] ?? null)),
+                    'nullable',
+                    'in:'.implode(',', StaffGrade::allCategories()),
+                    function (string $attribute, mixed $value, Closure $fail) use ($row): void {
+                        $grade = StaffGrade::tryFrom((string) ($row['grade'] ?? ''));
+
+                        if ($grade && filled($value) && StaffGrade::reportCategory((string) $value) !== $grade->category()) {
+                            $fail('The category "'.$value.'" does not match the grade "'.$grade->value.'" ('.$grade->category().').');
+                        }
+                    },
+                ],
                 'email' => ['required', 'email', 'max:255'],
                 'job_title_name' => [
                     'required',
@@ -536,12 +595,18 @@ class DataImportService
             ]);
         }
 
+        $grade = StaffGrade::tryFrom((string) ($row['grade'] ?? ''));
+
         $employee = Employee::updateOrCreate(
             ['staff_id' => $row['staff_id']],
-            [
+            array_filter([
+                // A row with no grade never clears a grade the employee already has.
+                'grade' => $grade?->value,
+            ], fn ($value) => $value !== null) + [
                 'full_name' => $row['full_name'],
                 'gender' => $row['gender'],
-                'category' => $row['category'],
+                // Fixed by the grade (Employee::saving) when there is one.
+                'category' => $grade?->category() ?? $row['category'],
                 'email' => $row['email'],
                 'job_title_id' => $jobTitle->id,
                 'department_id' => $department->id,
@@ -633,6 +698,7 @@ class DataImportService
                     'full_name',
                     'gender',
                     'category',
+                    'grade',
                     'email',
                     'job_title_name',
                     'department_name',
@@ -643,8 +709,10 @@ class DataImportService
                     'unit',
                     'present_appointment',
                 ],
+                // A file without the grade column still imports (those staff are listed as "grade missing").
+                'optional_headings' => ['grade'],
                 'sample_rows' => [
-                    ['EMP001', 'Akosua Mensah', 'Female', 'Management', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
+                    ['EMP001', 'Akosua Mensah', 'Female', 'Management', 'Mgt. Gd. Level 2', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
                 ],
             ],
             'departments' => [

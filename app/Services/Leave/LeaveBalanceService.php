@@ -12,7 +12,8 @@ class LeaveBalanceService
 {
     public function __construct(
         protected LeaveEntitlementService $entitlements,
-        protected WorkingDaysCalculator $workingDays
+        protected WorkingDaysCalculator $workingDays,
+        protected AnnualEntitlementService $annual,
     ) {}
 
     /**
@@ -20,12 +21,15 @@ class LeaveBalanceService
      */
     public function getVirtualRemaining(Employee $employee, string $leaveType, int $year): int
     {
-        $entitle = $this->entitlements->entitlementDays($leaveType);
-
         // Sick is unlimited
         if ($leaveType === 'Sick') {
             return 9999;
         }
+
+        // Annual is the employee's own entitlement for the year (grade, service, less compulsory leave).
+        $entitle = $leaveType === 'Annual'
+            ? $this->annual->netFor($employee, $year)
+            : $this->entitlements->entitlementDays($leaveType);
 
         // Approved used days from requests (source of truth before balance row exists)
         $used = $this->approvedDays($employee->id, $leaveType, $year);
@@ -57,7 +61,9 @@ class LeaveBalanceService
             return $balance;
         }
 
-        $entitle = $this->entitlements->entitlementDays($leaveType);
+        $entitle = $leaveType === 'Annual'
+            ? $this->annual->forEmployee($employee, $year, 'balance_opened')->net_days
+            : $this->entitlements->entitlementDays($leaveType);
 
         $carry = 0;
         $carryExpiry = null;
@@ -86,6 +92,39 @@ class LeaveBalanceService
         $this->applyCarryOverForfeiture($balance);
 
         return $balance;
+    }
+
+    /**
+     * The year's Annual entitlement changed (grade, service, compulsory days): move the balance to it. Days already
+     * taken stay taken: the entitlement never goes below them, so only the remaining days move. Null when there is no
+     * balance yet (it will be opened from the entitlement) or nothing changed.
+     *
+     * @return array{old: array<string, int>, new: array<string, int>, floored: bool}|null
+     */
+    public function syncEntitlement(Employee $employee, int $year, int $netDays): ?array
+    {
+        $balance = $this->findBalance($employee->id, 'Annual', $year);
+
+        if (! $balance) {
+            return null;
+        }
+
+        $entitle = max($netDays, (int) $balance->used_days);
+
+        if ($entitle === (int) $balance->entitle_days) {
+            return null;
+        }
+
+        $old = ['entitle_days' => (int) $balance->entitle_days, 'remaining_days' => (int) $balance->remaining_days];
+
+        $balance->entitle_days = $entitle;
+        $this->applyCarryOverForfeiture($balance);
+
+        return [
+            'old' => $old,
+            'new' => ['entitle_days' => (int) $balance->entitle_days, 'remaining_days' => (int) $balance->remaining_days],
+            'floored' => $entitle > $netDays,
+        ];
     }
 
     /**
@@ -258,7 +297,7 @@ class LeaveBalanceService
             return max(0, (int) $prev->entitle_days + (int) $prev->carry_over_days - (int) $prev->used_days - $forfeited);
         }
 
-        return max(0, $this->entitlements->entitlementDays('Annual') - $this->approvedDays($employee->id, 'Annual', $prevYear));
+        return max(0, $this->annual->netFor($employee, $prevYear) - $this->approvedDays($employee->id, 'Annual', $prevYear));
     }
 
     protected function approvedDays(int $employeeId, string $leaveType, int $year): int

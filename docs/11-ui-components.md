@@ -136,7 +136,7 @@ Charts use **Chart.js 4** through one Alpine component (`resources/js/charts.js`
 
 {{-- data a Livewire component re-sends in a browser event after a filter change --}}
 <x-ui.chart type="area" label="Monthly leave requests"
-    event="staff-leave-report-data-updated" source="monthlyLeaveRequests"
+    event="staff-report-data-updated" source="monthlyLeaveRequests"
     :source-data="$payload['monthlyLeaveRequests'] ?? []" :series="[['label' => 'Requests', 'key' => 'data']]" />
 ```
 - Types: `line · area · bar · hbar · doughnut`; options `unit` (`%`, `GHS`, `km`, `days`…), `min`/`max`,

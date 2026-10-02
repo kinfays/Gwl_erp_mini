@@ -2,6 +2,7 @@
 
 namespace App\Services\Staff;
 
+use App\Enums\StaffGrade;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -108,6 +109,8 @@ class EmployeeDirectory
         $search = trim((string) ($filters['search'] ?? ''));
         $departmentId = $filters['department_id'] ?? null;
         $category = trim((string) ($filters['category'] ?? ''));
+        $grade = trim((string) ($filters['grade'] ?? ''));
+        $regionId = $filters['region_id'] ?? null;
         $locationType = trim((string) ($filters['location_type'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
 
@@ -121,7 +124,17 @@ class EmployeeDirectory
         });
 
         $query->when($departmentId, fn (Builder $builder) => $builder->where('department_id', $departmentId));
-        $query->when($category !== '', fn (Builder $builder) => $builder->where('category', $category));
+        // Reports group the pre-grade categories with the grade categories they became: Senior Management is Management.
+        $query->when($category !== '', fn (Builder $builder) => $builder->whereIn('category', match ($category) {
+            StaffGrade::CATEGORY_MANAGEMENT => [StaffGrade::CATEGORY_MANAGEMENT, 'Senior Management'],
+            StaffGrade::CATEGORY_CONTRACT => [StaffGrade::CATEGORY_CONTRACT, 'Charwoman'],
+            default => [$category],
+        }));
+        // "none" is the staff who have not been given a grade yet.
+        $query->when($grade !== '', fn (Builder $builder) => $grade === 'none'
+            ? $builder->whereNull('grade')
+            : $builder->where('grade', $grade));
+        $query->when($regionId, fn (Builder $builder) => $builder->where('region_id', $regionId));
         $query->when($locationType !== '', fn (Builder $builder) => $builder->where('location_type', $locationType));
 
         return match ($status) {

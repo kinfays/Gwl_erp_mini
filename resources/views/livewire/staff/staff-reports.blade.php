@@ -21,7 +21,16 @@
 @endphp
 
 <div>
-    <x-ui.page-header title="Staff Leave Reports" :description="$fromLabel.' to '.$toLabel.' · '.($payload['scopeLabel'] ?? 'Visible staff scope')" />
+    <x-ui.page-header title="Staff Reports" :description="$fromLabel.' to '.$toLabel.' · '.($payload['scopeLabel'] ?? 'Visible staff scope')">
+        <x-slot:actions>
+            <x-ui.button :href="route('leave.hr-dashboard')" icon="layout-dashboard">HR Dashboard</x-ui.button>
+            <x-ui.button :href="route('leave.hr-analytics')" icon="chart-column">HR Analytics</x-ui.button>
+            <a href="{{ $exportUrl }}" class="btn btn-secondary">
+                <x-ui.icon name="download" />
+                Export Excel
+            </a>
+        </x-slot:actions>
+    </x-ui.page-header>
 
     <x-ui.card class="report-filters">
         <div class="report-filter-row">
@@ -86,45 +95,94 @@
         @endforeach
     </div>
 
+    @php
+        $grades = $payload['gradeBreakdown'] ?? null;
+        $staffLink = fn (array $query) => route('staff.index', array_filter($query + ['region_id' => $regionId]));
+    @endphp
+
+    @if ($grades)
+        <div class="ui-grid ui-grid-2 report-grid">
+            <x-ui.card title="Staff by category" :description="number_format($grades['total']).' active staff'" :padded="false">
+                <x-ui.table label="Staff by category">
+                    <x-slot:head>
+                        <tr>
+                            <th>Category</th>
+                            <th class="num">Staff</th>
+                        </tr>
+                    </x-slot:head>
+                    @foreach ($grades['categories'] as $row)
+                        <tr>
+                            <td>{{ $row['label'] }}</td>
+                            <td class="num"><a href="{{ $staffLink(['category' => $row['label'], 'status' => 'active']) }}">{{ $row['count'] }}</a></td>
+                        </tr>
+                    @endforeach
+                    <tr @class(['is-warning' => $grades['no_grade']['count'] > 0])>
+                        <td>No grade set</td>
+                        <td class="num"><a href="{{ $staffLink(['grade' => 'none', 'status' => 'active']) }}">{{ $grades['no_grade']['count'] }}</a></td>
+                    </tr>
+                </x-ui.table>
+            </x-ui.card>
+
+            @foreach (['senior' => 'Senior Staff by grade', 'junior' => 'Junior Staff by grade', 'management' => 'Management by grade'] as $key => $title)
+                <x-ui.card :title="$title" :padded="false">
+                    <x-ui.table :label="$title">
+                        <x-slot:head>
+                            <tr>
+                                <th>Grade</th>
+                                <th class="num">Staff</th>
+                            </tr>
+                        </x-slot:head>
+                        @foreach ($grades[$key] as $row)
+                            <tr>
+                                <td>{{ $row['grade'] }}</td>
+                                <td class="num"><a href="{{ $staffLink(['grade' => $row['grade'], 'status' => 'active']) }}">{{ $row['count'] }}</a></td>
+                            </tr>
+                        @endforeach
+                    </x-ui.table>
+                </x-ui.card>
+            @endforeach
+        </div>
+    @endif
+
     <div class="ui-grid ui-grid-2 report-grid">
         <x-ui.card title="Male Vs Female Total">
             <x-ui.chart type="doughnut" label="Male versus female staff" center center-caption="staff"
-                event="staff-leave-report-data-updated" source="genderDistribution"
+                event="staff-report-data-updated" source="genderDistribution"
                 :source-data="$payload['genderDistribution'] ?? []" :color-map="$genderColours"
                 :series="[['label' => 'Staff', 'key' => 'data']]" height="240" />
         </x-ui.card>
 
         <x-ui.card title="Leave Status Breakdown">
             <x-ui.chart type="doughnut" label="Leave status breakdown" center center-caption="requests"
-                event="staff-leave-report-data-updated" source="leaveStatusBreakdown"
+                event="staff-report-data-updated" source="leaveStatusBreakdown"
                 :source-data="$payload['leaveStatusBreakdown'] ?? []" :color-map="$statusColours"
                 :series="[['label' => 'Requests', 'key' => 'data']]" height="240" />
         </x-ui.card>
 
         <x-ui.card title="Staff By District">
             <x-ui.chart type="hbar" label="Staff by district, with how many are on leave"
-                event="staff-leave-report-data-updated" source="staffByDistrict"
+                event="staff-report-data-updated" source="staffByDistrict"
                 :source-data="$payload['staffByDistrict'] ?? []"
                 :series="[['label' => 'Total staff', 'key' => 'staff'], ['label' => 'On leave', 'key' => 'onLeave']]" height="300" />
         </x-ui.card>
 
         <x-ui.card title="Staff By Department">
             <x-ui.chart type="hbar" label="Staff by department"
-                event="staff-leave-report-data-updated" source="staffByDepartment"
+                event="staff-report-data-updated" source="staffByDepartment"
                 :source-data="$payload['staffByDepartment'] ?? []"
                 :series="[['label' => 'Staff', 'key' => 'data']]" height="300" />
         </x-ui.card>
 
         <x-ui.card title="Approved Leave Days By Type">
             <x-ui.chart type="hbar" label="Approved leave days by type" unit="days"
-                event="staff-leave-report-data-updated" source="leaveTypeDays"
+                event="staff-report-data-updated" source="leaveTypeDays"
                 :source-data="$payload['leaveTypeDays'] ?? []"
                 :series="[['label' => 'Approved days', 'key' => 'data']]" height="280" />
         </x-ui.card>
 
         <x-ui.card title="Monthly Leave Requests">
             <x-ui.chart type="area" label="Monthly leave requests"
-                event="staff-leave-report-data-updated" source="monthlyLeaveRequests"
+                event="staff-report-data-updated" source="monthlyLeaveRequests"
                 :source-data="$payload['monthlyLeaveRequests'] ?? []"
                 :series="[['label' => 'Requests', 'key' => 'data']]" height="280" />
         </x-ui.card>

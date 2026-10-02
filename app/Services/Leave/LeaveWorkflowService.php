@@ -27,6 +27,8 @@ class LeaveWorkflowService
     /** A Planned draft has no approver yet: the chain is resolved when it is submitted. */
     public function savePlanned(Employee $requester, array $data): LeaveRequest
     {
+        $this->guardEligible($requester);
+
         return $this->createOrUpdate($requester, $data, 'Planned', null);
     }
 
@@ -36,6 +38,7 @@ class LeaveWorkflowService
      */
     public function submit(Employee $requester, array $data): LeaveRequest
     {
+        $this->guardEligible($requester);
         $this->guardCasual($requester, $data);
 
         $request = $this->createOrUpdate($requester, $data, 'Pending Approval', $this->routeFor($requester, $data));
@@ -47,6 +50,8 @@ class LeaveWorkflowService
 
     public function updatePlanned(Employee $requester, LeaveRequest $request, array $data): LeaveRequest
     {
+        $this->guardEligible($requester);
+
         return $this->updateExisting($requester, $request, $data, 'Planned', null);
     }
 
@@ -56,6 +61,7 @@ class LeaveWorkflowService
      */
     public function submitExisting(Employee $requester, LeaveRequest $request, array $data): LeaveRequest
     {
+        $this->guardEligible($requester);
         $this->guardCasual($requester, $data);
 
         $request = $this->updateExisting($requester, $request, $data, 'Pending Approval', $this->routeFor($requester, $data));
@@ -208,6 +214,14 @@ class LeaveWorkflowService
         $req->save();
 
         return $req;
+    }
+
+    /** Contract staff (Charwoman grade) have no leave entitlement, so nothing can be planned or submitted for them. */
+    protected function guardEligible(Employee $requester): void
+    {
+        if (! app(LeaveEntitlementCalculator::class)->isEligible($requester)) {
+            throw new RuntimeException('Contract staff are not eligible for leave, so a leave request cannot be made. Contact HR if this is a mistake.');
+        }
     }
 
     protected function guardCasual(Employee $requester, array $data): void
