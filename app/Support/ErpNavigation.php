@@ -542,6 +542,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_dashboard') || $currentUser->hasRoles('super_admin'),
             ],
             [
+                'label' => 'Summary',
+                'route' => 'assets.summary',
+                'active' => ['assets.summary'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_dashboard') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
                 'type' => 'section',
                 'label' => 'All Assets',
             ],
@@ -576,6 +584,14 @@ class ErpNavigation
                 'icon' => $this->icon('spark'),
                 'icon_name' => 'wrench',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_maintenance') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'label' => 'Audits',
+                'route' => 'assets.audits',
+                'active' => ['assets.audits', 'assets.audits.show'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'clipboard-check',
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_audits') || $currentUser->hasRoles('super_admin'),
             ],
             [
                 'label' => 'Reporting',
@@ -641,6 +657,14 @@ class ErpNavigation
                 'icon' => $this->icon('shield'),
                 'icon_name' => 'ethernet-port',
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_ip_ranges') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
+                'label' => 'Replacement Policy',
+                'route' => 'assets.settings.replacement-policy',
+                'active' => ['assets.settings.replacement-policy'],
+                'icon' => $this->icon('shield'),
+                'icon_name' => 'clock',
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_replacement_policy') || $currentUser->hasRoles('super_admin'),
             ],
             [
                 'type' => 'section',

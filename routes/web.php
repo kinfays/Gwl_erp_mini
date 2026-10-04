@@ -3,7 +3,9 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
+use App\Http\Controllers\Assets\AssetAuditExportController;
 use App\Http\Controllers\Assets\AssetModuleController;
+use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
@@ -212,6 +214,23 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.view_dashboard')
             ->name('home');
 
+        Route::get('/device/{asset}', [AssetModuleController::class, 'show'])
+            ->whereNumber('asset')
+            ->middleware('permission:assets.view_inventory')
+            ->name('show');
+
+        Route::get('/summary/export/excel', [AssetSummaryExportController::class, 'excel'])
+            ->middleware('permission:assets.view_dashboard')
+            ->name('summary.export.excel');
+
+        Route::get('/summary/export/pdf', [AssetSummaryExportController::class, 'pdf'])
+            ->middleware('permission:assets.view_dashboard')
+            ->name('summary.export.pdf');
+
+        Route::get('/summary', [AssetModuleController::class, 'summary'])
+            ->middleware('permission:assets.view_dashboard')
+            ->name('summary');
+
         Route::get('/assets', [AssetModuleController::class, 'assets'])
             ->middleware('permission:assets.view_inventory')
             ->name('assets');
@@ -227,6 +246,24 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/employees/{employee}', [AssetModuleController::class, 'employee'])
             ->middleware('permission:assets.view_inventory')
             ->name('employee');
+
+        Route::prefix('audits')->group(function () {
+            Route::get('/', [AssetModuleController::class, 'audits'])
+                ->middleware('permission:assets.manage_audits')
+                ->name('audits');
+
+            Route::get('/{audit}', [AssetModuleController::class, 'audit'])
+                ->middleware('permission:assets.manage_audits')
+                ->name('audits.show');
+
+            Route::get('/{audit}/export/excel', [AssetAuditExportController::class, 'excel'])
+                ->middleware('permission:assets.export_audits')
+                ->name('audits.export.excel');
+
+            Route::get('/{audit}/export/pdf', [AssetAuditExportController::class, 'pdf'])
+                ->middleware('permission:assets.export_audits')
+                ->name('audits.export.pdf');
+        });
 
         Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
             ->middleware('permission:assets.manage_maintenance')
@@ -247,6 +284,10 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/settings/models', [AssetModuleController::class, 'settingsModels'])
             ->middleware('permission:assets.manage_models')
             ->name('settings.models');
+
+        Route::get('/settings/replacement-policy', [AssetModuleController::class, 'settingsReplacementPolicy'])
+            ->middleware('permission:assets.manage_replacement_policy')
+            ->name('settings.replacement-policy');
 
         Route::get('/settings/ip-ranges', [AssetModuleController::class, 'settingsIpRanges'])
             ->middleware('permission:assets.manage_ip_ranges')

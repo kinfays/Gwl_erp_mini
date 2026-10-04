@@ -87,6 +87,7 @@
         ],
         'asset' => [
             'active' => ['success'],
+            'damaged' => ['danger'],
             'in repair' => ['warning'],
             'retired' => ['muted'],
             'lost' => ['danger'],

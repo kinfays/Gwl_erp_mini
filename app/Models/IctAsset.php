@@ -16,6 +16,16 @@ class IctAsset extends Model
     public const STATUS_IN_REPAIR = 'In Repair';
     public const STATUS_RETIRED = 'Retired';
     public const STATUS_LOST = 'Lost';
+    public const STATUS_DAMAGED = 'Damaged';
+
+    /** Every status a form, filter or report may offer. Add new statuses here, not at each call site. */
+    public const STATUSES = [
+        self::STATUS_ACTIVE,
+        self::STATUS_DAMAGED,
+        self::STATUS_IN_REPAIR,
+        self::STATUS_RETIRED,
+        self::STATUS_LOST,
+    ];
 
     public const CONDITION_NEW = 'New';
     public const CONDITION_EXCELLENT = 'Excellent';
@@ -82,6 +92,7 @@ class IctAsset extends Model
         'device_category',
         'ict_asset_model_id',
         'status',
+        'status_reason',
         'condition',
         'assigned_to_employee_id',
         'previous_assigned_to_employee_id',
@@ -161,6 +172,11 @@ class IctAsset extends Model
     public function district(): BelongsTo
     {
         return $this->belongsTo(District::class);
+    }
+
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(IctAssetTransfer::class, 'ict_asset_id')->orderByDesc('occurred_at')->orderByDesc('id');
     }
 
     public function maintenanceLogs(): HasMany

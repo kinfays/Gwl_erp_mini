@@ -18,6 +18,7 @@ use App\Services\Assets\Mdm\MdmSettings;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -30,6 +31,8 @@ class PhonesList extends Component
 
     public const CATEGORY = IctAsset::DEVICE_CATEGORY_PHONE;
 
+    /** Bound to ?q= so summary pages can link straight to one device. */
+    #[Url(as: 'q', except: '')]
     public string $search = '';
 
     public string $status = '';
@@ -70,7 +73,8 @@ class PhonesList extends Component
         'imei' => '',
         'ict_asset_model_id' => null,
         'status' => 'Active',
-        'condition' => null,
+        'status_reason' => '',
+            'condition' => null,
         'assigned_to_employee_id' => null,
         'region_id' => null,
         'district_id' => null,
@@ -120,6 +124,7 @@ class PhonesList extends Component
             'imei' => (string) $asset->imei,
             'ict_asset_model_id' => $asset->ict_asset_model_id,
             'status' => (string) $asset->status,
+            'status_reason' => (string) $asset->status_reason,
             'condition' => $asset->condition,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'region_id' => $this->actorRegionId(),
@@ -127,6 +132,18 @@ class PhonesList extends Component
             'user_phone_number' => (string) $asset->user_phone_number,
             'device_phone_number' => (string) $asset->device_phone_number,
         ];
+    }
+
+    /** Read-only transfer history for the asset being edited; limited to assets the actor can view. */
+    protected function historyFor(int $assetId)
+    {
+        $asset = $this->scopeAssetsForViewing(IctAsset::query())
+            ->where('device_category', self::CATEGORY)
+            ->find($assetId);
+
+        return $asset
+            ? $asset->transfers()->with(['fromEmployee', 'toEmployee', 'fromDistrict', 'toDistrict', 'relatedAsset'])->limit(50)->get()
+            : collect();
     }
 
     public function closeForm(): void
@@ -261,6 +278,7 @@ class PhonesList extends Component
             'form.imei' => ['nullable', 'string', 'max:50'],
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
+            'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
             'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
             'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
@@ -295,6 +313,7 @@ class PhonesList extends Component
             'imei' => '',
             'ict_asset_model_id' => null,
             'status' => 'Active',
+            'status_reason' => '',
             'condition' => null,
             'assigned_to_employee_id' => null,
             'region_id' => $this->actorRegionId(),
@@ -344,6 +363,7 @@ class PhonesList extends Component
 
         return view('livewire.assets.phones-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
+            'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
             'conditionOptions' => IctAsset::CONDITIONS,
             'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
             'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
@@ -351,7 +371,7 @@ class PhonesList extends Component
                 : null,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
-            'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
+            'statusOptions' => IctAsset::STATUSES,
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),

@@ -87,10 +87,7 @@ class AssetDashboardService
         $allocation = $this->buildAllocation($cards);
 
         return [
-            'ageBuckets' => $this->ageBuckets($scopedAssets),
-            'warrantyBuckets' => $this->warrantyBuckets($scopedAssets),
             'unassigned' => $this->unassigned($scopedAssets),
-            'topAssignees' => $this->topAssignees($scopedAssets),
             'cards' => $cards,
             'districtBreakdown' => $districtBreakdown,
             'allocation' => $allocation,
@@ -218,7 +215,7 @@ class AssetDashboardService
     }
 
     /** @return array{key: string, label: string, total: int, by_category: array<string, int>, params: array<string, mixed>} */
-    protected function bucketRow(string $key, string $label, Builder $query, array $params): array
+    public function bucketRow(string $key, string $label, Builder $query, array $params): array
     {
         $categoryColumn = $query->getModel()->qualifyColumn('device_category');
 

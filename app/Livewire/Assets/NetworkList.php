@@ -9,6 +9,7 @@ use App\Models\IctAsset;
 use App\Models\IctAssetModel;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -21,6 +22,8 @@ class NetworkList extends Component
 
     public const CATEGORY = IctAsset::DEVICE_CATEGORY_NETWORK;
 
+    /** Bound to ?q= so summary pages can link straight to one device. */
+    #[Url(as: 'q', except: '')]
     public string $search = '';
 
     public string $status = '';
@@ -58,7 +61,8 @@ class NetworkList extends Component
         'serial_number' => '',
         'actual_location' => '',
         'status' => 'Active',
-            'condition' => null,
+        'status_reason' => '',
+        'condition' => null,
     ];
 
     public function mount(): void
@@ -121,8 +125,21 @@ class NetworkList extends Component
             'serial_number' => (string) $asset->serial_number,
             'actual_location' => (string) $asset->actual_location,
             'status' => (string) $asset->status,
+            'status_reason' => (string) $asset->status_reason,
             'condition' => $asset->condition,
         ];
+    }
+
+    /** Read-only transfer history for the asset being edited; limited to assets the actor can view. */
+    protected function historyFor(int $assetId)
+    {
+        $asset = $this->scopeAssetsForViewing(IctAsset::query())
+            ->where('device_category', self::CATEGORY)
+            ->find($assetId);
+
+        return $asset
+            ? $asset->transfers()->with(['fromEmployee', 'toEmployee', 'fromDistrict', 'toDistrict', 'relatedAsset'])->limit(50)->get()
+            : collect();
     }
 
     public function closeForm(): void
@@ -182,6 +199,7 @@ class NetworkList extends Component
             ],
             'form.actual_location' => ['nullable', 'string', 'max:255'],
             'form.status' => ['required', 'string', 'max:120'],
+            'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
             'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
         ];
     }
@@ -218,6 +236,7 @@ class NetworkList extends Component
             'serial_number' => '',
             'actual_location' => '',
             'status' => 'Active',
+            'status_reason' => '',
             'condition' => null,
         ];
     }
@@ -257,10 +276,11 @@ class NetworkList extends Component
 
         return view('livewire.assets.network-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
+            'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
             'conditionOptions' => IctAsset::CONDITIONS,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
-            'statusOptions' => [IctAsset::STATUS_ACTIVE, IctAsset::STATUS_IN_REPAIR, IctAsset::STATUS_RETIRED, IctAsset::STATUS_LOST],
+            'statusOptions' => IctAsset::STATUSES,
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),

@@ -60,7 +60,7 @@
                     <tr wire:key="phone-{{ $asset->id }}">
                         <td>
                             <span class="ui-cell-stack">
-                                <span class="ui-person-name">{{ $asset->asset_name }}</span>
+                                <a href="{{ route('assets.show', $asset) }}" class="ui-person-name">{{ $asset->asset_name }}</a>
                                 <span class="ui-person-sub mono">
                                     {{ $asset->serial_number ?: 'No serial' }}
                                     @if ($asset->imei)
@@ -167,6 +167,11 @@
                         <option value="{{ $option }}">{{ $option }}</option>
                     @endforeach
                 </x-ui.select>
+                <div class="span-2">
+                    <x-ui.textarea label="Status reason" wire:model.defer="form.status_reason" rows="2" hint="Required when the status is Damaged (e.g. faulty power button)." />
+                </div>
+
+                <x-assets.history :transfers="$history" :editing="(bool) $editingAssetId" />
             </div>
 
             <x-slot:footer>

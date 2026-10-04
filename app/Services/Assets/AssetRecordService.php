@@ -5,13 +5,15 @@ namespace App\Services\Assets;
 use App\Models\AuditLog;
 use App\Models\IctAsset;
 use App\Models\Permission;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AssetRecordService
 {
     public function __construct(
-        protected IpRangeService $ipRanges
+        protected IpRangeService $ipRanges,
+        protected AssetTransferService $transfers,
     ) {}
 
     /**
@@ -38,7 +40,7 @@ class AssetRecordService
 
         // A cleared <select>/date input arrives as '' — store NULL rather than
         // hand a strict-mode database an empty string for an integer/date column.
-        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'condition'] as $nullableKey) {
+        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'condition', 'status_reason'] as $nullableKey) {
             if (($data[$nullableKey] ?? null) === '') {
                 $data[$nullableKey] = null;
             }
@@ -70,6 +72,9 @@ class AssetRecordService
                 $old = $existing->toArray();
                 $existing->update($data);
                 $asset = $existing->refresh();
+
+                // The transfers table is the detailed trail for these three fields; audit_logs keeps the snapshot below.
+                $this->transfers->logChanges($asset, $old, Auth::id());
 
                 AuditLog::record(
                     action: "update_{$category}",

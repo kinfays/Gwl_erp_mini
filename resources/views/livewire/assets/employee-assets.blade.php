@@ -26,7 +26,7 @@
                     <tr wire:key="emp-asset-{{ $asset->id }}">
                         <td>
                             <span class="ui-cell-stack">
-                                <span class="ui-person-name">{{ $asset->asset_name }}</span>
+                                <a href="{{ route('assets.show', $asset) }}" class="ui-person-name">{{ $asset->asset_name }}</a>
                                 <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
                             </span>
                         </td>

@@ -4,6 +4,7 @@ namespace Tests\Feature\Assets;
 
 use App\Livewire\Assets\AssetsList;
 use App\Livewire\Assets\Dashboard;
+use App\Livewire\Assets\Summary;
 use App\Livewire\Assets\EmployeeAssets;
 use App\Livewire\Assets\NetworkList;
 use App\Livewire\Assets\PhonesList;
@@ -52,7 +53,7 @@ class AssetAnalyticsTest extends TestCase
 
         $this->actingAs($this->superAdmin());
 
-        Livewire::test(Dashboard::class)->assertViewHas('ageBuckets', function ($buckets) {
+        Livewire::test(Summary::class)->assertViewHas('ageBuckets', function ($buckets) {
             $by = collect($buckets)->keyBy('key');
 
             return $by['0-1']['total'] === 2
@@ -101,7 +102,7 @@ class AssetAnalyticsTest extends TestCase
 
         $this->actingAs($this->superAdmin());
 
-        Livewire::test(Dashboard::class)->assertViewHas('warrantyBuckets', function ($buckets) {
+        Livewire::test(Summary::class)->assertViewHas('warrantyBuckets', function ($buckets) {
             $by = collect($buckets)->keyBy('key');
 
             return $by['active']['total'] === 1
@@ -169,7 +170,7 @@ class AssetAnalyticsTest extends TestCase
 
         $this->actingAs($this->superAdmin());
 
-        Livewire::test(Dashboard::class)
+        Livewire::withQueryParams(['tab' => 'assignment'])->test(Summary::class)
             ->assertViewHas('topAssignees', function ($rows) use ($busy, $light) {
                 return $rows->count() === 10
                     && $rows[0]['employee_id'] === $busy->id
@@ -193,7 +194,7 @@ class AssetAnalyticsTest extends TestCase
 
         $this->actingAs($ict);
 
-        Livewire::test(Dashboard::class)
+        Livewire::withQueryParams(['tab' => 'assignment'])->test(Summary::class)
             ->assertViewHas('topAssignees', fn ($rows) => $rows->pluck('employee_id')->all() === [$holder->id]);
     }
 
@@ -311,14 +312,19 @@ class AssetAnalyticsTest extends TestCase
 
         $this->actingAs($this->superAdmin());
 
-        $this->get(route('assets.home'))
+        $this->get(route('assets.summary'))
             ->assertOk()
             ->assertSee('Asset Age')
             ->assertSee('Warranty Status')
-            ->assertSee('Unassigned Assets')
-            ->assertSee('Employees With the Most Assets')
             ->assertSee(route('assets.assets', ['age_min' => 5]), false)
             ->assertSee(route('assets.assets', ['warranty' => 'expired']), false);
+
+        $this->get(route('assets.summary', ['tab' => 'assignment']))
+            ->assertOk()
+            ->assertSee('Employees With the Most Assets');
+
+        // The dashboard keeps only the Unassigned tile.
+        $this->get(route('assets.home'))->assertOk()->assertSee('Unassigned Assets');
     }
 
     public function test_drill_down_urls_work_as_plain_get_requests(): void

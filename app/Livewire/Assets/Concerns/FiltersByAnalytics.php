@@ -3,6 +3,7 @@
 namespace App\Livewire\Assets\Concerns;
 
 use App\Services\Assets\AssetDashboardService;
+use App\Services\Assets\AssetReplacementService;
 use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Url;
 
@@ -29,6 +30,10 @@ trait FiltersByAnalytics
     #[Url]
     public string $warranty = '';
 
+    /** One of AssetReplacementService::BUCKETS. */
+    #[Url(as: 'replacement_bucket')]
+    public string $replacementBucket = '';
+
     /** 'none' = no current holder. */
     #[Url]
     public string $assigned = '';
@@ -36,7 +41,7 @@ trait FiltersByAnalytics
     /** Property names that should send the paginator back to page 1. */
     protected function analyticsFilterProperties(): array
     {
-        return ['ageMin', 'ageMax', 'ageMode', 'warranty', 'assigned'];
+        return ['ageMin', 'ageMax', 'ageMode', 'warranty', 'replacementBucket', 'assigned'];
     }
 
     protected function applyAnalyticsFilters(Builder $query): Builder
@@ -51,6 +56,10 @@ trait FiltersByAnalytics
 
         if (array_key_exists($this->warranty, AssetDashboardService::WARRANTY_BUCKETS)) {
             $service->applyWarranty($query, $this->warranty);
+        }
+
+        if (array_key_exists($this->replacementBucket, AssetReplacementService::BUCKETS)) {
+            app(AssetReplacementService::class)->apply($query, $this->replacementBucket);
         }
 
         if ($this->assigned === 'none') {
@@ -90,6 +99,10 @@ trait FiltersByAnalytics
             $chips['warranty'] = 'Warranty: '.AssetDashboardService::WARRANTY_BUCKETS[$this->warranty];
         }
 
+        if (array_key_exists($this->replacementBucket, AssetReplacementService::BUCKETS)) {
+            $chips['replacementBucket'] = 'Replacement: '.AssetReplacementService::BUCKETS[$this->replacementBucket];
+        }
+
         if ($this->assigned === 'none') {
             $chips['assigned'] = 'Unassigned only';
         }
@@ -102,6 +115,7 @@ trait FiltersByAnalytics
         match ($key) {
             'age', 'ageMode' => [$this->ageMin, $this->ageMax, $this->ageMode] = ['', '', ''],
             'warranty' => $this->warranty = '',
+            'replacementBucket' => $this->replacementBucket = '',
             'assigned' => $this->assigned = '',
             default => null,
         };
