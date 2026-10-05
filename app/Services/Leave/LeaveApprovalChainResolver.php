@@ -172,7 +172,7 @@ class LeaveApprovalChainResolver
      */
     public function actionableRequests(User $user): Collection
     {
-        if (! $user->hasRoles(...self::RECOMMENDER_ROLES, ...self::APPROVER_ROLES)) {
+        if (! $user->hasRoles(...self::RECOMMENDER_ROLES, ...self::APPROVER_ROLES) && ! $this->isActing($user)) {
             return collect();
         }
 
@@ -202,7 +202,7 @@ class LeaveApprovalChainResolver
             return true;
         }
 
-        if (! $user->hasRoles(...self::RECOMMENDER_ROLES, ...self::APPROVER_ROLES)) {
+        if (! $user->hasRoles(...self::RECOMMENDER_ROLES, ...self::APPROVER_ROLES) && ! $this->isActing($user)) {
             return false;
         }
 
@@ -222,6 +222,56 @@ class LeaveApprovalChainResolver
         } finally {
             $this->holders = null;
         }
+    }
+
+    /** Does $user hold an active acting assignment today? Such a user may approve without holding the role. */
+    public function isActing(User $user): bool
+    {
+        return app(LeaveActingAssignmentService::class)->hasActiveAssignment($user);
+    }
+
+    /**
+     * The capacity $user acts in for the final stage of $request: `acting` when they are in the approver set only through an
+     * acting assignment, otherwise `substantive` (the post-holder, a super_admin, or a chain that has since changed).
+     *
+     * @return 'substantive'|'acting'
+     */
+    public function capacityOf(User $user, LeaveRequest $request): string
+    {
+        try {
+            return $this->route($request->requester)->isActing($user) ? 'acting' : 'substantive';
+        } catch (ApproverNotFoundException) {
+            return 'substantive';
+        }
+    }
+
+    /** The role that recommends this applicant's leave, from where they sit (null: they apply straight to the final approver). */
+    public function recommenderRoleFor(Employee $applicant, ?User $applicantUser = null): ?string
+    {
+        $roles = ($applicantUser ?? $this->userOf($applicant))?->roles->pluck('name')->all() ?? [];
+        $is = fn (string ...$names) => array_intersect($names, $roles) !== [];
+
+        if ($is('managing_director', 'chief_manager', 'regional_chief_manager')) {
+            return null;
+        }
+
+        return match ($applicant->location_type) {
+            'HeadOffice' => $is('manager', 'departmental_manager') ? null : (filled($applicant->unit) ? 'manager' : 'departmental_manager'),
+            'Region' => $is('district_manager', 'departmental_manager') ? null : 'departmental_manager',
+            default => $is('district_manager', 'departmental_manager') ? null : 'district_manager',
+        };
+    }
+
+    /** The post that gives the final approval for this applicant. */
+    public function approverRoleFor(Employee $applicant, ?User $applicantUser = null): string
+    {
+        $roles = ($applicantUser ?? $this->userOf($applicant))?->roles->pluck('name')->all() ?? [];
+
+        if (array_intersect(['chief_manager', 'regional_chief_manager'], $roles) !== []) {
+            return 'managing_director';
+        }
+
+        return $applicant->location_type === 'HeadOffice' ? 'chief_manager' : 'regional_chief_manager';
     }
 
     public function isApplicant(User $user, LeaveRequest $request): bool
@@ -307,9 +357,18 @@ class LeaveApprovalChainResolver
         string $approverRole,
         array $approverScope,
     ): LeaveApprovalRoute {
-        $approvers = $this->holdersOf($approverRole, $approverScope)
+        $holders = $this->holdersOf($approverRole, $approverScope)
             ->reject(fn (User $user) => $this->isSelf($user, $applicant, $applicantUser))
             ->values();
+
+        // Someone acting in the post (inside their window, and their region or department when they have one) is as
+        // valid an approver as the holder, and is recorded as having acted in that capacity.
+        $acting = app(LeaveActingAssignmentService::class)->usersFor($approverRole, $approverScope)
+            ->reject(fn (User $user) => $this->isSelf($user, $applicant, $applicantUser))
+            ->reject(fn (User $user) => $holders->contains('id', $user->id))
+            ->values();
+
+        $approvers = $holders->merge($acting)->values();
 
         if ($approvers->isEmpty()) {
             throw $this->missing($approverRole, $approverScope, 'approve');
@@ -330,7 +389,7 @@ class LeaveApprovalChainResolver
                 ->values();
         }
 
-        return new LeaveApprovalRoute($recommenders, $approvers, $recommenderRole, $approverRole);
+        return new LeaveApprovalRoute($recommenders, $approvers, $recommenderRole, $approverRole, $acting);
     }
 
     /**
@@ -401,7 +460,7 @@ class LeaveApprovalChainResolver
         if (! $user
             || ! $user->is_active
             || $this->employeeOf($user)?->is_active === false
-            || ! $user->hasRoles($recommend ? self::RECOMMENDER_ROLES : self::APPROVER_ROLES)
+            || (! $user->hasRoles($recommend ? self::RECOMMENDER_ROLES : self::APPROVER_ROLES) && ($recommend || ! $this->isActing($user)))
             || $this->isApplicant($user, $request)) {
             return null;
         }

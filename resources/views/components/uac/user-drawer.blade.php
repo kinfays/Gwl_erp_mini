@@ -138,6 +138,7 @@ function userDrawer() {
                 { label: 'Department', value: employee.department ?? '-' },
                 { label: 'Region', value: employee.region ?? '-' },
                 { label: 'Location', value: employee.district ?? '-' },
+                { label: 'Title', value: employee.title ?? '-' },
                 { label: 'Category', value: employee.category ?? '-' },
                 { label: 'Grade', value: employee.grade ?? 'Not set' },
                 { label: 'Employee Status', value: employee.status ?? '-' },

@@ -93,8 +93,8 @@ class LeaveNotificationService
         $this->inApp(
             collect([$this->chain->userOf($req->requester)])->filter(),
             'Leave request approved',
-            'Your '.$req->leave_type.' leave request was approved.',
-            route('leave.my-history'),
+            'Your '.$req->leave_type.' leave request was approved. Your approval letter is ready.',
+            route('leave.letters.show', $req),
             ['type' => 'leave_approved', 'leave_request_id' => $req->id]
         );
 
@@ -132,7 +132,7 @@ class LeaveNotificationService
                     $req->end_date->format('d M Y'),
                     $req->total_days_applied
                 ),
-                route('leave.requests'),
+                route('leave.letters.show', $req),
                 ['type' => 'leave_hr_approved', 'leave_request_id' => $req->id]
             );
 

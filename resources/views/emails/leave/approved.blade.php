@@ -14,6 +14,10 @@
 
 Approved by **{{ $request->approvedBy->full_name }}**
 
+@component('mail::button', ['url' => route('leave.letters.show', $request)])
+Open your approval letter
+@endcomponent
+
 Regards,  
 {{ config('app.name') }}
 @endcomponent

@@ -142,6 +142,15 @@
                 ></textarea>
             </x-ui.field>
 
+            @if (! $readOnly && $selectedRequest->manager_recommendation !== 'Pending')
+                {{-- The final approval makes the approval letter; the approver's own saved signature can go on it. --}}
+                @if ($hasSignature)
+                    <x-ui.checkbox label="Apply my saved signature to the approval letter" id="apply-signature" wire:model="applySignature" />
+                @else
+                    <p class="ui-hint">You have no saved signature, so the letter's signing space will be blank. <a class="text-link" href="{{ route('leave.signature') }}">Add one under My Signature</a> first if you want it on the letter.</p>
+                @endif
+            @endif
+
             @if ($selectedRequest->file_attachment)
                 <p>
                     <a class="text-link" href="{{ asset('storage/' . $selectedRequest->file_attachment) }}" target="_blank" rel="noopener">

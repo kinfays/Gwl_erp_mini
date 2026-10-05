@@ -4,6 +4,9 @@ namespace App\Support;
 
 use App\Models\Permission;
 use App\Models\User;
+use App\Services\Leave\LeaveActingAssignmentService;
+use App\Services\Leave\LeaveLetterSettingsService;
+use App\Services\Leave\SignatureService;
 use App\Services\Letters\LetterWorkflowService;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -196,9 +199,11 @@ class ErpNavigation
 
     protected function leaveSidebar(User $user): array
     {
+        // Someone acting in a final-approver post approves without holding the role.
         $canReview = fn (User $currentUser) => $this->isHrViewer($currentUser)
             || $this->isManagerialUser($currentUser)
-            || $currentUser->hasRoles('managing_director');
+            || $currentUser->hasRoles('managing_director')
+            || app(LeaveActingAssignmentService::class)->hasActiveAssignment($currentUser);
         $homeRoute = $this->leaveHomeRoute($user);
 
         return [
@@ -230,6 +235,14 @@ class ErpNavigation
                 'active' => ['leave.my-history'],
                 'icon' => $this->icon('user'),
                 'icon_name' => 'history',
+            ],
+            [
+                'label' => 'My Signature',
+                'route' => 'leave.signature',
+                'active' => ['leave.signature'],
+                'icon' => $this->icon('check'),
+                'icon_name' => 'pen-line',
+                'can' => fn (User $currentUser) => app(SignatureService::class)->canSign($currentUser),
             ],
             [
                 'type' => 'section',
@@ -318,6 +331,22 @@ class ErpNavigation
                 'icon' => $this->icon('user-plus'),
                 'icon_name' => 'mail',
                 'can' => $canManageHrContacts,
+            ],
+            [
+                'label' => 'Letter Settings',
+                'route' => 'leave.letter-settings',
+                'active' => ['leave.letter-settings'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'file-text',
+                'can' => fn (User $currentUser) => app(LeaveLetterSettingsService::class)->canAccess($currentUser),
+            ],
+            [
+                'label' => 'Acting Assignments',
+                'route' => 'leave.acting',
+                'active' => ['leave.acting'],
+                'icon' => $this->icon('user-plus'),
+                'icon_name' => 'user-check',
+                'can' => fn (User $currentUser) => app(LeaveActingAssignmentService::class)->canManage($currentUser),
             ],
             [
                 'label' => 'Leave Reports',

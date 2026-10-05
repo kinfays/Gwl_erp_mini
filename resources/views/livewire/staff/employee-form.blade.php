@@ -31,6 +31,12 @@
                 <div class="ui-form-grid">
                     <x-ui.input label="Staff ID" wire:model.defer="staff_id" required class="mono" autocomplete="off" />
                     <x-ui.input label="Full Name" wire:model.defer="full_name" required autocomplete="off" />
+                    <x-ui.select label="Title" wire:model.defer="title" hint="Printed before the name on leave approval letters.">
+                        <option value="">No title</option>
+                        @foreach ($titles as $option)
+                            <option value="{{ $option }}">{{ $option }}</option>
+                        @endforeach
+                    </x-ui.select>
 
                     <x-ui.select label="Gender" wire:model.live="gender" required>
                         <option value="Male">Male</option>

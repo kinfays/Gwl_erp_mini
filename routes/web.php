@@ -13,9 +13,11 @@ use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveCompulsoryController;
 use App\Http\Controllers\Leave\LeaveExportController;
 use App\Http\Controllers\Leave\LeaveHomeController;
+use App\Http\Controllers\Leave\LeaveLetterController;
 use App\Http\Controllers\Leave\LeaveHrAnalyticsController;
 use App\Http\Controllers\Leave\LeaveHrContactsController;
 use App\Http\Controllers\Letters\LetterRegisterExportController;
+use App\Http\Middleware\EnsureCanSignLetters;
 use App\Http\Controllers\Letters\LetterScanController;
 use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
@@ -117,6 +119,18 @@ Route::middleware(['auth', 'active', 'module:leave'])
         Route::get('/hr-analytics', [LeaveHrAnalyticsController::class, 'index'])
             ->middleware('role:hr_headoffice,hr_region,admin,super_admin')
             ->name('hr-analytics');
+        // Approval letters. Who may open each is checked again in the controller and the Livewire component.
+        Route::get('/letters/{leaveRequest}', [LeaveLetterController::class, 'show'])->whereNumber('leaveRequest')->name('letters.show');
+        Route::get('/letters/{leaveRequest}/pdf', [LeaveLetterController::class, 'pdf'])->whereNumber('leaveRequest')->name('letters.pdf');
+        Route::get('/my-signature', [LeaveLetterController::class, 'signature'])
+            ->middleware(EnsureCanSignLetters::class)
+            ->name('signature');
+        Route::get('/letter-settings', [LeaveLetterController::class, 'settings'])
+            ->middleware(['role:super_admin,admin,hr_headoffice,hr_region', 'permission:leave.manage_letter_settings'])
+            ->name('letter-settings');
+        Route::get('/acting', [LeaveLetterController::class, 'acting'])
+            ->middleware(['role:super_admin,admin,hr_headoffice,hr_region', 'permission:leave.manage_acting'])
+            ->name('acting');
         Route::get('/hr-contacts', [LeaveHrContactsController::class, 'index'])
             ->middleware('permission:leave.manage_hr_contacts')
             ->name('hr-contacts');

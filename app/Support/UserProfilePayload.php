@@ -39,6 +39,7 @@ class UserProfilePayload
             'employee' => $employee ? [
                 'staff_id' => $employee->staff_id,
                 'full_name' => $employee->full_name,
+                'title' => $employee->title,
                 'email' => $employee->email,
                 'gender' => $employee->gender,
                 'category' => $employee->category,

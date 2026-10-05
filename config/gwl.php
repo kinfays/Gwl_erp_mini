@@ -41,6 +41,13 @@ return [
     // HR analytics (App\Services\Hr\HrAnalyticsService): how long a computed dashboard is reused. 0 turns the cache off.
     'hr_analytics_cache_seconds' => (int) env('GWL_HR_ANALYTICS_CACHE_SECONDS', 120),
 
+    // Leave approval letters: the private disk saved signatures are kept on (config/filesystems.php), the biggest upload
+    // accepted (KB) and the size a signature is scaled down to (pixels) before it is stored.
+    'signature_disk' => env('GWL_SIGNATURE_DISK', 'leave_signatures'),
+    'signature_max_upload_kb' => (int) env('GWL_SIGNATURE_MAX_UPLOAD_KB', 1024),
+    'signature_max_width' => 600,
+    'signature_max_height' => 200,
+
     'visitor_kiosk_reset_seconds' => (int) env('GWL_VISITOR_KIOSK_RESET_SECONDS', 5),
     'max_import_failure_percent' => (int) env('GWL_MAX_IMPORT_FAILURE_PERCENT', 20),
     'credit_union_module_enabled' => (bool) env('GWL_CREDIT_UNION_MODULE_ENABLED', false),

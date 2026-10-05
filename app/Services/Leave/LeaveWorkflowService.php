@@ -13,7 +13,9 @@ use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 class LeaveWorkflowService
 {
@@ -130,12 +132,12 @@ class LeaveWorkflowService
      * @throws AuthorizationException when the actor isn't a final approver for this request
      * @throws LeaveAlreadyActionedException when someone else already acted
      */
-    public function finalDecision(Employee $chiefActor, LeaveRequest $req, ?string $comments, bool $approve): LeaveRequest
+    public function finalDecision(Employee $chiefActor, LeaveRequest $req, ?string $comments, bool $approve, bool $applySignature = false): LeaveRequest
     {
         /** @var LeaveBalance|null $balance */
         $balance = null;
 
-        $req = DB::transaction(function () use ($chiefActor, $req, $comments, $approve, &$balance) {
+        $req = DB::transaction(function () use ($chiefActor, $req, $comments, $approve, $applySignature, &$balance) {
             $locked = $this->lock($req);
             $actor = $this->authorize($chiefActor, $locked, LeaveApprovalChainResolver::STAGE_FINAL);
 
@@ -158,12 +160,16 @@ class LeaveWorkflowService
 
             $locked->decided_at = now();
             $locked->leave_status = $approve ? 'Approved' : 'Denied';
+            // In which capacity the approver acted: as the post-holder, or as someone acting in the post.
+            $locked->final_approver_capacity = $this->chain->capacityOf($actor, $locked);
             $locked->save();
 
             if ($approve) {
                 // Create/fetch the balance on approval and deduct the days.
                 $balance = $this->balances->getOrCreateForApproval($locked->requester, $locked->leave_type, (int) $locked->request_year);
                 $this->balances->deduct($balance, (int) $locked->total_days_applied);
+
+                $this->issueLetter($locked, $actor, $applySignature);
             }
 
             return $locked;
@@ -185,6 +191,19 @@ class LeaveWorkflowService
         $approve ? $this->notify->approved($req, $balance) : $this->notify->denied($req);
 
         return $req;
+    }
+
+    /**
+     * The approval letter is made inside the approval's transaction, but in its own savepoint: if it can't be made the failure
+     * is logged and the approval stands (HR can regenerate the letter from the leave screens).
+     */
+    protected function issueLetter(LeaveRequest $request, User $approver, bool $applySignature): void
+    {
+        try {
+            DB::transaction(fn () => app(LeaveLetterService::class)->generate($request, $approver, $applySignature));
+        } catch (Throwable $e) {
+            Log::error('Leave approval letter could not be generated: '.$e->getMessage(), ['leave_request_id' => $request->id, 'exception' => $e]);
+        }
     }
 
     public function reopen(Employee $requester, LeaveRequest $req): LeaveRequest

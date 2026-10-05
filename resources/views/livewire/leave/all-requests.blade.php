@@ -46,6 +46,7 @@
             </div>
         </div>
 
+        @php($canViewLetter = fn ($request) => app(\App\Services\Leave\LeaveLetterService::class)->canView(auth()->user(), $request))
         <x-ui.table label="Leave requests" pin-first>
             <x-slot:head>
                 <tr>
@@ -55,6 +56,7 @@
                     <th class="num">Days</th>
                     <th>Status</th>
                     <th>Region/District</th>
+                    <th class="actions"><span class="sr-only-text">Letter</span></th>
                 </tr>
             </x-slot:head>
             @forelse ($requests as $r)
@@ -76,9 +78,14 @@
                         {{ $r->requester->region->region_name ?? '—' }} /
                         {{ $r->requester->district->district_name ?? '—' }}
                     </td>
+                    <td class="actions">
+                        @if ($r->leave_status === 'Approved' && $canViewLetter($r))
+                            <x-ui.button size="sm" :href="route('leave.letters.show', $r)" icon="printer">Print Letter</x-ui.button>
+                        @endif
+                    </td>
                 </tr>
             @empty
-                <x-ui.empty-row :colspan="6" icon="list-checks" title="No requests found." description="Try another status tab or clear the filters." />
+                <x-ui.empty-row :colspan="7" icon="list-checks" title="No requests found." description="Try another status tab or clear the filters." />
             @endforelse
 
             @if ($requests->hasPages())

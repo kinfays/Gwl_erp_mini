@@ -20,12 +20,16 @@ class LeaveApprovalRolePermissionSeeder extends Seeder
         $permissions = Permission::query()->pluck('id', 'name');
 
         $map = [
-            'managing_director' => ['leave.view_own', 'leave.apply', 'leave.approve_final'],
-            'super_admin' => ['leave.manage_hr_contacts'],
-            'admin' => ['leave.manage_hr_contacts', 'leave.manage_compulsory'],
+            // Approval letters: who signs (leave.sign_letters), who edits letterheads (leave.manage_letter_settings) and
+            // who sets acting assignments (leave.manage_acting). Migration 2026_10_04_000004 makes the same grants.
+            'managing_director' => ['leave.view_own', 'leave.apply', 'leave.approve_final', 'leave.sign_letters'],
+            'chief_manager' => ['leave.sign_letters'],
+            'regional_chief_manager' => ['leave.sign_letters'],
+            'super_admin' => ['leave.manage_hr_contacts', 'leave.manage_letter_settings', 'leave.manage_acting'],
+            'admin' => ['leave.manage_hr_contacts', 'leave.manage_compulsory', 'leave.manage_letter_settings', 'leave.manage_acting'],
             // Compulsory Leave page: Head Office HR and Global Admin (admin is granted it by UacRolePermissionSeeder).
-            'hr_headoffice' => ['leave.manage_hr_contacts', 'leave.manage_compulsory'],
-            'hr_region' => ['leave.manage_hr_contacts'],
+            'hr_headoffice' => ['leave.manage_hr_contacts', 'leave.manage_compulsory', 'leave.sign_letters', 'leave.manage_letter_settings', 'leave.manage_acting'],
+            'hr_region' => ['leave.manage_hr_contacts', 'leave.sign_letters', 'leave.manage_letter_settings', 'leave.manage_acting'],
         ];
 
         foreach ($map as $roleName => $slugs) {

@@ -38,6 +38,15 @@ return [
             'report' => false,
         ],
 
+        // Saved signatures (leave approval letters): private, never served, never given a URL. The files are also encrypted.
+        'leave_signatures' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/leave-signatures'),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

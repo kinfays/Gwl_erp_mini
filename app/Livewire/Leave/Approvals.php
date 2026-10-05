@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\User;
 use App\Services\Leave\LeaveApprovalChainResolver;
 use App\Services\Leave\LeaveWorkflowService;
+use App\Services\Leave\SignatureService;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -19,6 +20,9 @@ class Approvals extends Component
     public string $tab = 'pending';
 
     public string $search = '';
+
+    /** At final approval: put the approver's own saved signature on the approval letter (ticked by default). */
+    public bool $applySignature = true;
 
     public array $comments = [];
 
@@ -105,7 +109,7 @@ class Approvals extends Component
         try {
             $recommendStage
                 ? $workflow->recommend($employee, $req, $comment, $approve)
-                : $workflow->finalDecision($employee, $req, $comment, $approve);
+                : $workflow->finalDecision($employee, $req, $comment, $approve, $this->applySignature);
         } catch (RuntimeException $e) {
             $this->refuse($e->getMessage());
 
@@ -170,6 +174,7 @@ class Approvals extends Component
             'requests' => $requests,
             'tab' => $this->tab,
             'readOnly' => false,
+            'hasSignature' => app(SignatureService::class)->activeFor($user) !== null,
         ]);
     }
 

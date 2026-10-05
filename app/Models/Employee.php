@@ -43,9 +43,13 @@ class Employee extends Model
 
     public const EXIT_REASON_TRANSFER = 'transfer';
 
+    /** Honorifics offered on the staff form; printed before the name on approval letters. */
+    public const TITLES = ['Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.', 'Ing.', 'Hon.', 'Rev.', 'Surv.', 'Chief', 'Nana', 'Alhaji', 'Hajia'];
+
     protected $fillable = [
         'staff_id',
         'full_name',
+        'title',
         'gender',
         'category',
         'grade',

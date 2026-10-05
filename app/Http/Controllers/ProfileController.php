@@ -103,6 +103,7 @@ class ProfileController extends Controller
 
         return [
             'Staff ID' => $employee->staff_id,
+            'Title' => $employee->title,
             'Full Name' => $employee->full_name,
             'Email' => $employee->email,
             'Job Title' => $employee->jobTitle?->job_title_name,

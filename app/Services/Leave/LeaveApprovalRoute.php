@@ -22,7 +22,14 @@ final class LeaveApprovalRoute
         public readonly Collection $approvers,
         public readonly ?string $recommenderRole,
         public readonly string $approverRole,
+        public readonly ?Collection $actingApprovers = null,
     ) {}
+
+    /** Is $user in the approver set only because they are acting in the post (not because they hold it)? */
+    public function isActing(User $user): bool
+    {
+        return ($this->actingApprovers?->contains('id', $user->id) ?? false);
+    }
 
     public function isSingleStage(): bool
     {

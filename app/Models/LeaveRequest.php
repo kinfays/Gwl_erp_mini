@@ -29,6 +29,7 @@ class LeaveRequest extends Model
         'department_id',
         'region_id',
         'file_attachment',
+        'final_approver_capacity',
     ];
 
     protected $casts = [
@@ -71,6 +72,12 @@ class LeaveRequest extends Model
     public function department()
     {
         return $this->belongsTo(Department::class);
+    }
+
+    /** The approval letter, once the request is finally approved. */
+    public function letter()
+    {
+        return $this->hasOne(LeaveLetter::class);
     }
 
     public function region()

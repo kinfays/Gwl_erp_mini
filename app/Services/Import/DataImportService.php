@@ -215,7 +215,7 @@ class DataImportService
         }
 
         if ($type === 'employees') {
-            foreach (['full_name', 'gender', 'category', 'grade', 'email', 'job_title_name', 'department_name', 'district_name', 'region_name', 'unit', 'present_appointment'] as $field) {
+            foreach (['full_name', 'title', 'gender', 'category', 'grade', 'email', 'job_title_name', 'department_name', 'district_name', 'region_name', 'unit', 'present_appointment'] as $field) {
                 if (array_key_exists($field, $normalized)) {
                     $normalized[$field] = $this->normalizeCellText($normalized[$field]);
                 }
@@ -226,6 +226,11 @@ class DataImportService
             $normalized['grade'] = ($normalized['grade'] ?? '') === ''
                 ? null
                 : (StaffGrade::fromInput($normalized['grade'])?->value ?? $normalized['grade']);
+
+            // An honorific in any case ("ING.", "dr") is read as the real one; anything else is kept so the row is rejected.
+            $normalized['title'] = ($normalized['title'] ?? '') === ''
+                ? null
+                : (collect(Employee::TITLES)->first(fn (string $known) => strcasecmp(rtrim($known, '.'), rtrim((string) $normalized['title'], '.')) === 0) ?? $normalized['title']);
 
             if (($normalized['category'] ?? '') !== '') {
                 $normalized['category'] = $this->canonicalCategory($normalized['category']);
@@ -281,6 +286,7 @@ class DataImportService
                     },
                 ],
                 'full_name' => ['required', 'string', 'max:255'],
+                'title' => ['nullable', Rule::in(Employee::TITLES)],
                 'gender' => ['required', 'in:Male,Female'],
                 // A grade fixes the category, so the category column only has to be filled for rows with no grade.
                 'grade' => [
@@ -600,8 +606,9 @@ class DataImportService
         $employee = Employee::updateOrCreate(
             ['staff_id' => $row['staff_id']],
             array_filter([
-                // A row with no grade never clears a grade the employee already has.
+                // A row with no grade (or no title) never clears one the employee already has.
                 'grade' => $grade?->value,
+                'title' => $row['title'] ?? null,
             ], fn ($value) => $value !== null) + [
                 'full_name' => $row['full_name'],
                 'gender' => $row['gender'],
@@ -696,6 +703,7 @@ class DataImportService
                 'headings' => [
                     'staff_id',
                     'full_name',
+                    'title',
                     'gender',
                     'category',
                     'grade',
@@ -710,9 +718,9 @@ class DataImportService
                     'present_appointment',
                 ],
                 // A file without the grade column still imports (those staff are listed as "grade missing").
-                'optional_headings' => ['grade'],
+                'optional_headings' => ['title', 'grade'],
                 'sample_rows' => [
-                    ['EMP001', 'Akosua Mensah', 'Female', 'Management', 'Mgt. Gd. Level 2', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
+                    ['EMP001', 'Akosua Mensah', 'Ms.', 'Female', 'Management', 'Mgt. Gd. Level 2', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
                 ],
             ],
             'departments' => [

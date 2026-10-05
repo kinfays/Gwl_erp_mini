@@ -23,6 +23,7 @@ This folder contains split documentation pages for easier maintenance.
 - Routes and tests: [10-routes-and-testing.md](10-routes-and-testing.md)
 - UI components and design tokens: [11-ui-components.md](11-ui-components.md)
 - HR analytics: [12-hr-analytics.md](12-hr-analytics.md)
+- Leave approval letters, signatures and acting assignments: [13-leave-letters.md](13-leave-letters.md)
 
 ## Full Single-File Guide
 

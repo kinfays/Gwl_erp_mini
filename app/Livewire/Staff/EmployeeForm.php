@@ -28,6 +28,9 @@ class EmployeeForm extends Component
 
     public string $full_name = '';
 
+    /** The honorific (Mr., Ing., Dr., ...), printed before the name on leave approval letters. */
+    public string $title = '';
+
     public string $gender = 'Male';
 
     public string $date_of_birth = '';
@@ -74,6 +77,7 @@ class EmployeeForm extends Component
 
         $this->staff_id = $this->employee->staff_id;
         $this->full_name = $this->employee->full_name;
+        $this->title = (string) ($this->employee->title ?? '');
         $this->gender = $this->employee->gender;
         $this->date_of_birth = optional($this->employee->date_of_birth)->toDateString() ?? '';
         $this->date_joined = optional($this->employee->date_joined)->toDateString() ?? '';
@@ -118,6 +122,7 @@ class EmployeeForm extends Component
         $validated['date_joined'] = $validated['date_joined'] ?: null;
         $validated['present_appointment'] = $validated['present_appointment'] ?: null;
         $validated['unit'] = $validated['unit'] ?: null;
+        $validated['title'] = $validated['title'] ?: null;
         $validated['grade'] = $validated['grade'] ?: null;
 
         // The grade fixes the category: it is never stored as something else.
@@ -204,6 +209,7 @@ class EmployeeForm extends Component
                 : null,
             'age' => $this->date_of_birth ? Carbon::parse($this->date_of_birth)->age : null,
             'retirementAge' => Employee::retirementAge(),
+            'titles' => Employee::TITLES,
             'gradeGroups' => collect(StaffGrade::cases())
                 ->groupBy(fn (StaffGrade $grade) => $grade->category())
                 ->map(fn ($grades) => $grades->map(fn (StaffGrade $grade) => $grade->value)->all())
@@ -227,6 +233,7 @@ class EmployeeForm extends Component
 
         return [
             'staff_id' => ['required', 'string', 'max:50', 'unique:employees,staff_id,'.$employeeId],
+            'title' => ['nullable', Rule::in(Employee::TITLES)],
             'full_name' => ['required', 'string', 'max:255'],
             'gender' => ['required', 'in:Male,Female'],
             'date_of_birth' => ['required', 'date'],

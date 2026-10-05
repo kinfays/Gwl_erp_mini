@@ -13,6 +13,7 @@ Employee leave application, approval workflow, balances, dashboards, and reporti
 - HR dashboard and manager dashboard
 - Grade-based annual entitlements and the yearly compulsory leave (Compulsory Leave page)
 - HR analytics (milestones, headcount, turnover, distribution, exit reasons)
+- Printable approval letters with approver signatures, acting approvers (see `docs/13-leave-letters.md`)
 - Excel exports and reports
 
 ## Workflow Statuses

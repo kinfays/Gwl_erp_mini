@@ -343,6 +343,10 @@ Gross days come from the employee's grade (`employees.grade`) and years of servi
 - The leave home Annual card shows Gross entitlement / Compulsory leave / Available. With no record for the year the default applies and the page warns. Saving is audited and recalculates the year's entitlements.
 - Years deducted the old way (the earlier category-based screen) are left alone.
 
+### Approval letters
+
+Every finally-approved request gets a printable A4 letter in the company template's layout (letterhead, addressee, approval paragraphs, signing space, Board of Directors footer), with a frozen snapshot, optional approver signature (drawn or uploaded, stored encrypted on a private disk, applied only by its owner) and acting-approver support. Letter Settings and Acting Assignments are under Staff Management -> HR Tools; My Signature is in the Leave sidebar. See `docs/13-leave-letters.md`.
+
 ### HR analytics
 
 `GET /leave/hr-analytics` (Head Office HR, Global Admin, super_admin: every region; regional HR: their own region): birthdays, anniversaries, 5/10/15/20-year milestones, approaching retirement (age `GWL_RETIREMENT_AGE`, default 60), headcount, hires, exits and turnover (transfers excluded), distribution, exit reasons, staff missing a grade and the entitlement summary. See `docs/12-hr-analytics.md`.

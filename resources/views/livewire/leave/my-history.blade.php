@@ -53,6 +53,10 @@
                 <footer class="request-card-actions">
                     <x-ui.button size="sm" variant="ghost" icon="eye" wire:click="viewRequest({{ $r->id }})">View</x-ui.button>
 
+                    @if ($r->leave_status === 'Approved')
+                        <x-ui.button size="sm" :href="route('leave.letters.show', $r)" icon="printer">Print Letter</x-ui.button>
+                    @endif
+
                     @if ($r->canBeEditedByRequester())
                         <x-ui.button size="sm" icon="pencil" wire:click="editRequest({{ $r->id }})">Edit</x-ui.button>
                     @endif
@@ -147,6 +151,10 @@
             @endif
 
             <x-slot:footer>
+                @if ($selectedRequest->leave_status === 'Approved')
+                    <x-ui.button :href="route('leave.letters.show', $selectedRequest)" icon="printer">Print Letter</x-ui.button>
+                @endif
+
                 @if ($selectedRequest->canBeEditedByRequester())
                     <x-ui.button variant="primary" icon="pencil" wire:click="editRequest({{ $selectedRequest->id }})">Edit</x-ui.button>
                 @endif

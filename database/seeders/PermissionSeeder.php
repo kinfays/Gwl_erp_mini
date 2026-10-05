@@ -21,6 +21,9 @@ class PermissionSeeder extends Seeder
                 'leave.export',
                 'leave.delete_own',
                 'leave.manage_hr_contacts',
+                'leave.sign_letters',
+                'leave.manage_letter_settings',
+                'leave.manage_acting',
             ],
             'staff' => [
                 'staff.view',
