@@ -99,6 +99,17 @@
             'acknowledged' => ['success', 'Acknowledged'],
             'failed' => ['danger'],
         ],
+        // commercial_import_batches.status / commercial_reading_stats.match_status
+        'commercial' => [
+            'imported' => ['success'],
+            'superseded' => ['muted'],
+            'voided' => ['danger'],
+            'matched' => ['success'],
+            'unmatched' => ['warning'],
+            'system_account' => ['muted', 'System account'],
+            'pass' => ['success', 'Passed'],
+            'fail' => ['danger', 'Failed'],
+        ],
         'credit-union' => [
             'draft' => ['muted'],
             'pending' => ['warning'],

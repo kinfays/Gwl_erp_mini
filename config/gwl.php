@@ -56,6 +56,24 @@ return [
     'credit_union_loan_annual_interest_rate_percent' => (float) env('GWL_CREDIT_UNION_LOAN_INTEREST_RATE', 15.0),
     'credit_union_loan_multiple_without_guarantor' => (float) env('GWL_CREDIT_UNION_LOAN_MULTIPLE_WITHOUT_GUARANTOR', 2),
 
+    // Commercial (billing & meter-reading analytics): off by default; when off the routes don't register and the module
+    // is hidden from navigation. Reports arrive as Excel uploads (docs/commercial-module-design.md).
+    'commercial_module_enabled' => (bool) env('GWL_COMMERCIAL_MODULE_ENABLED', false),
+    // The biggest report upload accepted, in MB. Keep it at or below PHP's upload_max_filesize / post_max_size and
+    // Livewire's temporary-upload limit (about 12 MB).
+    'commercial_import_max_mb' => (int) env('GWL_COMMERCIAL_IMPORT_MAX_MB', 10),
+    // Reader analytics thresholds (used from Phase 2). A reader needs this many visits in a month before a skip-rate
+    // outlier is flagged, so a reader with 197 visits is not judged on noise.
+    'commercial_min_visits_for_outlier' => (int) env('GWL_COMMERCIAL_MIN_VISITS_FOR_OUTLIER', 200),
+    'commercial_outlier_zscore' => (float) env('GWL_COMMERCIAL_OUTLIER_ZSCORE', 2.0),
+    // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
+    'commercial_workload_low_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_LOW_PCT', 50),
+    'commercial_workload_high_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_HIGH_PCT', 150),
+    // PLACEHOLDER targets until the Commercial team confirms the real ones (design section 10, question 5).
+    'commercial_target_skip_rate_pct' => (float) env('GWL_COMMERCIAL_TARGET_SKIP_RATE_PCT', 10),
+    'commercial_target_coverage_pct' => (float) env('GWL_COMMERCIAL_TARGET_COVERAGE_PCT', 90),
+    'commercial_target_collection_pct' => (float) env('GWL_COMMERCIAL_TARGET_COLLECTION_PCT', 95),
+
     // Letters: the most letters one transmittal (batch dispatch) may hold. 50 fits one printed sheet.
     'letters_max_batch_size' => (int) env('GWL_LETTERS_MAX_BATCH_SIZE', 50),
 

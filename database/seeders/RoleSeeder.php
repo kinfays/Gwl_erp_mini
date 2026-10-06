@@ -50,6 +50,8 @@ class RoleSeeder extends Seeder
             'driver',
             'credit_union_officer',
             'credit_union_committee',
+            'commercial_officer',
+            'commercial_manager',
             'secretary',
             'receptionist',
         ];
@@ -61,6 +63,8 @@ class RoleSeeder extends Seeder
                 'transport_manager' => 'Transport Manager',
                 'credit_union_officer' => 'Credit Union Officer',
                 'credit_union_committee' => 'Credit Union Committee',
+                'commercial_officer' => 'Commercial Officer',
+                'commercial_manager' => 'Commercial Manager',
                 default => Str::of($role)->replace('_', ' ')->title()->toString(),
             };
 

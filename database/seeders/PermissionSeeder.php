@@ -121,6 +121,17 @@ class PermissionSeeder extends Seeder
                 'credit_union.export_reports',
                 'credit_union.manage_settings',
             ],
+            'commercial' => [
+                'commercial.view_dashboard',
+                'commercial.view_billing',
+                'commercial.view_reading',
+                'commercial.view_reader_performance',
+                'commercial.upload_reports',
+                'commercial.resolve_matches',
+                'commercial.void_batches',
+                'commercial.export_reports',
+                'commercial.manage_settings',
+            ],
         ];
 
         foreach ($permissions as $module => $slugs) {

@@ -137,6 +137,13 @@ class ErpNavigation
                 'route' => $this->safeRoute('credit-union.home'),
             ],
             [
+                'slug' => Permission::MODULE_COMMERCIAL,
+                'title' => 'Commercial',
+                'short' => 'Commercial',
+                'icon_name' => 'chart-column',
+                'route' => $this->safeRoute('commercial.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'short' => 'Access',
@@ -147,7 +154,11 @@ class ErpNavigation
 
         return array_values(array_filter(
             $definitions,
-            fn (array $def) => $def['slug'] !== Permission::MODULE_CREDIT_UNION || config('gwl.credit_union_module_enabled')
+            fn (array $def) => match ($def['slug']) {
+                Permission::MODULE_CREDIT_UNION => (bool) config('gwl.credit_union_module_enabled'),
+                Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
+                default => true,
+            }
         ));
     }
 
@@ -162,6 +173,7 @@ class ErpNavigation
             Permission::MODULE_ASSETS => $this->assetsSidebar($user),
             Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
             Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
+            Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             default => [],
         };
 
@@ -896,6 +908,32 @@ class ErpNavigation
                 'icon' => $this->icon('user-plus'),
                 'icon_name' => 'user-plus',
                 'can' => $canApply,
+            ],
+        ];
+    }
+
+    protected function commercialSidebar(User $user): array
+    {
+        $canUpload = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('commercial.upload_reports')
+            || $currentUser->hasPermission('commercial.resolve_matches')
+            || $currentUser->hasPermission('commercial.void_batches');
+
+        return [
+            [
+                'label' => 'Overview',
+                'route' => 'commercial.home',
+                'active' => ['commercial.home'],
+                'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
+            ],
+            [
+                'label' => 'Uploads',
+                'route' => 'commercial.batches',
+                'active' => ['commercial.batches', 'commercial.batches.show'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'file-spreadsheet',
+                'can' => $canUpload,
             ],
         ];
     }

@@ -49,6 +49,7 @@ class HrRegionModuleAccessTest extends TestCase
             Permission::MODULE_ASSETS,
             Permission::MODULE_TRANSPORT,
             Permission::MODULE_CREDIT_UNION,
+            Permission::MODULE_COMMERCIAL,
         ];
 
         $expectedModules = array_values(array_filter(

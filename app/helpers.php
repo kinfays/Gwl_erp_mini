@@ -78,6 +78,13 @@ if (! function_exists('dashboardModules')) {
                 'icon' => 'CU',
                 'route' => route('credit-union.home'),
             ]] : []),
+            ...(config('gwl.commercial_module_enabled') ? [[
+                'slug' => 'commercial',
+                'title' => 'Commercial',
+                'description' => 'Billing and meter-reading analytics from the weekly and monthly reports',
+                'icon' => 'CM',
+                'route' => route('commercial.home'),
+            ]] : []),
             [
                 'slug' => 'uac',
                 'title' => 'User Access Control',

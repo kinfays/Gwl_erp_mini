@@ -12,6 +12,7 @@
             'assets' => 'monitor',
             'transport' => 'car',
             'credit_union' => 'landmark',
+            'commercial' => 'chart-column',
             'uac' => 'shield-check',
         ];
         $leave = $summary['leave'] ?? null;

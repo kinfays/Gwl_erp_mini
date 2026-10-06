@@ -13,6 +13,9 @@ management). See `APP_DOCUMENTATION.md` and `docs/` for a functional
 walkthrough of each module — this file is about how the code is put
 together, not what it does for end users.
 
+A **Commercial** module (billing and meter-reading analytics from Excel uploads, behind `GWL_COMMERCIAL_MODULE_ENABLED`) is
+being built in phases; Phase 1 (import, reconciliation, batches) is in. Design and decisions: `docs/commercial-module-design.md`.
+
 `docs/` is split by module and may drift; the Assets and Transport modules
 in particular were added after `APP_DOCUMENTATION.md` was last updated, so
 verify against the actual code (routes/models/migrations) before trusting
@@ -66,7 +69,7 @@ app/
   Policies/                  VehiclePolicy (the only policy currently defined)
   Providers/                 AppServiceProvider (forces HTTPS scheme, etc.)
   Repositories/Transport/    VehicleRepository (only module using an explicit repository)
-  Services/                  Business logic layer, grouped by module: Leave/, Letters/, Staff/, Hr/, Transport/, Import/, plus a flat ReportsService
+  Services/                  Business logic layer, grouped by module: Leave/, Letters/, Staff/, Hr/, Transport/, Commercial/, Import/, plus a flat ReportsService
   Support/                   Cross-cutting helpers: ErpNavigation (nav/module visibility), Audit (audit-log helper), PasswordRules, UserProfilePayload
   View/Components/           Blade layout components (AppLayout, ErpLayout, GuestLayout)
   helpers.php                Global helper functions, autoloaded via composer.json "files"
@@ -127,6 +130,13 @@ Controllers and Livewire components stay thin and delegate to `app/Services/{Mod
 - `Services/Staff/EmployeeDirectory` — the canonical place for role-scoped employee visibility queries (used by StaffController; UAC's employee search goes through `RoleGrantPolicy::employeesQueryFor()`). Its `applyFilters()` also takes `grade` (`none` = no grade yet) and `region_id`, which is how dashboard cards link into the staff list (`AllEmployees` keeps its filters in the URL).
 - `Services/Staff/StaffReportService` — Staff Reports (renamed from "Staff Leave Reports"; the `staff.reports` route and `staff.view_reports` permission keep their names): leave and headcount charts, the category/grade breakdown and the Excel export. Its payload is cached, so it may only hold arrays and scalars (cache key prefix `staff_reports:v2:`).
 - `Services/Uac/RoleGrantPolicy` / `RoleAssignmentService` — **all** role-management rules (tiers super_admin > Global Admin (`admin`) > ICT > others, ICT location scope, `roles.ict_assignable`/`is_protected`, role↔location fit, anti-escalation) live here; UacController, the roles screen, the users import and the Head Office transfer rule (`EmployeeObserver`) all call it. Editing a user diffs roles and only touches the ones the actor may manage. super_admin is invisible to everyone else via the `visibleTo($viewer)` scopes on `User`/`Employee`/`Role`/`AuditLog` (operational pickers keep `visibleInErp()`); start any list, count or export of audit rows with `AuditLog::visibleTo()`. Details: `docs/04-module-uac.md`.
+- `Services/Commercial/` — the two report importers (`ReadingSummaryImportService`, `BillingSummaryImportService`, both on `ReportImportService`), reached through `CommercialImportService`; `ReportFileReader` (every sheet as a raw grid, cells found by LABEL never by coordinate), `LocationMatcher` (region/district text -> record, then `commercial_location_aliases`), `BatchLifecycleService` (void; recomputes imported/superseded), `BatchResolutionService` (resolve alias / link reader / re-match). Things that are easy to get wrong:
+  - **The reports are pre-aggregated exports, not tables**, so `DataImportService`/`RawRowsImport` are deliberately not used (`RawRowsImport` only reads the first sheet). A file whose rows do not add up to its own totals is **blocked**; an unmatched reader/district only **warns** and is resolved afterwards.
+  - Rows are immutable snapshots tied to a batch. Read them through `scopeEffective()` on the stat/route/band/strength models (latest non-voided batch wins), never straight off the table; `status` imported/superseded is only a label recomputed by `BatchLifecycleService::refreshStatuses()`. Compare dates with `DATE()`/`whereDate`: the `date` cast is stored as `2026-06-01 00:00:00` on SQLite.
+  - **Verified against the real exports** (June-Sep 2025 reading, Jun-Aug 2026 new-service billing): the reading file's `Document map` sheet declares a used range out to column XFC and exhausts memory if loaded, so `ReportFileReader::readSheets()` lists sheet names first and never loads it; the filter block is ONE multi-line cell (`ReportFileReader::labelValue()` splits lines); reader sheets are named `Sheet2`.. and use two-row headers (`Verified`/`Strength`, `Read` over `#`/`%`); the grand-total sheet has overall Read/Skipped/Visited only, no month rows (a per-month grand sheet is also reconciled month by month).
+  - The source's percentages, `Unvisited` and `Collection Ratio` are never stored (they are measured against the whole region); recompute from counts. The `00000` System Administrator account is kept (`match_status = system_account`) but excluded via `CommercialReadingStat::scopeReaders()`.
+  - Region scope is `Livewire\Commercial\Concerns\ScopesCommercialByActor` (a third, separate scoping trait: super_admin/Global Admin/Head Office see all, everyone else their own `employee->region_id`). Every `BatchShow` action re-checks permission AND region.
+  - Tests build small synthetic workbooks with `Tests\Support\Commercial\ReportWorkbooks` (never commit real exports; they hold staff names and customer routes). PhpSpreadsheet's `fromArray()` needs `strictNullComparison = true` or it drops zeros.
 - `Services/Transport/TransportService`, `TransportNotificationService`.
 - `Services/Import/DataImportService` — shared xlsx import/preview/validate pipeline for both the UAC and Staff import screens (see `ImportController`).
 - Flat `Services/ReportsService` — date-range resolution + payload building for transport reports (PDF/Excel).

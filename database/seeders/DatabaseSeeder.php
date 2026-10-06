@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             AssetsRolePermissionSeeder::class,
             TransportRolePermissionSeeder::class,
             CreditUnionRolePermissionSeeder::class,
+            CommercialRolePermissionSeeder::class,
             MdmStarterPolicySeeder::class,
             TransportSeeder::class,
             HolidaySeeder::class,

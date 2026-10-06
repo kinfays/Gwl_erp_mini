@@ -8,6 +8,7 @@ use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
+use App\Http\Controllers\Commercial\CommercialModuleController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveCompulsoryController;
@@ -479,6 +480,25 @@ if (config('gwl.credit_union_module_enabled')) {
             Route::get('/interest-distributions/{distribution}', [CreditUnionModuleController::class, 'interestDistributionShow'])
                 ->middleware('permission:credit_union.manage_interest_distribution,credit_union.approve_interest_distribution')
                 ->name('interest-distributions.show');
+        });
+}
+
+if (config('gwl.commercial_module_enabled')) {
+    Route::middleware(['auth', 'active', 'module:commercial'])
+        ->prefix('commercial')
+        ->name('commercial.')
+        ->group(function () {
+            Route::get('/', [CommercialModuleController::class, 'home'])
+                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading,commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                ->name('home');
+
+            Route::get('/batches', [CommercialModuleController::class, 'batches'])
+                ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                ->name('batches');
+
+            Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
+                ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                ->name('batches.show');
         });
 }
 

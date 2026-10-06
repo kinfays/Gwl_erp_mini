@@ -18,6 +18,7 @@ class ModuleAccessSeeder extends Seeder
                 Permission::MODULE_ASSETS,
                 Permission::MODULE_TRANSPORT,
                 Permission::MODULE_CREDIT_UNION,
+                Permission::MODULE_COMMERCIAL,
             ], true)
         ));
 
@@ -30,14 +31,16 @@ class ModuleAccessSeeder extends Seeder
             'driver' => [Permission::MODULE_TRANSPORT],
             'credit_union_officer' => [Permission::MODULE_CREDIT_UNION],
             'credit_union_committee' => [Permission::MODULE_CREDIT_UNION],
+            'commercial_officer' => [Permission::MODULE_COMMERCIAL],
+            'commercial_manager' => [Permission::MODULE_COMMERCIAL],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],
             'manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
             'departmental_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
-            'district_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
-            'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
-            'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS],
+            'district_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS, Permission::MODULE_COMMERCIAL],
+            'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS, Permission::MODULE_COMMERCIAL],
+            'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS, Permission::MODULE_COMMERCIAL],
             'managing_director' => [Permission::MODULE_LEAVE],
             'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT, Permission::MODULE_CREDIT_UNION],
             'receptionist' => [Permission::MODULE_VISITORS],
