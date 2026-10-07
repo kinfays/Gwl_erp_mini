@@ -919,6 +919,10 @@ class ErpNavigation
             || $currentUser->hasPermission('commercial.resolve_matches')
             || $currentUser->hasPermission('commercial.void_batches');
 
+        $canSeeReading = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || $currentUser->hasPermission('commercial.view_reading')
+            || $currentUser->hasPermission('commercial.view_reader_performance');
+
         return [
             [
                 'label' => 'Overview',
@@ -926,6 +930,41 @@ class ErpNavigation
                 'active' => ['commercial.home'],
                 'icon' => $this->icon('dashboard'),
                 'icon_name' => 'layout-dashboard',
+            ],
+            [
+                'label' => 'Summary',
+                'route' => 'commercial.summary',
+                'active' => ['commercial.summary'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+                    || $currentUser->hasPermission('commercial.view_dashboard')
+                    || $currentUser->hasPermission('commercial.view_billing')
+                    || $currentUser->hasPermission('commercial.view_reading'),
+            ],
+            [
+                'label' => 'Reading',
+                'route' => 'commercial.reading',
+                'active' => ['commercial.reading', 'commercial.reading.reader'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'trending-up',
+                'can' => $canSeeReading,
+            ],
+            [
+                'label' => 'Billing',
+                'route' => 'commercial.billing',
+                'active' => ['commercial.billing'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'banknote',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
+            ],
+            [
+                'label' => 'Settings',
+                'route' => 'commercial.settings',
+                'active' => ['commercial.settings'],
+                'icon' => $this->icon('shield'),
+                'icon_name' => 'settings',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.manage_settings'),
             ],
             [
                 'label' => 'Uploads',

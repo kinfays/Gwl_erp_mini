@@ -159,10 +159,10 @@ class AccessAndNavigationTest extends CommercialTestCase
         $this->assertNotContains('Commercial', $titles($employee));
 
         $labels = collect($navigation->build($officer, 'commercial')['sidebar'])->pluck('label')->all();
-        $this->assertSame(['Overview', 'Uploads'], $labels);
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Uploads'], $labels);
 
         $managerLabels = collect($navigation->build($this->userWithRoles('900031', ['commercial_manager']), 'commercial')['sidebar'])->pluck('label')->all();
-        $this->assertSame(['Overview'], $managerLabels);
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing'], $managerLabels);
 
         config(['gwl.commercial_module_enabled' => false]);
 

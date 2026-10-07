@@ -21,6 +21,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -28,6 +29,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
+use RuntimeException;
 
 class DataImportService
 {
@@ -426,10 +428,26 @@ class DataImportService
 
     protected function readRows(UploadedFile $file): Collection
     {
-        $import = new RawRowsImport;
-        Excel::import($import, $file);
+        // Excel 4.x opens an UploadedFile through getRealPath(), which is false for PHP's upload temp file on some
+        // Windows setups ("Path must not be empty"). Read a copy kept under storage instead, where realpath() works.
+        $directory = storage_path('app/private/import-tmp');
+        File::ensureDirectoryExists($directory);
 
-        return $import->rows;
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'xlsx');
+        $path = $directory.DIRECTORY_SEPARATOR.Str::uuid().'.'.$extension;
+
+        if (! @copy($file->getPathname(), $path)) {
+            throw new RuntimeException('The uploaded file could not be read. Please upload it again.');
+        }
+
+        try {
+            $import = new RawRowsImport;
+            Excel::import($import, $path);
+
+            return $import->rows;
+        } finally {
+            @unlink($path);
+        }
     }
 
     protected function mapRow(array $headings, $row): array

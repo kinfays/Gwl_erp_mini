@@ -23,6 +23,41 @@ class CommercialModuleController extends Controller
         return view('commercial.home');
     }
 
+    public function reading(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.reading');
+    }
+
+    public function settings(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.settings');
+    }
+
+    public function summary(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.summary');
+    }
+
+    public function billing(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.billing');
+    }
+
+    public function readerShow(Request $request, string $staffId): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.reader', ['staffId' => $staffId]);
+    }
+
     public function batches(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_COMMERCIAL);

@@ -5,6 +5,7 @@ use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
 use App\Services\Leave\AnnualEntitlementService;
+use App\Services\Commercial\UploadReminderService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
 use Illuminate\Foundation\Inspiring;
@@ -100,6 +101,34 @@ if (config('gwl.mdm_enabled')) {
     // Safety net in both modes.
     Schedule::command('mdm:sync-devices')->dailyAt('02:15')->withoutOverlapping();
     Schedule::command('mdm:prune-events')->dailyAt('03:00');
+}
+
+// Commercial: tell the officers of a region when no report of a type has arrived for too long (days set on the
+// Commercial settings screen). Scheduled only while the module is on, and it needs the scheduler to be running.
+if (config('gwl.commercial_module_enabled')) {
+    Artisan::command('commercial:remind-uploads {--dry-run : List the overdue uploads and who would be told, without sending anything}', function (UploadReminderService $reminders) {
+        $dryRun = (bool) $this->option('dry-run');
+        $summary = $reminders->remind(dryRun: $dryRun);
+
+        if (! $summary['enabled']) {
+            $this->info('Upload reminders are switched off in the Commercial settings.');
+
+            return 0;
+        }
+
+        $this->info(sprintf(
+            '%d overdue upload(s): %s %d reminder(s) to %d officer notification(s); %d already reminded recently.',
+            $summary['overdue'],
+            $dryRun ? 'would send' : 'sent',
+            $summary['reminded'],
+            $summary['notifications'],
+            $summary['skipped']
+        ));
+
+        return 0;
+    })->purpose('Remind officers of overdue Commercial report uploads');
+
+    Schedule::command('commercial:remind-uploads')->dailyAt('07:45')->withoutOverlapping();
 }
 
 Artisan::command('credit-union:post-deferred-loan-repayments', function (LoanService $loans) {

@@ -335,6 +335,13 @@
                         </div>
                     @endif
 
+                    @if (session('error'))
+                        <div class="alert alert-danger" role="alert">
+                            <x-ui.icon name="circle-alert" />
+                            <span>{{ session('error') }}</span>
+                        </div>
+                    @endif
+
                     {{ $slot }}
                 </main>
             </div>

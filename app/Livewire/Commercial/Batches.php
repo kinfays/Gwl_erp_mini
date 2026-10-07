@@ -10,6 +10,7 @@ use App\Models\Region;
 use App\Services\Commercial\BatchResolutionService;
 use App\Services\Commercial\CommercialImportException;
 use App\Services\Commercial\CommercialImportService;
+use App\Services\Commercial\UploadReminderService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
@@ -190,8 +191,10 @@ class Batches extends Component
         $this->aliasRegionId = null;
     }
 
-    public function render()
+    public function render(UploadReminderService $reminders)
     {
+        $overdue = $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get(), now());
+
         $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())
             ->with(['region', 'importer'])
             ->when($this->typeFilter !== '', fn ($query) => $query->where('report_type', $this->typeFilter))
@@ -211,6 +214,7 @@ class Batches extends Component
             'canUpload' => $this->actorCan('commercial.upload_reports'),
             'canResolve' => $this->actorCan('commercial.resolve_matches'),
             'maxMb' => (int) config('gwl.commercial_import_max_mb', 10),
+            'overdue' => $overdue,
         ]);
     }
 }

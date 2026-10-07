@@ -11,6 +11,12 @@
         @endif
     </div>
 
+    @foreach ($overdue as $late)
+        <x-ui.alert tone="warning" class="dash-row" wire:key="late-{{ $late['region_id'] }}-{{ $late['report_type'] }}">
+            {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] }} days since the last one on {{ $late['last_upload']->format('d M Y') }} (reminder limit {{ $late['limit'] }} days).
+        </x-ui.alert>
+    @endforeach
+
     @if ($showUpload)
         <div class="pg" style="margin-top:14px">
             <div class="pg-head">

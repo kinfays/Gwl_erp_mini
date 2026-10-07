@@ -8,6 +8,7 @@ use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
+use App\Http\Controllers\Commercial\CommercialExportController;
 use App\Http\Controllers\Commercial\CommercialModuleController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
@@ -491,6 +492,33 @@ if (config('gwl.commercial_module_enabled')) {
             Route::get('/', [CommercialModuleController::class, 'home'])
                 ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading,commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('home');
+
+            Route::get('/export/{report}/{format}', [CommercialExportController::class, 'download'])
+                ->where('report', '[a-z-]+')
+                ->where('format', 'excel|pdf')
+                ->middleware('permission:commercial.export_reports')
+                ->name('export');
+
+            Route::get('/settings', [CommercialModuleController::class, 'settings'])
+                ->middleware('permission:commercial.manage_settings')
+                ->name('settings');
+
+            Route::get('/summary', [CommercialModuleController::class, 'summary'])
+                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading')
+                ->name('summary');
+
+            Route::get('/billing', [CommercialModuleController::class, 'billing'])
+                ->middleware('permission:commercial.view_billing')
+                ->name('billing');
+
+            Route::get('/reading', [CommercialModuleController::class, 'reading'])
+                ->middleware('permission:commercial.view_reading,commercial.view_reader_performance')
+                ->name('reading');
+
+            Route::get('/reading/readers/{staffId}', [CommercialModuleController::class, 'readerShow'])
+                ->where('staffId', '[A-Za-z0-9_-]+')
+                ->middleware('permission:commercial.view_reader_performance')
+                ->name('reading.reader');
 
             Route::get('/batches', [CommercialModuleController::class, 'batches'])
                 ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')

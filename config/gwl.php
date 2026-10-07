@@ -67,12 +67,43 @@ return [
     'commercial_min_visits_for_outlier' => (int) env('GWL_COMMERCIAL_MIN_VISITS_FOR_OUTLIER', 200),
     'commercial_outlier_zscore' => (float) env('GWL_COMMERCIAL_OUTLIER_ZSCORE', 2.0),
     // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
+    // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
+    // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).
+    'commercial_min_readers_for_district_figures' => (int) env('GWL_COMMERCIAL_MIN_READERS_FOR_DISTRICT_FIGURES', 3),
     'commercial_workload_low_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_LOW_PCT', 50),
     'commercial_workload_high_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_HIGH_PCT', 150),
     // PLACEHOLDER targets until the Commercial team confirms the real ones (design section 10, question 5).
     'commercial_target_skip_rate_pct' => (float) env('GWL_COMMERCIAL_TARGET_SKIP_RATE_PCT', 10),
     'commercial_target_coverage_pct' => (float) env('GWL_COMMERCIAL_TARGET_COVERAGE_PCT', 90),
     'commercial_target_collection_pct' => (float) env('GWL_COMMERCIAL_TARGET_COLLECTION_PCT', 95),
+    // Commercial exports (Excel / PDF): the most rows one file may hold (all its tables together). Over it the user is
+    // asked to narrow the filters instead of being handed a huge file.
+    'commercial_export_max_rows' => (int) env('GWL_COMMERCIAL_EXPORT_MAX_ROWS', 5000),
+    // PDFs are far heavier to build than spreadsheets (Dompdf is slow and memory-hungry), so they have their own, lower cap.
+    'commercial_export_pdf_max_rows' => (int) env('GWL_COMMERCIAL_EXPORT_PDF_MAX_ROWS', 1500),
+    // Billing route exceptions (B11), all PLACEHOLDERS to confirm. A route needs at least this many customers behind a
+    // percentage before it can be flagged on it (so one-customer routes do not flood the list); then the unbilled rate
+    // and the estimated-bill share are flagged above these percentages, and a closing balance at or below minus the
+    // credit amount (GH¢) is a heavy credit.
+    'commercial_exception_min_customers' => (int) env('GWL_COMMERCIAL_EXCEPTION_MIN_CUSTOMERS', 3),
+    'commercial_exception_high_unbilled_pct' => (float) env('GWL_COMMERCIAL_EXCEPTION_HIGH_UNBILLED_PCT', 25),
+    'commercial_exception_high_estimation_pct' => (float) env('GWL_COMMERCIAL_EXCEPTION_HIGH_ESTIMATION_PCT', 75),
+    'commercial_exception_credit_amount' => (float) env('GWL_COMMERCIAL_EXCEPTION_CREDIT_AMOUNT', 300),
+    // Upload reminders: when no upload of a report type has arrived for a region for this many days, the officers who
+    // upload for that region are told (daily, at most once every repeat_days). The days are PLACEHOLDERS: how often each
+    // report really arrives is still to be confirmed (design 10, question 9). The overdue badge on the Summary page shows
+    // whether or not the notifications are on.
+    'commercial_reminders_enabled' => (bool) env('GWL_COMMERCIAL_REMINDERS_ENABLED', true),
+    'commercial_reminder_reading_days' => (int) env('GWL_COMMERCIAL_REMINDER_READING_DAYS', 10),
+    'commercial_reminder_billing_days' => (int) env('GWL_COMMERCIAL_REMINDER_BILLING_DAYS', 35),
+    'commercial_reminder_repeat_days' => (int) env('GWL_COMMERCIAL_REMINDER_REPEAT_DAYS', 7),
+    // Reader scorecard (R13): weights of the three measures. A first guess, shown on screen and labelled "indicative";
+    // they are re-normalised for a reader whose consistency cannot be worked out yet.
+    'commercial_scorecard_weights' => [
+        'volume' => (float) env('GWL_COMMERCIAL_SCORE_WEIGHT_VOLUME', 0.4),
+        'skip' => (float) env('GWL_COMMERCIAL_SCORE_WEIGHT_SKIP', 0.4),
+        'consistency' => (float) env('GWL_COMMERCIAL_SCORE_WEIGHT_CONSISTENCY', 0.2),
+    ],
 
     // Letters: the most letters one transmittal (batch dispatch) may hold. 50 fits one printed sheet.
     'letters_max_batch_size' => (int) env('GWL_LETTERS_MAX_BATCH_SIZE', 50),

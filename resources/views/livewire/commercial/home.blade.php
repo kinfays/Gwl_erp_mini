@@ -1,4 +1,8 @@
 <div>
+    @assets
+        @vite('resources/js/charts.js')
+    @endassets
+
     <div class="page-head">
         <div class="ph-left">
             <h2>Commercial</h2>
@@ -10,6 +14,46 @@
             </div>
         @endif
     </div>
+
+    @if ($kpis)
+        <div class="dash-row" style="margin-top:14px">
+            <h3 style="margin-bottom:8px">{{ $kpis['month'] }} <span class="ui-hint">latest complete month</span></h3>
+            <div class="ui-stat-grid">
+                @foreach ($kpis['tiles'] as $tile)
+                    <x-ui.stat-tile :label="$tile['label']" :value="$tile['value']" :icon="$tile['icon']" :tone="$tile['tone']"
+                        :meta="$tile['meta']" :delta="$tile['delta']" :delta-tone="$tile['delta_tone']" :delta-direction="$tile['direction']" />
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    @if ($billingKpis)
+        <div class="dash-row" style="margin-top:14px">
+            <h3 style="margin-bottom:8px">Billing, {{ $billingKpis['period'] }} <span class="ui-hint">{{ $billingKpis['label'] }}</span></h3>
+            <div class="ui-stat-grid">
+                @foreach ($billingKpis['tiles'] as $tile)
+                    <x-ui.stat-tile :label="$tile['label']" :value="$tile['value']" :icon="$tile['icon']" :tone="$tile['tone']" :meta="$tile['meta']"
+                        :href="$canSeeBilling ? route('commercial.billing') : null" />
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    @if (count($trend) > 0)
+        <x-ui.card title="Monthly trend" description="Skip rate and coverage by month. The current month is in progress and still filling up." class="dash-row">
+            @php $labels = array_map(fn ($row) => $row['label'].($row['in_progress'] ? ' (in progress)' : ''), $trend); @endphp
+            <div wire:key="home-trend-{{ md5(json_encode($trend)) }}">
+                <x-ui.chart type="line" label="Skip rate and coverage per month" unit="%" :labels="$labels"
+                    :series="[
+                        ['label' => 'Skip rate', 'data' => array_column($trend, 'skip_rate'), 'color' => 'warning'],
+                        ['label' => 'Coverage', 'data' => array_column($trend, 'coverage'), 'color' => 'series-1'],
+                    ]" height="240" />
+            </div>
+            @if ($canSeeReading)
+                <x-slot:actions><a href="{{ route('commercial.reading') }}" class="btn btn-ghost btn-sm">Open Meter Reading</a></x-slot:actions>
+            @endif
+        </x-ui.card>
+    @endif
 
     <div class="pg" style="margin-top:14px">
         <div class="pg-head">
@@ -52,5 +96,5 @@
         </table>
     </div>
 
-    <p class="form-hint" style="margin-top:12px">Dashboards, trends and rankings arrive in the next phases; this page only shows what has been loaded.</p>
+    
 </div>
