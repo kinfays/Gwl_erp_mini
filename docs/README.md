@@ -16,6 +16,7 @@ This folder contains split documentation pages for easier maintenance.
 - Visitors: [08-module-visitors.md](08-module-visitors.md)
 - Assets (inventory and agent): [assets-module.md](assets-module.md)
 - Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
+- Health & Safety — incident reporting (design, and Phase 1 as built): [health-safety-module-design.md](health-safety-module-design.md)
 
 ## Reference Pages
 

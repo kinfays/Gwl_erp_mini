@@ -2,9 +2,13 @@
 
 namespace App\Providers;
 
+use App\Events\HealthSafety\IncidentReported;
+use App\Events\HealthSafety\IncidentSeverityRaised;
+use App\Events\HealthSafety\IncidentStatusChanged;
 use App\Events\Transport\DocumentExpiryDetected;
 use App\Events\Transport\MaintenanceDue;
 use App\Events\Transport\VehicleIssueReported;
+use App\Listeners\HealthSafety\NotifyIncidentStakeholders;
 use App\Listeners\Transport\NotifyTransportManagersOfDocumentExpiry;
 use App\Listeners\Transport\NotifyTransportManagersOfIssue;
 use App\Listeners\Transport\NotifyTransportManagersOfMaintenanceDue;
@@ -40,6 +44,8 @@ class AppServiceProvider extends ServiceProvider
         // Commercial settings keep a pristine copy of the config (the defaults) for the life of the request, so the one
         // instance must be shared between the boot hook below and everything that asks for it later.
         $this->app->singleton(CommercialSettings::class);
+        // One instance per application: it reads the saved Health & Safety settings once and forgets them on a save.
+        $this->app->singleton(\App\Services\HealthSafety\HealthSafetySettings::class);
     }
 
     
@@ -54,6 +60,10 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(VehicleIssueReported::class, NotifyTransportManagersOfIssue::class);
         Event::listen(MaintenanceDue::class, NotifyTransportManagersOfMaintenanceDue::class);
         Event::listen(DocumentExpiryDetected::class, NotifyTransportManagersOfDocumentExpiry::class);
+
+        Event::listen(IncidentReported::class, [NotifyIncidentStakeholders::class, 'onReported']);
+        Event::listen(IncidentSeverityRaised::class, [NotifyIncidentStakeholders::class, 'onSeverityRaised']);
+        Event::listen(IncidentStatusChanged::class, [NotifyIncidentStakeholders::class, 'onStatusChanged']);
 
         URL::forceScheme('https');
 

@@ -54,7 +54,8 @@ class GlobalAdminTest extends TestCase
         $this->assertSame('Global Admin', $this->globalAdmin->displayRoleNames());
         $this->assertTrue($this->globalAdmin->hasRoles('admin'));
         $this->assertTrue($this->globalAdmin->isGlobalAdmin());
-        $this->assertEqualsCanonicalizing(['uac', 'assets', 'leave'], $this->globalAdmin->getAccessibleModules());
+        // Health & Safety is open to every member of staff (anyone may report an incident), Global Admin included.
+        $this->assertEqualsCanonicalizing(['uac', 'assets', 'leave', 'health_safety'], $this->globalAdmin->getAccessibleModules());
 
         // Route middleware names the slug: it still lets a Global Admin in, and the badge uses the new name.
         $this->actingAs($this->globalAdmin)->get(route('uac.users'))->assertOk()->assertSee('Global Admin');

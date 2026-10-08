@@ -56,6 +56,49 @@ return [
     'credit_union_loan_annual_interest_rate_percent' => (float) env('GWL_CREDIT_UNION_LOAN_INTEREST_RATE', 15.0),
     'credit_union_loan_multiple_without_guarantor' => (float) env('GWL_CREDIT_UNION_LOAN_MULTIPLE_WITHOUT_GUARANTOR', 2),
 
+    // Health & Safety (incident reporting now; equipment and PPE later): off by default; when off the routes don't register
+    // and the module is hidden from navigation (docs/health-safety-module-design.md).
+    'health_safety_module_enabled' => (bool) env('GWL_HEALTH_SAFETY_MODULE_ENABLED', false),
+    // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
+    'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
+    // Days from acknowledgement within which the investigation should be finished.
+    'hs_investigation_due_days' => (int) env('GWL_HS_INVESTIGATION_DUE_DAYS', 14),
+    // Photos on an incident: the biggest one (MB) and how many one incident may hold.
+    'hs_attachment_max_mb' => (int) env('GWL_HS_ATTACHMENT_MAX_MB', 5),
+    'hs_attachments_per_incident' => (int) env('GWL_HS_ATTACHMENTS_PER_INCIDENT', 5),
+    // Shown in the strip at the top of the report form. Left empty until the team confirms the numbers; the strip is
+    // hidden while it is empty. Entries are separated by "|" and written "Label: number" (for example "Ambulance: 193").
+    'hs_emergency_contacts' => (string) env('GWL_HS_EMERGENCY_CONTACTS', ''),
+    // Phase 2, fire extinguishers and first aid kits. PLACEHOLDERS until the EHS department confirms them.
+    // Days before an expiry or service date at which an item shows as "expiring" / "due soon", and the tighter window the
+    // overview counts and links to.
+    'hs_expiry_warning_days' => (int) env('GWL_HS_EXPIRY_WARNING_DAYS', 60),
+    'hs_expiry_critical_days' => (int) env('GWL_HS_EXPIRY_CRITICAL_DAYS', 30),
+    // Days between checks: an item not checked for this long shows as "check overdue".
+    'hs_check_interval_days' => (int) env('GWL_HS_CHECK_INTERVAL_DAYS', 30),
+    // Months added to a service date to pre-fill the next service due (always editable on the form).
+    'hs_extinguisher_service_months' => (int) env('GWL_HS_EXTINGUISHER_SERVICE_MONTHS', 12),
+    // Years added to a hydrostatic test to pre-fill the next one (always editable). Only a pre-fill: the real interval
+    // depends on the extinguisher type and must be confirmed with EHS or the supplier.
+    'hs_extinguisher_hydro_years' => (int) env('GWL_HS_EXTINGUISHER_HYDRO_YEARS', 5),
+    // Service certificates: the biggest file (MB).
+    'hs_equipment_attachment_max_mb' => (int) env('GWL_HS_EQUIPMENT_ATTACHMENT_MAX_MB', 5),
+    // When true, whoever sent an incident for approval cannot also approve it (super_admin included).
+    'hs_require_second_approver' => (bool) env('GWL_HS_REQUIRE_SECOND_APPROVER', false),
+    // Phase 4. Days relative to a due date at which the daily command tells people (negative = overdue): equipment and PPE
+    // dates, then action due dates. Comma separated; highest first. Edited on the Settings screen.
+    'hs_alert_thresholds' => array_values(array_map('intval', array_filter(array_map('trim', explode(',', (string) env('GWL_HS_ALERT_THRESHOLDS', '60,30,7,0,-7,-30'))), fn ($item) => $item !== ''))),
+    'hs_action_alert_thresholds' => array_values(array_map('intval', array_filter(array_map('trim', explode(',', (string) env('GWL_HS_ACTION_ALERT_THRESHOLDS', '3,0,-7'))), fn ($item) => $item !== ''))),
+    // A normal PPE issue or close may be dated up to this many days earlier (never the future). "Already held" rows take any past date.
+    'hs_issue_backdate_days' => (int) env('GWL_HS_ISSUE_BACKDATE_DAYS', 7),
+    // The most rows in one Excel export; over it the user must narrow the filters.
+    'hs_export_max_rows' => (int) env('GWL_HS_EXPORT_MAX_ROWS', 5000),
+    // QR labels and site posters (Phase 3b). The printed code holds an ABSOLUTE link, so labels must be printed from
+    // PRODUCTION: sheets printed on a developer machine would point at that machine. Blank = use APP_URL.
+    'hs_qr_base_url' => env('GWL_HS_QR_BASE_URL') ?: null,
+    // The most labels (or posters) in one PDF; keeps the render inside PHP's memory limit.
+    'hs_labels_per_pdf_max' => (int) env('GWL_HS_LABELS_PER_PDF_MAX', 120),
+
     // Commercial (billing & meter-reading analytics): off by default; when off the routes don't register and the module
     // is hidden from navigation. Reports arrive as Excel uploads (docs/commercial-module-design.md).
     'commercial_module_enabled' => (bool) env('GWL_COMMERCIAL_MODULE_ENABLED', false),

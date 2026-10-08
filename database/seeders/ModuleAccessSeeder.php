@@ -33,6 +33,8 @@ class ModuleAccessSeeder extends Seeder
             'credit_union_committee' => [Permission::MODULE_CREDIT_UNION],
             'commercial_officer' => [Permission::MODULE_COMMERCIAL],
             'commercial_manager' => [Permission::MODULE_COMMERCIAL],
+            'hs_officer' => [],
+            'hs_manager' => [],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],
@@ -47,6 +49,10 @@ class ModuleAccessSeeder extends Seeder
         ];
 
         foreach ($accessMap as $roleSlug => $modules) {
+            // Every member of staff reports incidents, so every role may enter Health & Safety; its permissions decide what
+            // they then see.
+            $modules[] = Permission::MODULE_HEALTH_SAFETY;
+
             $role = Role::query()->where('name', $roleSlug)->first();
 
             if (! $role) {

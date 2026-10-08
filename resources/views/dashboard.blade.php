@@ -13,6 +13,7 @@
             'transport' => 'car',
             'credit_union' => 'landmark',
             'commercial' => 'chart-column',
+            'health_safety' => 'triangle-alert',
             'uac' => 'shield-check',
         ];
         $leave = $summary['leave'] ?? null;

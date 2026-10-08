@@ -6,6 +6,7 @@ use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
 use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Commercial\UploadReminderService;
+use App\Services\HealthSafety\HealthSafetyAlertService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
 use Illuminate\Foundation\Inspiring;
@@ -129,6 +130,49 @@ if (config('gwl.commercial_module_enabled')) {
     })->purpose('Remind officers of overdue Commercial report uploads');
 
     Schedule::command('commercial:remind-uploads')->dailyAt('07:45')->withoutOverlapping();
+}
+
+// Health & Safety (design 8.18 B): one digest per recipient about due dates (extinguishers, kit items, PPE replacements,
+// incident actions) and about reports and investigations left too long. Scheduled only while the module is on; it needs the
+// scheduler to be running. The acknowledgement check runs hourly (a daily run would let a 24-hour limit slip to nearly 48
+// hours); everything else runs daily at 06:30 in the application's timezone.
+if (config('gwl.health_safety_module_enabled')) {
+    Artisan::command('health-safety:send-alerts {--group=all : equipment, actions, incidents, acknowledgement or all} {--dry-run : Print who would be told what, and write and send nothing}', function (HealthSafetyAlertService $alerts) {
+        $group = (string) $this->option('group');
+        $groups = $group === 'all' ? [] : array_values(array_filter(array_map('trim', explode(',', $group))));
+
+        foreach ($groups as $name) {
+            if (! in_array($name, HealthSafetyAlertService::GROUPS, true)) {
+                $this->error('Unknown group "'.$name.'". Use equipment, actions, incidents, acknowledgement or all.');
+
+                return 2;
+            }
+        }
+
+        $dryRun = (bool) $this->option('dry-run');
+        $summary = $alerts->run($groups, $dryRun);
+
+        foreach ($summary['lines'] as $line) {
+            $this->line($line);
+        }
+
+        $this->info(sprintf(
+            '%s%d item(s) announced to %d recipient(s) (%d digest(s) %s, %d failed); %d more recorded without a notice.',
+            $dryRun ? '[dry run, nothing written or sent] ' : '',
+            $summary['items'],
+            $summary['recipients'],
+            $summary['sent'],
+            $dryRun ? 'would be sent' : 'sent',
+            $summary['failed'],
+            $summary['silent']
+        ));
+
+        // Non-zero when any recipient could not be told, so cron or a monitor notices a partial failure.
+        return $summary['failed'] > 0 ? 1 : 0;
+    })->purpose('Send the Health & Safety due-date and follow-up digests');
+
+    Schedule::command('health-safety:send-alerts --group=acknowledgement')->hourly()->withoutOverlapping();
+    Schedule::command('health-safety:send-alerts --group=all')->dailyAt('06:30')->withoutOverlapping();
 }
 
 Artisan::command('credit-union:post-deferred-loan-repayments', function (LoanService $loans) {

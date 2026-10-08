@@ -144,6 +144,13 @@ class ErpNavigation
                 'route' => $this->safeRoute('commercial.home'),
             ],
             [
+                'slug' => Permission::MODULE_HEALTH_SAFETY,
+                'title' => 'Health & Safety',
+                'short' => 'Health & Safety',
+                'icon_name' => 'triangle-alert',
+                'route' => $this->safeRoute('health_safety.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'short' => 'Access',
@@ -157,6 +164,7 @@ class ErpNavigation
             fn (array $def) => match ($def['slug']) {
                 Permission::MODULE_CREDIT_UNION => (bool) config('gwl.credit_union_module_enabled'),
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
+                Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
                 default => true,
             }
         ));
@@ -174,6 +182,7 @@ class ErpNavigation
             Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
             Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
+            Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
             default => [],
         };
 
@@ -975,6 +984,196 @@ class ErpNavigation
                 'can' => $canUpload,
             ],
         ];
+    }
+
+    protected function healthSafetySidebar(User $user): array
+    {
+        $can = fn (string ...$slugs) => fn (User $currentUser) => $currentUser->hasRoles('super_admin')
+            || collect($slugs)->contains(fn (string $slug) => $currentUser->hasPermission($slug));
+
+        return [
+            [
+                'label' => 'Overview',
+                'route' => 'health_safety.home',
+                'active' => ['health_safety.home'],
+                'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
+                'can' => $can('health_safety.view_dashboard', 'health_safety.view_incidents'),
+            ],
+            [
+                'label' => 'Report an incident',
+                'route' => 'health_safety.report',
+                'active' => ['health_safety.report'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'circle-plus',
+                'can' => $can('health_safety.report_incident'),
+            ],
+            [
+                'label' => 'My reports',
+                'route' => 'health_safety.mine',
+                'active' => ['health_safety.mine'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'clipboard-list',
+                'can' => $can('health_safety.report_incident'),
+            ],
+            [
+                'label' => 'Incidents',
+                'route' => 'health_safety.incidents',
+                'active' => ['health_safety.incidents', 'health_safety.incidents.show'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'triangle-alert',
+                'can' => $can('health_safety.view_incidents'),
+            ],
+            [
+                'label' => 'Actions',
+                'route' => 'health_safety.actions',
+                'active' => ['health_safety.actions'],
+                'icon' => $this->icon('check'),
+                'icon_name' => 'list-checks',
+                // Whoever has been given an action sees it here, even without the right to see the register.
+                'can' => fn (User $currentUser) => $can('health_safety.view_incidents')($currentUser)
+                    || $this->hasAssignedHealthSafetyAction($currentUser),
+            ],
+            [
+                'label' => 'Fire extinguishers',
+                'route' => 'health_safety.extinguishers.index',
+                'active' => ['health_safety.extinguishers.*'],
+                'icon' => $this->icon('shield'),
+                'icon_name' => 'shield-check',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'First aid kits',
+                'route' => 'health_safety.kits.index',
+                'active' => ['health_safety.kits.*'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'briefcase',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'Expiry register',
+                'route' => 'health_safety.expiry-register',
+                'active' => ['health_safety.expiry-register'],
+                'icon' => $this->icon('clock'),
+                'icon_name' => 'calendar-days',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'My equipment',
+                'route' => 'health_safety.my-equipment',
+                'active' => ['health_safety.my-equipment'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'clipboard-check',
+                // Whoever is named as responsible for an extinguisher or kit finds it here, with no safety permission.
+                'can' => fn (User $currentUser) => $this->isResponsibleForHealthSafetyEquipment($currentUser),
+            ],
+            [
+                'label' => 'PPE stock',
+                'route' => 'health_safety.ppe.stock',
+                'active' => ['health_safety.ppe.stock'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'boxes',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'PPE issues',
+                'route' => 'health_safety.ppe.issues',
+                'active' => ['health_safety.ppe.issues', 'health_safety.ppe.import'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'user-check',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'PPE gaps',
+                'route' => 'health_safety.ppe.gaps',
+                'active' => ['health_safety.ppe.gaps'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'user-x',
+                'can' => $can('health_safety.view_equipment'),
+            ],
+            [
+                'label' => 'My PPE',
+                'route' => 'health_safety.my-ppe',
+                'active' => ['health_safety.my-ppe'],
+                'icon' => $this->icon('user'),
+                'icon_name' => 'user',
+                // Everyone with an employee record has PPE of their own to look at; nobody needs a permission for it.
+                'can' => fn (User $currentUser) => ($currentUser->employee ?? $currentUser->employeeByStaffId) !== null,
+            ],
+            [
+                'label' => 'Kit templates',
+                'route' => 'health_safety.kit-templates',
+                'active' => ['health_safety.kit-templates'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'list-checks',
+                'can' => $can('health_safety.manage_master_data'),
+            ],
+            [
+                'label' => 'Import equipment',
+                'route' => 'health_safety.equipment-import',
+                'active' => ['health_safety.equipment-import'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'file-spreadsheet',
+                'can' => $can('health_safety.manage_equipment'),
+            ],
+            [
+                'label' => 'PPE types',
+                'route' => 'health_safety.ppe.types',
+                'active' => ['health_safety.ppe.types'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'settings',
+                'can' => $can('health_safety.manage_master_data'),
+            ],
+            [
+                'label' => 'PPE entitlements',
+                'route' => 'health_safety.ppe.entitlements',
+                'active' => ['health_safety.ppe.entitlements'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'list-checks',
+                'can' => $can('health_safety.manage_master_data'),
+            ],
+            [
+                'label' => 'PPE reorder levels',
+                'route' => 'health_safety.ppe.reorder-levels',
+                'active' => ['health_safety.ppe.reorder-levels'],
+                'icon' => $this->icon('bars'),
+                'icon_name' => 'trending-down',
+                'can' => $can('health_safety.manage_master_data'),
+            ],
+            [
+                'label' => 'Sites',
+                'route' => 'health_safety.sites',
+                'active' => ['health_safety.sites'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'map-pin',
+                'can' => $can('health_safety.manage_master_data'),
+            ],
+            [
+                'label' => 'Settings',
+                'route' => 'health_safety.settings',
+                'active' => ['health_safety.settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'settings',
+                'can' => $can('health_safety.manage_settings'),
+            ],
+        ];
+    }
+
+    protected function hasAssignedHealthSafetyAction(User $user): bool
+    {
+        $employeeId = ($user->employee ?? $user->employeeByStaffId)?->id;
+
+        return $employeeId !== null
+            && \App\Models\HsIncidentAction::query()->where('assigned_to_employee_id', $employeeId)->exists();
+    }
+
+    protected function isResponsibleForHealthSafetyEquipment(User $user): bool
+    {
+        $employeeId = ($user->employee ?? $user->employeeByStaffId)?->id;
+
+        return $employeeId !== null
+            && (\App\Models\HsFireExtinguisher::query()->where('responsible_employee_id', $employeeId)->exists()
+                || \App\Models\HsFirstAidKit::query()->where('responsible_employee_id', $employeeId)->exists());
     }
 
     protected function placeholderSidebar(string $route, string $label): array

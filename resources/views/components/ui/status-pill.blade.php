@@ -110,6 +110,78 @@
             'pass' => ['success', 'Passed'],
             'fail' => ['danger', 'Failed'],
         ],
+        // hs_incidents.status
+        'hs-incident' => [
+            'reported' => ['warning'],
+            'acknowledged' => ['info'],
+            'investigating' => ['lagoon'],
+            'pending_closure' => ['warning', 'Awaiting approval'],
+            'closed' => ['muted'],
+            'cancelled' => ['muted'],
+        ],
+        // hs_incident_actions.status
+        'hs-action' => [
+            'open' => ['warning'],
+            'done' => ['info'],
+            'verified' => ['success'],
+        ],
+        // hs_fire_extinguishers: the computed state, and the lifecycle status for a unit that has none
+        'hs-extinguisher' => [
+            'expired' => ['danger'],
+            'service_overdue' => ['danger'],
+            'hydro_overdue' => ['danger'],
+            'expiring' => ['warning'],
+            'service_due_soon' => ['warning'],
+            'check_failed' => ['danger'],
+            'check_overdue' => ['warning'],
+            'ok' => ['success', 'OK'],
+            'pass' => ['success', 'Passed'],
+            'fail' => ['danger', 'Failed'],
+            'in_service' => ['success'],
+            'out_for_service' => ['info'],
+            'discharged' => ['danger'],
+            'decommissioned' => ['muted'],
+        ],
+        // hs_ppe_issues: the computed state of an open issue, and the status of a closed one
+        'hs-ppe-issue' => [
+            'overdue' => ['danger'],
+            'replacement_due' => ['warning', 'Replacement due'],
+            'ok' => ['success', 'In date'],
+            'issued' => ['info'],
+            'returned' => ['muted'],
+            'worn_out' => ['muted', 'Worn out'],
+            'damaged' => ['warning'],
+            'lost' => ['danger'],
+        ],
+        // PpeComplianceService states (staff x entitled PPE type)
+        'hs-ppe-state' => [
+            'missing' => ['danger'],
+            'overdue' => ['danger'],
+            'short' => ['warning'],
+            'replacement_due' => ['warning', 'Replacement due'],
+            'ok' => ['success', 'OK'],
+        ],
+        // ExpiryRegisterService buckets (the dated-items register)
+        'hs-expiry' => [
+            'overdue' => ['danger', 'Overdue'],
+            'critical' => ['danger', 'Critical'],
+            'due_soon' => ['warning', 'Due soon'],
+            'later' => ['muted', 'Later'],
+        ],
+        // hs_first_aid_kits: the computed state, and the lifecycle status for a kit that has none
+        'hs-kit' => [
+            'missing' => ['danger'],
+            'item_expired' => ['danger'],
+            'item_expiring' => ['warning'],
+            'incomplete' => ['warning'],
+            'check_failed' => ['danger'],
+            'check_overdue' => ['warning'],
+            'ok' => ['success', 'OK'],
+            'pass' => ['success', 'Passed'],
+            'fail' => ['danger', 'Failed'],
+            'in_service' => ['success'],
+            'decommissioned' => ['muted'],
+        ],
         'credit-union' => [
             'draft' => ['muted'],
             'pending' => ['warning'],

@@ -132,6 +132,22 @@ class PermissionSeeder extends Seeder
                 'commercial.export_reports',
                 'commercial.manage_settings',
             ],
+            'health_safety' => [
+                'health_safety.report_incident',
+                'health_safety.view_incidents',
+                'health_safety.view_injury_details',
+                'health_safety.manage_incidents',
+                'health_safety.approve_closure',
+                'health_safety.record_on_behalf',
+                'health_safety.view_dashboard',
+                'health_safety.view_equipment',
+                'health_safety.record_checks',
+                'health_safety.manage_equipment',
+                'health_safety.manage_ppe',
+                'health_safety.manage_master_data',
+                'health_safety.export_reports',
+                'health_safety.manage_settings',
+            ],
         ];
 
         foreach ($permissions as $module => $slugs) {

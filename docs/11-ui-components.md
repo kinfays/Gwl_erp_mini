@@ -71,6 +71,13 @@ Deltas are neutral unless the metric has a known good direction. Put tiles in `<
 | `maintenance` (asset maintenance tickets) | Open → warning · In Progress → info · Completed → success · Cancelled → muted |
 | `severity` | low → muted · medium → info · high → warning · critical → danger |
 | `asset` | Active → success · In Repair → warning · Retired → muted · Lost → danger |
+| `hs-incident` (`hs_incidents.status`) | reported → warning · acknowledged → info · investigating → lagoon · pending_closure → warning "Awaiting approval" · closed/cancelled → muted |
+| `hs-action` (`hs_incident_actions.status`) | open → warning · done → info · verified → success |
+| `hs-extinguisher` | the computed state: expired / service_overdue / hydro_overdue / check_failed → danger · expiring / service_due_soon / check_overdue → warning · ok → success; a unit with no state shows its status (in_service success, out_for_service info, discharged danger, decommissioned muted) |
+| `hs-ppe-issue` | an open PPE issue's computed state: overdue → danger · replacement_due → warning · ok → success "In date"; a closed one's status: returned/worn_out → muted · damaged → warning · lost → danger |
+| `hs-ppe-state` | staff against an entitlement: missing/overdue → danger · short/replacement_due → warning · ok → success |
+| `hs-expiry` | expiry register buckets: overdue/critical → danger · due_soon → warning · later → muted |
+| `hs-kit` | missing / item_expired / check_failed → danger · item_expiring / incomplete / check_overdue → warning · ok → success; decommissioned → muted |
 | `credit-union` | draft/completed/exited → muted · pending/variance → warning · approved/posted/paid → success · rejected/declined/defaulted → danger |
 
 The pill always shows a text label; colour is never the only signal. Unknown values render as a neutral

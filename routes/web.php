@@ -10,6 +10,12 @@ use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\Commercial\CommercialExportController;
 use App\Http\Controllers\Commercial\CommercialModuleController;
+use App\Http\Controllers\HealthSafety\EquipmentController;
+use App\Http\Controllers\HealthSafety\ExportController;
+use App\Http\Controllers\HealthSafety\HealthSafetyModuleController;
+use App\Http\Controllers\HealthSafety\IncidentDocumentController;
+use App\Http\Controllers\HealthSafety\LabelController;
+use App\Http\Controllers\HealthSafety\PpeController;
 use App\Http\Controllers\CreditUnion\CreditUnionModuleController;
 use App\Http\Controllers\Leave\LeaveApprovalsController;
 use App\Http\Controllers\Leave\LeaveCompulsoryController;
@@ -527,6 +533,193 @@ if (config('gwl.commercial_module_enabled')) {
             Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
                 ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('batches.show');
+        });
+}
+
+if (config('gwl.health_safety_module_enabled')) {
+    // Every member of staff may report an incident, so the module is open to all roles; the permissions below decide
+    // what each one sees, and every Livewire component and controller re-checks scope (IncidentVisibility).
+    Route::middleware(['auth', 'active', 'module:health_safety'])
+        ->prefix('health-safety')
+        ->name('health_safety.')
+        ->group(function () {
+            Route::get('/', [HealthSafetyModuleController::class, 'home'])
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents,health_safety.view_dashboard')
+                ->name('home');
+
+            Route::get('/report', [HealthSafetyModuleController::class, 'report'])
+                ->middleware('permission:health_safety.report_incident')
+                ->name('report');
+
+            Route::get('/my-reports', [HealthSafetyModuleController::class, 'mine'])
+                ->middleware('permission:health_safety.report_incident')
+                ->name('mine');
+
+            Route::get('/incidents', [HealthSafetyModuleController::class, 'incidents'])
+                ->middleware('permission:health_safety.view_incidents')
+                ->name('incidents');
+
+            Route::get('/incidents/{incident}', [HealthSafetyModuleController::class, 'show'])
+                ->whereNumber('incident')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents')
+                ->name('incidents.show');
+
+            Route::get('/incidents/{incident}/print', [IncidentDocumentController::class, 'print'])
+                ->whereNumber('incident')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents')
+                ->name('incidents.print');
+
+            Route::get('/incidents/{incident}/pdf', [IncidentDocumentController::class, 'pdf'])
+                ->whereNumber('incident')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents')
+                ->name('incidents.pdf');
+
+            Route::get('/attachments/{attachment}', [IncidentDocumentController::class, 'attachment'])
+                ->whereNumber('attachment')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents')
+                ->name('attachments.show');
+
+            Route::get('/actions', [HealthSafetyModuleController::class, 'actions'])
+                ->middleware('permission:health_safety.report_incident,health_safety.view_incidents')
+                ->name('actions');
+
+            Route::get('/sites', [HealthSafetyModuleController::class, 'sites'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('sites');
+
+            // Phase 2: fire extinguishers and first aid kits. A named responsible person may open THEIR item and record a
+            // check without any equipment permission, so the item pages accept report_incident (every role) and the
+            // component decides; everything else is behind its own permission.
+            Route::get('/extinguishers', [EquipmentController::class, 'extinguishers'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('extinguishers.index');
+
+            Route::get('/extinguishers/create', [EquipmentController::class, 'createExtinguisher'])
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('extinguishers.create');
+
+            Route::get('/extinguishers/{extinguisher}', [EquipmentController::class, 'showExtinguisher'])
+                ->whereNumber('extinguisher')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_equipment')
+                ->name('extinguishers.show');
+
+            Route::get('/extinguishers/{extinguisher}/edit', [EquipmentController::class, 'editExtinguisher'])
+                ->whereNumber('extinguisher')
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('extinguishers.edit');
+
+            Route::get('/kits', [EquipmentController::class, 'kits'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('kits.index');
+
+            Route::get('/kits/create', [EquipmentController::class, 'createKit'])
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('kits.create');
+
+            Route::get('/kits/{kit}', [EquipmentController::class, 'showKit'])
+                ->whereNumber('kit')
+                ->middleware('permission:health_safety.report_incident,health_safety.view_equipment')
+                ->name('kits.show');
+
+            Route::get('/kits/{kit}/edit', [EquipmentController::class, 'editKit'])
+                ->whereNumber('kit')
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('kits.edit');
+
+            Route::get('/kit-templates', [EquipmentController::class, 'kitTemplates'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('kit-templates');
+
+            Route::get('/equipment-import', [EquipmentController::class, 'import'])
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('equipment-import');
+
+            Route::get('/equipment-import/template/{type}', [EquipmentController::class, 'importTemplate'])
+                ->where('type', 'extinguishers|kits')
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('equipment-import.template');
+
+            Route::get('/equipment-files/{service}', [EquipmentController::class, 'certificate'])
+                ->whereNumber('service')
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('equipment-files.show');
+
+            // Phase 4: the editable settings (hs_manager and super_admin).
+            Route::get('/settings', [HealthSafetyModuleController::class, 'settings'])
+                ->middleware('permission:health_safety.manage_settings')
+                ->name('settings');
+
+            // Phase 4: the dated-items register (the exports are routed with the other exports below).
+            Route::get('/expiry-register', [HealthSafetyModuleController::class, 'expiryRegister'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('expiry-register');
+
+            // Phase 4: exports (export_reports here; the report's own permission is checked in the controller).
+            Route::get('/export/{report}', [ExportController::class, 'show'])
+                ->where('report', 'incidents|actions|extinguishers|kits|ppe-stock|ppe-issues|ppe-gaps|expiry-register|expiry-register-pdf')
+                ->middleware('permission:health_safety.export_reports')
+                ->name('export');
+
+            // Phase 3b: QR labels. The scan page is for anyone signed in (the controller decides what they may do and says one
+            // thing for "not there" and "not yours"); the PDFs are manage_equipment, the site posters manage_master_data.
+            Route::get('/scan/{type}/{id}', [LabelController::class, 'scan'])
+                ->where('type', 'extinguisher|kit')
+                ->whereNumber('id')
+                ->name('scan');
+
+            Route::get('/labels/extinguishers', [LabelController::class, 'extinguishers'])
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('labels.extinguishers');
+
+            Route::get('/labels/kits', [LabelController::class, 'kits'])
+                ->middleware('permission:health_safety.manage_equipment')
+                ->name('labels.kits');
+
+            Route::get('/sites/posters', [LabelController::class, 'posters'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('posters');
+
+            Route::get('/my-equipment', [EquipmentController::class, 'myEquipment'])
+                ->middleware('permission:health_safety.report_incident')
+                ->name('my-equipment');
+
+            // Phase 3: PPE. Viewing stock, issues and gaps is view_equipment; posting stock, issuing and closing are guarded
+            // again in the components and services with manage_ppe; set-up is manage_master_data. My PPE needs no
+            // permission at all (the component needs an employee record) and shows only the viewer's own issues.
+            Route::get('/ppe/stock', [PpeController::class, 'stock'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('ppe.stock');
+
+            Route::get('/ppe/issues', [PpeController::class, 'issues'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('ppe.issues');
+
+            Route::get('/ppe/gaps', [PpeController::class, 'gaps'])
+                ->middleware('permission:health_safety.view_equipment')
+                ->name('ppe.gaps');
+
+            Route::get('/ppe/types', [PpeController::class, 'types'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('ppe.types');
+
+            Route::get('/ppe/entitlements', [PpeController::class, 'entitlements'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('ppe.entitlements');
+
+            Route::get('/ppe/reorder-levels', [PpeController::class, 'reorderLevels'])
+                ->middleware('permission:health_safety.manage_master_data')
+                ->name('ppe.reorder-levels');
+
+            Route::get('/ppe/import', [PpeController::class, 'import'])
+                ->middleware('permission:health_safety.manage_ppe')
+                ->name('ppe.import');
+
+            Route::get('/ppe/import/template', [PpeController::class, 'importTemplate'])
+                ->middleware('permission:health_safety.manage_ppe')
+                ->name('ppe.import.template');
+
+            Route::get('/my-ppe', [PpeController::class, 'mine'])
+                ->name('my-ppe');
         });
 }
 

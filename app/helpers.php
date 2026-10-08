@@ -85,6 +85,13 @@ if (! function_exists('dashboardModules')) {
                 'icon' => 'CM',
                 'route' => route('commercial.home'),
             ]] : []),
+            ...(config('gwl.health_safety_module_enabled') ? [[
+                'slug' => 'health_safety',
+                'title' => 'Health & Safety',
+                'description' => 'Report incidents and near misses, and follow them to closure',
+                'icon' => 'HS',
+                'route' => route('health_safety.home'),
+            ]] : []),
             [
                 'slug' => 'uac',
                 'title' => 'User Access Control',

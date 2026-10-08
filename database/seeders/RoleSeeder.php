@@ -52,6 +52,8 @@ class RoleSeeder extends Seeder
             'credit_union_committee',
             'commercial_officer',
             'commercial_manager',
+            'hs_officer',
+            'hs_manager',
             'secretary',
             'receptionist',
         ];
@@ -65,6 +67,8 @@ class RoleSeeder extends Seeder
                 'credit_union_committee' => 'Credit Union Committee',
                 'commercial_officer' => 'Commercial Officer',
                 'commercial_manager' => 'Commercial Manager',
+                'hs_officer' => 'Health & Safety Officer',
+                'hs_manager' => 'Health & Safety Manager',
                 default => Str::of($role)->replace('_', ' ')->title()->toString(),
             };
 
