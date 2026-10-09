@@ -197,7 +197,7 @@ class MakeSampleCustomerFiles extends Command
             'status' => $this->pick(self::STATUSES, $n * 13),
             'meter_status' => $n % 50 === 0 ? 'F' : ($n % 37 === 0 ? 'N' : 'W'),
             'address' => 'Sample House '.$n.', Test Estate',
-            'mobile' => $n % 9 === 0 ? null : '024'.str_pad((string) ($n % 10000000), 7, '0', STR_PAD_LEFT),
+            'mobile' => $this->mobile($n),
             'email' => $n % 6 === 0 ? 'sample'.$n.'@example.test' : null,
             'balance' => round($balance, 2),
             'last_reading' => 100 + ($n % 4000) + $week * (4 + $n % 9),
@@ -211,6 +211,25 @@ class MakeSampleCustomerFiles extends Command
             'average_consume' => 4 + ($n * 3) % 40,
             'meter_factor' => 1,
         ];
+    }
+
+    /**
+     * The Mobile cell. Like the real export, numbers are 12 digits (233 + nine) and a customer with two has " / " between them.
+     * Every eighth customer has two numbers, and a few share one "agent" number so the shared-mobile list has something to show.
+     */
+    protected function mobile(int $n): ?string
+    {
+        if ($n % 9 === 0) {
+            return null;
+        }
+
+        $first = '233'.'24'.str_pad((string) ($n % 10000000), 7, '0', STR_PAD_LEFT);
+
+        if ($n % 250 === 5) {
+            return $first.' / 233500000123';
+        }
+
+        return $n % 8 === 0 ? $first.' / 233'.'20'.str_pad((string) (($n * 7) % 10000000), 7, '0', STR_PAD_LEFT) : $first;
     }
 
     /** @param array<string, int> $weights summing to 100 */

@@ -7,6 +7,7 @@ use App\Services\Commercial\Customers\CustomerAnalyticsService;
 use App\Services\Commercial\Customers\CustomerImportService;
 use App\Services\Commercial\Customers\CustomerListService;
 use App\Services\Commercial\Customers\CustomerLookups;
+use App\Services\Commercial\Customers\CustomerRecordBuilder;
 use App\Services\Commercial\Customers\CustomerRollupService;
 use App\Services\Commercial\Customers\CustomerSnapshots;
 use App\Services\Commercial\Customers\XlsxStreamReader;
@@ -303,7 +304,7 @@ class BenchmarkCustomers extends Command
                 $in++;
                 $writer->addRow(Row::fromValues([
                     null, $c['account'], $c['meter_no'], $c['name'], null, $c['category'], $c['status'], $c['meter_status'], $c['address'], null, null, null, null,
-                    $c['mobile'], $c['email'], null, $c['balance'], $c['last_read_date']->toDateTimeImmutable(), null, $c['last_reading'], $c['last_bill_date']->toDateTimeImmutable(), $c['last_bill_amount'],
+                    $c['mobile_cell'], $c['email'], null, $c['balance'], $c['last_read_date']->toDateTimeImmutable(), null, $c['last_reading'], $c['last_bill_date']->toDateTimeImmutable(), $c['last_bill_amount'],
                     $c['last_paid_date']->toDateTimeImmutable(), $c['last_paid_amount'], $c['connect_date']->toDateTimeImmutable(), $c['estimated_consume'], $c['average_consume'], $c['meter_factor'],
                 ]));
             }
@@ -320,6 +321,16 @@ class BenchmarkCustomers extends Command
     /** One synthetic customer, deterministic in $n. @return array<string, mixed> */
     protected function customer(int $n): array
     {
+        $c = $this->rawCustomer($n);
+        // The Mobile cell of the real export: 12 digits (233 + nine), two numbers joined by " / ".
+        $c['mobile_cell'] = '233'.substr($c['mobile'], 1).($c['mobile2'] ? ' / 233'.substr($c['mobile2'], 1) : '');
+
+        return $c;
+    }
+
+    /** @return array<string, mixed> */
+    protected function rawCustomer(int $n): array
+    {
         $mix = $n % 100;
         $asOf = $this->asOf;
 
@@ -332,6 +343,7 @@ class BenchmarkCustomers extends Command
             'meter_status' => $n % 50 === 0 ? 'F' : ($n % 37 === 0 ? 'N' : 'W'),
             'address' => 'Plot '.$n.', Test Estate',
             'mobile' => '024'.str_pad((string) ($n % 10000000), 7, '0', STR_PAD_LEFT),
+            'mobile2' => $n % 4 === 0 ? '020'.str_pad((string) (($n * 7) % 10000000), 7, '0', STR_PAD_LEFT) : null,
             'email' => $n % 5 === 0 ? 'c'.$n.'@example.test' : null,
             'balance' => round((($n * 7919) % 100000) / 100 - ($n % 20 === 0 ? 50 : 0), 2),
             'last_reading' => 100 + $n % 5000,
@@ -408,9 +420,9 @@ class BenchmarkCustomers extends Command
                     'attributes_hash' => substr(hash('xxh3', (string) $n), 0, 16),
                 ];
                 $contacts[] = [
-                    'customer_id' => $contactId, 'account_name' => $c['name'], 'address' => $c['address'], 'mobiles' => $c['mobile'], 'phone_primary' => $c['mobile'],
+                    'customer_id' => $contactId, 'account_name' => $c['name'], 'address' => $c['address'], 'mobiles' => $c['mobile'].($c['mobile2'] ? ','.$c['mobile2'] : ''), 'phone_primary' => $c['mobile'], 'phone_secondary' => $c['mobile2'],
                     'email' => $c['email'], 'email_lower' => $c['email'], 'name_search' => strtolower($c['name']), 'contact_hash' => substr(hash('xxh3', 'c'.$n), 0, 16),
-                    'quality_flags' => $c['email'] === null ? 2 : 0, 'updated_batch_id' => $batch->id,
+                    'quality_flags' => ($c['email'] === null ? 2 : 0) | ($c['mobile2'] ? CustomerRecordBuilder::MULTIPLE_PHONES : 0), 'updated_batch_id' => $batch->id,
                 ];
 
                 if (count($customers) >= 1200) {
@@ -456,6 +468,8 @@ class BenchmarkCustomers extends Command
         $oneDistrict = (int) $batches->keys()->last();
         $districtFilters = $snapshots->filters($snapshots->current(null, null, $oneDistrict), null, ['district_id' => $oneDistrict]);
         $sampleAccount = (string) DB::table('commercial_customers')->where('district_id', $oneDistrict)->orderByDesc('id')->value('account_no');
+        $batchId = (int) $batches[$oneDistrict]->id;
+        $secondPhone = (string) DB::table('commercial_customer_contacts AS ct')->join('commercial_customers AS c', 'c.id', '=', 'ct.customer_id')->where('c.district_id', $oneDistrict)->whereNotNull('ct.phone_secondary')->value('ct.phone_secondary');
         $samplePhone = (string) DB::table('commercial_customer_contacts')->where('customer_id', DB::table('commercial_customers')->where('district_id', $oneDistrict)->value('id'))->value('phone_primary');
 
         $dashboard = [
@@ -488,13 +502,25 @@ class BenchmarkCustomers extends Command
             'Route list (district, category, status)' => fn () => $lists->page(['district_id' => $oneDistrict, 'category_id' => 1, 'status_id' => 2, 'size' => 50]),
             'Find by account number' => fn () => $lists->page(['search' => ['type' => 'account', 'value' => $sampleAccount]]),
             'Find by phone number' => fn () => $lists->page(['details' => true, 'search' => ['type' => 'phone', 'value' => $samplePhone]]),
-            'Shared-meter drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'shared_meter', 'size' => 50]),
-            'Missing-mobile drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'missing_mobile', 'size' => 50]),
+            'Find by phone number (second number)' => fn () => $lists->page(['details' => true, 'search' => ['type' => 'phone', 'value' => $secondPhone]]),
+            'Shared-meter drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'shared_meter', 'batch_id' => $batchId, 'size' => 50]),
+            'Missing-mobile drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'missing_mobile', 'batch_id' => $batchId, 'size' => 50]),
+            'Shared-mobile drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'shared_mobile', 'batch_id' => $batchId, 'size' => 50]),
+            'Two-numbers drill-down' => fn () => $lists->page(['district_id' => $oneDistrict, 'issue' => 'multiple_phones', 'batch_id' => $batchId, 'size' => 50]),
+        ];
+
+        // Phase 6b before / after: the statements as they were (first number only) next to the ones now in use, on the same data.
+        $live = "c2.district_id = {$oneDistrict} AND c2.missing_since_batch_id IS NULL";
+        $compare = [
+            'Shared mobile, before (first number only)' => fn () => DB::select("SELECT COUNT(*) AS n FROM (SELECT t2.phone_primary AS v FROM commercial_customer_contacts t2 INNER JOIN commercial_customers c2 ON c2.id = t2.customer_id WHERE {$live} AND t2.phone_primary IS NOT NULL GROUP BY t2.phone_primary HAVING COUNT(*) > 1) x"),
+            'Shared mobile, after (first or second number)' => fn () => DB::select("WITH base AS (SELECT t.customer_id AS cid, t.phone_primary AS p1, t.phone_secondary AS p2 FROM commercial_customer_contacts t INNER JOIN commercial_customers c2 ON c2.id = t.customer_id WHERE {$live} AND t.phone_primary IS NOT NULL), numbers AS (SELECT cid, p1 AS v FROM base UNION ALL SELECT cid, p2 FROM base WHERE p2 IS NOT NULL), shared AS (SELECT v FROM numbers GROUP BY v HAVING COUNT(*) > 1) SELECT COUNT(*) AS n FROM (SELECT DISTINCT n.cid FROM numbers n INNER JOIN shared s ON s.v = n.v) x"),
+            'Search by phone, before (first number only)' => fn () => DB::select('SELECT c.id FROM commercial_customers c INNER JOIN commercial_customer_contacts ct ON ct.customer_id = c.id WHERE c.missing_since_batch_id IS NULL AND ct.phone_primary = ?', [$samplePhone]),
+            'Search by phone, after (first or second number)' => fn () => $lists->page(['details' => true, 'search' => ['type' => 'phone', 'value' => $samplePhone]]),
         ];
 
         $rows = [];
 
-        foreach (['dashboard' => $dashboard, 'drill-down' => $drill] as $kind => $set) {
+        foreach (['dashboard' => $dashboard, 'drill-down' => $drill, 'phase 6b before/after' => $compare] as $kind => $set) {
             foreach ($set as $label => $run) {
                 $times = [];
 

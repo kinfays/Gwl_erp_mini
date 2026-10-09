@@ -878,6 +878,114 @@ A third upload, **`rptCustomerDetails`** (the customer list, one district per fi
 
 This changes section 9: "per-customer analysis" is no longer out of scope **for the customer list** (billing and reading remain as described). The decisions the brief did not state (production DB, the as-of date, the meaning of arrears age, the unconfirmed status codes, who gets the details permission, the rollback rule) are listed as *assumptions* in section 2 of that document for confirmation by the Commercial team.
 
+### 8.21 Phase 6b — customers with more than one mobile number (review and prompt)
+
+**What the sample file shows** (structure only; no value is quoted here). In `rptCustomerDetails` the `Mobile` column (header cell `N10`, one column, not merged) holds each number as a 12-digit text in international form without a plus (`233` followed by nine digits). A customer with two numbers has both in the one cell, joined by space, slash, space (`<12 digits> / <12 digits>`). Other cells in the same row are merged and the value sits in the left cell of the merge: name (`D:E`), address (`I:M`), e-mail (`O:P`), last read date (`R:S`). Dates arrive as date-times with a time part, sometimes with microseconds.
+
+**What the built importer already does** (read in `CustomerValues::phones()` and its tests, not run). It splits a cell on `/`, `,`, `;`, `|` and new lines; strips everything that is not a digit; repairs `233...`, `+233...` and a lost leading zero to the 10-digit local form `0XXXXXXXXX`; drops repeats; keeps the valid numbers in order as a comma-joined list in `commercial_customer_contacts.mobiles`, the first one in `phone_primary`; flags the customer `INVALID_PHONE` when any token is bad (the good ones are kept) and `MISSING_MOBILE` when none is good. A test covers `"0241111111 / +233 20 222 2222"`. The single-customer view shows every number, masked. So a `/`-separated cell is handled and Phase 6 does not need a rebuild. Gaps found:
+
+1. **Only the first number can be found.** Search by phone matches `phone_primary` only, and the "shared mobile" duplicate list groups on `phone_primary` only. A landlord or agent number that is somebody's SECOND number is invisible to both.
+2. **Lists and exports show only the first number**, with no sign that a second one exists.
+3. **Two numbers with no slash are both lost.** `0241234567 0207654321`, `...&...` or `... and ...` have the non-digits stripped, giving 20 digits, which is "invalid", so neither good number is kept.
+4. **Junk numbers pass.** Any `0` plus nine digits is accepted, including `0000000000`; one placeholder shared by hundreds of accounts would flood the shared-mobile list.
+5. **No numbers about it.** Nothing reports how many customers have two numbers, or how many can be reached at all.
+6. **97 invalid tokens in the real sample are unexplained.** Nobody has looked at their shapes.
+
+### 8.22 Phase 6b kickoff prompt (ready to paste into Claude Code)
+
+```
+You are improving how the Commercial "Customer List" import (Phase 6, docs/15-module-commercial-customer-list.md) handles customers who have MORE THAN ONE mobile number in the Mobile cell. This is Phase 6b.
+
+FIRST READ: CLAUDE.md, APP_DOCUMENTATION.md, docs/15-module-commercial-customer-list.md, and docs/commercial-module-design.md sections 8.20 to 8.22. Then read the code: CustomerValues::phones() and maskPhone(), CustomerRecordBuilder, CustomerMergeService, CustomerListService (search and the shared_mobile issue), CustomerRollupService (issueAccounts, quality counts), CustomerExportService, and the contacts migration. Never edit an existing migration; add a new one. Do not commit.
+
+RULES
+- The data is personal data. Never copy a real phone number, name, address or e-mail into code, tests, docs, logs, audit rows, exception messages or your report. Tests use obviously synthetic numbers built by the existing workbook builder in the Customers tests. When you look at the real sample, print COUNTS and SHAPES only (digits shown as 9, letters as a), never values.
+- Everything must stay fast at millions of customers: no per-row queries, set-based SQL, no new index unless a query needs it, and say what each new column or index costs the bulk merge.
+- When you add your note to docs/commercial-module-design.md, re-read the file first and change ONLY your own section (add 8.23 "Phase 6b as built"). Never write the whole file back from an earlier copy. Also update docs/15-module-commercial-customer-list.md (mobile handling, new quality counts).
+
+FACTS ABOUT THE FILE (from the sample): the Mobile column holds each number as 12-digit text in the form 233 plus nine digits (no plus sign); a customer with two numbers has them in ONE cell joined by " / " (space, slash, space). The importer must keep handling that, plus the older local form (0 plus nine digits), a lost leading zero (nine digits), +233 and 00233 forms, and a cell that Excel stored as a number.
+
+STEP 1 - MEASURE FIRST (report in the as-built note, aggregates only)
+Using the real sample the Phase 6 work was tested on (and the small 3-row sample if it is available), report: how many Mobile cells hold 0, 1, 2, 3 and 4 or more valid numbers (and the maximum); the shapes of the 97 tokens now counted invalid, grouped with counts (for example "99999999999 x 40"); how many of those the new segmentation in step 2 would recover. If the maximum is 2, use a phone_secondary column in step 3; if it is higher, use the phones table.
+
+STEP 2 - PARSING (CustomerValues::phones and its callers)
+1. After the existing split, if a token's digits do not form one valid number, try to read it as several numbers back to back: consume from the left a 12-digit number starting 233, else a 10-digit number starting 0, else a 9-digit number, and accept the result only when it uses ALL the digits and only one segmentation is possible (otherwise the token stays invalid). Also split on "&" and on the words AND / OR / NA between numbers, and ignore extension markers (ext, x) and what follows them. A token like "024 123 4567" (spaces INSIDE one number) must still be one number: do not split on plain spaces first.
+2. Placeholder numbers are invalid: ten digits where the nine digits after the leading 0 use two or fewer distinct digits (0000000000, 0111111111, 0121212121 ...) or are a straight run (0123456789). They set INVALID_PHONE, are not stored in the phone columns, and never take part in search or the shared-mobile lists.
+3. Keep: unique numbers in cell order; the valid ones kept when another token is bad; a numeric Excel cell turned into digits without a decimal point or exponent, a lost leading zero repaired.
+4. Count, per batch, in the existing warnings/stats (counts only): cells with 2 or more numbers, numbers recovered by segmentation, placeholders dropped.
+
+STEP 3 - SECOND NUMBERS MUST BE FOUND
+Decide by the step-1 maximum: if it is 2, add a nullable phone_secondary char(10) to commercial_customer_contacts with an index; otherwise add a table commercial_customer_phones (customer_id, position tinyint, number char(10), primary key customer_id+position, index on number) and fill it from staging in the same set-based merge, only for customers whose contact_hash changed. Either way:
+1. contact_hash already includes the mobiles; make sure a change of ONLY the second number is detected, rewrites only the contact data, and writes NO change-log row (the change log never holds personal data) and does not touch the customers row.
+2. Search by phone (CustomerListService) matches ANY of the customer's numbers. The search still needs the details permission.
+3. The shared_mobile issue (CustomerRollupService::issueAccounts) counts a number as shared when it appears on more than one account in the district as first OR second number (UNION ALL of the columns, then GROUP BY), excluding placeholders and excluding the same account listing a number twice.
+4. The PII purge (retention setting) and the rollback rules treat the new column or table exactly like the other contact data: purged with it, not rolled back.
+
+STEP 4 - SHOW AND EXPORT BOTH
+1. Lists: show the first number masked and a small badge "+1" (or "+n") when there are more. No new query per row: carry a count column in the list query.
+2. The single-customer view already shows every number masked: keep it, unmasking stays audited (audit rows carry the customer id and the fact, never a number).
+3. Exports: the "Mobile (masked)" cell shows every number masked, joined with " / ", as TEXT (the sheet class stores text as text); the aggregate-only exports still carry no phone data.
+
+STEP 5 - NUMBERS FOR THE COMMERCIAL TEAM
+1. Add a quality flag bit for "two or more valid numbers" and quality counts: customers with 2 or more numbers, and customers reachable (at least one valid number), per district and for the region, on the Data quality tab and the contact-completeness figure, with a drill-down list like the other issues (capped like the others). Rollups keep being written once per batch by set-based SQL.
+2. Show them in the same style as the existing counts (no new screen).
+
+TESTS (PHPUnit, synthetic data; add to the existing Customers tests)
+- A cell with two numbers joined by " / ", by "/" with no spaces, three numbers, the same number twice, a trailing or leading slash, an empty segment.
+- 12-digit 233, +233, 00233, 10-digit, 9-digit, and an Excel numeric cell (int and float).
+- Two numbers separated only by a space, by "&", by "and"; spaces inside one number stay one number; an ambiguous long digit string stays invalid.
+- One valid plus one invalid token: the valid one is kept and INVALID_PHONE is set; placeholders are invalid and never searched or listed as shared.
+- Search finds a customer by the SECOND number; two accounts sharing a number as first on one and second on the other appear in the shared_mobile list; one account listing the same number twice does not.
+- Changing only the second number: the contact row changes, no change-log row, customers row untouched, and a re-import of an unchanged file does zero writes.
+- Lists show "+1"; the export cell shows both masked numbers as text; no audit row, log line, exception message or queue payload contains a digit sequence of a phone number.
+- The purge removes the new data with the rest; rollback leaves it as before.
+- The quality counts (2 or more numbers, reachable) equal the drill-down list sizes and are scoped by region.
+
+FINISH
+- Run php artisan config:clear, then php artisan test --filter=Commercial, and report the number of tests and assertions, and the full suite if you can. Say plainly what you could not run.
+- Re-run the benchmark command described in docs/15-module-commercial-customer-list.md at a smaller size (say 500,000 customers) and report import time per 100k rows and the shared_mobile and search timings before and after. If you cannot run it on MySQL, say so.
+- List the migration to run and any new config or .env keys.
+```
+
+### 8.23 Phase 6b as built
+
+**Step 1, measured on the real sample (aggregates only; no value was printed or written anywhere).** The district file of about 18,400 rows (a 3-row sample was also read: two cells with one number, one with two). Of 15,957 non-empty Mobile cells before the change: 6,377 held one valid number, 9,567 held two, 13 held none, and **the maximum was 2**, so the second number got its own column (`phone_secondary`), not a phones table. 97 cells (99 tokens) held a bad token. Their shapes, digits shown as 9: `9999999999999` (13 digits) x49, `99999999999` (11) x40, `999999999999` (12) x4, `99999999999999` (14) x3, `9999999999` (10) x2, `+9999999999999` x1 (counted in the 13-digit group). By prefix: 21 of the 13-digit ones are `233` + the local number with its 0 kept (a stray zero); 28 are `233` + ten digits that do not start with 0; 31 of the 11-digit ones are `233` + eight digits (a digit lost). **The run-together segmentation recovers none of them** (no token holds two numbers back to back, so the missing-separator case from 8.21 does not occur in this file, only in the tests). What does recover: removing the stray zero after `233` repairs 21 tokens. After the change: 6,363 cells hold one valid number, 9,584 hold two, 78 cells still have a bad token (was 97), and one number that looked valid was a placeholder and is now set aside. The other bad tokens (a lost or extra digit) cannot be repaired without guessing and stay invalid and counted.
+
+**What was built.**
+- `CustomerValues::readPhones()` is the only reader of a Mobile cell (`phones()` wraps it): separators `/ , ; | &`, line break, AND / OR / NA; `ext` / `x` and what follows ignored; `233`, `+233`, `00233`, a lost leading zero, an Excel number (int or float, no exponent), the stray zero after `233`; back-to-back numbers cut from the left (12 digits `233...`, 10 digits `0...`, 9 digits) and accepted only when exactly ONE cutting uses every digit; placeholders (nine digits after the 0 with two or fewer distinct digits, or a straight run) are invalid and never stored. Spaces inside one number never split it.
+- Migration `2026_10_14_000001_add_phone_secondary_to_commercial_customer_contacts` adds a nullable `phone_secondary` (indexed) to the contacts and a plain one to staging. Contact rows get it filled by the normal upload: the contact hash now covers the new `MULTIPLE_PHONES` bit, so exactly the customers with two numbers are rewritten once, contact row only (no customers row, no undo row, no change-log row; a test compares the whole customers table before and after). A re-upload of an unchanged file writes nothing at all, contacts included.
+- Search by phone matches either number. The shared-mobile list counts a number as shared when it is on more than one **account** of the district as first or second number (one account listing a number twice does not count; one account in two shared numbers is listed once).
+- Lists show the first number masked and `+n`; the count comes from the `mobiles` string in the same query (no query per row). The Excel list export puts every number, masked, in the one "Mobile (masked)" cell as text, joined by ` / `. The single-customer view and its audited reveal are unchanged (audit rows hold the customer id only).
+- Quality: new counts "Two or more mobile numbers" (drill-down list capped like the others) and "Reachable" (customers with at least one valid number; its list is the inverse of "No mobile number"), as rows of the Issues table and as two columns of the district table. Each import adds one counts-only warning line (cells with two or more numbers, numbers separated from a run, stray zeros removed, placeholders set aside).
+- Purge retention removes `phone_secondary` with its contact row; a void does not roll contact details back (both tested).
+- `commercial:customers:sample` (dev only) now writes real-export-style cells, 12 digits, two numbers for every eighth customer and a shared agent number for a few; `commercial:customers:benchmark` seeds and times the same, and compares the old and new statements.
+
+**Tests.** `CustomerPhoneParsingTest` (35 cases, pure) and `CustomerSecondPhoneTest` (12 tests) cover every case in the 8.22 list: two numbers with `" / "`, bare `/`, three, the same twice, trailing/leading slash and empty segment; `233`, `+233`, `00233`, ten and nine digits and Excel int/float; a space, `&`, `and`, `AND`, `or`, `na` between numbers; spaces inside one number; an ambiguous long string stays invalid; a good plus a bad token; placeholders; search by the second number; shared in either position; changing only the second number; `+1` badge; export cell as text; no audit row, warning or error holding a phone number; purge and rollback; counts equal list sizes and are region-scoped. One existing test used `+233 20 222 2222` (a placeholder by the new rule) and now uses a different invented number.
+
+**Run results.** `php artisan config:clear`, then `php artisan test --filter=Commercial`: 347 tests, 2,474 assertions, all passed. Full suite (`php artisan test`): 2,052 tests, 11,672 assertions, all passed (the 47 new tests are included; the suite before this phase had 2,005). Not run: the 5M-customer benchmark again, the new screens in a browser beyond a quick look at the Overview and Trends tabs (the Data quality tab and the lists with the `+n` badge were checked by tests, not by eye).
+
+**Benchmark (MySQL 8.4.3, 128 MB buffer pool, scratch database, 500,000 customers in 10 districts, 50,000-row files with two numbers on every fourth customer).**
+
+| Measure | Result |
+|---|---|
+| Import, initial load (50k rows) | 107 s per 100k rows (stage 36, merge 42) |
+| Import, 10% changed | 73 s per 100k rows (merge 10) |
+| Import, unchanged file | 68 s per 100k rows (merge 5); 0 customer rows written |
+| Rollup build | 21.9 s per 100k customers (the 2M run: about 21) |
+| of which issue lists | 37 s for the 500k (about 7.4 s per 100k; the 2M run: about 6) |
+| Shared-mobile statement, one 95k-customer district | **before** (first number only) 965 ms, **after** (first or second number) 1,659 ms: it reads each number once more, and runs once per upload, not per view |
+| Shared-mobile drill-down (the list a person opens) | 3 ms |
+| Search by phone | **before** (first number only) 1 ms as a bare statement; **after** (first or second, through the list service with its label lookups) 4 ms; by the second number 3 ms |
+| Dashboard queries (all) | 3 to 31 ms (target ~300); Data quality 16 ms |
+| Drill-down queries | 3 to 11 ms, except 40 keyset pages in a row 766 ms (the existing top-debtors walk; about 19 ms a page) |
+| Import memory | flat 60 MB |
+
+A first attempt at the shared-mobile statement (two scans of the contacts) measured 1,802 ms; reading them once brought it to 1,659 ms. The extra cost over "before" is real and is the price of finding second numbers; it is under 1 s per 95k-customer district per upload. The index on `phone_secondary` costs one extra index entry per contact row written; the bulk merge writes contacts only for new accounts and for changed contact hashes, and a NULL second number (about three customers in four) adds a cheap entry. The 5M-customer problems recorded in doc 15 (rollup `connections` step, buffer pool) are not touched by this phase and are still open. The benchmark is a synthetic mix, not the real file.
+
+**To run:** `php artisan migrate` (one migration: `2026_10_14_000001_add_phone_secondary_to_commercial_customer_contacts`). No new config or `.env` keys. Existing contact rows fill in on the next upload of each district (only the customers with two numbers are rewritten). The dev database already has it applied and holds sample data re-imported with two-number cells.
+
+**Not done / to know.** A third number would be kept only in `mobiles` (not searchable); the real sample has none. The 78 remaining bad tokens are lost or extra digits and were deliberately not "repaired". A number in the file that is a real but placeholder-looking one (two distinct digits) will be set aside as invalid, as the brief asked.
+
 ---
 
 ## 8b. After Phase 5b

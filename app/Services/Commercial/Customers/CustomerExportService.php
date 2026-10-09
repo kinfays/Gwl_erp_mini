@@ -161,7 +161,7 @@ class CustomerExportService
                 ];
 
                 if ($details) {
-                    array_push($cells, $row['name'], $row['address'], $row['mobile'], $row['email']);
+                    array_push($cells, $row['name'], $row['address'], $row['mobiles'] ?? $row['mobile'], $row['email']);   // every number, masked, " / " between them
                 }
 
                 $writer->addRow($this->row($cells));

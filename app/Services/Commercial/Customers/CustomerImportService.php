@@ -459,6 +459,15 @@ class CustomerImportService
             $warnings[] = ['row' => 'File', 'message' => number_format($malformed).' row(s) could not be read (no usable account number); they were not imported.'];
         }
 
+        $phones = $builder->phoneStats;
+
+        if (array_sum($phones) > 0) {
+            // Counts only, never a number.
+            $warnings[] = ['row' => 'Mobile', 'message' => 'Mobile cells: '.number_format($phones['multi']).' hold two or more numbers; '
+                .number_format($phones['recovered']).' number(s) were separated from a run of digits, '.number_format($phones['repaired']).' had a stray 0 after 233 removed, '
+                .number_format($phones['placeholders']).' placeholder number(s) (such as all one digit) were set aside.'];
+        }
+
         if ($countRead === 0 && ! $columnsMissing) {
             $errors[] = ['row' => 'File', 'message' => 'No customer rows were found in the sheet.'];
         }

@@ -26,7 +26,7 @@ class CustomerAnalyticsService
 
     public const QUALITY_LABELS = [
         'missing_mobile' => 'No mobile number', 'missing_email' => 'No e-mail', 'missing_address' => 'No address', 'missing_name' => 'No account name',
-        'invalid_phone' => 'Mobile that is not a valid number', 'future_date' => 'Date in the future', 'implausible_date' => 'Implausible or unreadable date',
+        'invalid_phone' => 'Mobile that is not a valid number', 'multiple_phones' => 'Two or more mobile numbers (not a fault)', 'reachable' => 'Reachable: at least one valid mobile number', 'future_date' => 'Date in the future', 'implausible_date' => 'Implausible or unreadable date',
         'unknown_category' => 'Category UNKNOWN', 'pending_category' => 'Category code not reviewed yet', 'unconfirmed_status' => 'Status code with an unconfirmed meaning',
         'shared_meter' => 'Meter number shared by several accounts', 'shared_mobile' => 'Mobile shared by several accounts', 'shared_email' => 'E-mail shared by several accounts',
         'not_in_file' => 'Not in the latest file',
@@ -489,7 +489,7 @@ class CustomerAnalyticsService
 
         $districts = $byDistrictCustomers->map(fn ($r) => [
             'key' => (int) $r->dim_key, 'label' => $r->dim_name, 'customers' => (int) $r->customer_count, 'completeness' => $score((int) $r->dim_key),
-            'issues' => $rows->where('district_id', (int) $r->dim_key)->filter(fn ($i) => in_array($i->issue, ['missing_mobile', 'missing_email', 'missing_address', 'invalid_phone', 'shared_meter', 'shared_mobile', 'unknown_category'], true))->pluck('issue_count', 'issue')->map(fn ($c) => (int) $c)->all(),
+            'issues' => $rows->where('district_id', (int) $r->dim_key)->filter(fn ($i) => in_array($i->issue, ['missing_mobile', 'missing_email', 'missing_address', 'invalid_phone', 'multiple_phones', 'reachable', 'shared_meter', 'shared_mobile', 'unknown_category'], true))->pluck('issue_count', 'issue')->map(fn ($c) => (int) $c)->all(),
         ])->sortBy('completeness')->values()->all();
 
         return ['customers' => $customers, 'issues' => $issues, 'districts' => $districts];

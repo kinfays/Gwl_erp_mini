@@ -71,7 +71,7 @@ All names are `commercial_*`. Fact tables store small integer ids; strings live 
 | `commercial_routes` | thousands | `(district_id, name)` unique, created on import |
 | `commercial_customer_batches` | one per file | lifecycle, phase, resume points, counts, warnings, reconciliation |
 | `commercial_customers` | **millions** | CURRENT STATE, one narrow row per account (`account_no` char(12) unique, kept as a string) |
-| `commercial_customer_contacts` | millions | **PII**, 1:1, apart from the hot table: name, address, normalised mobiles, e-mail, search columns |
+| `commercial_customer_contacts` | millions | **PII**, 1:1, apart from the hot table: name, address, normalised mobiles (first and second number in their own indexed columns), e-mail, search columns |
 | `commercial_customer_changes` | changes only | change log: status, category, meter status, route, district (a move), arrears bucket, missing, returned |
 | `commercial_customer_undo` | one delta | pre-image of the rows the newest batch(es) of a district rewrote, for exact rollback |
 | `commercial_customer_staging`, `_diff` | transient | landing table for the set-based merge, and the list of staged rows that need any work. Always cleaned |
@@ -131,6 +131,19 @@ upload (plain form post) -> file stored (private disk) -> batch "queued" -> Proc
 * The upload is a classic form post (Livewire's temporary upload is capped near 12 MB). Raise PHP `upload_max_filesize`/`post_max_size` and
   the web server body limit to at least `GWL_COMMERCIAL_CUSTOMER_IMPORT_MAX_MB` (default 200).
 
+### 4a. Mobile numbers (Phase 6b)
+
+The `Mobile` cell holds one or two numbers (in the real sample, never more than two): 12 digits each (`233` + nine), joined by space, slash, space. `CustomerValues::readPhones()` is the one place that reads it:
+
+* **Separators**: `/ , ; | &`, a line break, or the words AND / OR / NA. `ext 12` / `x12` and what follows is ignored. Spaces *inside* a number never split it (`024 123 4567` is one number).
+* **Forms repaired to `0XXXXXXXXX`**: `233...`, `+233...`, `00233...`, a lost leading zero (nine digits, also an Excel number), and a stray 0 after 233 (`2330...`, 13 digits; counted as "repaired").
+* **Run-together numbers** (`0241234567 0207654321` with only a space, or no separator at all) are cut from the left as 12-digit `233...`, 10-digit `0...` or 9-digit pieces, and accepted only when **exactly one** way of cutting uses every digit; an ambiguous string stays invalid.
+* **Placeholders** (nine digits after the leading 0 using two or fewer different digits, or a straight run such as `0123456789`) are invalid: they set `INVALID_PHONE`, are never stored, never searched, never "shared".
+* Unique numbers are kept in cell order; a bad token does not discard the good ones. All numbers go to `mobiles` (comma list), the first to `phone_primary`, the second to **`phone_secondary`** (indexed). A third number would live only in `mobiles` (not searchable); the sample has none.
+* A new quality bit `MULTIPLE_PHONES` marks customers with two or more valid numbers; it is part of the contact hash, so a change of only the second number rewrites only the contact row (no customers row, no change-log row, no undo row).
+
+Where it shows: search by phone matches either number; the shared-mobile list and count treat a number as shared when it is on more than one **account** of the district as first or second number (one account listing a number twice does not count); lists show the first number masked and `+n` when there are more; the Excel list export puts every number, masked, in the one "Mobile (masked)" text cell joined by ` / `; the single-customer view shows all numbers masked until revealed (audited, ids only). Data quality gains "Two or more mobile numbers" (with a drill-down list, capped like the others) and "Reachable" (at least one valid number; its list is the inverse of "No mobile number"), also as district columns. Each import records one counts-only line in the batch warnings (cells with two or more numbers, numbers separated from a run, stray zeros removed, placeholders set aside). Contact retention purges `phone_secondary` with the rest of the row; a void does not roll contact details back.
+
 ## 5. Rollups, and why dashboards stay fast
 
 Every dashboard, trend and comparison reads rollups (a few hundred rows per district at district grain), never `commercial_customers`.
@@ -188,7 +201,7 @@ Median and top-N facts are computed at import from the `(district_id, balance)` 
 | E. Dormancy | no read / bill / payment in N days, never read / billed / paid, "ghost" candidates (billing account with no bill and no read in 180 days) | rollups |
 | F. Growth & churn | new connections by month (24 months) and group, status migration matrix of an upload, reconnections (DISC to ACTB), net change, not in latest file, moved accounts | connections, change log, batches |
 | G. Consumption | average consumption distribution, typical (median) per category, outliers above N x median, zero-consumption billed accounts, meter-factor anomalies | consumption |
-| H. Data quality | counts and a drill-down list for: no mobile / e-mail / address / name, invalid phone, future or implausible dates, UNKNOWN or unreviewed category, unconfirmed status, shared meter / mobile / e-mail, not in latest file; contact completeness per district | quality + issue lists |
+| H. Data quality | counts and a drill-down list for: no mobile / e-mail / address / name, invalid phone, two or more mobile numbers, reachable (at least one valid number), future or implausible dates, UNKNOWN or unreviewed category, unconfirmed status, shared meter / mobile / e-mail, not in latest file; contact completeness per district | quality + issue lists |
 | I. Trends & compare | period-by-period series, district league table with ranks, selection vs company | district rollups |
 
 Filters: period, region (all-region viewers), district, route, category group, status, meter status, billing accounts only. Data-quality lists

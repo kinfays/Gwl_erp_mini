@@ -25,8 +25,11 @@ class CustomerRecordBuilder
 
     public const MISSING_NAME = 64;
 
+    /** Two or more valid mobile numbers (information, not a fault). */
+    public const MULTIPLE_PHONES = 128;
+
     /** The quality bits that describe the contact details (they are stored with the contact row). */
-    public const CONTACT_BITS = self::MISSING_MOBILE | self::MISSING_EMAIL | self::MISSING_ADDRESS | self::INVALID_PHONE | self::MISSING_NAME;
+    public const CONTACT_BITS = self::MISSING_MOBILE | self::MISSING_EMAIL | self::MISSING_ADDRESS | self::INVALID_PHONE | self::MISSING_NAME | self::MULTIPLE_PHONES;
 
     /** The columns the "attributes_hash" covers, in order. */
     public const HASHED = [
@@ -40,6 +43,14 @@ class CustomerRecordBuilder
 
     /** The latest date (Y-m-d) taken as plausible: the as-of date plus a day of slack. */
     protected string $latestPlausible;
+
+    /**
+     * What the Mobile cells of this file looked like (counts only, never a number): cells with two or more numbers, numbers cut
+     * out of a run of digits, numbers repaired (a stray 0 after 233), placeholders set aside.
+     *
+     * @var array{multi: int, recovered: int, repaired: int, placeholders: int}
+     */
+    public array $phoneStats = ['multi' => 0, 'recovered' => 0, 'repaired' => 0, 'placeholders' => 0];
 
     /** @var array<string, int> route name => id, so a route is resolved once per file, not once per row */
     protected array $routes = [];
@@ -110,7 +121,14 @@ class CustomerRecordBuilder
         $balance = CustomerValues::pesewas($values['balance'] ?? null) ?? 0;
         $lastBill = CustomerValues::pesewas($values['last_bill_amount'] ?? null);
 
-        [$phones, $invalidPhone] = CustomerValues::phones($values['mobile'] ?? null);
+        $read = CustomerValues::readPhones($values['mobile'] ?? null);
+        $phones = $read['numbers'];
+        $invalidPhone = $read['invalid'];
+
+        $this->phoneStats['multi'] += count($phones) > 1 ? 1 : 0;
+        $this->phoneStats['recovered'] += $read['recovered'];
+        $this->phoneStats['repaired'] += $read['repaired'];
+        $this->phoneStats['placeholders'] += $read['placeholders'];
         $email = CustomerValues::email($values['email'] ?? null);
         $name = CustomerValues::text($values['name'] ?? null, 191);
         $address = CustomerValues::text($values['address'] ?? null, 255);
@@ -121,6 +139,10 @@ class CustomerRecordBuilder
 
         if ($invalidPhone) {
             $flags |= self::INVALID_PHONE;
+        }
+
+        if (count($phones) > 1) {
+            $flags |= self::MULTIPLE_PHONES;
         }
 
         if ($email === null) {
@@ -169,6 +191,7 @@ class CustomerRecordBuilder
         $row['address'] = $address;
         $row['mobiles'] = $mobiles;
         $row['phone_primary'] = $phones[0] ?? null;
+        $row['phone_secondary'] = $phones[1] ?? null;
         $row['email'] = $email;
         $row['email_lower'] = $email === null ? null : mb_strtolower($email);
         $row['name_search'] = $name === null ? null : mb_substr(mb_strtolower($name), 0, 191);

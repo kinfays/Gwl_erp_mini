@@ -66,7 +66,7 @@
                 @forelse ($page['rows'] as $row)
                     <tr wire:key="cu-{{ $row['id'] }}">
                         <td class="mono"><a href="{{ route('commercial.customers.show', $row['id']) }}">{{ $row['account_no'] }}</a>@if ($row['missing'])<x-ui.badge tone="warning">Not in latest file</x-ui.badge>@endif</td>
-                        @if ($details)<td>{{ $row['name'] ?? '–' }}</td><td>{{ $row['address'] ?? '–' }}</td><td class="mono">{{ $row['mobile'] ?? '–' }}</td><td>{{ $row['email'] ?? '–' }}</td>@endif
+                        @if ($details)<td>{{ $row['name'] ?? '–' }}</td><td>{{ $row['address'] ?? '–' }}</td><td class="mono">{{ $row['mobile'] ?? '–' }}@if (($row['more_phones'] ?? 0) > 0) <span class="ui-hint" title="This customer has {{ $row['more_phones'] + 1 }} mobile numbers; open the customer to see them (masked)">+{{ $row['more_phones'] }}</span>@endif</td><td>{{ $row['email'] ?? '–' }}</td>@endif
                         <td>{{ $row['district'] }} · <span class="mono">{{ $row['route'] }}</span></td><td>{{ $row['category'] }}</td><td>{{ $row['status'] }}</td><td>{{ $row['meter_status'] }}</td>
                         <td class="num">{{ $money($row['balance']) }}</td><td>{{ $row['bucket'] }}</td>
                         <td>{{ $date($row['last_bill_date']) }}@if ($row['last_bill_amount'] !== null) · {{ $money($row['last_bill_amount']) }}@endif</td>

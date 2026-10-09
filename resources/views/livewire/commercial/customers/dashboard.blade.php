@@ -363,7 +363,7 @@
                         <tr wire:key="qi-{{ $row['issue'] }}">
                             <td>{{ $row['label'] }}</td><td class="num">{{ $n($row['count']) }}</td><td class="num">{{ $pct($row['share']) }}</td>
                             <td>
-                                @if ($districtId && $row['count'] > 0)
+                                @if ($districtId && $row['count'] > 0 && $row['issue'] !== 'reachable')
                                     <a href="{{ route('commercial.customers.list', array_filter(['district' => $districtId, 'issue' => $row['issue'], 'missing' => $row['issue'] === 'not_in_file' ? 1 : null])) }}" class="btn btn-ghost btn-sm">List</a>
                                 @endif
                             </td>
@@ -373,12 +373,12 @@
             </x-ui.card>
             <x-ui.card title="Contact completeness by district" description="Mobile, address, account name and valid phone number present, as a share of the possible." :padded="false" class="dash-row">
                 <x-ui.table label="Completeness by district" :sticky="true">
-                    <x-slot:head><tr><th>District</th><th class="num">Customers</th><th class="num">Completeness</th><th class="num">No mobile</th><th class="num">No e-mail</th><th class="num">No address</th><th class="num">Shared meter</th><th class="num">Shared mobile</th></tr></x-slot:head>
+                    <x-slot:head><tr><th>District</th><th class="num">Customers</th><th class="num">Completeness</th><th class="num">No mobile</th><th class="num">No e-mail</th><th class="num">No address</th><th class="num">Shared meter</th><th class="num">Shared mobile</th><th class="num">Two numbers</th><th class="num">Reachable</th></tr></x-slot:head>
                     @foreach ($q['districts'] as $row)
                         <tr wire:key="qd-{{ $row['key'] }}">
                             <td><a href="{{ $drill($row['key']) }}">{{ $row['label'] }}</a></td><td class="num">{{ $n($row['customers']) }}</td><td class="num"><strong>{{ $pct($row['completeness']) }}</strong></td>
                             <td class="num">{{ $n($row['issues']['missing_mobile'] ?? 0) }}</td><td class="num">{{ $n($row['issues']['missing_email'] ?? 0) }}</td><td class="num">{{ $n($row['issues']['missing_address'] ?? 0) }}</td>
-                            <td class="num">{{ $n($row['issues']['shared_meter'] ?? 0) }}</td><td class="num">{{ $n($row['issues']['shared_mobile'] ?? 0) }}</td>
+                            <td class="num">{{ $n($row['issues']['shared_meter'] ?? 0) }}</td><td class="num">{{ $n($row['issues']['shared_mobile'] ?? 0) }}</td><td class="num">{{ $n($row['issues']['multiple_phones'] ?? 0) }}</td><td class="num">{{ $pct($row['customers'] > 0 ? round(($row['issues']['reachable'] ?? 0) / $row['customers'] * 100, 1) : null) }}</td>
                         </tr>
                     @endforeach
                 </x-ui.table>

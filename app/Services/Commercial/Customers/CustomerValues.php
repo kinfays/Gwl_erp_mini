@@ -182,42 +182,150 @@ final class CustomerValues
     }
 
     /**
-     * Ghana mobile numbers from a cell that may hold several ("0241234567 / 0207654321"), each normalised to 10 digits
-     * starting with 0 (+233 / 233 / a missing leading 0 are repaired). Anything else is invalid.
+     * Ghana mobile numbers from a cell that may hold several, each normalised to 10 digits starting with 0.
      *
      * @return array{0: list<string>, 1: bool} the valid numbers (unique, in order) and whether any token was invalid
      */
     public static function phones(mixed $value): array
     {
+        $read = self::readPhones($value);
+
+        return [$read['numbers'], $read['invalid']];
+    }
+
+    /**
+     * The full reading of a Mobile cell. Numbers are separated by / , ; | & or a line break, or by the words AND / OR / NA;
+     * "ext 12" / "x12" and what follows is ignored. Each piece is repaired to the local form (233..., +233..., 00233..., a lost
+     * leading zero, a stray zero after 233), and a piece that is still not a number but is made of several back to back with
+     * no separator ("0241234567 0207654321") is accepted only when exactly ONE way of cutting it uses every digit. Placeholders
+     * (0000000000, 0111111111, 0123456789 ...) are invalid and never stored. Spaces INSIDE a number never split it.
+     *
+     * @return array{numbers: list<string>, invalid: bool, recovered: int, repaired: int, placeholders: int}
+     *                                       recovered: numbers cut out of a run of digits; repaired: a stray 0 after 233 removed
+     */
+    public static function readPhones(mixed $value): array
+    {
+        $result = ['numbers' => [], 'invalid' => false, 'recovered' => 0, 'repaired' => 0, 'placeholders' => 0];
+
         if ($value === null || $value === '') {
-            return [[], false];
+            return $result;
         }
 
-        $raw = is_int($value) || is_float($value) ? (string) (int) $value : (string) $value;
-        $valid = [];
-        $invalid = false;
+        // An Excel number: whole digits only (no decimal point, no exponent); a lost leading zero is repaired below.
+        $raw = is_int($value) ? (string) $value : (is_float($value) ? sprintf('%.0f', $value) : (string) $value);
+        $pieces = preg_split('/\s*(?:[\/,;|&\r\n]+|\b(?:and|or|na)\b)\s*/iu', $raw) ?: [];
 
-        foreach (preg_split('/[\/,;|\n]+/u', $raw) ?: [] as $token) {
-            $digits = preg_replace('/\D/', '', $token) ?? '';
+        foreach ($pieces as $piece) {
+            $piece = preg_replace('/\s*\b(?:ext\.?|x)\s*\d.*$/iu', '', $piece) ?? '';
+            $digits = preg_replace('/\D/', '', $piece) ?? '';
 
             if ($digits === '') {
                 continue;
             }
 
-            if (str_starts_with($digits, '233') && strlen($digits) === 12) {
-                $digits = '0'.substr($digits, 3);
-            } elseif (strlen($digits) === 9) {
-                $digits = '0'.$digits;
+            $single = self::localNumber($digits, $result['repaired']);
+            $found = $single !== null ? [$single] : self::segments($digits);
+
+            if ($found === null || $found === []) {
+                $result['invalid'] = true;
+
+                continue;
             }
 
-            if (preg_match('/^0\d{9}$/', $digits)) {
-                $valid[$digits] = $digits;
-            } else {
-                $invalid = true;
+            if ($single === null) {
+                $result['recovered'] += count($found);
+            }
+
+            foreach ($found as $number) {
+                if (self::isPlaceholder($number)) {
+                    $result['invalid'] = true;
+                    $result['placeholders']++;
+
+                    continue;
+                }
+
+                $result['numbers'][$number] = $number;
             }
         }
 
-        return [array_values($valid), $invalid];
+        $result['numbers'] = array_values($result['numbers']);
+
+        return $result;
+    }
+
+    /** One number's digits in the local form "0XXXXXXXXX", or null when they are not one number. */
+    protected static function localNumber(string $digits, int &$repaired): ?string
+    {
+        if (str_starts_with($digits, '00233') && strlen($digits) === 14) {
+            $digits = substr($digits, 2);
+        }
+
+        if (str_starts_with($digits, '233') && strlen($digits) === 12) {
+            $digits = '0'.substr($digits, 3);
+        } elseif (str_starts_with($digits, '2330') && strlen($digits) === 13) {
+            $digits = substr($digits, 3);   // 233 followed by the local number with its 0 kept
+            $repaired++;
+        } elseif (strlen($digits) === 9 && $digits[0] !== '0') {
+            $digits = '0'.$digits;
+        }
+
+        return preg_match('/^0\d{9}$/', $digits) ? $digits : null;
+    }
+
+    /**
+     * Several numbers written back to back, cut from the left as 233+9 digits (12), 0+9 digits (10) or 9 digits. Returns the
+     * numbers only when exactly one way of cutting uses every digit.
+     *
+     * @return list<string>|null
+     */
+    protected static function segments(string $digits): ?array
+    {
+        if (strlen($digits) < 18 || strlen($digits) > 40) {
+            return null;
+        }
+
+        $ways = [];
+        $walk = function (int $at, array $parts) use (&$walk, &$ways, $digits): void {
+            if (count($ways) > 1) {
+                return;
+            }
+
+            if ($at === strlen($digits)) {
+                $ways[] = $parts;
+
+                return;
+            }
+
+            $rest = substr($digits, $at);
+
+            foreach ([12 => str_starts_with($rest, '233'), 10 => str_starts_with($rest, '0'), 9 => ! str_starts_with($rest, '0')] as $length => $fits) {
+                if ($fits && strlen($rest) >= $length) {
+                    $walk($at + $length, [...$parts, substr($rest, 0, $length)]);
+                }
+            }
+        };
+        $walk(0, []);
+
+        if (count($ways) !== 1 || count($ways[0]) < 2) {
+            return null;
+        }
+
+        $repaired = 0;
+        $numbers = array_map(fn (string $part) => self::localNumber($part, $repaired), $ways[0]);
+
+        return in_array(null, $numbers, true) ? null : $numbers;
+    }
+
+    /** 0000000000, 0111111111, 0121212121 (two or fewer different digits) and straight runs such as 0123456789. */
+    public static function isPlaceholder(string $local): bool
+    {
+        $rest = substr($local, 1);
+
+        if (count(array_unique(str_split($rest))) <= 2) {
+            return true;
+        }
+
+        return str_contains('01234567890123456789', $local) || str_contains('98765432109876543210', $local);
     }
 
     public static function email(mixed $value): ?string

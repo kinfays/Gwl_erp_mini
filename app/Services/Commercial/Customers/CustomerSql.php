@@ -31,7 +31,7 @@ final class CustomerSql
         'estimated_consume', 'average_consume', 'meter_factor', 'arrears_bucket', 'attributes_hash',
     ];
 
-    public const CONTACT = ['account_name', 'address', 'mobiles', 'phone_primary', 'email', 'email_lower', 'name_search', 'contact_hash'];
+    public const CONTACT = ['account_name', 'address', 'mobiles', 'phone_primary', 'phone_secondary', 'email', 'email_lower', 'name_search', 'contact_hash'];
 
     public static function isMysql(): bool
     {

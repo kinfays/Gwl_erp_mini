@@ -243,7 +243,7 @@ class CustomerImportTest extends CustomerTestCase
 
     public function test_dates_in_odd_shapes_and_zero_balances_are_read_defensively(): void
     {
-        $customers = [ReportWorkbooks::customer(1, ['last_read_date' => null, 'balance' => '1,234.50', 'last_bill_amount' => '0', 'mobile' => '0241111111 / +233 20 222 2222', 'connect_date' => null])];
+        $customers = [ReportWorkbooks::customer(1, ['last_read_date' => null, 'balance' => '1,234.50', 'last_bill_amount' => '0', 'mobile' => '0241111111 / +233 20 222 3456', 'connect_date' => null])];
         $batch = $this->loadCustomers(['routes' => [['name' => '1001', 'customers' => $customers, 'balance' => 1234.5]]]);
 
         $row = $this->customerRow(1);
@@ -251,7 +251,7 @@ class CustomerImportTest extends CustomerTestCase
         $this->assertSame(123450, (int) $row->balance);
         $this->assertNull($row->last_read_date);
         $this->assertNull($row->connect_date);
-        $this->assertSame('0241111111,0202222222', DB::table('commercial_customer_contacts')->where('customer_id', $row->id)->value('mobiles'));
+        $this->assertSame('0241111111,0202223456', DB::table('commercial_customer_contacts')->where('customer_id', $row->id)->value('mobiles'));
     }
 
     public function test_an_unknown_district_parks_the_batch_before_any_customer_is_read(): void

@@ -112,11 +112,13 @@ class CustomerListService
     protected function applySearch(Builder $query, string $type, string $value): void
     {
         $value = trim($value);
+        $number = CustomerValues::phones($value)[0][0] ?? '#';   // a number we cannot read, or a placeholder, matches nothing
 
         match ($type) {
             'account' => $query->where('c.account_no', str_pad(preg_replace('/\D/', '', $value) ?? '', 12, '0', STR_PAD_LEFT)),
             'meter' => $query->where('c.meter_no', $value),
-            'phone' => $query->where('ct.phone_primary', CustomerValues::phones($value)[0][0] ?? '#'),
+            // Any of the customer's numbers, first or second.
+            'phone' => $query->where(fn (Builder $w) => $w->where('ct.phone_primary', $number)->orWhere('ct.phone_secondary', $number)),
             'email' => $query->where('ct.email_lower', mb_strtolower($value)),
             'name' => $query->where('ct.name_search', 'like', str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($value)).'%'),
             default => $query->whereRaw('1 = 0'),
@@ -139,6 +141,7 @@ class CustomerListService
             case 'missing_address':
             case 'missing_name':
             case 'invalid_phone':
+            case 'multiple_phones':
             case 'future_date':
             case 'implausible_date':
             case 'shared_meter':
@@ -173,7 +176,9 @@ class CustomerListService
         ];
 
         if ($details) {
-            array_push($columns, 'ct.account_name AS contact_name', 'ct.address AS contact_address', 'ct.phone_primary AS contact_phone', 'ct.email AS contact_email');
+            array_push($columns, 'ct.account_name AS contact_name', 'ct.address AS contact_address', 'ct.mobiles AS contact_mobiles', 'ct.email AS contact_email',
+                // How many numbers there are besides the first: counted in SQL, so a page needs no extra query.
+                DB::raw("(CASE WHEN ct.mobiles IS NULL THEN 0 ELSE LENGTH(ct.mobiles) - LENGTH(REPLACE(ct.mobiles, ',', '')) END) AS contact_more_phones"));
         }
 
         return $query->select($columns);
@@ -214,7 +219,9 @@ class CustomerListService
                 'missing' => $r->missing_since_batch_id !== null,
                 'name' => $details ? ($r->contact_name ?? null) : null,
                 'address' => $details ? ($r->contact_address ?? null) : null,
-                'mobile' => $details ? CustomerValues::maskPhone($r->contact_phone ?? null) : null,
+                'mobile' => $details ? CustomerValues::maskPhone(explode(',', (string) ($r->contact_mobiles ?? ''))[0] ?: null) : null,
+                'more_phones' => $details ? (int) ($r->contact_more_phones ?? 0) : 0,
+                'mobiles' => $details && ($r->contact_mobiles ?? '') !== '' ? implode(' / ', array_map([CustomerValues::class, 'maskPhone'], explode(',', $r->contact_mobiles))) : null,
                 'email' => $details ? CustomerValues::maskEmail($r->contact_email ?? null) : null,
             ];
         })->all();

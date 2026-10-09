@@ -112,7 +112,7 @@ class CustomerRollupService
             'missing_mobile' => CustomerRecordBuilder::MISSING_MOBILE, 'missing_email' => CustomerRecordBuilder::MISSING_EMAIL,
             'missing_address' => CustomerRecordBuilder::MISSING_ADDRESS, 'missing_name' => CustomerRecordBuilder::MISSING_NAME,
             'invalid_phone' => CustomerRecordBuilder::INVALID_PHONE, 'future_date' => CustomerRecordBuilder::FUTURE_DATE,
-            'implausible_date' => CustomerRecordBuilder::IMPLAUSIBLE_DATE,
+            'implausible_date' => CustomerRecordBuilder::IMPLAUSIBLE_DATE, 'multiple_phones' => CustomerRecordBuilder::MULTIPLE_PHONES,
         ] as $issue => $bit) {
             // An issue nobody has costs nothing: only issues that occur get a list.
             if (($flagCounts[$issue] ?? 0) === 0) {
@@ -125,13 +125,23 @@ class CustomerRollupService
             );
         }
 
-        foreach (['shared_mobile' => 'phone_primary', 'shared_email' => 'email_lower'] as $issue => $column) {
-            DB::affectingStatement(
-                "INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) SELECT {$b}, '{$issue}', c.id FROM commercial_customers c "
-                ."INNER JOIN commercial_customer_contacts t ON t.customer_id = c.id "
-                ."INNER JOIN (SELECT t2.{$column} AS v FROM commercial_customer_contacts t2 INNER JOIN commercial_customers c2 ON c2.id = t2.customer_id WHERE c2.district_id = {$d} AND c2.missing_since_batch_id IS NULL AND t2.{$column} IS NOT NULL GROUP BY t2.{$column} HAVING COUNT(*) > 1) s ON s.v = t.{$column} WHERE {$live}"
-            );
-        }
+        // A mobile is shared when it is on more than one ACCOUNT of the district, as first or second number. The district's contacts
+        // are read ONCE (base) and unfolded into one row per number; the numbers of one account are unique (the parser drops
+        // repeats), so COUNT(*) is the number of accounts, and an account in two shared numbers is listed once (DISTINCT).
+        // Placeholders are never stored, so they cannot be shared.
+        DB::affectingStatement(
+            "INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) "
+            ."WITH base AS (SELECT t.customer_id AS cid, t.phone_primary AS p1, t.phone_secondary AS p2 FROM commercial_customer_contacts t INNER JOIN commercial_customers c2 ON c2.id = t.customer_id WHERE c2.district_id = {$d} AND c2.missing_since_batch_id IS NULL AND t.phone_primary IS NOT NULL), "
+            .'numbers AS (SELECT cid, p1 AS v FROM base UNION ALL SELECT cid, p2 FROM base WHERE p2 IS NOT NULL), '
+            .'shared AS (SELECT v FROM numbers GROUP BY v HAVING COUNT(*) > 1) '
+            ."SELECT {$b}, 'shared_mobile', x.cid FROM (SELECT DISTINCT n.cid FROM numbers n INNER JOIN shared s ON s.v = n.v) x"
+        );
+
+        DB::affectingStatement(
+            "INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) SELECT {$b}, 'shared_email', c.id FROM commercial_customers c "
+            ."INNER JOIN commercial_customer_contacts t ON t.customer_id = c.id "
+            ."INNER JOIN (SELECT t2.email_lower AS v FROM commercial_customer_contacts t2 INNER JOIN commercial_customers c2 ON c2.id = t2.customer_id WHERE c2.district_id = {$d} AND c2.missing_since_batch_id IS NULL AND t2.email_lower IS NOT NULL GROUP BY t2.email_lower HAVING COUNT(*) > 1) s ON s.v = t.email_lower WHERE {$live}"
+        );
     }
 
     /** @param  list<int>  $billing */
@@ -286,12 +296,13 @@ class CustomerRollupService
             'future_date' => CustomerRecordBuilder::FUTURE_DATE,
             'implausible_date' => CustomerRecordBuilder::IMPLAUSIBLE_DATE,
             'missing_name' => CustomerRecordBuilder::MISSING_NAME,
+            'multiple_phones' => CustomerRecordBuilder::MULTIPLE_PHONES,
         ];
 
-        $select = implode(', ', array_map(fn (string $issue, int $bit) => "COALESCE(SUM(CASE WHEN (quality_flags & {$bit}) = {$bit} THEN 1 ELSE 0 END), 0) AS {$issue}", array_keys($bits), $bits));
+        $select = implode(', ', array_map(fn (string $issue, int $bit) => "COALESCE(SUM(CASE WHEN (quality_flags & {$bit}) = {$bit} THEN 1 ELSE 0 END), 0) AS {$issue}", array_keys($bits), $bits)).', COUNT(*) AS staged_rows';
         $row = (array) DB::table('commercial_customer_staging')->where('batch_id', $batchId)->selectRaw($select)->first();
 
-        return array_map(fn ($issue) => (int) ($row[$issue] ?? 0), array_combine(array_keys($bits), array_keys($bits)));
+        return array_map(fn ($issue) => (int) ($row[$issue] ?? 0), array_combine([...array_keys($bits), 'staged_rows'], [...array_keys($bits), 'staged_rows']));
     }
 
     /**
@@ -304,6 +315,8 @@ class CustomerRollupService
         $d = (int) $batch->district_id;
 
         $counts = $this->flagCounts($b);
+        $counts['reachable'] = max(0, $counts['staged_rows'] - $counts['missing_mobile']);   // customers with at least one valid mobile
+        unset($counts['staged_rows']);
 
         $live = "c.district_id = {$d} AND c.missing_since_batch_id IS NULL";
 
