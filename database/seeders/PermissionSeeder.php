@@ -148,6 +148,9 @@ class PermissionSeeder extends Seeder
                 'health_safety.export_reports',
                 'health_safety.manage_settings',
             ],
+            'blog' => [
+                'blog.manage_posts',
+            ],
         ];
 
         foreach ($permissions as $module => $slugs) {

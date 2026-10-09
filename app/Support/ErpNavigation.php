@@ -151,6 +151,13 @@ class ErpNavigation
                 'route' => $this->safeRoute('health_safety.home'),
             ],
             [
+                'slug' => Permission::MODULE_BLOG,
+                'title' => 'Regional Blog',
+                'short' => 'Blog',
+                'icon_name' => 'scroll-text',
+                'route' => $this->safeRoute('blog.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'short' => 'Access',
@@ -165,6 +172,7 @@ class ErpNavigation
                 Permission::MODULE_CREDIT_UNION => (bool) config('gwl.credit_union_module_enabled'),
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
+                Permission::MODULE_BLOG => (bool) config('gwl.blog_module_enabled'),
                 default => true,
             }
         ));
@@ -183,6 +191,7 @@ class ErpNavigation
             Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
+            Permission::MODULE_BLOG => $this->blogSidebar($user),
             default => [],
         };
 
@@ -1155,6 +1164,38 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'settings',
                 'can' => $can('health_safety.manage_settings'),
+            ],
+        ];
+    }
+
+    /** Everyone reads their region's blog; writing (manage, new) is for holders of blog.manage_posts. */
+    protected function blogSidebar(User $user): array
+    {
+        $canManage = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('blog.manage_posts');
+
+        return [
+            [
+                'label' => 'Latest articles',
+                'route' => 'blog.home',
+                'active' => ['blog.home', 'blog.show'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'scroll-text',
+            ],
+            [
+                'label' => 'Manage posts',
+                'route' => 'blog.manage',
+                'active' => ['blog.manage', 'blog.edit'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'list',
+                'can' => $canManage,
+            ],
+            [
+                'label' => 'New article',
+                'route' => 'blog.create',
+                'active' => ['blog.create'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'circle-plus',
+                'can' => $canManage,
             ],
         ];
     }

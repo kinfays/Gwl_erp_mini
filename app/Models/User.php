@@ -201,8 +201,9 @@ class User extends Authenticatable
                     $adminModules = $role->moduleAccess
                         ->where('can_access', true)
                         ->pluck('module')
-                        // Health & Safety is for every member of staff (anyone may report an incident), Global Admin included.
-                        ->intersect([Permission::MODULE_UAC, Permission::MODULE_ASSETS, Permission::MODULE_HEALTH_SAFETY])
+                        // Health & Safety and the Regional Blog are for every member of staff (anyone may report an incident or
+                        // read their region's blog), Global Admin included.
+                        ->intersect([Permission::MODULE_UAC, Permission::MODULE_ASSETS, Permission::MODULE_HEALTH_SAFETY, Permission::MODULE_BLOG])
                         ->all();
 
                     $adminModules[] = Permission::MODULE_UAC;

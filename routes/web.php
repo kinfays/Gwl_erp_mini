@@ -8,6 +8,7 @@ use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
+use App\Http\Controllers\Blog\BlogController;
 use App\Http\Controllers\Commercial\CommercialExportController;
 use App\Http\Controllers\Commercial\CommercialModuleController;
 use App\Http\Controllers\HealthSafety\EquipmentController;
@@ -533,6 +534,39 @@ if (config('gwl.commercial_module_enabled')) {
             Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
                 ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('batches.show');
+        });
+}
+
+if (config('gwl.blog_module_enabled')) {
+    // Regional Blog: every member of staff reads the published articles of their OWN region (module access is true for every
+    // role); only blog.manage_posts (PR Officer) writes. Region scope is BlogVisibility's, re-checked in every component and
+    // controller action: an article outside the user's region answers 404.
+    Route::middleware(['auth', 'active', 'module:blog'])
+        ->prefix('blog')
+        ->name('blog.')
+        ->group(function () {
+            Route::get('/', [BlogController::class, 'home'])->name('home');
+
+            Route::get('/manage', [BlogController::class, 'manage'])
+                ->middleware('permission:blog.manage_posts')
+                ->name('manage');
+
+            Route::get('/manage/create', [BlogController::class, 'create'])
+                ->middleware('permission:blog.manage_posts')
+                ->name('create');
+
+            Route::get('/manage/{post}/edit', [BlogController::class, 'edit'])
+                ->whereNumber('post')
+                ->middleware('permission:blog.manage_posts')
+                ->name('edit');
+
+            Route::get('/posts/{post}', [BlogController::class, 'show'])
+                ->whereNumber('post')
+                ->name('show');
+
+            Route::get('/posts/{post}/cover', [BlogController::class, 'cover'])
+                ->whereNumber('post')
+                ->name('cover');
         });
 }
 

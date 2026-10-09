@@ -54,6 +54,7 @@ class RoleSeeder extends Seeder
             'commercial_manager',
             'hs_officer',
             'hs_manager',
+            'pr_officer',
             'secretary',
             'receptionist',
         ];
@@ -69,6 +70,7 @@ class RoleSeeder extends Seeder
                 'commercial_manager' => 'Commercial Manager',
                 'hs_officer' => 'Health & Safety Officer',
                 'hs_manager' => 'Health & Safety Manager',
+                'pr_officer' => 'Public Relations Officer',
                 default => Str::of($role)->replace('_', ' ')->title()->toString(),
             };
 

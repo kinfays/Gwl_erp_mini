@@ -38,5 +38,6 @@
         <env name="GWL_MDM_ENABLED" value="true"/>
         <env name="GWL_COMMERCIAL_MODULE_ENABLED" value="true"/>
         <env name="GWL_HEALTH_SAFETY_MODULE_ENABLED" value="true"/>
+        <env name="GWL_BLOG_MODULE_ENABLED" value="true"/>
     </php>
 </phpunit>

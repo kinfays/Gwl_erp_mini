@@ -17,6 +17,7 @@ This folder contains split documentation pages for easier maintenance.
 - Assets (inventory and agent): [assets-module.md](assets-module.md)
 - Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
 - Health & Safety — incident reporting (design, and Phase 1 as built): [health-safety-module-design.md](health-safety-module-design.md)
+- Regional Blog — PR articles read by the staff of one region: [14-module-regional-blog.md](14-module-regional-blog.md)
 
 ## Reference Pages
 

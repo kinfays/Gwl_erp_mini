@@ -59,6 +59,12 @@ return [
     // Health & Safety (incident reporting now; equipment and PPE later): off by default; when off the routes don't register
     // and the module is hidden from navigation (docs/health-safety-module-design.md).
     'health_safety_module_enabled' => (bool) env('GWL_HEALTH_SAFETY_MODULE_ENABLED', false),
+
+    // Regional Blog (PR articles about activities, meetings, workshops and training, read by the staff of one region): on by
+    // default; when off the routes don't register and the module is hidden from navigation (docs/14-module-regional-blog.md).
+    'blog_module_enabled' => (bool) env('GWL_BLOG_MODULE_ENABLED', true),
+    // Biggest cover photo accepted (MB). Keep at or below PHP upload_max_filesize / post_max_size.
+    'blog_cover_max_mb' => (int) env('GWL_BLOG_COVER_MAX_MB', 3),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.

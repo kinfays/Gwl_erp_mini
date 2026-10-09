@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             CreditUnionRolePermissionSeeder::class,
             CommercialRolePermissionSeeder::class,
             HealthSafetyRolePermissionSeeder::class,
+            RegionalBlogRolePermissionSeeder::class,
             MdmStarterPolicySeeder::class,
             TransportSeeder::class,
             HolidaySeeder::class,

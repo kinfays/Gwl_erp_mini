@@ -35,6 +35,7 @@ class ModuleAccessSeeder extends Seeder
             'commercial_manager' => [Permission::MODULE_COMMERCIAL],
             'hs_officer' => [],
             'hs_manager' => [],
+            'pr_officer' => [],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],
@@ -52,6 +53,9 @@ class ModuleAccessSeeder extends Seeder
             // Every member of staff reports incidents, so every role may enter Health & Safety; its permissions decide what
             // they then see.
             $modules[] = Permission::MODULE_HEALTH_SAFETY;
+
+            // Likewise every member of staff reads the blog of their own region; only blog.manage_posts (PR Officer) writes.
+            $modules[] = Permission::MODULE_BLOG;
 
             $role = Role::query()->where('name', $roleSlug)->first();
 
