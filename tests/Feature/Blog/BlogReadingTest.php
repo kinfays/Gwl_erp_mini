@@ -22,8 +22,8 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_staff_read_only_the_published_articles_of_their_own_region(): void
     {
-        $mine = $this->post($this->accraWest, ['title' => 'Customer care workshop at Sowutuom']);
-        $other = $this->post($this->ashanti, ['title' => 'Ashanti quarterly review meeting']);
+        $mine = $this->article($this->accraWest, ['title' => 'Customer care workshop at Sowutuom']);
+        $other = $this->article($this->ashanti, ['title' => 'Ashanti quarterly review meeting']);
         $draft = $this->draft($this->accraWest, ['title' => 'Unfinished Accra draft']);
 
         Livewire::actingAs($this->reader())
@@ -35,8 +35,8 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_staff_in_another_region_see_theirs_and_not_the_first_regions(): void
     {
-        $accra = $this->post($this->accraWest, ['title' => 'Accra West safety training']);
-        $kumasi = $this->post($this->ashanti, ['title' => 'Kumasi stakeholder meeting']);
+        $accra = $this->article($this->accraWest, ['title' => 'Accra West safety training']);
+        $kumasi = $this->article($this->ashanti, ['title' => 'Kumasi stakeholder meeting']);
 
         Livewire::actingAs($this->reader('100002', $this->ashanti))
             ->test(Feed::class)
@@ -46,8 +46,8 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_head_office_staff_and_managers_get_no_exception(): void
     {
-        $accra = $this->post($this->accraWest, ['title' => 'Accra West open day']);
-        $kumasi = $this->post($this->ashanti, ['title' => 'Ashanti district visit']);
+        $accra = $this->article($this->accraWest, ['title' => 'Accra West open day']);
+        $kumasi = $this->article($this->ashanti, ['title' => 'Ashanti district visit']);
 
         foreach ([['hr_headoffice', $this->headOffice], ['regional_chief_manager', $this->sowutuom], ['admin', $this->headOffice], ['managing_director', $this->headOffice]] as $index => [$role, $district]) {
             $user = $this->userWithRoles('20010'.$index, [$role], $this->accraWest, $district);
@@ -61,7 +61,7 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_an_article_of_another_region_is_not_found_by_its_address(): void
     {
-        $other = $this->post($this->ashanti, ['cover_path' => 'blog/covers/x.jpg']);
+        $other = $this->article($this->ashanti, ['cover_path' => 'blog/covers/x.jpg']);
         Storage::disk('local')->put('blog/covers/x.jpg', 'fake');
 
         $reader = $this->reader();
@@ -79,7 +79,7 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_an_article_of_the_readers_region_opens_and_shows_its_details(): void
     {
-        $post = $this->post($this->accraWest, [
+        $post = $this->article($this->accraWest, [
             'title' => 'Training on the new billing screens',
             'category' => 'training',
             'venue' => 'Regional conference room',
@@ -105,7 +105,7 @@ class BlogReadingTest extends BlogTestCase
     {
         $file = UploadedFile::fake()->image('cover.jpg', 800, 450);
         $path = Storage::disk('local')->putFile('blog/covers', $file);
-        $post = $this->post($this->accraWest, ['cover_path' => $path]);
+        $post = $this->article($this->accraWest, ['cover_path' => $path]);
 
         $this->actingAs($this->reader())->get(route('blog.cover', $post))->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
         $this->actingAs($this->reader('100003', $this->ashanti))->get(route('blog.cover', $post))->assertNotFound();
@@ -113,7 +113,7 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_a_login_with_no_employee_record_sees_nothing(): void
     {
-        $this->post($this->accraWest, ['title' => 'Should stay hidden']);
+        $this->article($this->accraWest, ['title' => 'Should stay hidden']);
         $user = $this->userWithoutEmployee('100090', ['employee']);
 
         Livewire::actingAs($user)
@@ -121,14 +121,14 @@ class BlogReadingTest extends BlogTestCase
             ->assertSee('not linked to one yet')
             ->assertDontSee('Should stay hidden');
 
-        $post = $this->post($this->accraWest);
+        $post = $this->article($this->accraWest);
         $this->actingAs($user)->get(route('blog.show', $post))->assertNotFound();
     }
 
     public function test_super_admin_reads_every_region_and_can_narrow_to_one(): void
     {
-        $accra = $this->post($this->accraWest, ['title' => 'Accra West durbar']);
-        $kumasi = $this->post($this->ashanti, ['title' => 'Ashanti durbar']);
+        $accra = $this->article($this->accraWest, ['title' => 'Accra West durbar']);
+        $kumasi = $this->article($this->ashanti, ['title' => 'Ashanti durbar']);
 
         Livewire::actingAs($this->superAdmin())
             ->test(Feed::class)
@@ -141,8 +141,8 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_a_region_filter_does_nothing_for_an_ordinary_reader(): void
     {
-        $accra = $this->post($this->accraWest, ['title' => 'Accra West visit']);
-        $kumasi = $this->post($this->ashanti, ['title' => 'Ashanti visit']);
+        $accra = $this->article($this->accraWest, ['title' => 'Accra West visit']);
+        $kumasi = $this->article($this->ashanti, ['title' => 'Ashanti visit']);
 
         Livewire::actingAs($this->reader())
             ->test(Feed::class)
@@ -153,9 +153,9 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_pinned_articles_come_first_then_the_newest(): void
     {
-        $this->post($this->accraWest, ['title' => 'Oldest pinned notice', 'is_pinned' => true, 'published_at' => now()->subDays(10)]);
-        $this->post($this->accraWest, ['title' => 'Middle article', 'published_at' => now()->subDays(2)]);
-        $this->post($this->accraWest, ['title' => 'Newest article', 'published_at' => now()->subDay()]);
+        $this->article($this->accraWest, ['title' => 'Oldest pinned notice', 'is_pinned' => true, 'published_at' => now()->subDays(10)]);
+        $this->article($this->accraWest, ['title' => 'Middle article', 'published_at' => now()->subDays(2)]);
+        $this->article($this->accraWest, ['title' => 'Newest article', 'published_at' => now()->subDay()]);
 
         Livewire::actingAs($this->reader())
             ->test(Feed::class)
@@ -164,8 +164,8 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_the_feed_filters_by_kind_and_by_search_term_including_tags_and_venue(): void
     {
-        $this->post($this->accraWest, ['title' => 'Quarterly staff meeting', 'category' => 'meeting']);
-        $this->post($this->accraWest, ['title' => 'Meter reading workshop', 'category' => 'workshop', 'tags' => ['meters'], 'venue' => 'Odorkor depot']);
+        $this->article($this->accraWest, ['title' => 'Quarterly staff meeting', 'category' => 'meeting']);
+        $this->article($this->accraWest, ['title' => 'Meter reading workshop', 'category' => 'workshop', 'tags' => ['meters'], 'venue' => 'Odorkor depot']);
 
         Livewire::actingAs($this->reader())
             ->test(Feed::class)
@@ -182,7 +182,7 @@ class BlogReadingTest extends BlogTestCase
 
     public function test_the_body_is_rendered_without_raw_html_or_unsafe_links(): void
     {
-        $post = $this->post($this->accraWest, [
+        $post = $this->article($this->accraWest, [
             'body' => "Hello <script>alert('x')</script> **bold**\n\n[click me](javascript:alert(1))\n\n<img src=x onerror=alert(2)>",
         ]);
 

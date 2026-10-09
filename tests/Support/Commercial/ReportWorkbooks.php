@@ -4,7 +4,9 @@ namespace Tests\Support\Commercial;
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
@@ -301,6 +303,167 @@ class ReportWorkbooks
                 ['code' => 'ODORKOR 4702', 'billing' => 80.0, 'adjustment' => 5.0],
             ],
         ];
+    }
+
+    /** Customer-list columns of the real export: field => sheet column. */
+    public const CUSTOMER_COLUMNS = [
+        'account' => 'B', 'meter_no' => 'C', 'name' => 'D', 'category' => 'F', 'status' => 'G', 'meter_status' => 'H',
+        'address' => 'I', 'mobile' => 'N', 'email' => 'O', 'balance' => 'Q', 'last_read_date' => 'R', 'last_reading' => 'T',
+        'last_bill_date' => 'U', 'last_bill_amount' => 'V', 'last_paid_date' => 'W', 'last_paid_amount' => 'X',
+        'connect_date' => 'Y', 'estimated_consume' => 'Z', 'average_consume' => 'AA', 'meter_factor' => 'AB',
+    ];
+
+    private const CUSTOMER_HEADERS = [
+        'account' => 'Account #', 'meter_no' => 'Meter  #', 'name' => 'Account Name', 'category' => 'Category', 'status' => 'Status',
+        'meter_status' => 'Meter Status', 'address' => 'Residential Address', 'mobile' => 'Mobile', 'email' => 'Email',
+        'balance' => 'Balance', 'last_read_date' => 'Last Read Date', 'last_reading' => 'Last Reading', 'last_bill_date' => 'Last Bill Date',
+        'last_bill_amount' => 'Last Bill Amount', 'last_paid_date' => 'Last Paid Date', 'last_paid_amount' => 'Last Paid Amount',
+        'connect_date' => 'Connect Date', 'estimated_consume' => 'Estimated Consume', 'average_consume' => 'Average Consume', 'meter_factor' => 'Meter Factor',
+    ];
+
+    /**
+     * One invented customer. $n makes it unique; $over replaces any field. Names, addresses, phones and e-mails are obviously
+     * fake (Customer 000123, 0240000123, c123@example.test): nothing here comes from a real export.
+     *
+     * @return array<string, mixed>
+     */
+    public static function customer(int $n, array $over = []): array
+    {
+        return $over + [
+            'account' => str_pad((string) (100000000000 + $n), 12, '0', STR_PAD_LEFT),
+            'meter_no' => 'M'.str_pad((string) $n, 7, '0', STR_PAD_LEFT),
+            'name' => 'Customer '.str_pad((string) $n, 6, '0', STR_PAD_LEFT),
+            'category' => '611', 'status' => 'ACTB', 'meter_status' => 'W',
+            'address' => 'House '.$n.', Test Street',
+            'mobile' => '024'.str_pad((string) $n, 7, '0', STR_PAD_LEFT),
+            'email' => 'c'.$n.'@example.test',
+            'balance' => 100.0 + $n, 'last_read_date' => '2026-09-20', 'last_reading' => 120 + $n,
+            'last_bill_date' => '2026-09-25', 'last_bill_amount' => 80.0, 'last_paid_date' => '2026-09-28', 'last_paid_amount' => 60.0,
+            'connect_date' => '2020-03-15', 'estimated_consume' => 0, 'average_consume' => 8, 'meter_factor' => 1,
+        ];
+    }
+
+    /**
+     * The customer-list report (rptCustomerDetails), laid out like the real export: a "Document map" sheet that must never be
+     * loaded, then the report sheet with a title, a FILTERS cell (one multi-line cell), and per route a group heading, a header
+     * row, the customers and a "<route> TOTALS :" row with "Customer Count: N" and the balance.
+     *
+     * $spec: region, district, routes (list of ['name' => string, 'customers' => list of customer arrays, 'count' => override
+     * for the totals row, 'balance' => override, 'totals' => false to leave the totals row out]), sheet (sheet name).
+     */
+    public static function customerList(array $spec = []): string
+    {
+        $region = $spec['region'] ?? 'ACCRA WEST';
+        $district = $spec['district'] ?? 'SOWUTUOM';
+        $routes = $spec['routes'] ?? [['name' => '1001', 'customers' => [self::customer(1), self::customer(2)]]];
+
+        $book = new Spreadsheet;
+        $map = $book->getActiveSheet();
+        $map->setTitle('Document map');
+        $map->setCellValue('A1', 'Customer List Report');
+
+        $sheet = $book->createSheet();
+        $sheet->setTitle($spec['sheet'] ?? 'rptCustomerDetails');
+        $sheet->setCellValue('J4', 'Customer List Report');
+        $sheet->setCellValue('A5', 'FILTERS');
+        $sheet->setCellValue('A7', "REGION: {$region}\nDISTRICT: {$district}\n");
+
+        $row = 9;
+
+        foreach ($routes as $route) {
+            $sheet->setCellValue("B{$row}", $route['name'].', '.$district.', '.$region);
+            $row++;
+
+            foreach (self::CUSTOMER_HEADERS as $field => $label) {
+                $sheet->setCellValue(self::CUSTOMER_COLUMNS[$field].$row, $label);
+            }
+
+            $row++;
+            $balance = 0.0;
+            $count = 0;
+
+            foreach ($route['customers'] as $customer) {
+                foreach (self::CUSTOMER_COLUMNS as $field => $column) {
+                    $value = $customer[$field] ?? null;
+
+                    if ($value === null) {
+                        continue;
+                    }
+
+                    $cell = $column.$row;
+
+                    if (str_ends_with($field, '_date') && is_string($value)) {
+                        $sheet->setCellValue($cell, Date::PHPToExcel(Carbon::parse($value)));
+                        $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+                    } elseif (in_array($field, ['account', 'meter_no', 'category', 'mobile'], true)) {
+                        $sheet->setCellValueExplicit($cell, (string) $value, DataType::TYPE_STRING);
+                    } else {
+                        $sheet->setCellValue($cell, $value);
+                    }
+                }
+
+                $balance += (float) ($customer['balance'] ?? 0);
+                $count++;
+                $row++;
+            }
+
+            if (($route['totals'] ?? true) !== false) {
+                $sheet->setCellValue("B{$row}", $route['name'].' TOTALS :');
+                $sheet->setCellValue("O{$row}", 'Customer Count: '.number_format($route['count'] ?? $count));
+                $sheet->setCellValue("Q{$row}", $route['balance'] ?? round($balance, 2));
+                $row++;
+            }
+
+            $row += 2;
+        }
+
+        return self::save($book);
+    }
+
+    /**
+     * The same report, but written with a STREAMING writer so a file of tens of thousands of rows can be made without
+     * PhpSpreadsheet's memory (used by the memory-budget test). Customers are invented from their number alone.
+     */
+    public static function customerListStreamed(int $rows, string $district = 'SOWUTUOM', string $region = 'ACCRA WEST', int $perRoute = 400, int $firstNumber = 1): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'cust').'.xlsx';
+        $writer = new \OpenSpout\Writer\XLSX\Writer;
+        $writer->openToFile($path);
+        $writer->getCurrentSheet()->setName('Document map');
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['Customer List Report']));
+        $writer->addNewSheetAndMakeItCurrent()->setName('rptCustomerDetails');
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['Customer List Report']));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['FILTERS']));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(["REGION: {$region}\nDISTRICT: {$district}\n"]));
+
+        $headers = [null, 'Account #', 'Meter  #', 'Account Name', null, 'Category', 'Status', 'Meter Status', 'Residential Address', null, null, null, null, 'Mobile', 'Email', null, 'Balance', 'Last Read Date', null, 'Last Reading', 'Last Bill Date', 'Last Bill Amount', 'Last Paid Date', 'Last Paid Amount', 'Connect Date', 'Estimated Consume', 'Average Consume', 'Meter Factor'];
+        $day = new \DateTimeImmutable('2026-09-20');
+
+        for ($route = 1; $route <= (int) ceil($rows / $perRoute); $route++) {
+            $name = 'R'.str_pad((string) $route, 3, '0', STR_PAD_LEFT);
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([null, "{$name}, {$district}, {$region}"]));
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues($headers));
+            $balance = 0.0;
+            $count = 0;
+
+            for ($i = ($route - 1) * $perRoute; $i < min($rows, $route * $perRoute); $i++) {
+                $c = self::customer($firstNumber + $i);
+                $balance += $c['balance'];
+                $count++;
+                $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+                    null, $c['account'], $c['meter_no'], $c['name'], null, $c['category'], $c['status'], $c['meter_status'], $c['address'], null, null, null, null,
+                    $c['mobile'], $c['email'], null, $c['balance'], $day, null, $c['last_reading'], $day, $c['last_bill_amount'], $day, $c['last_paid_amount'], $day,
+                    $c['estimated_consume'], $c['average_consume'], $c['meter_factor'],
+                ]));
+            }
+
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([null, "{$name} TOTALS :", null, null, null, null, null, null, null, null, null, null, null, null, 'Customer Count: '.number_format($count), null, round($balance, 2)]));
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([]));
+        }
+
+        $writer->close();
+
+        return $path;
     }
 
     public static function upload(string $path, string $name = 'report.xlsx'): UploadedFile

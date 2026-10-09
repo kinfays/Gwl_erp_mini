@@ -18,6 +18,8 @@ This folder contains split documentation pages for easier maintenance.
 - Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
 - Health & Safety — incident reporting (design, and Phase 1 as built): [health-safety-module-design.md](health-safety-module-design.md)
 - Regional Blog — PR articles read by the staff of one region: [14-module-regional-blog.md](14-module-regional-blog.md)
+- Commercial — billing and meter-reading analytics: [commercial-module-design.md](commercial-module-design.md)
+- Commercial — Customer List (millions of customers: import, rollups, analytics, privacy, benchmark): [15-module-commercial-customer-list.md](15-module-commercial-customer-list.md)
 
 ## Reference Pages
 

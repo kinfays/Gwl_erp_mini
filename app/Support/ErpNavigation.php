@@ -977,6 +977,23 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
             ],
             [
+                'label' => 'Customer List',
+                'route' => 'commercial.customers',
+                'active' => ['commercial.customers', 'commercial.customers.list', 'commercial.customers.show'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'users',
+                'can' => fn (User $currentUser) => (bool) config('gwl.commercial_customer_list_enabled')
+                    && ($currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_customer_analytics')),
+            ],
+            [
+                'label' => 'Customer uploads',
+                'route' => 'commercial.customers.uploads',
+                'active' => ['commercial.customers.uploads', 'commercial.customers.batch', 'commercial.customers.lookups'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'file-up',
+                'can' => fn (User $currentUser) => (bool) config('gwl.commercial_customer_list_enabled') && $canUpload($currentUser),
+            ],
+            [
                 'label' => 'Settings',
                 'route' => 'commercial.settings',
                 'active' => ['commercial.settings'],

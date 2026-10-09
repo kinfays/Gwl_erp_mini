@@ -29,6 +29,7 @@ class Home extends Component
             'commercial.view_dashboard',
             'commercial.view_billing',
             'commercial.view_reading',
+            'commercial.view_customer_analytics',
             'commercial.upload_reports',
             'commercial.resolve_matches',
             'commercial.void_batches',
@@ -152,6 +153,7 @@ class Home extends Component
                 || $this->actorCan('commercial.resolve_matches')
                 || $this->actorCan('commercial.void_batches'),
             'canUpload' => $this->actorCan('commercial.upload_reports'),
+            'canSeeCustomers' => (bool) config('gwl.commercial_customer_list_enabled') && $this->actorCan('commercial.view_customer_analytics'),
         ]);
     }
 }

@@ -139,7 +139,7 @@ abstract class BlogTestCase extends TestCase
     // ---------------------------------------------------------------- posts
 
     /** An article written straight to the database (bypassing the service). */
-    protected function post(Region $region, array $attributes = []): BlogPost
+    protected function article(Region $region, array $attributes = []): BlogPost
     {
         return BlogPost::query()->create([
             'region_id' => $region->id,
@@ -154,6 +154,6 @@ abstract class BlogTestCase extends TestCase
 
     protected function draft(Region $region, array $attributes = []): BlogPost
     {
-        return $this->post($region, ['status' => BlogPost::STATUS_DRAFT, 'published_at' => null, ...$attributes]);
+        return $this->article($region, ['status' => BlogPost::STATUS_DRAFT, 'published_at' => null, ...$attributes]);
     }
 }

@@ -8,9 +8,14 @@
             <h2>Commercial</h2>
             <p>Billing and meter-reading reports, loaded from the billing system's weekly and monthly Excel exports.</p>
         </div>
-        @if ($canSeeUploads)
+        @if ($canSeeUploads || $canSeeCustomers)
             <div class="ph-right">
-                <a class="btn {{ $canUpload ? 'btn-primary' : 'btn-secondary' }}" href="{{ route('commercial.batches') }}">{{ $canUpload ? 'Upload a report' : 'Report uploads' }}</a>
+                @if ($canSeeCustomers)
+                    <a class="btn btn-secondary" href="{{ route('commercial.customers') }}">Customer list</a>
+                @endif
+                @if ($canSeeUploads)
+                    <a class="btn {{ $canUpload ? 'btn-primary' : 'btn-secondary' }}" href="{{ route('commercial.batches') }}">{{ $canUpload ? 'Upload a report' : 'Report uploads' }}</a>
+                @endif
             </div>
         @endif
     </div>

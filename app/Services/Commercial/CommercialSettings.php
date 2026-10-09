@@ -44,6 +44,7 @@ class CommercialSettings
         'exceptions' => ['title' => 'Billing route exceptions', 'description' => 'When a route is flagged on the Billing Exceptions tab.'],
         'reminders' => ['title' => 'Upload reminders', 'description' => 'When officers are told an upload is overdue.'],
         'exports' => ['title' => 'Exports', 'description' => 'Limits on Excel and PDF files.'],
+        'customers' => ['title' => 'Customer list', 'description' => 'Thresholds, retention and export limits for the customer list. Category groups, status meanings and each district\'s upload cadence are on their own screen.'],
     ];
 
     /**
@@ -79,6 +80,15 @@ class CommercialSettings
             'commercial_reminder_repeat_days' => ['group' => 'reminders', 'label' => 'Remind again after', 'help' => 'An overdue upload is reminded at most this often.', 'type' => 'int', 'min' => 1, 'max' => 90, 'unit' => 'days'],
 
             'commercial_export_max_rows' => ['group' => 'exports', 'label' => 'Most rows in one export', 'help' => 'Over this the user is asked to narrow the filters.', 'type' => 'int', 'min' => 100, 'max' => 20000, 'unit' => 'rows'],
+            'commercial_customer_count_change_warn_pct' => ['group' => 'customers', 'label' => 'Warn when a file moves the customer count by more than', 'help' => 'Against the district\'s current count. A partial export looks like a big drop.', 'type' => 'float', 'min' => 1, 'max' => 100, 'unit' => '%'],
+            'commercial_customer_outlier_multiple' => ['group' => 'customers', 'label' => 'Consumption outlier at', 'help' => 'A billing customer whose average consumption is above this many times the median of its category.', 'type' => 'float', 'min' => 1.5, 'max' => 50, 'unit' => '× median'],
+            'commercial_customer_undo_keep_batches' => ['group' => 'customers', 'label' => 'Uploads per district that can be voided exactly', 'help' => 'The rollback data of this many newest uploads per district is kept; older uploads cannot be undone (upload a corrected file instead). More keeps more data.', 'type' => 'int', 'min' => 1, 'max' => 4, 'unit' => 'uploads'],
+            'commercial_customer_contact_retention_days' => ['group' => 'customers', 'label' => 'Delete contact details of accounts missing from the files for', 'help' => 'Personal data (name, address, phones, e-mail) of an account no file has listed for this many days is deleted. 0 = never delete.', 'type' => 'int', 'min' => 0, 'max' => 3650, 'unit' => 'days'],
+            'commercial_customer_reminder_weekly_days' => ['group' => 'customers', 'label' => 'Weekly customer list overdue after', 'help' => 'For districts expected to upload weekly.', 'type' => 'int', 'min' => 1, 'max' => 60, 'unit' => 'days'],
+            'commercial_customer_reminder_monthly_days' => ['group' => 'customers', 'label' => 'Monthly customer list overdue after', 'help' => 'For districts expected to upload monthly.', 'type' => 'int', 'min' => 1, 'max' => 120, 'unit' => 'days'],
+            'commercial_customer_export_max_rows' => ['group' => 'customers', 'label' => 'Most rows in one customer export', 'help' => 'Over it the export is refused (when the size is known) or cut off with a note.', 'type' => 'int', 'min' => 1000, 'max' => 500000, 'unit' => 'rows'],
+            'commercial_customer_export_queue_threshold' => ['group' => 'customers', 'label' => 'Build in the background above', 'help' => 'A customer export bigger than this (or of unknown size) is built in the background and the user is notified.', 'type' => 'int', 'min' => 1000, 'max' => 200000, 'unit' => 'rows'],
+
             'commercial_export_pdf_max_rows' => ['group' => 'exports', 'label' => 'Most rows in one PDF', 'help' => 'PDFs are heavy to build, so they have a lower limit than Excel. Over it the user is asked to narrow the filters or use Excel.', 'type' => 'int', 'min' => 50, 'max' => 3000, 'unit' => 'rows'],
         ];
     }

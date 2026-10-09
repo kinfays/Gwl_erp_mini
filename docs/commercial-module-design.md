@@ -872,6 +872,12 @@ Tests: `php artisan config:clear` then `php artisan test --filter=Commercial`: *
 - The Phase 4 review points on scorecard weights (must add to 1, tested) and on the export caps are covered above; per-region thresholds and queued parsing remain "later wishes" (section 8b).
 - Browser and PDF checks (the lists in 8.15 and 8.16) are still to be done by a person; the new things to look at are the preview line on Settings and the "Fewer than N readers" badge on the Summary scorecard.
 
+### 8.20 Phase 6 — Customer List (built; details in `docs/15-module-commercial-customer-list.md`)
+
+A third upload, **`rptCustomerDetails`** (the customer list, one district per file, weekly or monthly), with its own analytics. It is the first Commercial report that holds personal data and the first that is far too big for the existing importer (millions of customers), so it does **not** use `ReportFileReader` / `DataImportService`: a streaming reader, a staging table and a set-based merge keep memory flat; the customers table holds the CURRENT state (an unchanged row is never rewritten), a change log and an undo table replace per-upload snapshots, and every dashboard reads pre-aggregated rollups. Behind `GWL_COMMERCIAL_CUSTOMER_LIST_ENABLED`; two new permissions (`view_customer_analytics`, `view_customer_details`); a benchmark command proves the speed on MySQL.
+
+This changes section 9: "per-customer analysis" is no longer out of scope **for the customer list** (billing and reading remain as described). The decisions the brief did not state (production DB, the as-of date, the meaning of arrears age, the unconfirmed status codes, who gets the details permission, the rollback rule) are listed as *assumptions* in section 2 of that document for confirmation by the Commercial team.
+
 ---
 
 ## 8b. After Phase 5b

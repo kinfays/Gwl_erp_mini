@@ -37,6 +37,7 @@
         <env name="GWL_CREDIT_UNION_MODULE_ENABLED" value="true"/>
         <env name="GWL_MDM_ENABLED" value="true"/>
         <env name="GWL_COMMERCIAL_MODULE_ENABLED" value="true"/>
+        <env name="GWL_COMMERCIAL_CUSTOMER_LIST_ENABLED" value="true"/>
         <env name="GWL_HEALTH_SAFETY_MODULE_ENABLED" value="true"/>
         <env name="GWL_BLOG_MODULE_ENABLED" value="true"/>
     </php>

@@ -131,6 +131,8 @@ class PermissionSeeder extends Seeder
                 'commercial.void_batches',
                 'commercial.export_reports',
                 'commercial.manage_settings',
+                'commercial.view_customer_analytics',
+                'commercial.view_customer_details',
             ],
             'health_safety' => [
                 'health_safety.report_incident',

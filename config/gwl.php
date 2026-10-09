@@ -146,6 +146,38 @@ return [
     'commercial_reminder_reading_days' => (int) env('GWL_COMMERCIAL_REMINDER_READING_DAYS', 10),
     'commercial_reminder_billing_days' => (int) env('GWL_COMMERCIAL_REMINDER_BILLING_DAYS', 35),
     'commercial_reminder_repeat_days' => (int) env('GWL_COMMERCIAL_REMINDER_REPEAT_DAYS', 7),
+    // ---- Customer list (Phase 6): rptCustomerDetails uploads, millions of rows. See docs/15-module-commercial-customer-list.md.
+    // Master switch for the Customer List screens, uploads and commands (the module itself must also be on).
+    'commercial_customer_list_enabled' => (bool) env('GWL_COMMERCIAL_CUSTOMER_LIST_ENABLED', true),
+    // The biggest customer file accepted, in MB. Also raise PHP's upload_max_filesize / post_max_size (and the web server's
+    // body limit) to at least this; the upload is a plain form post, not a Livewire temporary upload.
+    'commercial_customer_import_max_mb' => (int) env('GWL_COMMERCIAL_CUSTOMER_IMPORT_MAX_MB', 200),
+    // Staging rows merged per transaction. Bigger = fewer round trips, longer locks.
+    'commercial_customer_merge_chunk' => (int) env('GWL_COMMERCIAL_CUSTOMER_MERGE_CHUNK', 50000),
+    // A file whose customer count moved by more than this percentage against the district's current count carries a warning
+    // (a partial export looks like that).
+    'commercial_customer_count_change_warn_pct' => (float) env('GWL_COMMERCIAL_CUSTOMER_COUNT_CHANGE_WARN_PCT', 20),
+    // The file has no age of debt, so arrears buckets say how many of the customer's last bills are owed: 0 credit, 1 nil,
+    // then up to each of these (in bills), above the last, and a debt with no usable last bill.
+    'commercial_customer_arrears_bills' => [1, 3, 6, 12],
+    // An average consumption above this multiple of its category's median is an outlier.
+    'commercial_customer_outlier_multiple' => (float) env('GWL_COMMERCIAL_CUSTOMER_OUTLIER_MULTIPLE', 5),
+    // Rollback data (the pre-image of what an upload rewrote) is kept for this many newest uploads per district; only those can be voided exactly.
+    'commercial_customer_undo_keep_batches' => (int) env('GWL_COMMERCIAL_CUSTOMER_UNDO_KEEP_BATCHES', 1),
+    // Personal data retention: the contact details (name, address, phones, e-mail) of an account that has been missing from
+    // the files for this many days are deleted. 0 = never delete (off).
+    'commercial_customer_contact_retention_days' => (int) env('GWL_COMMERCIAL_CUSTOMER_CONTACT_RETENTION_DAYS', 0),
+    // Upload reminders for the customer list, by the cadence a district is expected to upload at (weekly / monthly).
+    'commercial_customer_reminder_weekly_days' => (int) env('GWL_COMMERCIAL_CUSTOMER_REMINDER_WEEKLY_DAYS', 10),
+    'commercial_customer_reminder_monthly_days' => (int) env('GWL_COMMERCIAL_CUSTOMER_REMINDER_MONTHLY_DAYS', 35),
+    // The cadence assumed for a district that has none set: weekly | monthly.
+    'commercial_customer_default_cadence' => env('GWL_COMMERCIAL_CUSTOMER_DEFAULT_CADENCE', 'monthly'),
+    // Customer exports: the most rows one file may hold, and the size above which the file is built in the background and
+    // the user is notified when it is ready.
+    'commercial_customer_export_max_rows' => (int) env('GWL_COMMERCIAL_CUSTOMER_EXPORT_MAX_ROWS', 100000),
+    'commercial_customer_export_queue_threshold' => (int) env('GWL_COMMERCIAL_CUSTOMER_EXPORT_QUEUE_THRESHOLD', 20000),
+    // Rows per page on the customer lists (keyset pagination: no COUNT(*) over millions of rows).
+    'commercial_customer_page_size' => (int) env('GWL_COMMERCIAL_CUSTOMER_PAGE_SIZE', 50),
     // Reader scorecard (R13): weights of the three measures. A first guess, shown on screen and labelled "indicative";
     // they are re-normalised for a reader whose consistency cannot be worked out yet.
     'commercial_scorecard_weights' => [

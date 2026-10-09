@@ -29,7 +29,7 @@ class BlogAuthoringTest extends BlogTestCase
     public function test_ordinary_staff_cannot_reach_the_manage_screens(): void
     {
         $reader = $this->reader();
-        $post = $this->post($this->accraWest);
+        $post = $this->article($this->accraWest);
 
         $this->actingAs($reader)->get(route('blog.manage'))->assertForbidden();
         $this->actingAs($reader)->get(route('blog.create'))->assertForbidden();
@@ -42,7 +42,7 @@ class BlogAuthoringTest extends BlogTestCase
     public function test_a_pr_officer_reaches_the_manage_screens(): void
     {
         $officer = $this->prOfficer();
-        $post = $this->post($this->accraWest);
+        $post = $this->article($this->accraWest);
 
         $this->actingAs($officer)->get(route('blog.manage'))->assertOk();
         $this->actingAs($officer)->get(route('blog.create'))->assertOk();
@@ -151,7 +151,7 @@ class BlogAuthoringTest extends BlogTestCase
     public function test_a_pr_officer_edits_an_article_of_their_region_and_it_stays_published(): void
     {
         $officer = $this->prOfficer();
-        $post = $this->post($this->accraWest, ['title' => 'Old title', 'category' => 'meeting']);
+        $post = $this->article($this->accraWest, ['title' => 'Old title', 'category' => 'meeting']);
 
         Livewire::actingAs($officer)
             ->test(PostForm::class, ['postId' => $post->id])
@@ -171,7 +171,7 @@ class BlogAuthoringTest extends BlogTestCase
     public function test_an_article_of_another_region_cannot_be_opened_or_edited(): void
     {
         $officer = $this->prOfficer();
-        $other = $this->post($this->ashanti, ['title' => 'Ashanti article']);
+        $other = $this->article($this->ashanti, ['title' => 'Ashanti article']);
 
         $this->actingAs($officer)->get(route('blog.edit', $other))->assertNotFound();
         Livewire::actingAs($officer)->test(PostForm::class, ['postId' => $other->id])->assertNotFound();
@@ -179,7 +179,7 @@ class BlogAuthoringTest extends BlogTestCase
 
     public function test_the_service_refuses_an_officer_from_another_region_even_when_called_directly(): void
     {
-        $other = $this->post($this->ashanti);
+        $other = $this->article($this->ashanti);
         $officer = $this->prOfficer();
         $service = app(BlogPostService::class);
 
@@ -207,9 +207,9 @@ class BlogAuthoringTest extends BlogTestCase
 
     public function test_the_manage_list_shows_drafts_and_published_of_the_officers_region_only(): void
     {
-        $this->post($this->accraWest, ['title' => 'Accra published piece']);
+        $this->article($this->accraWest, ['title' => 'Accra published piece']);
         $this->draft($this->accraWest, ['title' => 'Accra draft piece']);
-        $this->post($this->ashanti, ['title' => 'Ashanti published piece']);
+        $this->article($this->ashanti, ['title' => 'Ashanti published piece']);
         $this->draft($this->ashanti, ['title' => 'Ashanti draft piece']);
 
         Livewire::actingAs($this->prOfficer())
@@ -245,6 +245,8 @@ class BlogAuthoringTest extends BlogTestCase
 
         Livewire::actingAs($this->reader())->test(Feed::class)->assertDontSee('Going live');
 
+        // Livewire::actingAs() above signed the reader in for the rest of the test; the officer deletes.
+        $this->actingAs($officer);
         $list->call('delete', $post->id);
         $this->assertNull(BlogPost::query()->find($post->id));
 
@@ -279,7 +281,7 @@ class BlogAuthoringTest extends BlogTestCase
     public function test_the_first_publication_date_is_kept_when_an_article_is_republished(): void
     {
         $officer = $this->prOfficer();
-        $post = $this->post($this->accraWest, ['published_at' => now()->subDays(5)]);
+        $post = $this->article($this->accraWest, ['published_at' => now()->subDays(5)]);
         $first = $post->published_at->toDateTimeString();
 
         $service = app(BlogPostService::class);
@@ -333,7 +335,7 @@ class BlogAuthoringTest extends BlogTestCase
     {
         $officer = $this->prOfficer();
         $path = Storage::disk('local')->putFile('blog/covers', UploadedFile::fake()->image('c.jpg'));
-        $post = $this->post($this->accraWest, ['cover_path' => $path]);
+        $post = $this->article($this->accraWest, ['cover_path' => $path]);
 
         app(BlogPostService::class)->delete($post, $officer);
 

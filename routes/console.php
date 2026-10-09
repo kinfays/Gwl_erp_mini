@@ -5,6 +5,7 @@ use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
 use App\Services\Leave\AnnualEntitlementService;
+use App\Services\Commercial\Customers\CustomerUploadReminders;
 use App\Services\Commercial\UploadReminderService;
 use App\Services\HealthSafety\HealthSafetyAlertService;
 use App\Services\Leave\LeaveBalanceService;
@@ -130,6 +131,21 @@ if (config('gwl.commercial_module_enabled')) {
     })->purpose('Remind officers of overdue Commercial report uploads');
 
     Schedule::command('commercial:remind-uploads')->dailyAt('07:45')->withoutOverlapping();
+
+    // Customer list: per-district upload reminders (by the cadence set for each district) and the personal-data housekeeping.
+    if (config('gwl.commercial_customer_list_enabled')) {
+        Artisan::command('commercial:remind-customer-uploads {--dry-run : List the overdue districts and who would be told, without sending anything}', function (CustomerUploadReminders $reminders) {
+            $dryRun = (bool) $this->option('dry-run');
+            $summary = $reminders->remind(dryRun: $dryRun);
+
+            $this->info(sprintf('%d overdue district(s): %s %d reminder(s) to %d officer notification(s); %d already reminded recently.', $summary['overdue'], $dryRun ? 'would send' : 'sent', $summary['reminded'], $summary['notifications'], $summary['skipped']));
+
+            return 0;
+        })->purpose('Remind officers of overdue customer-list uploads, district by district');
+
+        Schedule::command('commercial:remind-customer-uploads')->dailyAt('07:50')->withoutOverlapping();
+        Schedule::command('commercial:customers:purge')->dailyAt('03:30')->withoutOverlapping();
+    }
 }
 
 // Health & Safety (design 8.18 B): one digest per recipient about due dates (extinguishers, kit items, PPE replacements,

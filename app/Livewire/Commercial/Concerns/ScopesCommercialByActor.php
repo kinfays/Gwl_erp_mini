@@ -7,6 +7,7 @@ use App\Models\CommercialReadingStat;
 use App\Models\CommercialReadingStrength;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\Commercial\Customers\CustomerScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -181,6 +182,27 @@ trait ScopesCommercialByActor
     protected function hideSmallGroups(): bool
     {
         return ! $this->actorCan('commercial.view_reader_performance');
+    }
+
+    /**
+     * The customer list's region restriction for the actor: null = every region, 0 = none, otherwise the one region id. The
+     * service-level twin is CustomerScope (a test pins the two together); every customer query, list and export takes this.
+     */
+    protected function customerRestriction(): ?int
+    {
+        return CustomerScope::regionRestriction($this->actor());
+    }
+
+    /** Whether the actor may see names, addresses and (masked) contact details. */
+    protected function customerDetails(): bool
+    {
+        return $this->actorCan('commercial.view_customer_details');
+    }
+
+    /** The customer list is switched on (a 404 otherwise: with the flag off the routes do not even exist). */
+    protected function guardCustomerList(): void
+    {
+        abort_unless(config('gwl.commercial_customer_list_enabled'), 404);
     }
 
     /** Anyone who works with uploaded batches: uploads, resolves matches or voids. */

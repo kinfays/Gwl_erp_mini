@@ -22,6 +22,7 @@ class CommercialRolePermissionSeeder extends Seeder
             'commercial.view_dashboard',
             'commercial.view_billing',
             'commercial.view_reading',
+            'commercial.view_customer_analytics',   // aggregates only; names/phones (view_customer_details) go to super_admin until granted
         ];
 
         $map = [

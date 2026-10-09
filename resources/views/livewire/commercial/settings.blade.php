@@ -5,6 +5,9 @@
 
     <x-ui.page-header title="Commercial settings" description="Targets and thresholds the Commercial screens measure against. A change applies everywhere at once and is recorded in the audit log.">
         <x-slot:actions>
+            @if (config('gwl.commercial_customer_list_enabled'))
+                <a href="{{ route('commercial.customers.lookups') }}" class="btn btn-secondary">Customer list: categories, statuses & cadence</a>
+            @endif
             <button type="button" class="btn btn-secondary" wire:click="resetAll" wire:confirm="Put every Commercial setting back to its default?">Reset everything to the defaults</button>
         </x-slot:actions>
     </x-ui.page-header>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Commercial\CommercialCustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
@@ -497,7 +498,7 @@ if (config('gwl.commercial_module_enabled')) {
         ->name('commercial.')
         ->group(function () {
             Route::get('/', [CommercialModuleController::class, 'home'])
-                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading,commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading,commercial.view_customer_analytics,commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('home');
 
             Route::get('/export/{report}/{format}', [CommercialExportController::class, 'download'])
@@ -534,6 +535,53 @@ if (config('gwl.commercial_module_enabled')) {
             Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
                 ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('batches.show');
+
+            // Customer list (rptCustomerDetails): millions of customers, personal data. Switched on and off by its own flag; every
+            // page, list and export also re-checks the viewer's region and permission (CustomerScope / the scoping trait).
+            if (config('gwl.commercial_customer_list_enabled')) {
+                Route::prefix('customers')->name('customers')->group(function () {
+                    Route::get('/', [CommercialCustomerController::class, 'dashboard'])
+                        ->middleware('permission:commercial.view_customer_analytics')
+                        ->name('');
+
+                    Route::get('/find', [CommercialCustomerController::class, 'list'])
+                        ->middleware('permission:commercial.view_customer_analytics')
+                        ->name('.list');
+
+                    Route::get('/uploads', [CommercialCustomerController::class, 'uploads'])
+                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                        ->name('.uploads');
+
+                    Route::post('/uploads', [CommercialCustomerController::class, 'upload'])
+                        ->middleware(['permission:commercial.upload_reports', 'throttle:20,1'])
+                        ->name('.upload');
+
+                    Route::get('/batches/{batch}', [CommercialCustomerController::class, 'batch'])
+                        ->whereNumber('batch')
+                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                        ->name('.batch');
+
+                    Route::get('/settings', [CommercialCustomerController::class, 'lookups'])
+                        ->middleware('permission:commercial.manage_settings')
+                        ->name('.lookups');
+
+                    Route::get('/export/{report}/{format}', [CommercialCustomerController::class, 'export'])
+                        ->where('report', 'summary|list')
+                        ->where('format', 'excel')
+                        ->middleware(['permission:commercial.export_reports', 'permission:commercial.view_customer_analytics'])
+                        ->name('.export');
+
+                    Route::get('/downloads/{token}', [CommercialCustomerController::class, 'download'])
+                        ->where('token', '[0-9a-f-]{36}')
+                        ->middleware('permission:commercial.export_reports')
+                        ->name('.download');
+
+                    Route::get('/{customer}', [CommercialCustomerController::class, 'show'])
+                        ->whereNumber('customer')
+                        ->middleware('permission:commercial.view_customer_analytics')
+                        ->name('.show');
+                });
+            }
         });
 }
 
