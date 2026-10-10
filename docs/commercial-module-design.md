@@ -986,6 +986,12 @@ A first attempt at the shared-mobile statement (two scans of the contacts) measu
 
 **Not done / to know.** A third number would be kept only in `mobiles` (not searchable); the real sample has none. The 78 remaining bad tokens are lost or extra digits and were deliberately not "repaired". A number in the file that is a real but placeholder-looking one (two distinct digits) will be set aside as invalid, as the brief asked.
 
+### 8.24 Phase 7 — SMS to customers (built; details in `docs/16-module-commercial-sms.md`)
+
+Commercial staff of **Accra West** can message Accra West customers by SMS (Arkesel): everyone, hand-picked customers (ticked on the lists or pasted account numbers) or a named group (billing, active not billing, disconnected, suspended, debtors above a typed minimum, in credit, no payment in 30/60/90/180 days, faulty or no meter, most valuable). The balance is on screen and every campaign has a delivery report (totals, timeline, failures by reason, masked recipient list, Excel export). Behind its own flag `GWL_COMMERCIAL_SMS_ENABLED` (default off; the module and the customer list must also be on); four new permissions (`send_sms`, `view_sms_balance`, `view_sms_reports`, `manage_sms_settings`), the first three also held by the Commercial Officer.
+
+Decisions that shape it: the **region lock lives in one class** (`SmsAccess`: Accra West staff and super_admin only, Head Office never, resolved by region *name* at run time) and the audience queries add the lock themselves; **groups live in one class** (`SmsAudienceResolver`); a **phone number exists only in memory at send time** (recipients are customer id + status, the message *template* is stored, never the merged text); a message is **claimed by one atomic UPDATE before the provider is called**, so nothing is sent twice and a crash leaves `unknown`, never a resend; one SMS per number (accounts sharing a number collapse); the first number only. The Arkesel endpoints and response shapes could not be verified against Arkesel's own documentation and are isolated in `ArkeselGateway`, with every path in config. The assumptions the Commercial team should confirm (debtor sign, "no payment" counted from each district's file date, the "most valuable" definition, TRFR/VACN/DISO/NFLO still unconfirmed) are listed in section 2 of that document.
+
 ---
 
 ## 8b. After Phase 5b

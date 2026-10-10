@@ -6,6 +6,11 @@ use App\Models\Vehicle;
 use App\Services\CreditUnion\LoanService;
 use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Commercial\Customers\CustomerUploadReminders;
+use App\Services\Commercial\Sms\SmsAccess;
+use App\Services\Commercial\Sms\SmsBalanceService;
+use App\Services\Commercial\Sms\SmsCampaignService;
+use App\Services\Commercial\Sms\SmsDeliveryPoller;
+use App\Services\Commercial\Sms\SmsRetention;
 use App\Services\Commercial\UploadReminderService;
 use App\Services\HealthSafety\HealthSafetyAlertService;
 use App\Services\Leave\LeaveBalanceService;
@@ -145,6 +150,47 @@ if (config('gwl.commercial_module_enabled')) {
 
         Schedule::command('commercial:remind-customer-uploads')->dailyAt('07:50')->withoutOverlapping();
         Schedule::command('commercial:customers:purge')->dailyAt('03:30')->withoutOverlapping();
+    }
+
+    // SMS to customers (Phase 7): registered only while the SMS flag (and the module and customer list) are on.
+    if (SmsAccess::enabled()) {
+        Artisan::command('commercial:sms:check-balance {--dry-run : Say what would happen without telling anyone}', function (SmsBalanceService $balance) {
+            $result = $balance->checkLowBalance((bool) $this->option('dry-run'));
+
+            $this->info('SMS balance check: '.$result['status'].'; '.$result['notified'].' notification(s).');
+
+            return 0;
+        })->purpose('Tell the Accra West officers in-app when the SMS credits are running low');
+
+        Schedule::command('commercial:sms:check-balance')->dailyAt('07:55')->withoutOverlapping();
+
+        Artisan::command('commercial:sms:run-due', function (SmsCampaignService $campaigns) {
+            $result = $campaigns->dispatchDue();
+
+            $this->info('SMS campaigns: '.$result['started'].' started, '.$result['resumed'].' picked up again.');
+
+            return 0;
+        })->purpose('Start scheduled SMS campaigns that are due and pick up any that stalled');
+
+        Artisan::command('commercial:sms:poll-delivery', function (SmsDeliveryPoller $poller) {
+            $result = $poller->poll();
+
+            $this->info('SMS delivery: asked about '.$result['asked'].' message(s): '.$result['delivered'].' delivered, '.$result['failed'].' failed, '.$result['still_pending'].' still pending.');
+
+            return 0;
+        })->purpose('Ask the SMS provider what became of the messages of recent campaigns');
+
+        Artisan::command('commercial:sms:purge {--dry-run : Count what would go and delete nothing}', function (SmsRetention $retention) {
+            $result = $retention->purge((bool) $this->option('dry-run'));
+
+            $this->info($result['rows'].' recipient row(s) of '.$result['campaigns'].' campaign(s) '.($this->option('dry-run') ? 'would be' : 'were').' deleted.');
+
+            return 0;
+        })->purpose('Delete the who-got-what rows of old SMS campaigns (keeps the totals; off while retention is 0 days)');
+
+        Schedule::command('commercial:sms:run-due')->everyMinute()->withoutOverlapping();
+        Schedule::command('commercial:sms:poll-delivery')->everyTenMinutes()->withoutOverlapping();
+        Schedule::command('commercial:sms:purge')->dailyAt('03:40')->withoutOverlapping();
     }
 }
 

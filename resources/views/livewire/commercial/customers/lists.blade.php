@@ -55,16 +55,25 @@
             <p class="ui-hint dash-row">Data as of {{ $date($asOf) }}. @if ($showMissing)These accounts were in an earlier file but not the latest; they are kept, not deleted.@endif</p>
         @endif
 
+        @if ($canSms)
+            <div class="ui-toolbar dash-row">
+                <button type="button" class="btn btn-secondary btn-sm" wire:click="sendSms" @disabled($ticked === [])>Send SMS to ticked ({{ count($ticked) }})</button>
+                <span class="ui-hint">Only Accra West customers can be messaged; others you tick are left out and counted.</span>
+            </div>
+        @endif
+
         <x-ui.card :padded="false" class="dash-row">
             <x-ui.table label="Customers" :sticky="true">
                 <x-slot:head>
                     <tr>
+                        @if ($canSms)<th><span class="sr-only">Tick</span></th>@endif
                         <th>Account</th>@if ($details)<th>Name</th><th>Address</th><th>Mobile</th><th>E-mail</th>@endif
                         <th>District / route</th><th>Category</th><th>Status</th><th>Meter</th><th class="num">Balance (GH¢)</th><th>Bills owed</th><th>Last bill</th><th>Last payment</th>
                     </tr>
                 </x-slot:head>
                 @forelse ($page['rows'] as $row)
                     <tr wire:key="cu-{{ $row['id'] }}">
+                        @if ($canSms)<td><input type="checkbox" wire:model="ticked" value="{{ $row['id'] }}" aria-label="Tick this customer for an SMS"></td>@endif
                         <td class="mono"><a href="{{ route('commercial.customers.show', $row['id']) }}">{{ $row['account_no'] }}</a>@if ($row['missing'])<x-ui.badge tone="warning">Not in latest file</x-ui.badge>@endif</td>
                         @if ($details)<td>{{ $row['name'] ?? '–' }}</td><td>{{ $row['address'] ?? '–' }}</td><td class="mono">{{ $row['mobile'] ?? '–' }}@if (($row['more_phones'] ?? 0) > 0) <span class="ui-hint" title="This customer has {{ $row['more_phones'] + 1 }} mobile numbers; open the customer to see them (masked)">+{{ $row['more_phones'] }}</span>@endif</td><td>{{ $row['email'] ?? '–' }}</td>@endif
                         <td>{{ $row['district'] }} · <span class="mono">{{ $row['route'] }}</span></td><td>{{ $row['category'] }}</td><td>{{ $row['status'] }}</td><td>{{ $row['meter_status'] }}</td>
@@ -73,7 +82,7 @@
                         <td>{{ $date($row['last_paid_date']) }}@if ($row['last_paid_amount'] !== null) · {{ $money($row['last_paid_amount']) }}@endif</td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="$details ? 13 : 9" icon="users" title="No customers match." />
+                    <x-ui.empty-row :colspan="($details ? 13 : 9) + ($canSms ? 1 : 0)" icon="users" title="No customers match." />
                 @endforelse
             </x-ui.table>
         </x-ui.card>

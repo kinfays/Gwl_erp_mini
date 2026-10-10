@@ -41,6 +41,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AndroidManagementGateway::class, AndroidManagementClient::class);
         $this->app->bind(IdTokenVerifier::class, GoogleOidcTokenVerifier::class);
 
+        // SMS to customers (Arkesel). Tests rebind SmsGateway to Tests\Support\Commercial\FakeSmsGateway; nothing in the suite may reach Arkesel.
+        $this->app->singleton(\App\Services\Commercial\Sms\SmsGateway::class, \App\Services\Commercial\Sms\ArkeselGateway::class);
+
         // Commercial settings keep a pristine copy of the config (the defaults) for the life of the request, so the one
         // instance must be shared between the boot hook below and everything that asks for it later.
         $this->app->singleton(CommercialSettings::class);
@@ -74,6 +77,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // Google's Pub/Sub push deliveries come from a small set of addresses and can burst after an outage.
+        RateLimiter::for('sms-webhook', fn (Request $request) => Limit::perMinute(max(1, (int) config('gwl.commercial_sms_webhook_rate_per_minute', 600)))->by($request->ip()));
         RateLimiter::for('mdm-webhook', fn (Request $request) => Limit::perMinute(max(1, (int) config('gwl.mdm_webhook_rate_per_minute', 600)))->by($request->ip()));
     }
 }

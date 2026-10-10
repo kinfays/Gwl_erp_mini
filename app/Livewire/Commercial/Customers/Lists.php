@@ -99,6 +99,29 @@ class Lists extends Component
         $this->after = $this->before === [] ? null : array_pop($this->before);
     }
 
+    /** @var list<int|string> customer ids ticked for an SMS (this page only) */
+    public array $ticked = [];
+
+    /**
+     * "Send SMS to ticked": hands the ticked customers' ids to the Send SMS screen (in the session, not the address bar). Only for
+     * people SmsAccess lets send; the screen and the audience queries apply the region lock again, so a ticked customer of another
+     * region adds nothing.
+     */
+    public function sendSms()
+    {
+        \App\Services\Commercial\Sms\SmsAccess::authorize(\Illuminate\Support\Facades\Auth::user(), \App\Services\Commercial\Sms\SmsAccess::SEND);
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $this->ticked), fn (int $id) => $id > 0)));
+
+        if ($ids === []) {
+            return;
+        }
+
+        session()->put('sms.selected', array_slice($ids, 0, (int) config('gwl.commercial_sms_max_selected', 2000)));
+
+        return $this->redirect(route('commercial.sms.send'));
+    }
+
     public function clearSearch(): void
     {
         $this->reset('search');
@@ -165,6 +188,7 @@ class Lists extends Component
             'showMissing' => $missing,
             'details' => $details,
             'canExport' => $this->actorCan('commercial.export_reports'),
+            'canSms' => \App\Services\Commercial\Sms\SmsAccess::allows(\Illuminate\Support\Facades\Auth::user(), \App\Services\Commercial\Sms\SmsAccess::SEND) && $details,
             'hasPrevious' => $this->after !== null,
             'asOf' => $districtId ? $districts[$districtId]->as_of_date : null,
         ]);

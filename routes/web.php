@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Commercial\CommercialCustomerController;
+use App\Http\Controllers\Commercial\CommercialSmsController;
+use App\Http\Controllers\Commercial\SmsWebhookController;
+use App\Services\Commercial\Sms\SmsAccess;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
@@ -582,7 +585,53 @@ if (config('gwl.commercial_module_enabled')) {
                         ->name('.show');
                 });
             }
+
+            // SMS to customers (Arkesel), locked to the regions of gwl.commercial_sms_region_names. The permission middleware is the
+            // first line only: SmsAccess (flag, region lock, permission) is asked again in the controller, every Livewire action and
+            // every queued job. With the flag off none of these routes exists.
+            if (SmsAccess::enabled()) {
+                Route::prefix('sms')->name('sms')->group(function () {
+                    Route::get('/', [CommercialSmsController::class, 'home'])
+                        ->middleware('permission:commercial.send_sms,commercial.view_sms_balance,commercial.view_sms_reports,commercial.manage_sms_settings')
+                        ->name('');
+
+                    Route::get('/send', [CommercialSmsController::class, 'send'])
+                        ->middleware('permission:commercial.send_sms')
+                        ->name('.send');
+
+                    Route::get('/campaigns', [CommercialSmsController::class, 'campaigns'])
+                        ->middleware('permission:commercial.send_sms,commercial.view_sms_reports')
+                        ->name('.campaigns');
+
+                    Route::get('/campaigns/{campaign}', [CommercialSmsController::class, 'campaign'])
+                        ->whereNumber('campaign')
+                        ->middleware('permission:commercial.view_sms_reports')
+                        ->name('.campaigns.show');
+
+                    Route::get('/campaigns/{campaign}/export', [CommercialSmsController::class, 'export'])
+                        ->whereNumber('campaign')
+                        ->middleware(['permission:commercial.view_sms_reports', 'permission:commercial.export_reports'])
+                        ->name('.campaigns.export');
+
+                    Route::get('/templates', [CommercialSmsController::class, 'templates'])
+                        ->middleware('permission:commercial.send_sms')
+                        ->name('.templates');
+
+                    Route::get('/settings', [CommercialSmsController::class, 'settings'])
+                        ->middleware('permission:commercial.manage_sms_settings')
+                        ->name('.settings');
+                });
+            }
         });
+}
+
+if (SmsAccess::enabled()) {
+    // Arkesel's delivery reports. Like the MDM webhook: no session, no CSRF (the `web` group is dropped), rate limited, authenticated by a
+    // shared secret in the URL, and it only queues a job: no provider call and no customer data in here.
+    Route::post('/webhooks/sms-arkesel', SmsWebhookController::class)
+        ->withoutMiddleware('web')
+        ->middleware('throttle:sms-webhook')
+        ->name('webhooks.sms-arkesel');
 }
 
 if (config('gwl.blog_module_enabled')) {

@@ -178,6 +178,63 @@ return [
     'commercial_customer_export_queue_threshold' => (int) env('GWL_COMMERCIAL_CUSTOMER_EXPORT_QUEUE_THRESHOLD', 20000),
     // Rows per page on the customer lists (keyset pagination: no COUNT(*) over millions of rows).
     'commercial_customer_page_size' => (int) env('GWL_COMMERCIAL_CUSTOMER_PAGE_SIZE', 50),
+
+    // ---- SMS to customers (Phase 7, Arkesel): see docs/16-module-commercial-sms.md. Off by default; the module and the customer
+    // list must also be on. Only customers of the regions named here can ever be messaged, and only staff of those regions
+    // (plus super_admin) can use it: names are matched to regions at run time (never hard-coded ids), see Services/Commercial/Sms/SmsAccess.
+    'commercial_sms_enabled' => (bool) env('GWL_COMMERCIAL_SMS_ENABLED', false),
+    'commercial_sms_region_names' => array_values(array_filter(array_map('trim', explode(',', (string) env('GWL_COMMERCIAL_SMS_REGIONS', 'ACCRA WEST'))))),
+    // Credits left below which a banner shows and the daily check tells the officers (in-app, at most once per commercial_reminder_repeat_days).
+    'commercial_sms_low_balance' => (int) env('GWL_COMMERCIAL_SMS_LOW_BALANCE', 200),
+    // The most recipients one campaign may have (after de-duplicating numbers).
+    'commercial_sms_max_recipients' => (int) env('GWL_COMMERCIAL_SMS_MAX_RECIPIENTS', 50000),
+    // Pasted account numbers allowed in one "selected customers" campaign.
+    'commercial_sms_max_selected' => (int) env('GWL_COMMERCIAL_SMS_MAX_SELECTED', 2000),
+    // Recipients handed to the provider per request / per queued chunk, and the pause between chunks (the provider's rate limit).
+    'commercial_sms_chunk_size' => (int) env('GWL_COMMERCIAL_SMS_CHUNK_SIZE', 200),
+    'commercial_sms_chunk_delay_seconds' => (int) env('GWL_COMMERCIAL_SMS_CHUNK_DELAY_SECONDS', 2),
+    // A recipient still "claimed" this long after the claim (a worker died after calling the provider, before saving the
+    // result) is marked "unknown" and is never retried automatically.
+    'commercial_sms_unknown_after_minutes' => (int) env('GWL_COMMERCIAL_SMS_UNKNOWN_AFTER_MINUTES', 15),
+    // The balance is cached this long (the Refresh button bypasses it, at most once every 30 seconds).
+    'commercial_sms_balance_cache_seconds' => (int) env('GWL_COMMERCIAL_SMS_BALANCE_CACHE_SECONDS', 300),
+    // Delivery statuses are polled for campaigns started within this many days.
+    'commercial_sms_poll_days' => (int) env('GWL_COMMERCIAL_SMS_POLL_DAYS', 3),
+    // At most this many status lookups per poll run, with this pause (milliseconds) between them.
+    'commercial_sms_webhook_rate_per_minute' => (int) env('GWL_COMMERCIAL_SMS_WEBHOOK_RATE_PER_MINUTE', 600),
+    'commercial_sms_poll_batch' => (int) env('GWL_COMMERCIAL_SMS_POLL_BATCH', 500),
+    'commercial_sms_poll_pause_ms' => (int) env('GWL_COMMERCIAL_SMS_POLL_PAUSE_MS', 100),
+    // Recipient rows (customer id + status, no numbers) older than this are deleted by the purge; the campaign totals stay. 0 = keep.
+    'commercial_sms_recipient_retention_days' => (int) env('GWL_COMMERCIAL_SMS_RECIPIENT_RETENTION_DAYS', 0),
+    // "Most valuable customers" = the billing accounts with the highest last bill, the top N or the top X percent. An assumption
+    // to be confirmed (docs/16 section 2); both are editable.
+    'commercial_sms_most_valuable_top_n' => (int) env('GWL_COMMERCIAL_SMS_MOST_VALUABLE_TOP_N', 500),
+    'commercial_sms_most_valuable_top_pct' => (float) env('GWL_COMMERCIAL_SMS_MOST_VALUABLE_TOP_PCT', 5),
+    // The minimum balance (GH¢) a customer must owe to be a "debtor" when the sender does not type one. Editable per campaign on the send screen.
+    'commercial_sms_debtors_min' => (float) env('GWL_COMMERCIAL_SMS_DEBTORS_MIN', 100),
+    // "No payment in N days" starts on this many days (the sender may pick 30, 60, 90 or 180).
+    'commercial_sms_no_payment_default_days' => (int) env('GWL_COMMERCIAL_SMS_NO_PAYMENT_DEFAULT_DAYS', 60),
+    // false = the provider cannot report per-message delivery: reports show "accepted only" and have no delivered column.
+    'commercial_sms_delivery_reports' => (bool) env('GWL_COMMERCIAL_SMS_DELIVERY_REPORTS', true),
+    // Arkesel. The key is read from here only: it is never logged, shown, or placed in a URL we log. Endpoint paths are config
+    // because Arkesel's v2 documentation could not be read from here (see docs/16 section 3); response parsing is in ArkeselGateway only.
+    'arkesel' => [
+        'api_key' => env('GWL_ARKESEL_API_KEY'),
+        // Approved sender IDs, comma separated; the first is the default. An alphanumeric sender ID is at most 11 characters.
+        'sender_ids' => array_values(array_filter(array_map('trim', explode(',', (string) env('GWL_ARKESEL_SENDER_ID', ''))))),
+        'base_url' => env('GWL_ARKESEL_BASE_URL', 'https://sms.arkesel.com'),
+        'timeout' => (int) env('GWL_ARKESEL_TIMEOUT', 15),
+        // {id} is replaced by the provider's message id.
+        'endpoints' => [
+            'send' => env('GWL_ARKESEL_PATH_SEND', '/api/v2/sms/send'),
+            'balance' => env('GWL_ARKESEL_PATH_BALANCE', '/api/v2/clients/balance-details'),
+            'status' => env('GWL_ARKESEL_PATH_STATUS', '/api/v2/sms/{id}'),
+        ],
+        // true = Arkesel's sandbox: nothing is delivered and nothing is billed. For trying it out.
+        'sandbox' => (bool) env('GWL_ARKESEL_SANDBOX', false),
+        // Shared secret of the delivery webhook (?token=). Empty = the webhook answers 404.
+        'webhook_token' => env('GWL_ARKESEL_WEBHOOK_TOKEN'),
+    ],
     // Reader scorecard (R13): weights of the three measures. A first guess, shown on screen and labelled "indicative";
     // they are re-normalised for a reader whose consistency cannot be worked out yet.
     'commercial_scorecard_weights' => [

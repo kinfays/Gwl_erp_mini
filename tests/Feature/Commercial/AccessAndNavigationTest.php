@@ -159,7 +159,8 @@ class AccessAndNavigationTest extends CommercialTestCase
         $this->assertNotContains('Commercial', $titles($employee));
 
         $labels = collect($navigation->build($officer, 'commercial')['sidebar'])->pluck('label')->all();
-        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Customer List', 'Customer uploads', 'Uploads'], $labels);
+        // the officer works in Accra West, where SMS to customers is switched on (it is locked to that region)
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Customer List', 'Customer uploads', 'SMS', 'Uploads'], $labels);
 
         $managerLabels = collect($navigation->build($this->userWithRoles('900031', ['commercial_manager']), 'commercial')['sidebar'])->pluck('label')->all();
         $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Customer List'], $managerLabels);

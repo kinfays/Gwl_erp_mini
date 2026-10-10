@@ -40,12 +40,12 @@ class Settings extends Component
 
         $submitted = [];
 
-        foreach (array_keys(CommercialSettings::definitions()) as $key) {
+        foreach (array_keys(CommercialSettings::definitionsWithout('sms')) as $key) {
             $submitted[$key] = $this->values[$this->field($key)] ?? null;
         }
 
         // An unticked box arrives as false/null; everything else is the typed value.
-        foreach (CommercialSettings::definitions() as $key => $definition) {
+        foreach (CommercialSettings::definitionsWithout('sms') as $key => $definition) {
             if ($definition['type'] === 'bool') {
                 $submitted[$key] = (bool) $submitted[$key];
             }
@@ -84,7 +84,7 @@ class Settings extends Component
     {
         $this->guardCommercialPermission('commercial.manage_settings');
 
-        $reset = $settings->reset();
+        $reset = $settings->reset(array_keys(CommercialSettings::definitionsWithout('sms')));
 
         $this->resetErrorBag();
         $this->load($settings);
@@ -151,6 +151,10 @@ class Settings extends Component
         $groups = [];
 
         foreach (CommercialSettings::GROUPS as $group => $meta) {
+            if ($group === 'sms') {
+                continue;   // its own screen, its own permission
+            }
+
             $fields = [];
 
             foreach (CommercialSettings::definitions() as $key => $definition) {

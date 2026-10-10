@@ -45,6 +45,8 @@ class CommercialSettings
         'reminders' => ['title' => 'Upload reminders', 'description' => 'When officers are told an upload is overdue.'],
         'exports' => ['title' => 'Exports', 'description' => 'Limits on Excel and PDF files.'],
         'customers' => ['title' => 'Customer list', 'description' => 'Thresholds, retention and export limits for the customer list. Category groups, status meanings and each district\'s upload cadence are on their own screen.'],
+        // Phase 7. Has its own screen (commercial.manage_sms_settings), so the general settings screen leaves this group out.
+        'sms' => ['title' => 'SMS to customers', 'description' => 'Limits and defaults for SMS campaigns to Accra West customers. The provider key, sender IDs and the region lock are in the server settings (.env), not here.'],
     ];
 
     /**
@@ -89,6 +91,18 @@ class CommercialSettings
             'commercial_customer_export_max_rows' => ['group' => 'customers', 'label' => 'Most rows in one customer export', 'help' => 'Over it the export is refused (when the size is known) or cut off with a note.', 'type' => 'int', 'min' => 1000, 'max' => 500000, 'unit' => 'rows'],
             'commercial_customer_export_queue_threshold' => ['group' => 'customers', 'label' => 'Build in the background above', 'help' => 'A customer export bigger than this (or of unknown size) is built in the background and the user is notified.', 'type' => 'int', 'min' => 1000, 'max' => 200000, 'unit' => 'rows'],
 
+            'commercial_sms_low_balance' => ['group' => 'sms', 'label' => 'Warn when SMS credits fall below', 'help' => 'The balance banner and the daily notice to the officers start here.', 'type' => 'int', 'min' => 0, 'max' => 1000000, 'unit' => 'credits'],
+            'commercial_sms_max_recipients' => ['group' => 'sms', 'label' => 'Most recipients in one campaign', 'help' => 'After numbers shared by several accounts are counted once. A larger audience is refused.', 'type' => 'int', 'min' => 1, 'max' => 500000, 'unit' => 'recipients'],
+            'commercial_sms_max_selected' => ['group' => 'sms', 'label' => 'Most customers in a hand-picked or pasted list', 'help' => 'Ticked customers and pasted account numbers.', 'type' => 'int', 'min' => 1, 'max' => 10000, 'unit' => 'customers'],
+            'commercial_sms_chunk_size' => ['group' => 'sms', 'label' => 'Messages handed to the provider at a time', 'help' => "Smaller is gentler on the provider's rate limit and on a restart.", 'type' => 'int', 'min' => 1, 'max' => 1000, 'unit' => 'messages'],
+            'commercial_sms_chunk_delay_seconds' => ['group' => 'sms', 'label' => 'Pause between those groups', 'help' => "Protects the provider's rate limit.", 'type' => 'int', 'min' => 0, 'max' => 60, 'unit' => 'seconds'],
+            'commercial_sms_unknown_after_minutes' => ['group' => 'sms', 'label' => 'Mark a message "unknown" when it has not been saved after', 'help' => 'A worker that died after calling the provider leaves a message claimed; after this long it shows as unknown and is never sent again by itself.', 'type' => 'int', 'min' => 1, 'max' => 1440, 'unit' => 'minutes'],
+            'commercial_sms_poll_days' => ['group' => 'sms', 'label' => 'Look for delivery reports for campaigns started in the last', 'help' => 'Older campaigns are no longer asked about.', 'type' => 'int', 'min' => 1, 'max' => 30, 'unit' => 'days'],
+            'commercial_sms_recipient_retention_days' => ['group' => 'sms', 'label' => 'Delete who-got-what rows of finished campaigns after', 'help' => 'The campaign totals stay. 0 = keep for ever.', 'type' => 'int', 'min' => 0, 'max' => 3650, 'unit' => 'days'],
+            'commercial_sms_debtors_min' => ['group' => 'sms', 'label' => 'Debtors: minimum owed (the starting value)', 'help' => 'The send screen starts with this and the sender can change it for each campaign.', 'type' => 'float', 'min' => 0, 'max' => 1000000, 'unit' => 'GH¢'],
+            'commercial_sms_most_valuable_top_n' => ['group' => 'sms', 'label' => 'Most valuable customers: top N (the starting value)', 'help' => 'Billing accounts with the highest last bill. An assumption to be confirmed.', 'type' => 'int', 'min' => 1, 'max' => 100000, 'unit' => 'customers'],
+            'commercial_sms_most_valuable_top_pct' => ['group' => 'sms', 'label' => 'Most valuable customers: top percent (the starting value)', 'help' => 'Used when the sender chooses a percentage instead of a number.', 'type' => 'float', 'min' => 0.1, 'max' => 100, 'unit' => '%'],
+
             'commercial_export_pdf_max_rows' => ['group' => 'exports', 'label' => 'Most rows in one PDF', 'help' => 'PDFs are heavy to build, so they have a lower limit than Excel. Over it the user is asked to narrow the filters or use Excel.', 'type' => 'int', 'min' => 50, 'max' => 3000, 'unit' => 'rows'],
         ];
     }
@@ -125,6 +139,12 @@ class CommercialSettings
     {
         $this->pristine = null;
         $this->applied = false;
+    }
+
+    /** The definitions of every group except the given one (the general settings screen leaves SMS to its own screen). @return array<string, array<string, mixed>> */
+    public static function definitionsWithout(string $group): array
+    {
+        return array_filter(self::definitions(), fn (array $definition) => $definition['group'] !== $group);
     }
 
     /** @return array<string, string> name => stored value, for the settings that have been edited */

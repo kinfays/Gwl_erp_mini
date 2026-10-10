@@ -20,6 +20,7 @@ This folder contains split documentation pages for easier maintenance.
 - Regional Blog — PR articles read by the staff of one region: [14-module-regional-blog.md](14-module-regional-blog.md)
 - Commercial — billing and meter-reading analytics: [commercial-module-design.md](commercial-module-design.md)
 - Commercial — Customer List (millions of customers: import, rollups, analytics, privacy, benchmark): [15-module-commercial-customer-list.md](15-module-commercial-customer-list.md)
+- Commercial — SMS to customers (Arkesel, locked to Accra West: audiences, sending safety, delivery reports): [16-module-commercial-sms.md](16-module-commercial-sms.md)
 
 ## Reference Pages
 

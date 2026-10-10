@@ -397,6 +397,10 @@ class ReportWorkbooks
                         $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
                     } elseif (in_array($field, ['account', 'meter_no', 'category', 'mobile'], true)) {
                         $sheet->setCellValueExplicit($cell, (string) $value, DataType::TYPE_STRING);
+                    } elseif (in_array($field, ['name', 'address'], true) && is_string($value)) {
+                        // Text stays text: PhpSpreadsheet's default binder would turn "=HYPERLINK(...)" into a formula, or not, depending on
+                        // which test last set the global value binder.
+                        $sheet->setCellValueExplicit($cell, $value, DataType::TYPE_STRING);
                     } else {
                         $sheet->setCellValue($cell, $value);
                     }

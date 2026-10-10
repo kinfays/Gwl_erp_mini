@@ -34,6 +34,10 @@ class CommercialRolePermissionSeeder extends Seeder
                 'commercial.resolve_matches',
                 'commercial.void_batches',
                 'commercial.export_reports',
+                // Phase 7: the officer sends SMS to Accra West customers (the region lock is SmsAccess's, not the permission's).
+                'commercial.send_sms',
+                'commercial.view_sms_balance',
+                'commercial.view_sms_reports',
             ],
             'commercial_manager' => [
                 ...$managementView,

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Leave\LeaveActingAssignmentService;
 use App\Services\Leave\LeaveLetterSettingsService;
 use App\Services\Leave\SignatureService;
+use App\Services\Commercial\Sms\SmsAccess;
 use App\Services\Letters\LetterWorkflowService;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -992,6 +993,16 @@ class ErpNavigation
                 'icon' => $this->icon('stack'),
                 'icon_name' => 'file-up',
                 'can' => fn (User $currentUser) => (bool) config('gwl.commercial_customer_list_enabled') && $canUpload($currentUser),
+            ],
+            [
+                'label' => 'SMS',
+                'route' => 'commercial.sms',
+                'active' => ['commercial.sms'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'message-square',
+                'can' => fn (User $currentUser) => SmsAccess::enabled()
+                    && collect([SmsAccess::SEND, SmsAccess::BALANCE, SmsAccess::REPORTS, SmsAccess::SETTINGS])
+                        ->contains(fn (string $permission) => SmsAccess::allows($currentUser, $permission)),
             ],
             [
                 'label' => 'Settings',
