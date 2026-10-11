@@ -10,6 +10,10 @@ class IctAssetIssueReport extends Model
 {
     use HasFactory;
 
+    /**
+     * The original fixed list. No longer authoritative: the categories live in ict_issue_categories (admin-editable)
+     * and IctIssueCategory::activeLabels() falls back to this only if that table is empty.
+     */
     public const ISSUE_TYPES = [
         'Network',
         'Password Reset',
@@ -19,11 +23,30 @@ class IctAssetIssueReport extends Model
         'Other',
     ];
 
+    public const STATUS_OPEN = 'Open';
+    public const STATUS_IN_PROGRESS = 'In Progress';
+    public const STATUS_RESOLVED = 'Resolved';
+    public const STATUS_CLOSED = 'Closed';
+
+    public const STATUSES = [
+        self::STATUS_OPEN,
+        self::STATUS_IN_PROGRESS,
+        self::STATUS_RESOLVED,
+        self::STATUS_CLOSED,
+    ];
+
+    /** Statuses that mean the work is done. */
+    public const CLOSED_STATUSES = [
+        self::STATUS_RESOLVED,
+        self::STATUS_CLOSED,
+    ];
+
     protected $table = 'ict_asset_issue_reports';
 
     protected $fillable = [
         'title',
         'issue_type',
+        'issue_subtype',
         'reason',
         'status',
         'date_solved',

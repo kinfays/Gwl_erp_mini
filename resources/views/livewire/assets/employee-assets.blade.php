@@ -16,7 +16,6 @@
                         <th>Type / Model</th>
                         <th>Location</th>
                         <th>Status</th>
-                        <th>Condition</th>
                         <th>Purchased</th>
                         <th>Warranty</th>
                     </tr>
@@ -38,7 +37,6 @@
                         </td>
                         <td @class(['cell-muted' => ! $asset->district])>{{ $asset->district?->district_name ?: 'No district' }}</td>
                         <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
-                        <td @class(['cell-muted' => ! $asset->condition])>{{ $asset->condition ?: 'Not recorded' }}</td>
                         <td class="nowrap {{ $asset->purchased_at ? '' : 'cell-muted' }}">{{ $asset->purchased_at?->format('d M Y') ?: 'Unknown' }}</td>
                         <td class="nowrap {{ $asset->warranty_expires_at ? '' : 'cell-muted' }}">{{ $asset->warranty_expires_at?->format('d M Y') ?: 'Unknown' }}</td>
                     </tr>

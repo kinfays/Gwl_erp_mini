@@ -62,7 +62,6 @@ class NetworkList extends Component
         'actual_location' => '',
         'status' => 'Active',
         'status_reason' => '',
-        'condition' => null,
     ];
 
     public function mount(): void
@@ -126,7 +125,6 @@ class NetworkList extends Component
             'actual_location' => (string) $asset->actual_location,
             'status' => (string) $asset->status,
             'status_reason' => (string) $asset->status_reason,
-            'condition' => $asset->condition,
         ];
     }
 
@@ -200,7 +198,6 @@ class NetworkList extends Component
             'form.actual_location' => ['nullable', 'string', 'max:255'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
-            'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
         ];
     }
 
@@ -237,7 +234,6 @@ class NetworkList extends Component
             'actual_location' => '',
             'status' => 'Active',
             'status_reason' => '',
-            'condition' => null,
         ];
     }
 
@@ -277,7 +273,6 @@ class NetworkList extends Component
         return view('livewire.assets.network-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
-            'conditionOptions' => IctAsset::CONDITIONS,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'statusOptions' => IctAsset::STATUSES,

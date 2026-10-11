@@ -164,8 +164,8 @@ class AssetSummaryTest extends TestCase
                 && $i['by_type']['Network'] === 2
                 && $i['by_type']['BitLocker'] === 1
                 && $i['by_type']['Password Reset'] === 1
-                && $i['by_type']['Hardware Fault'] === 0
-                && array_keys($i['by_type']->all()) === IctAssetIssueReport::ISSUE_TYPES
+                && $i['by_type']['Computer'] === 0
+                && array_keys($i['by_type']->all()) === ['Computer', 'Printer/Photocopier', 'Phone', 'Network/Internet', 'Password Reset', 'BitLocker', 'Software', 'Other', 'Network']
                 && $i['by_status']['Open'] === 2
                 && $i['by_status']['Resolved'] === 1
                 && $i['by_status']['Closed'] === 1
@@ -229,40 +229,39 @@ class AssetSummaryTest extends TestCase
 
     // ---- Needs attention ----------------------------------------------------------------------------------------
 
-    public function test_needs_attention_lists_exactly_the_assets_matching_any_condition(): void
+    public function test_needs_attention_lists_exactly_the_assets_matching_either_signal(): void
     {
-        $poor = $this->asset(['asset_name' => 'Poor one', 'condition' => IctAsset::CONDITION_POOR]);
         $damaged = $this->asset(['asset_name' => 'Damaged one', 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Cracked']);
         $issueOpen = $this->asset(['asset_name' => 'Open issue']);
         $issueProgress = $this->asset(['asset_name' => 'In progress issue']);
-        $everything = $this->asset(['asset_name' => 'All three', 'condition' => IctAsset::CONDITION_POOR, 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped']);
-        $this->asset(['asset_name' => 'Resolved issue only']);
-        $this->asset(['asset_name' => 'Fair condition', 'condition' => IctAsset::CONDITION_FAIR]);
+        $both = $this->asset(['asset_name' => 'Both signals', 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped']);
+        $resolved = $this->asset(['asset_name' => 'Resolved issue only']);
+        $closed = $this->asset(['asset_name' => 'Closed issue only']);
         $this->asset(['asset_name' => 'Healthy']);
+        $this->asset(['asset_name' => 'In repair', 'status' => IctAsset::STATUS_IN_REPAIR]);
 
         $this->linkedIssue($issueOpen, 'Open');
         $this->linkedIssue($issueProgress, 'In Progress');
-        $this->linkedIssue($everything, 'Open');
-        $this->linkedIssue($everything, 'In Progress');
-        $this->linkedIssue(IctAsset::query()->where('asset_name', 'Resolved issue only')->first(), 'Resolved');
-        $this->linkedIssue(IctAsset::query()->where('asset_name', 'Fair condition')->first(), 'Closed');
+        $this->linkedIssue($both, 'Open');
+        $this->linkedIssue($both, 'In Progress');
+        $this->linkedIssue($resolved, 'Resolved');
+        $this->linkedIssue($closed, 'Closed');
 
-        $this->summary('lifecycle')->assertViewHas('needsAttention', function ($rows) use ($poor, $damaged, $issueOpen, $issueProgress, $everything) {
+        $this->summary('lifecycle')->assertViewHas('needsAttention', function ($rows) use ($damaged, $issueOpen, $issueProgress, $both) {
             $by = $rows->keyBy(fn ($r) => $r['asset']->id);
 
-            return $rows->count() === 5
-                && $by->keys()->sort()->values()->all() === collect([$poor, $damaged, $issueOpen, $issueProgress, $everything])->pluck('id')->sort()->values()->all()
-                && $by[$poor->id]['reasons'] === ['Poor condition']
+            return $rows->count() === 4
+                && $by->keys()->sort()->values()->all() === collect([$damaged, $issueOpen, $issueProgress, $both])->pluck('id')->sort()->values()->all()
                 && $by[$damaged->id]['reasons'] === ['Damaged']
                 && $by[$issueOpen->id]['reasons'] === ['1 open issue']
-                && $by[$everything->id]['reasons'] === ['Damaged', 'Poor condition', '2 open issues'];
-        })->assertSee('All three')->assertDontSee('Healthy')->assertDontSee('Resolved issue only');
+                && $by[$both->id]['reasons'] === ['Damaged', '2 open issues'];
+        })->assertSee('Both signals')->assertDontSee('Healthy')->assertDontSee('Resolved issue only')->assertDontSee('Closed issue only')->assertDontSee('Poor condition');
     }
 
     public function test_needs_attention_is_capped_at_ten_and_respects_the_district_filter(): void
     {
         foreach (range(1, 12) as $i) {
-            $this->asset(['condition' => IctAsset::CONDITION_POOR, 'district_id' => $i <= 3 ? $this->kumasi->id : $this->accra->id, 'region_id' => $i <= 3 ? $this->kumasi->region_id : $this->accra->region_id]);
+            $this->asset(['status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped', 'district_id' => $i <= 3 ? $this->kumasi->id : $this->accra->id, 'region_id' => $i <= 3 ? $this->kumasi->region_id : $this->accra->region_id]);
         }
 
         $this->summary('lifecycle')->assertViewHas('needsAttention', fn ($rows) => $rows->count() === 10);
@@ -336,7 +335,7 @@ class AssetSummaryTest extends TestCase
     public function test_a_regional_ict_user_only_sees_their_regions_numbers(): void
     {
         $this->asset(['district_id' => $this->accra->id, 'region_id' => $this->accra->region_id]);
-        $other = $this->asset(['district_id' => $this->kumasi->id, 'region_id' => $this->kumasi->region_id, 'condition' => IctAsset::CONDITION_POOR]);
+        $other = $this->asset(['district_id' => $this->kumasi->id, 'region_id' => $this->kumasi->region_id, 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped']);
         $this->ticket($other, 'Open', '2026-09-01', null);
         $this->issue('Network', 'Open', $this->kumasi, '2026-09-01');
 

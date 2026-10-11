@@ -18,7 +18,7 @@
     </x-ui.page-header>
 
     @if ($needsAttention->isNotEmpty())
-        <x-ui.card title="Needs Attention" description="Damaged, in poor condition, or with an unresolved issue report. Newest activity first." :padded="false" class="dash-row">
+        <x-ui.card title="Needs Attention" description="Damaged, or with an unresolved issue report. Newest activity first." :padded="false" class="dash-row">
             <x-ui.table label="Assets needing attention" :sticky="false">
                 <x-slot:head>
                     <tr>
@@ -259,6 +259,39 @@
                 </x-ui.table>
             </x-ui.card>
         </div>
+
+        <x-ui.card title="Models With the Most Issues" description="Reports linked to a device, grouped by its manufacturer and model." :padded="false" class="dash-row">
+            <x-ui.table label="Models with the most issue reports" :sticky="false">
+                <x-slot:head>
+                    <tr>
+                        <th>Model</th>
+                        <th class="num">Issues</th>
+                        <th>Mostly</th>
+                    </tr>
+                </x-slot:head>
+                @forelse ($issues['by_model']['rows'] as $row)
+                    <tr wire:key="issue-model-{{ $loop->index }}">
+                        <td><strong>{{ $row['model'] }}</strong></td>
+                        <td class="num"><strong>{{ $row['total'] }}</strong></td>
+                        <td>
+                            @if ($row['top_subtype'])
+                                {{ $row['top_subtype'] }} <span class="ui-person-sub">{{ $row['top_subtype_count'] }} of {{ $row['total'] }}</span>
+                            @else
+                                <span class="cell-muted">No detail recorded</span>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <x-ui.empty-row :colspan="3" icon="boxes" title="No issue reports are linked to a device with a model." />
+                @endforelse
+            </x-ui.table>
+            @if ($issues['by_model']['linked'] > 0)
+                <p class="ui-hint" style="padding: 0.75rem 1rem;">
+                    {{ $issues['by_model']['linked'] }} {{ \Illuminate\Support\Str::plural('report', $issues['by_model']['linked']) }} linked to a device;
+                    {{ $issues['by_model']['without_model'] }} of them on a device with no model recorded are not listed.
+                </p>
+            @endif
+        </x-ui.card>
 
         <x-ui.card title="Monthly Volume" description="Reports raised per month.">
             <div wire:key="issues-chart-{{ md5(json_encode($issues['monthly'])) }}">

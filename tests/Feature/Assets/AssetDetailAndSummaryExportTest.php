@@ -70,7 +70,7 @@ class AssetDetailAndSummaryExportTest extends TestCase
             'asset_name' => 'Finance laptop', 'serial_number' => 'LT-100', 'asset_type' => 'Laptop',
             'ict_asset_model_id' => $model->id, 'assigned_to_employee_id' => $kwame->id, 'previous_assigned_to_employee_id' => $ama->id,
             'district_id' => $this->accra->id, 'region_id' => $this->accra->region_id,
-            'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Faulty power button', 'condition' => IctAsset::CONDITION_POOR,
+            'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Faulty power button',
             'purchased_at' => '2021-03-01', 'warranty_expires_at' => '2024-03-01', 'hostname' => 'FIN-LT-01',
         ]);
         IctAssetMaintenance::query()->create(['ict_asset_id' => $asset->id, 'maintenance_type' => 'Screen repair', 'status' => 'Completed', 'technician' => 'Yaw']);
@@ -87,7 +87,6 @@ class AssetDetailAndSummaryExportTest extends TestCase
             ->assertSee('LT-100')
             ->assertSee('Dell Latitude 5420')
             ->assertSee('Faulty power button')
-            ->assertSee('Poor')
             ->assertSee('Kwame Mensah')
             ->assertSee(route('assets.employee', $kwame), false)
             ->assertSee('Ama Boateng')
@@ -190,7 +189,7 @@ class AssetDetailAndSummaryExportTest extends TestCase
         $maker = IctAssetManufacturer::query()->create(['name' => 'Dell']);
         $model = IctAssetModel::query()->create(['name' => 'Latitude', 'category' => 'Laptop', 'ict_asset_manufacturer_id' => $maker->id, 'is_active' => true]);
         $holder = $this->employee('E1', 'Kwame Mensah');
-        $a = $this->asset(['asset_name' => 'Poor PC', 'ict_asset_model_id' => $model->id, 'assigned_to_employee_id' => $holder->id, 'condition' => 'Poor', 'purchased_at' => '2019-01-01']);
+        $a = $this->asset(['asset_name' => 'Damaged PC', 'ict_asset_model_id' => $model->id, 'assigned_to_employee_id' => $holder->id, 'purchased_at' => '2019-01-01', 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped']);
         $this->asset(['asset_name' => 'Spare phone', 'asset_type' => 'Ph', 'device_category' => 'phone']);
         $ticket = new IctAssetMaintenance(['ict_asset_id' => $a->id, 'maintenance_type' => 'Repair', 'status' => 'Completed', 'completion_date' => '2026-09-11']);
         $ticket->created_at = '2026-09-01';
@@ -206,7 +205,7 @@ class AssetDetailAndSummaryExportTest extends TestCase
             $sheets->keys()->all()
         );
 
-        $this->assertSame([['Poor PC', 'asset', 'Poor condition']], collect($sheets['Needs Attention']->array())->map(fn ($r) => [$r[0], $r[2], $r[4]])->all());
+        $this->assertSame([['Damaged PC', 'asset', 'Damaged']], collect($sheets['Needs Attention']->array())->map(fn ($r) => [$r[0], $r[2], $r[4]])->all());
 
         $lifecycle = collect($sheets['Lifecycle']->array());
         $this->assertSame(['Age', '5+ years', 1, 0, 0, 1], $lifecycle->first(fn ($r) => $r[0] === 'Age' && $r[1] === '5+ years'));
@@ -227,7 +226,7 @@ class AssetDetailAndSummaryExportTest extends TestCase
 
     public function test_export_cells_starting_with_equals_stay_text(): void
     {
-        $this->asset(['asset_name' => '=HYPERLINK("http://evil","x")', 'condition' => 'Poor']);
+        $this->asset(['asset_name' => '=HYPERLINK("http://evil","x")', 'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped']);
 
         $sheet = collect((new AssetSummaryExport($this->report()))->sheets())->first();
         $cell = (new Spreadsheet)->getActiveSheet()->getCell('A1');
@@ -239,8 +238,8 @@ class AssetDetailAndSummaryExportTest extends TestCase
 
     public function test_the_export_honours_the_district_filter_and_regional_scope(): void
     {
-        $this->asset(['condition' => 'Poor', 'district_id' => $this->accra->id, 'region_id' => $this->accra->region_id]);
-        $this->asset(['condition' => 'Poor', 'district_id' => $this->kumasi->id, 'region_id' => $this->kumasi->region_id]);
+        $this->asset(['status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped', 'district_id' => $this->accra->id, 'region_id' => $this->accra->region_id]);
+        $this->asset(['status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Dropped', 'district_id' => $this->kumasi->id, 'region_id' => $this->kumasi->region_id]);
 
         $this->assertCount(1, $this->report((int) $this->kumasi->id)['needsAttention']);
         $this->assertCount(2, $this->report()['needsAttention']);

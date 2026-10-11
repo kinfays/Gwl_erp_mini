@@ -99,6 +99,11 @@ class AssetSummaryExport implements Export, WithMultipleSheets
                     ['Reports', $issues['total'], ''],
                     ...$issues['by_type']->map(fn ($total, $type) => ['Type', $total, $type])->values()->all(),
                     ...$issues['by_status']->map(fn ($total, $status) => ['Status', $total, $status])->values()->all(),
+                    ...$issues['by_model']['rows']->map(fn (array $row) => [
+                        'Model with most issues',
+                        $row['total'],
+                        $row['model'].($row['top_subtype'] ? ' (mostly '.$row['top_subtype'].')' : ''),
+                    ])->all(),
                     ...array_map(fn ($pair) => ['Raised in month', $pair[1], $pair[0]], $pairs($issues['monthly'])),
                 ],
             ],

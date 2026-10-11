@@ -316,6 +316,10 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.manage_replacement_policy')
             ->name('settings.replacement-policy');
 
+        Route::get('/settings/issue-categories', [AssetModuleController::class, 'settingsIssueCategories'])
+            ->middleware('permission:assets.manage_issue_categories')
+            ->name('settings.issue-categories');
+
         Route::get('/settings/ip-ranges', [AssetModuleController::class, 'settingsIpRanges'])
             ->middleware('permission:assets.manage_ip_ranges')
             ->name('settings.ip-ranges');

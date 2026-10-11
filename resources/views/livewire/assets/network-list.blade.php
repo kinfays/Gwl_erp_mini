@@ -166,12 +166,6 @@
                 <x-ui.input label="Actual Location" wire:model.defer="form.actual_location" placeholder="e.g. Server Room, 2nd Floor" />
 
                 <x-assets.actor-region :region="$actorRegion" label="NetRegion" />
-                <x-ui.select label="Condition" wire:model.defer="form.condition">
-                    <option value="">Not recorded</option>
-                    @foreach ($conditionOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </x-ui.select>
                 <div class="span-2">
                     <x-ui.textarea label="Status reason" wire:model.defer="form.status_reason" rows="2" hint="Required when the status is Damaged (e.g. faulty power button)." />
                 </div>

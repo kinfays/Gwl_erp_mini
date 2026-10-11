@@ -4,7 +4,9 @@ namespace App\Services\Assets;
 
 use App\Models\IctAsset;
 use App\Models\IctAssetIssueReport;
+use App\Models\IctAssetModel;
 use App\Models\IctAssetMaintenance;
+use App\Models\IctIssueCategory;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -18,7 +20,7 @@ use Illuminate\Support\Facades\DB;
 class AssetSummaryService
 {
     /** Issue statuses that still need work; everything else (Resolved, Closed) is done. */
-    public const UNRESOLVED_ISSUE_STATUSES = ['Open', 'In Progress'];
+    public const UNRESOLVED_ISSUE_STATUSES = [IctAssetIssueReport::STATUS_OPEN, IctAssetIssueReport::STATUS_IN_PROGRESS];
 
     /** Maintenance statuses that count as finished work for turnaround purposes. */
     public const COMPLETED_MAINTENANCE_STATUS = 'Completed';
@@ -255,8 +257,9 @@ class AssetSummaryService
         $byType = (clone $issues)->select('issue_type', DB::raw('COUNT(*) as total'))->groupBy('issue_type')->pluck('total', 'issue_type')
             ->map(fn ($total) => (int) $total);
 
-        // Known types first in their canonical order, then anything else that has turned up.
-        $ordered = collect(IctAssetIssueReport::ISSUE_TYPES)->mapWithKeys(fn ($type) => [$type => (int) ($byType[$type] ?? 0)])
+        // Every category ever offered first, in the admin's order, then anything else that has turned up (older labels).
+        $labels = IctIssueCategory::allLabels() ?: IctAssetIssueReport::ISSUE_TYPES;
+        $ordered = collect($labels)->mapWithKeys(fn ($type) => [$type => (int) ($byType[$type] ?? 0)])
             ->union($byType);
 
         $byStatus = (clone $issues)->select('status', DB::raw('COUNT(*) as total'))->groupBy('status')->orderByDesc('total')->pluck('total', 'status')
@@ -266,12 +269,81 @@ class AssetSummaryService
             'total' => (int) $byStatus->sum(),
             'by_type' => $ordered,
             'by_status' => $byStatus,
+            'by_model' => $this->issuesByModel($issues),
             'monthly' => $this->monthly((clone $issues)->pluck('created_at'), $from, $to),
         ];
     }
 
     /**
-     * Assets that need someone's eye: condition Poor, status Damaged, or an unresolved issue report linked to them.
+     * Which device models attract the most issue reports, and what mostly goes wrong with each. Only reports linked
+     * to an asset that has a model count; the rest are reported so the list is never read as the whole picture.
+     * Grouped on the reports table and resolved to models in PHP, so the caller's filters never meet a join.
+     *
+     * @param Builder $issues region-scoped, filtered IctAssetIssueReport query
+     * @return array{rows: Collection<int, array{model: string, total: int, top_subtype: ?string, top_subtype_count: int}>, linked: int, without_model: int}
+     */
+    public function issuesByModel(Builder $issues, int $limit = 10): array
+    {
+        $groups = (clone $issues)
+            ->whereNotNull('linked_asset_id')
+            ->select('linked_asset_id', 'issue_subtype', DB::raw('COUNT(*) as total'))
+            ->groupBy('linked_asset_id', 'issue_subtype')
+            ->get();
+
+        $modelByAsset = IctAsset::query()
+            ->whereIn('id', $groups->pluck('linked_asset_id')->unique())
+            ->whereNotNull('ict_asset_model_id')
+            ->pluck('ict_asset_model_id', 'id');
+
+        $models = IctAssetModel::query()
+            ->with('manufacturer')
+            ->whereIn('id', $modelByAsset->unique())
+            ->get()
+            ->keyBy('id');
+
+        $perModel = [];
+        $withoutModel = 0;
+
+        foreach ($groups as $group) {
+            $modelId = $modelByAsset[$group->linked_asset_id] ?? null;
+
+            if (! $modelId || ! isset($models[$modelId])) {
+                $withoutModel += (int) $group->total;
+
+                continue;
+            }
+
+            $perModel[$modelId]['total'] = ($perModel[$modelId]['total'] ?? 0) + (int) $group->total;
+
+            if (filled($group->issue_subtype)) {
+                $perModel[$modelId]['subtypes'][$group->issue_subtype] = ($perModel[$modelId]['subtypes'][$group->issue_subtype] ?? 0) + (int) $group->total;
+            }
+        }
+
+        $rows = collect($perModel)->map(function (array $row, int $modelId) use ($models) {
+            $model = $models[$modelId];
+            $subtypes = collect($row['subtypes'] ?? [])->sortDesc();
+
+            return [
+                'model' => trim(($model->manufacturer?->name ?? '').' '.$model->name),
+                'total' => $row['total'],
+                'top_subtype' => $subtypes->keys()->first(),
+                'top_subtype_count' => (int) ($subtypes->first() ?? 0),
+            ];
+        })
+            ->sort(fn (array $a, array $b) => [$b['total'], $a['model']] <=> [$a['total'], $b['model']])
+            ->take($limit)
+            ->values();
+
+        return [
+            'rows' => $rows,
+            'linked' => (int) $groups->sum('total'),
+            'without_model' => $withoutModel,
+        ];
+    }
+
+    /**
+     * Assets that need someone's eye: status Damaged, or an unresolved issue report linked to them.
      * Newest-touched first; each row says why it is listed.
      *
      * @param Builder $assets region-scoped IctAsset query
@@ -283,8 +355,7 @@ class AssetSummaryService
 
         return (clone $assets)
             ->where(function (Builder $q) use ($unresolved) {
-                $q->where('condition', IctAsset::CONDITION_POOR)
-                    ->orWhere('status', IctAsset::STATUS_DAMAGED)
+                $q->where('status', IctAsset::STATUS_DAMAGED)
                     ->orWhereHas('issueReports', $unresolved);
             })
             ->withCount(['issueReports as open_issues_count' => $unresolved])
@@ -297,9 +368,6 @@ class AssetSummaryService
                 $reasons = [];
                 if ($asset->status === IctAsset::STATUS_DAMAGED) {
                     $reasons[] = 'Damaged';
-                }
-                if ($asset->condition === IctAsset::CONDITION_POOR) {
-                    $reasons[] = 'Poor condition';
                 }
                 if ($asset->open_issues_count > 0) {
                     $reasons[] = $asset->open_issues_count.' open '.($asset->open_issues_count === 1 ? 'issue' : 'issues');

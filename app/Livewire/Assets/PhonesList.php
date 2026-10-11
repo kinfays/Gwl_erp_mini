@@ -74,7 +74,6 @@ class PhonesList extends Component
         'ict_asset_model_id' => null,
         'status' => 'Active',
         'status_reason' => '',
-            'condition' => null,
         'assigned_to_employee_id' => null,
         'region_id' => null,
         'district_id' => null,
@@ -125,7 +124,6 @@ class PhonesList extends Component
             'ict_asset_model_id' => $asset->ict_asset_model_id,
             'status' => (string) $asset->status,
             'status_reason' => (string) $asset->status_reason,
-            'condition' => $asset->condition,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
@@ -279,7 +277,6 @@ class PhonesList extends Component
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
-            'form.condition' => ['nullable', Rule::in(IctAsset::CONDITIONS)],
             'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.user_phone_number' => ['nullable', 'string', 'max:30'],
@@ -314,7 +311,6 @@ class PhonesList extends Component
             'ict_asset_model_id' => null,
             'status' => 'Active',
             'status_reason' => '',
-            'condition' => null,
             'assigned_to_employee_id' => null,
             'region_id' => $this->actorRegionId(),
             'district_id' => null,
@@ -364,7 +360,6 @@ class PhonesList extends Component
         return view('livewire.assets.phones-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
-            'conditionOptions' => IctAsset::CONDITIONS,
             'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
             'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
                 ? app(MdmAccessGuard::class)->devices($this->actor())->with('asset.assignedTo')->find($this->mdmPromptDeviceId)

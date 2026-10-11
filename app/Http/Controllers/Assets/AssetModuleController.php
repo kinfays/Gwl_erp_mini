@@ -80,6 +80,11 @@ class AssetModuleController extends Controller
         return view('assets.settings.models');
     }
 
+    public function settingsIssueCategories(): View
+    {
+        return view('assets.settings.issue-categories');
+    }
+
     public function settingsReplacementPolicy(): View
     {
         return view('assets.settings.replacement-policy');

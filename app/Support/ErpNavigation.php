@@ -719,6 +719,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_ip_ranges') || $currentUser->hasRoles('super_admin'),
             ],
             [
+                'label' => 'Issue Categories',
+                'route' => 'assets.settings.issue-categories',
+                'active' => ['assets.settings.issue-categories'],
+                'icon' => $this->icon('shield'),
+                'icon_name' => 'list',
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.manage_issue_categories') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
                 'label' => 'Replacement Policy',
                 'route' => 'assets.settings.replacement-policy',
                 'active' => ['assets.settings.replacement-policy'],

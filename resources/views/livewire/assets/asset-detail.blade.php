@@ -19,7 +19,6 @@
                 <div><dt>Model</dt><dd>{{ $asset->assetModel ? trim(($asset->assetModel->manufacturer?->name ?? '').' '.$asset->assetModel->name) : '—' }}</dd></div>
                 <div><dt>Serial number</dt><dd class="mono">{{ $dash($asset->serial_number) }}</dd></div>
                 <div><dt>Status</dt><dd>{{ $asset->status }}@if ($asset->status_reason) &mdash; {{ $asset->status_reason }}@endif</dd></div>
-                <div><dt>Condition</dt><dd>{{ $dash($asset->condition) }}</dd></div>
                 <div><dt>Location</dt><dd>{{ $asset->district?->district_name ?: 'No district' }}@if ($asset->region) <span class="ui-person-sub">{{ $asset->region->region_name }}</span>@endif</dd></div>
                 <div><dt>Department</dt><dd>{{ $dash($asset->department?->department_name) }}</dd></div>
                 <div>

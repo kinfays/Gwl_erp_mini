@@ -204,7 +204,7 @@ class AssetAnalyticsTest extends TestCase
     {
         $employee = $this->employee('E1', 'Ama Mensah');
         $other = $this->employee('E2', 'Kofi Boateng');
-        $this->createAsset(['asset_name' => 'Ama laptop', 'asset_type' => 'Laptop', 'assigned_to_employee_id' => $employee->id, 'condition' => IctAsset::CONDITION_GOOD]);
+        $this->createAsset(['asset_name' => 'Ama laptop', 'asset_type' => 'Laptop', 'assigned_to_employee_id' => $employee->id]);
         $this->createAsset(['asset_name' => 'Ama phone', 'device_category' => IctAsset::DEVICE_CATEGORY_PHONE, 'asset_type' => 'Ph', 'assigned_to_employee_id' => $employee->id]);
         $this->createAsset(['asset_name' => 'Ama mifi', 'device_category' => IctAsset::DEVICE_CATEGORY_NETWORK, 'asset_type' => 'MiFi', 'assigned_to_employee_id' => $employee->id]);
         $this->createAsset(['asset_name' => 'Kofi laptop', 'asset_type' => 'Laptop', 'assigned_to_employee_id' => $other->id]);
@@ -217,7 +217,6 @@ class AssetAnalyticsTest extends TestCase
             ->assertSee('Ama laptop')
             ->assertSee('Ama phone')
             ->assertSee('Ama mifi')
-            ->assertSee('Good')
             ->assertDontSee('Kofi laptop');
 
         Livewire::test(EmployeeAssets::class, ['employee' => $employee])
@@ -237,71 +236,6 @@ class AssetAnalyticsTest extends TestCase
 
         $this->get(route('assets.employee', $local->id))->assertOk();
         $this->get(route('assets.employee', $faraway->id))->assertNotFound();
-    }
-
-    // ---- Condition ------------------------------------------------------------------------------------------
-
-    public function test_condition_is_optional_and_saved_from_the_assets_form(): void
-    {
-        $district = $this->district('Accra Central', 'Greater Accra');
-        $this->actingAs($this->superAdmin($district));
-        $employee = $this->employee('E1', 'Ama Mensah', $district);
-        $department = Department::query()->firstOrCreate(['department_name' => 'Administration']);
-        $model = IctAssetModel::query()->create(['name' => 'ThinkPad', 'category' => 'Laptop', 'is_active' => true]);
-
-        $fill = fn ($component, string $serial, ?string $condition) => $component
-            ->call('openCreate')
-            ->set('form.asset_name', 'Laptop '.$serial)
-            ->set('form.serial_number', $serial)
-            ->set('form.asset_type', 'Laptop')
-            ->set('form.ict_asset_model_id', $model->id)
-            ->set('form.assigned_to_employee_id', $employee->id)
-            ->set('form.department_id', $department->id)
-            ->set('form.district_id', $district->id)
-            ->set('form.condition', $condition)
-            ->call('save');
-
-        $fill(Livewire::test(AssetsList::class), 'S-1', null)->assertHasNoErrors();
-        $fill(Livewire::test(AssetsList::class), 'S-2', '')->assertHasNoErrors();
-        $fill(Livewire::test(AssetsList::class), 'S-3', IctAsset::CONDITION_POOR)->assertHasNoErrors();
-        $fill(Livewire::test(AssetsList::class), 'S-4', 'Shiny')->assertHasErrors(['form.condition']);
-
-        $this->assertNull(IctAsset::query()->where('serial_number', 'S-1')->value('condition'));
-        $this->assertNull(IctAsset::query()->where('serial_number', 'S-2')->value('condition'));
-        $this->assertSame('Poor', IctAsset::query()->where('serial_number', 'S-3')->value('condition'));
-        $this->assertFalse(IctAsset::query()->where('serial_number', 'S-4')->exists());
-    }
-
-    public function test_condition_is_saved_from_the_phones_and_network_forms_and_loaded_on_edit(): void
-    {
-        $district = $this->district('Accra Central', 'Greater Accra');
-        $this->actingAs($this->superAdmin($district));
-
-        Livewire::test(PhonesList::class)
-            ->call('openCreate')
-            ->set('form.asset_name', 'Phone A')
-            ->set('form.serial_number', 'PH-A')
-            ->set('form.asset_type', 'Ph')
-            ->set('form.condition', IctAsset::CONDITION_NEW)
-            ->call('save')
-            ->assertHasNoErrors();
-
-        Livewire::test(NetworkList::class)
-            ->call('openCreate')
-            ->set('form.asset_name', 'Router A')
-            ->set('form.serial_number', 'RT-A')
-            ->set('form.asset_type', 'RT')
-            ->set('form.condition', IctAsset::CONDITION_DAMAGED)
-            ->call('save')
-            ->assertHasNoErrors();
-
-        $phone = IctAsset::query()->where('asset_name', 'Phone A')->firstOrFail();
-        $this->assertSame('New', $phone->condition);
-        $this->assertSame('Damaged', IctAsset::query()->where('asset_name', 'Router A')->value('condition'));
-
-        Livewire::test(PhonesList::class)
-            ->call('openEdit', $phone->id)
-            ->assertSet('form.condition', 'New');
     }
 
     // ---- Dashboard rendering + bookmarkable links -----------------------------------------------------------

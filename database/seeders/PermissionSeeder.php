@@ -76,6 +76,7 @@ class PermissionSeeder extends Seeder
                 'assets.agent_ingest',
                 'assets.manage_ip_ranges',
                 'assets.manage_replacement_policy',
+                'assets.manage_issue_categories',
                 'assets.manage_audits',
                 'assets.export_audits',
                 'assets.view_network_secrets',

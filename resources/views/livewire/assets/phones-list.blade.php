@@ -161,12 +161,6 @@
 
                 <x-assets.actor-region :region="$actorRegion" />
                 <x-ui.input label="Device Phone Number" type="tel" wire:model.defer="form.device_phone_number" />
-                <x-ui.select label="Condition" wire:model.defer="form.condition">
-                    <option value="">Not recorded</option>
-                    @foreach ($conditionOptions as $option)
-                        <option value="{{ $option }}">{{ $option }}</option>
-                    @endforeach
-                </x-ui.select>
                 <div class="span-2">
                     <x-ui.textarea label="Status reason" wire:model.defer="form.status_reason" rows="2" hint="Required when the status is Damaged (e.g. faulty power button)." />
                 </div>
