@@ -152,6 +152,7 @@ class Expenses extends Component
             'people' => $location ? $this->visibility()->peopleAt($location)->orderBy('full_name')->limit(500)->get() : collect(),
             'canRecord' => $this->visibility()->can($user, 'gwater.record'),
             'canVoid' => $this->visibility()->can($user, 'gwater.void'),
+            'exports' => $this->exportLinks('expenses', $this->from, $this->to),
         ] + $this->locationView());
     }
 }

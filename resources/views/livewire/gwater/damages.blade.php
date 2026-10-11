@@ -2,6 +2,7 @@
     <x-ui.page-header title="Damages" description="Packs damaged on the way, while loading or offloading, or in storage. They leave stock and are written off at the cost price in force that day." />
 
     @include('livewire.gwater.partials.location-picker')
+    @include('livewire.gwater.partials.exports')
 
     @if ($location)
         @if ($canRecord)

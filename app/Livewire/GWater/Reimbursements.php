@@ -71,6 +71,7 @@ class Reimbursements extends Component
             'paid' => $location ? $summary->reimbursed($location) : collect(),
             'canReimburse' => $this->visibility()->can($this->actor(), 'gwater.reimburse'),
             'me' => $this->actor()->id,
+            'exports' => $this->exportLinks('reimbursements', null, null),
         ] + $this->locationView());
     }
 }

@@ -2,6 +2,7 @@
     <x-ui.page-header title="Reimbursements" description="Fuel that staff paid out of pocket and are waiting to be paid back. Loading and offloading are paid in cash, so they never appear here." />
 
     @include('livewire.gwater.partials.location-picker')
+    @include('livewire.gwater.partials.exports')
 
     @if ($location)
         <div class="ui-stat-grid dash-row">

@@ -2,6 +2,7 @@
     <x-ui.page-header title="Payments to G Water" description="Payment requests and payments, and what is owed: the opening amount owed + every trip at the cost it was bought at - payments marked paid." />
 
     @include('livewire.gwater.partials.location-picker')
+    @include('livewire.gwater.partials.exports')
 
     @if ($location && $statement)
         <div class="ui-stat-grid dash-row">

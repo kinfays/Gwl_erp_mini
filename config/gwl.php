@@ -70,6 +70,13 @@ return [
     // reimbursements): off by default; when off the routes don't register and the module is hidden from navigation
     // (docs/17-module-g-water.md).
     'gwater_module_enabled' => (bool) env('GWL_GWATER_MODULE_ENABLED', false),
+    // Rows allowed in one G-Water Excel / PDF export (the PDF is far heavier to build, so it has its own, lower cap).
+    'gwater_export_max_rows' => (int) env('GWL_GWATER_EXPORT_MAX_ROWS', 5000),
+    'gwater_export_pdf_max_rows' => (int) env('GWL_GWATER_EXPORT_PDF_MAX_ROWS', 1500),
+    // Overview flags: packs on hand at or below this are "low" (a location may set its own per product), and a damage rate
+    // (damaged / received) above this percentage is flagged.
+    'gwater_low_stock_packs' => (int) env('GWL_GWATER_LOW_STOCK_PACKS', 50),
+    'gwater_damage_rate_flag_pct' => (float) env('GWL_GWATER_DAMAGE_RATE_FLAG_PCT', 5),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.

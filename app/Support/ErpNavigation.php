@@ -1280,6 +1280,14 @@ class ErpNavigation
                 'can' => $can('gwater.view'),
             ],
             [
+                'label' => 'Profit and loss',
+                'route' => 'gwater.pnl',
+                'active' => ['gwater.pnl'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => $can('gwater.view_reports'),
+            ],
+            [
                 'label' => 'Reimbursements',
                 'route' => 'gwater.reimbursements',
                 'active' => ['gwater.reimbursements'],

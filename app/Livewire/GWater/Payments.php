@@ -160,6 +160,7 @@ class Payments extends Component
             'statement' => $location ? $summary->owedStatement($location) : null,
             'canRecord' => $this->visibility()->can($this->actor(), 'gwater.record'),
             'canVoid' => $this->visibility()->can($this->actor(), 'gwater.void'),
+            'exports' => $this->exportLinks('payments', null, null),
         ] + $this->locationView());
     }
 }

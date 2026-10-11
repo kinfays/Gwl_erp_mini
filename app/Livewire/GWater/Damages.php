@@ -113,6 +113,7 @@ class Damages extends Component
             'trips' => $location ? $this->books(GwPurchase::query()->posted())->orderByRaw('DATE(purchase_date) desc')->orderByDesc('id')->limit(60)->get() : collect(),
             'canRecord' => $this->visibility()->can($this->actor(), 'gwater.record'),
             'canVoid' => $this->visibility()->can($this->actor(), 'gwater.void'),
+            'exports' => $this->exportLinks('damages', $this->from, $this->to),
         ] + $this->locationView());
     }
 }

@@ -69,6 +69,7 @@ class StockLedger extends Component
             'onHand' => $location ? $summary->stockOnHand($location) : collect(),
             'waybills' => $location ? $summary->waybillOutstanding($location) : collect(),
             'canRecord' => $this->visibility()->can($this->actor(), 'gwater.record'),
+            'exports' => $this->exportLinks('stock', $this->from, $this->to),
         ] + $this->locationView());
     }
 }

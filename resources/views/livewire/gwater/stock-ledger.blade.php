@@ -2,6 +2,7 @@
     <x-ui.page-header title="Stock" description="Packs on hand and every movement. The ledger is never edited: a mistake is put right with a correction line." />
 
     @include('livewire.gwater.partials.location-picker')
+    @include('livewire.gwater.partials.exports')
 
     @if ($location)
         <div class="ui-stat-grid dash-row">

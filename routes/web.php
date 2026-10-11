@@ -36,6 +36,7 @@ use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\GWater\GwaterController;
+use App\Http\Controllers\GWater\GwaterExportController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
 use App\Http\Controllers\Transport\TransportModuleController;
 use App\Http\Controllers\UacController;
@@ -683,6 +684,12 @@ if (config('gwl.gwater_module_enabled')) {
             Route::get('/', [GwaterController::class, 'home'])->middleware('permission:gwater.view')->name('home');
             Route::get('/sales', [GwaterController::class, 'sales'])->middleware('permission:gwater.view')->name('sales');
             Route::get('/purchases', [GwaterController::class, 'purchases'])->middleware('permission:gwater.view')->name('purchases');
+            Route::get('/profit-and-loss', [GwaterController::class, 'pnl'])->middleware('permission:gwater.view_reports')->name('pnl');
+            Route::get('/export/{report}/{format}', [GwaterExportController::class, 'download'])
+                ->where('report', '[a-z-]+')
+                ->where('format', 'excel|pdf')
+                ->middleware(['permission:gwater.export', 'permission:gwater.view_reports'])
+                ->name('export');
             Route::get('/damages', [GwaterController::class, 'damages'])->middleware('permission:gwater.view')->name('damages');
             Route::get('/expenses', [GwaterController::class, 'expenses'])->middleware('permission:gwater.view')->name('expenses');
             Route::get('/payments', [GwaterController::class, 'payments'])->middleware('permission:gwater.view')->name('payments');

@@ -1138,7 +1138,13 @@ class GwaterWorkflowService
     }
 
     protected function audit(string $action, Model $row, array $metadata = []): void
-    {
+    {        // Cached profit figures of this location are now out of date: the next read recomputes them.
+        if (($row->region_id ?? null) !== null) {
+            $place = $this->placeOf($row);
+            DB::afterCommit(fn () => GwaterBooksVersion::touch($place));
+        }
+
+
         AuditLog::record($action, self::MODULE, $row->getTable(), (int) $row->getKey(), null, null, $metadata + [
             'region_id' => $row->region_id ?? null,
             'district_id' => $row->district_id ?? null,

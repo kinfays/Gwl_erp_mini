@@ -109,6 +109,32 @@ trait ScopesGwaterByActor
         }
     }
 
+    /**
+     * The Excel and PDF links of a report for the books on screen, or null when the user may not export (gwater.export AND
+     * gwater.view_reports) or there are no books yet. A screen without a period of its own exports the last year.
+     *
+     * @return array{excel: string, pdf: string}|null
+     */
+    protected function exportLinks(string $report, ?string $from = null, ?string $to = null): ?array
+    {
+        $visibility = $this->visibility();
+
+        if (! $this->workingLocation() || ! $visibility->can($this->actor(), 'gwater.export') || ! $visibility->can($this->actor(), 'gwater.view_reports')) {
+            return null;
+        }
+
+        $query = array_filter([
+            'from' => $from ?: today()->subYear()->toDateString(),
+            'to' => $to ?: today()->toDateString(),
+            'district' => $this->isSuperAdmin() ? $this->locationId : null,
+        ]);
+
+        return [
+            'excel' => route('gwater.export', ['report' => $report, 'format' => 'excel'] + $query),
+            'pdf' => route('gwater.export', ['report' => $report, 'format' => 'pdf'] + $query),
+        ];
+    }
+
     /** @return array<string, mixed> what every G-Water view needs to draw the location picker. */
     protected function locationView(): array
     {

@@ -2,6 +2,7 @@
     <x-ui.page-header title="Expenses" description="Fuel, loading, offloading and other costs. Only fuel paid out of pocket is paid back; loading and offloading are paid in cash. Fuel is counted once per trip." />
 
     @include('livewire.gwater.partials.location-picker')
+    @include('livewire.gwater.partials.exports')
 
     @if ($location)
         @if ($canRecord)

@@ -58,6 +58,13 @@ class GwaterController extends Controller
         return view('gwater.opening');
     }
 
+    public function pnl(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.pnl');
+    }
+
     public function damages(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_GWATER);
