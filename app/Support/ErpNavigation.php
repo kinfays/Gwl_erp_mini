@@ -1308,6 +1308,22 @@ class ErpNavigation
                 'can' => $can('gwater.view'),
             ],
             [
+                'label' => 'Settings',
+                'route' => 'gwater.settings',
+                'active' => ['gwater.settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'settings',
+                'can' => $can('gwater.manage_prices'),
+            ],
+            [
+                'label' => 'Import past records',
+                'route' => 'gwater.import',
+                'active' => ['gwater.import'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'upload',
+                'can' => $can('gwater.record'),
+            ],
+            [
                 'label' => 'Opening balances',
                 'route' => 'gwater.opening',
                 'active' => ['gwater.opening'],

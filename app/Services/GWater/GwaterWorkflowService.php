@@ -10,6 +10,7 @@ use App\Models\GwPrice;
 use App\Models\GwProduct;
 use App\Models\GwPurchase;
 use App\Models\GwSale;
+use App\Models\GwSetting;
 use App\Models\GwStockMovement;
 use App\Models\GwSupplierPayment;
 use App\Models\MileageLog;
@@ -838,6 +839,69 @@ class GwaterWorkflowService
             $this->audit('gwater.payment_voided', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'was_paid' => $wasPaid, 'reason' => $reason]);
 
             return $fresh;
+        });
+    }
+
+    // ------------------------------------------------------------------ settings
+
+    /**
+     * The location's own low-stock thresholds and reminder intervals (GwaterSettings::definitions()). A value equal to its
+     * default is stored as no override; the audit row keeps the old and new values (numbers only).
+     *
+     * @param  array<string, mixed>  $values  setting key => whole number
+     * @return array<string, int>  the values now in force
+     */
+    public function saveSettings(User $actor, array $values, mixed $districtId = null): array
+    {
+        $this->authorise($actor, 'gwater.manage_prices');
+
+        $location = $this->visibility->recordingLocation($actor, $this->optionalId($districtId));
+        $settings = app(GwaterSettings::class);
+        $definitions = $settings->definitions();
+        $clean = [];
+
+        foreach ($values as $key => $value) {
+            $definition = $definitions[$key] ?? null;
+
+            if ($definition === null) {
+                continue;
+            }
+
+            if (! is_numeric($value) || (int) $value != $value || (int) $value < $definition['min'] || (int) $value > $definition['max']) {
+                throw ValidationException::withMessages([$key => $definition['label'].' must be a whole number from '.number_format($definition['min']).' to '.number_format($definition['max']).'.']);
+            }
+
+            $clean[$key] = (int) $value;
+        }
+
+        return DB::transaction(function () use ($actor, $location, $clean, $definitions, $settings) {
+            $this->stock->lock();
+
+            $before = collect($settings->all($location))->map(fn (array $row) => $row['value'])->all();
+
+            foreach ($clean as $key => $value) {
+                $rows = $this->visibility->atLocation(GwSetting::query()->where('key', $key), $location)->orderBy('id')->get();
+
+                if ($value === $definitions[$key]['default']) {
+                    $rows->each->delete();
+
+                    continue;
+                }
+
+                $row = $rows->shift();
+                $row ? $row->forceFill(['value' => $value, 'updated_by' => $actor->id])->save() : GwSetting::query()->create([...$location, 'key' => $key, 'value' => $value, 'updated_by' => $actor->id]);
+                $rows->each->delete();
+            }
+
+            $after = collect($settings->all($location))->map(fn (array $row) => $row['value'])->all();
+            $changed = array_keys(array_diff_assoc($after, $before));
+
+            AuditLog::record('gwater.settings_saved', self::MODULE, 'gw_settings', null, array_intersect_key($before, array_flip($changed)), array_intersect_key($after, array_flip($changed)), [
+                'region_id' => $location['region_id'],
+                'district_id' => $location['district_id'],
+            ]);
+
+            return $after;
         });
     }
 

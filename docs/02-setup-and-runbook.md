@@ -50,6 +50,12 @@ Annual leave carry-over forfeiture (daily at 00:30; `--dry-run` previews without
 php artisan leave:forfeit-expired-carry-over
 ```
 
+G-Water reminders (daily at 07:55; registered, and scheduled, only while `GWL_GWATER_MODULE_ENABLED` is on; `--dry-run` lists what would be sent without sending or recording anything):
+
+```bash
+php artisan gwater:remind
+```
+
 Scheduler setup is in `routes/console.php`:
 
 ```bash
@@ -66,6 +72,16 @@ From `config/gwl.php` and `config/gwcl.php`:
 - `GWL_LEAVE_NOTIFICATION_POLL_SECONDS`
 - `GWL_VISITOR_KIOSK_RESET_SECONDS`
 - `GWL_MAX_IMPORT_FAILURE_PERCENT`
+
+G-Water (`docs/17-module-g-water.md`; the module is off until `GWL_GWATER_MODULE_ENABLED=true`, and its reminders need the scheduler above to be running):
+
+- `GWL_GWATER_MODULE_ENABLED` (default off): routes, navigation, screens and the `gwater:remind` schedule.
+- `GWL_GWATER_EXPORT_MAX_ROWS` (5000) and `GWL_GWATER_EXPORT_PDF_MAX_ROWS` (1500): the longest Excel / PDF export.
+- `GWL_GWATER_LOW_STOCK_PACKS` (50) and `GWL_GWATER_DAMAGE_RATE_FLAG_PCT` (5): the Overview flags.
+- `GWL_GWATER_PAYMENT_OVERDUE_DAYS` (30) and `GWL_GWATER_REMINDER_REPEAT_DAYS` (7): the reminder defaults.
+- `GWL_GWATER_IMPORT_MAX_ROWS` (2000): most rows in one past-ledger import file.
+
+The low-stock limit and the two reminder intervals are defaults: each location may set its own on the G-Water Settings screen (an override is stored only when it differs from the default). After editing `.env` on a server run `php artisan config:cache` again.
 
 ## Test and Verification
 

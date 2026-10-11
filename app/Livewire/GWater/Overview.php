@@ -7,6 +7,7 @@ use App\Livewire\GWater\Concerns\ScopesGwaterByActor;
 use App\Models\GwPurchase;
 use App\Models\GwSale;
 use App\Services\GWater\GwaterProfitService;
+use App\Services\GWater\GwaterSettings;
 use App\Services\GWater\GwaterSummaryService;
 use Livewire\Component;
 
@@ -26,13 +27,7 @@ class Overview extends Component
         $this->guard('gwater.view');
     }
 
-    /** Packs on hand at or below which a product is flagged "low". */
-    protected function lowStockThreshold(array $location, int $productId): int
-    {
-        return (int) config('gwl.gwater_low_stock_packs');
-    }
-
-    public function render(GwaterSummaryService $summary, GwaterProfitService $profit)
+    public function render(GwaterSummaryService $summary, GwaterProfitService $profit, GwaterSettings $settings)
     {
         $location = $this->workingLocation();
         $canReports = $this->visibility()->can($this->actor(), 'gwater.view_reports');
@@ -41,7 +36,7 @@ class Overview extends Component
 
         if ($location) {
             $stock = $summary->stockOnHand($location)->map(fn (array $row) => $row + [
-                'threshold' => $threshold = $this->lowStockThreshold($location, $row['product']->id),
+                'threshold' => $threshold = $settings->lowStock($location, $row['product']),
                 'low' => $row['packs'] <= $threshold,
             ]);
 

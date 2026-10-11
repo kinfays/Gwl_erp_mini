@@ -5,8 +5,11 @@ namespace App\Http\Controllers\GWater;
 use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
+use App\Services\GWater\GwaterImportService;
+use App\Services\GWater\GwaterVisibility;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * Thin: the route middleware (module + permission), the Livewire components and GwaterVisibility do the real checks. Which
@@ -63,6 +66,28 @@ class GwaterController extends Controller
         $this->enforceModule($request, Permission::MODULE_GWATER);
 
         return view('gwater.pnl');
+    }
+
+    public function settings(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.settings');
+    }
+
+    public function import(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.import');
+    }
+
+    public function importTemplate(Request $request, GwaterImportService $imports)
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+        abort_unless(app(GwaterVisibility::class)->can($request->user(), 'gwater.record'), 403);
+
+        return Excel::download($imports->templateExport(), 'gwater-import-template.xlsx');
     }
 
     public function damages(Request $request): View

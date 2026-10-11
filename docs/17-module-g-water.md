@@ -1,6 +1,6 @@
 # G-Water module — design
 
-Status: **Phase 1 built** (section 11 lists what was built and where it departs from this design); Phases 2 to 4 are not. Phase 0 (Transport region scoping) is done, see `docs/18-transport-region-scoping.md`. Flag: `GWL_GWATER_MODULE_ENABLED` (default off).
+Status: **built, Phases 1 to 4** (sections 11 to 14 list what was built and where it departs from this design). Phase 0 (Transport region scoping) is done, see `docs/18-transport-region-scoping.md`. Flag: `GWL_GWATER_MODULE_ENABLED` (default off).
 Replaces the hand-written ledger and the Excel "PART 14" sheets used to track bottle and sachet water.
 
 ## 1. What the paper/Excel records show
@@ -107,6 +107,7 @@ Built and documented in `docs/18-transport-region-scoping.md`: a regional or dis
 ## 8. Phases
 
 0. **Transport region scoping** (section 5.1): done.
+(Phases 1 to 4 below are all built; sections 11 to 14 say how.)
 1. Foundation: flag, permissions, products and prices, opening balances, purchases with trip costs, daily sales, stock ledger.
 2. Damages, expenses, supplier payments, owed balance.
 3. P&L, overview, charts, exports.
@@ -167,4 +168,16 @@ Migration `2026_10_19_000001_create_gwater_phase2_tables` (adds `gw_expenses.veh
 6. **Caching:** the payload (arrays and scalars only) is cached for 5 minutes under a key made of the user's scope, the location's books version (`GwaterBooksVersion`, bumped after the commit of every workflow write), the dates and a fingerprint of the Transport fuel rows the trips read; it is never stale after an entry or a change in Transport.
 7. **Exports** reuse the Commercial module's generic workbook (`CommercialReportExport` + `ReportSheet`, text cells stay text) and PDF page; one location per file (own, or `?district=` for super_admin only); a row cap (`gwater_export_max_rows` 5,000, `gwater_export_pdf_max_rows` 1,500) refuses with a message; every export writes an audit row (`gwater.export_<report>_<format>` with report, format, period, rows and location ids only).
 8. New config keys: `gwater_export_max_rows`, `gwater_export_pdf_max_rows`, `gwater_low_stock_packs` (flag at or below, default 50), `gwater_damage_rate_flag_pct` (default 5).
+
+## 14. Phase 4 as built
+
+Migration `2026_10_20_000001_create_gwater_settings_and_reminder_tables` (`gw_settings`, `gw_reminder_states`). `GwaterSettings`, `GwaterReminderService` (command `gwater:remind`), `GwaterImportService` (+ `GwaterImportTemplateExport`), the **Settings** and **Import past records** screens, `GwaterWorkflowService::saveSettings()`.
+
+**Settings:** `low_stock_<product code>`, `payment_overdue_days`, `reminder_repeat_days`, per location (Head Office, or a region without it), overrides of `gwater_low_stock_packs` / `gwater_payment_overdue_days` / `gwater_reminder_repeat_days`; a value equal to its default is stored as no row; saving needs `gwater.manage_prices` and is audited (old and new values, numbers only). The Overview's low-stock flag reads the location's value.
+
+**Reminders:** `php artisan gwater:remind [--dry-run]`, daily at 07:55, registered in `routes/console.php` only while `GWL_GWATER_MODULE_ENABLED` is on (the scheduler must be running; the service also does nothing with the flag off). For each location with G-Water records: one notice per product at or below its threshold, and one for the overdue payment requests (requested and older than the overdue days). An item is reminded about at most once per repeat interval; with nobody who can record at the location nothing is sent or marked. Notices go through `GeneralDatabaseNotification` and carry only the product, the location and counts. Recipients: active staff based there who hold `gwater.record` (the developer super_admin is never told).
+
+**Import of past records:** one .xlsx with the sheets Opening balance, Purchases, Daily sales, Damages, Expenses, Payments (template: headings only and a Read me, no example rows). Preview posts everything through the workflow inside a transaction that is rolled back; confirm re-reads the file and posts for real, all or nothing, or "valid rows only". Create-only (an existing opening balance, waybill or payment reference is refused), always into the importer's own location (super_admin: the one chosen), dates dd/MM/yyyy or Excel dates, amounts in cedis, prices never typed (a unit cost in the file must agree with the price list on the row's date; a sale or purchase with no price in force is refused), a damage or expense names its trip by waybill, at most `gwater_import_max_rows` rows (default 2,000) in all. Imported entries are indistinguishable from typed ones in stock, profit and loss and the owed balance (a test pins this).
+
+**Open / not done:** the import takes no vehicle, driver, mileage or Transport fuel references (those links are made on the trip form); reminders go in-app only (no e-mail); the average-cost method is fixed (rolling weighted average); `gwater.view_reports` and `gwater.export` are held by the `g_water` role as a whole (split duties by making a second role on the roles screen).
 

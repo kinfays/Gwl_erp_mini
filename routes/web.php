@@ -690,6 +690,9 @@ if (config('gwl.gwater_module_enabled')) {
                 ->where('format', 'excel|pdf')
                 ->middleware(['permission:gwater.export', 'permission:gwater.view_reports'])
                 ->name('export');
+            Route::get('/settings', [GwaterController::class, 'settings'])->middleware('permission:gwater.manage_prices')->name('settings');
+            Route::get('/import', [GwaterController::class, 'import'])->middleware('permission:gwater.record')->name('import');
+            Route::get('/import/template', [GwaterController::class, 'importTemplate'])->middleware('permission:gwater.record')->name('import.template');
             Route::get('/damages', [GwaterController::class, 'damages'])->middleware('permission:gwater.view')->name('damages');
             Route::get('/expenses', [GwaterController::class, 'expenses'])->middleware('permission:gwater.view')->name('expenses');
             Route::get('/payments', [GwaterController::class, 'payments'])->middleware('permission:gwater.view')->name('payments');

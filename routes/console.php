@@ -12,6 +12,7 @@ use App\Services\Commercial\Sms\SmsCampaignService;
 use App\Services\Commercial\Sms\SmsDeliveryPoller;
 use App\Services\Commercial\Sms\SmsRetention;
 use App\Services\Commercial\UploadReminderService;
+use App\Services\GWater\GwaterReminderService;
 use App\Services\HealthSafety\HealthSafetyAlertService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
@@ -114,6 +115,31 @@ if (config('gwl.mdm_enabled')) {
 
 // Commercial: tell the officers of a region when no report of a type has arrived for too long (days set on the
 // Commercial settings screen). Scheduled only while the module is on, and it needs the scheduler to be running.
+// G-Water: tell a location's G-Water users when stock is low or a payment request to G Water is overdue (thresholds and days are the
+// location's own settings). Scheduled only while the module is on, and it needs the scheduler to be running.
+if (config('gwl.gwater_module_enabled')) {
+    Artisan::command('gwater:remind {--dry-run : List what would be sent, without sending or recording anything}', function (GwaterReminderService $reminders) {
+        $dryRun = (bool) $this->option('dry-run');
+        $summary = $reminders->remind(dryRun: $dryRun);
+
+        $this->info(sprintf(
+            '%d location(s): %d low-stock product(s), %d overdue payment request(s); %s %d reminder(s) to %d notification(s); %d already reminded recently; %d with nobody to tell.',
+            $summary['locations'],
+            $summary['low_stock'],
+            $summary['overdue'],
+            $dryRun ? 'would send' : 'sent',
+            $summary['reminded'],
+            $summary['notifications'],
+            $summary['skipped'],
+            $summary['nobody']
+        ));
+
+        return 0;
+    })->purpose('Remind G-Water users of low stock and overdue payment requests');
+
+    Schedule::command('gwater:remind')->dailyAt('07:55')->withoutOverlapping();
+}
+
 if (config('gwl.commercial_module_enabled')) {
     Artisan::command('commercial:remind-uploads {--dry-run : List the overdue uploads and who would be told, without sending anything}', function (UploadReminderService $reminders) {
         $dryRun = (bool) $this->option('dry-run');

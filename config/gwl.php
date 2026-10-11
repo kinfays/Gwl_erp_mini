@@ -77,6 +77,12 @@ return [
     // (damaged / received) above this percentage is flagged.
     'gwater_low_stock_packs' => (int) env('GWL_GWATER_LOW_STOCK_PACKS', 50),
     'gwater_damage_rate_flag_pct' => (float) env('GWL_GWATER_DAMAGE_RATE_FLAG_PCT', 5),
+    // Reminders (php artisan gwater:remind, daily, needs the scheduler): a payment request still unpaid after this many days is
+    // overdue, and the same item is reminded about at most once per repeat interval. Each location may set its own.
+    'gwater_payment_overdue_days' => (int) env('GWL_GWATER_PAYMENT_OVERDUE_DAYS', 30),
+    'gwater_reminder_repeat_days' => (int) env('GWL_GWATER_REMINDER_REPEAT_DAYS', 7),
+    // Most rows (all sheets together) one past-ledger import file may hold; the file is read into memory.
+    'gwater_import_max_rows' => (int) env('GWL_GWATER_IMPORT_MAX_ROWS', 2000),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.
