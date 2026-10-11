@@ -7,6 +7,7 @@ use App\Models\Vehicle;
 use App\Models\VehicleExpense;
 use App\Models\VehicleIssue;
 use App\Repositories\Transport\VehicleRepository;
+use App\Services\Transport\TransportScope;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
@@ -19,31 +20,30 @@ class Dashboard extends Component
         $this->enforceLivewireModule('transport');
     }
 
-    public function render(VehicleRepository $vehicles)
+    public function render(VehicleRepository $vehicles, TransportScope $scope)
     {
         $user = auth()->user();
-        $canManage = $user?->hasRoles('super_admin', 'transport_manager')
-            || $user?->hasPermission('transport.view_dashboard')
-            || $user?->hasPermission('transport.view_vehicles');
-        $canLogMileage = $user?->hasRoles('super_admin', 'transport_manager')
-            || $user?->hasPermission('transport.log_mileage');
-        $canReportIssue = $user?->hasRoles('super_admin', 'transport_manager')
-            || $user?->hasPermission('transport.report_issues');
+        abort_unless($user, 403);
 
-        $assignedVehicle = $user ? $vehicles->assignedTo($user) : null;
+        $canManage = $scope->can($user, 'transport.view_dashboard') || $scope->can($user, 'transport.view_vehicles');
+        $canLogMileage = $scope->can($user, 'transport.log_mileage');
+        $canReportIssue = $scope->can($user, 'transport.report_issues');
+
+        $assignedVehicle = $vehicles->assignedTo($user);
 
         $stats = [
-            'total' => Vehicle::query()->count(),
-            'active' => Vehicle::query()->where('status', Vehicle::STATUS_ACTIVE)->count(),
-            'maintenance' => Vehicle::query()->where('status', Vehicle::STATUS_MAINTENANCE)->count(),
-            'retired' => Vehicle::query()->where('status', Vehicle::STATUS_RETIRED)->count(),
-            'open_issues' => VehicleIssue::query()->where('status', '!=', VehicleIssue::STATUS_RESOLVED)->count(),
+            'total' => $scope->vehicles($user)->count(),
+            'active' => $scope->vehicles($user)->where('vehicles.status', Vehicle::STATUS_ACTIVE)->count(),
+            'maintenance' => $scope->vehicles($user)->where('vehicles.status', Vehicle::STATUS_MAINTENANCE)->count(),
+            'retired' => $scope->vehicles($user)->where('vehicles.status', Vehicle::STATUS_RETIRED)->count(),
+            'open_issues' => VehicleIssue::query()->visibleTo($user)->where('status', '!=', VehicleIssue::STATUS_RESOLVED)->count(),
             'month_spend' => VehicleExpense::query()
+                ->visibleTo($user)
                 ->whereBetween('expense_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
                 ->sum('amount'),
         ];
 
-        $departmentBreakdown = Vehicle::query()
+        $departmentBreakdown = $scope->vehicles($user)
             ->leftJoin('departments', 'departments.id', '=', 'vehicles.department_id')
             ->groupBy('vehicles.department_id', 'departments.department_name')
             ->orderByRaw('COUNT(*) DESC')
@@ -53,14 +53,14 @@ class Dashboard extends Component
                 DB::raw('COUNT(*) as total'),
             ]);
 
-        $upcomingMaintenance = Vehicle::query()
+        $upcomingMaintenance = $scope->vehicles($user)
             ->with(['assignedDriver'])
-            ->where('status', '!=', Vehicle::STATUS_RETIRED)
+            ->where('vehicles.status', '!=', Vehicle::STATUS_RETIRED)
             ->get()
             ->sortBy('maintenance_remaining_km')
             ->take(8);
 
-        $expiringDocuments = Vehicle::query()
+        $expiringDocuments = $scope->vehicles($user)
             ->where(function ($query): void {
                 $query->whereBetween('insurance_expiry_date', [today()->toDateString(), today()->addDays(90)->toDateString()])
                     ->orWhereBetween('road_worthiness_expiry_date', [today()->toDateString(), today()->addDays(90)->toDateString()]);
@@ -70,12 +70,14 @@ class Dashboard extends Component
             ->get();
 
         $issuesByStatus = VehicleIssue::query()
+            ->visibleTo($user)
             ->select('status', DB::raw('COUNT(*) as total'))
             ->groupBy('status')
             ->orderBy('status')
             ->get();
 
         $mostExpensive = VehicleExpense::query()
+            ->visibleTo($user)
             ->join('vehicles', 'vehicles.id', '=', 'vehicle_expenses.vehicle_id')
             ->groupBy('vehicle_expenses.vehicle_id', 'vehicles.number_plate', 'vehicles.brand', 'vehicles.model')
             ->orderByDesc(DB::raw('SUM(vehicle_expenses.amount)'))

@@ -293,7 +293,7 @@ class EquipmentAccessTest extends HealthSafetyTestCase
 
     public function test_the_vehicle_is_linked_only_to_someone_who_may_see_it(): void
     {
-        $vehicle = Vehicle::query()->create(['type' => 'pickup', 'brand' => 'Toyota', 'model' => 'Hilux', 'number_plate' => 'GW 777-24', 'status' => 'active']);
+        $vehicle = Vehicle::query()->create(['type' => 'pickup', 'brand' => 'Toyota', 'model' => 'Hilux', 'number_plate' => 'GW 777-24', 'status' => 'active', 'region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id]);
         $unit = $this->unit(['site_id' => null, 'vehicle_id' => $vehicle->id]);
         $vehiclesUrl = route('transport.vehicles');
 
@@ -306,6 +306,11 @@ class EquipmentAccessTest extends HealthSafetyTestCase
         Livewire::actingAs($fleet)->test(ExtinguisherShow::class, ['extinguisher' => $unit])
             ->assertSee('GW 777-24')
             ->assertSee($vehiclesUrl, false);
+
+        // Transport is region-scoped: a fleet manager of another region gets no link to this region's vehicle.
+        $elsewhere = $this->userWithRoles('200061', ['employee', 'hs_officer', 'transport_manager'], $this->ashanti, $this->kumasi);
+        Livewire::actingAs($elsewhere)->test(ExtinguisherShow::class, ['extinguisher' => $unit])
+            ->assertDontSee($vehiclesUrl, false);
 
         $this->actingAs($plain)->get(route('health_safety.extinguishers.index'))->assertSee('GW 777-24');
     }

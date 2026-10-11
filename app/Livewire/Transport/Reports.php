@@ -5,6 +5,7 @@ namespace App\Livewire\Transport;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Department;
 use App\Services\ReportsService;
+use App\Services\Transport\TransportScope;
 use Livewire\Component;
 
 class Reports extends Component
@@ -62,14 +63,14 @@ class Reports extends Component
 
         $this->fromLabel = $from->format('d M Y');
         $this->toLabel = $to->format('d M Y');
-        $this->payload = $reports->reportPayload($from, $to, $this->departmentId !== '' ? (int) $this->departmentId : null);
+        $this->payload = $reports->reportPayload($from, $to, $this->departmentId !== '' ? (int) $this->departmentId : null, auth()->user());
     }
 
     protected function authorizeReports(): void
     {
         $user = auth()->user();
 
-        if (! $user || (! $user->hasRoles('super_admin', 'transport_manager') && ! $user->hasPermission('transport.view_reports'))) {
+        if (! $user || ! app(TransportScope::class)->can($user, 'transport.view_reports')) {
             abort(403);
         }
     }

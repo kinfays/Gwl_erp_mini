@@ -3,8 +3,9 @@
 namespace App\Livewire\Transport;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
-use App\Models\Vehicle;
+use App\Models\User;
 use App\Models\VehicleExpense;
+use App\Services\Transport\TransportScope;
 use App\Services\Transport\TransportService;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -44,15 +45,15 @@ class Expenses extends Component
 
     public function save(TransportService $transport): void
     {
-        $user = auth()->user();
+        $user = $this->actor();
 
-        if (! $user || (! $user->hasRoles('super_admin', 'transport_manager') && ! $user->hasPermission('transport.manage_expenses'))) {
+        if (! $this->scope()->can($user, 'transport.manage_expenses')) {
             abort(403);
         }
 
         $validated = $this->validate([
             'receipt' => ['nullable', 'image', 'max:4096'],
-            'form.vehicle_id' => ['required', 'integer', 'exists:vehicles,id'],
+            'form.vehicle_id' => ['required', 'integer'],
             'form.expense_type' => ['required', 'in:'.implode(',', VehicleExpense::TYPES)],
             'form.amount' => ['required', 'numeric', 'min:0.01'],
             'form.currency' => ['required', 'string', 'size:3'],
@@ -60,11 +61,12 @@ class Expenses extends Component
             'form.expense_date' => ['required', 'date'],
         ]);
 
-        $vehicle = Vehicle::query()->findOrFail($validated['form']['vehicle_id']);
+        // A vehicle that does not exist and one outside the user's reach both answer 404.
+        $vehicle = $this->scope()->findVehicle($user, $validated['form']['vehicle_id']);
         $payload = $validated['form'];
         unset($payload['vehicle_id']);
 
-        $transport->recordExpense($vehicle, $payload, $this->receipt, auth()->id());
+        $transport->recordExpense($vehicle, $payload, $this->receipt, $user->id, $user);
         $this->resetForm();
 
         $this->dispatch('toast', type: 'success', message: 'Expense recorded.');
@@ -83,9 +85,23 @@ class Expenses extends Component
         $this->receipt = null;
     }
 
+    protected function scope(): TransportScope
+    {
+        return app(TransportScope::class);
+    }
+
+    protected function actor(): User
+    {
+        $user = auth()->user();
+        abort_unless($user, 403);
+
+        return $user;
+    }
+
     protected function expenseQuery()
     {
         return VehicleExpense::query()
+            ->visibleTo($this->actor())
             ->with(['vehicle', 'recorder'])
             ->when($this->vehicleFilter !== '', fn ($query) => $query->where('vehicle_id', (int) $this->vehicleFilter))
             ->when($this->typeFilter !== '', fn ($query) => $query->where('expense_type', $this->typeFilter))
@@ -113,7 +129,7 @@ class Expenses extends Component
 
         return view('livewire.transport.expenses', [
             'records' => $records,
-            'vehicles' => Vehicle::query()->orderBy('number_plate')->get(),
+            'vehicles' => $this->scope()->vehicles($this->actor())->orderBy('number_plate')->get(),
             'expenseTypes' => VehicleExpense::TYPES,
             'total' => $total,
             'byType' => $byType,

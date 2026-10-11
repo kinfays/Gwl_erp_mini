@@ -65,6 +65,11 @@ return [
     'blog_module_enabled' => (bool) env('GWL_BLOG_MODULE_ENABLED', true),
     // Biggest cover photo accepted (MB). Keep at or below PHP upload_max_filesize / post_max_size.
     'blog_cover_max_mb' => (int) env('GWL_BLOG_COVER_MAX_MB', 3),
+
+    // G-Water (bottled and sachet water bought from G Water and sold by each location: prices, trips, daily sales, stock,
+    // reimbursements): off by default; when off the routes don't register and the module is hidden from navigation
+    // (docs/17-module-g-water.md).
+    'gwater_module_enabled' => (bool) env('GWL_GWATER_MODULE_ENABLED', false),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.

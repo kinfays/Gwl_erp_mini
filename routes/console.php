@@ -76,6 +76,8 @@ Schedule::command('leave:generate-entitlements')->dailyAt('00:20');
 Artisan::command('transport:check-expiries', function () {
     $count = 0;
 
+    // A system job with no signed-in user, so it reads every vehicle on purpose; WHO is told is decided per vehicle by
+    // TransportNotificationService / TransportScope::managersFor (managers of the vehicle's location, plus super_admin).
     Vehicle::query()
         ->where('status', '!=', Vehicle::STATUS_RETIRED)
         ->where(function ($query): void {

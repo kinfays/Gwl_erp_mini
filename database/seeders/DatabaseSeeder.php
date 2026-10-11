@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
             CommercialRolePermissionSeeder::class,
             HealthSafetyRolePermissionSeeder::class,
             RegionalBlogRolePermissionSeeder::class,
+            GwaterRolePermissionSeeder::class,
             MdmStarterPolicySeeder::class,
             TransportSeeder::class,
             HolidaySeeder::class,

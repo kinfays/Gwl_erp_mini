@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
+use App\Models\Concerns\ScopedByVehicle;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,7 @@ class VehicleExpense extends Model
 {
     use HasFactory;
     use HasUuid;
+    use ScopedByVehicle;
 
     public const TYPES = [
         'fuel',

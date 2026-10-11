@@ -12,6 +12,7 @@ class NotifyTransportManagersOfDocumentExpiry
     public function handle(DocumentExpiryDetected $event): void
     {
         $this->notifications->notifyManagers(
+            $event->vehicle,
             'Vehicle document expiring',
             sprintf(
                 '%s %s expires in %d day(s).',

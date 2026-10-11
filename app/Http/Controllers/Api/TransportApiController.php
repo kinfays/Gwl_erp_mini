@@ -7,6 +7,7 @@ use App\Http\Requests\Transport\StoreMileageLogRequest;
 use App\Http\Requests\Transport\StoreVehicleIssueRequest;
 use App\Models\User;
 use App\Repositories\Transport\VehicleRepository;
+use App\Services\Transport\TransportScope;
 use App\Services\Transport\TransportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class TransportApiController extends Controller
     public function myVehicle(Request $request, VehicleRepository $vehicles): JsonResponse
     {
         $user = $this->tokenUser($request);
+        // Only a vehicle still inside the user's location (TransportScope); otherwise the answer is "no vehicle".
         $vehicle = $vehicles->assignedTo($user);
 
         return response()->json([
@@ -105,7 +107,7 @@ class TransportApiController extends Controller
 
     protected function ensureCan(User $user, string $permission): void
     {
-        if ($user->hasRoles('super_admin', 'transport_manager') || $user->hasPermission($permission)) {
+        if (app(TransportScope::class)->can($user, $permission)) {
             return;
         }
 

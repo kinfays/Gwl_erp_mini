@@ -19,6 +19,7 @@ class ModuleAccessSeeder extends Seeder
                 Permission::MODULE_TRANSPORT,
                 Permission::MODULE_CREDIT_UNION,
                 Permission::MODULE_COMMERCIAL,
+                Permission::MODULE_GWATER,
             ], true)
         ));
 
@@ -36,6 +37,7 @@ class ModuleAccessSeeder extends Seeder
             'hs_officer' => [],
             'hs_manager' => [],
             'pr_officer' => [],
+            'g_water' => [Permission::MODULE_GWATER],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],

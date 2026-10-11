@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Department;
+use App\Models\District;
 use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -36,6 +37,18 @@ class VehicleFactory extends Factory
             'road_worthiness_expiry_date' => now()->addDays($this->faker->numberBetween(15, 160))->toDateString(),
             'status' => $this->faker->randomElement(Vehicle::STATUSES),
         ];
+    }
+
+    /**
+     * Based in a district (and its region). Unplaced by default: a vehicle with no region is visible to super_admin only
+     * (TransportScope), so tests that need a regional or Head Office vehicle say where it is.
+     */
+    public function placedIn(District $district): static
+    {
+        return $this->state(fn () => [
+            'region_id' => $district->region_id,
+            'district_id' => $district->id,
+        ]);
     }
 
     public function assigned(?User $user = null, ?User $driver = null): static

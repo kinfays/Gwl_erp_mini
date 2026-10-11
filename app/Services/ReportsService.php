@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\MileageLog;
+use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleExpense;
 use App\Models\VehicleIssue;
+use App\Services\Transport\TransportScope;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Closure;
@@ -13,6 +16,8 @@ use Illuminate\Support\Facades\Cache;
 
 class ReportsService
 {
+    public function __construct(protected TransportScope $scope) {}
+
     public function resolveDateRange(string $preset, ?string $customFrom = null, ?string $customTo = null): array
     {
         $today = today();
@@ -29,28 +34,28 @@ class ReportsService
         };
     }
 
-    public function reportPayload(Carbon $from, Carbon $to, ?int $deptId): array
+    public function reportPayload(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
         return [
-            'statCards' => $this->statCards($from, $to, $deptId),
-            'monthlyExpenses' => $this->expenseSummary($from, $to, $deptId),
-            'expenseByType' => $this->expenseByType($from, $to, $deptId),
-            'vehicleStatusCounts' => $this->vehicleStatusCounts($deptId),
-            'vehiclesByDepartment' => $this->vehiclesByDepartment(),
-            'mileageByMonth' => $this->mileageByMonth($from, $to, $deptId),
-            'issuesTrend' => $this->issuesTrend($from, $to, $deptId),
-            'topExpensiveVehicles' => $this->topExpensiveVehicles($from, $to, 5, $deptId),
-            'issuesByType' => $this->issuesByType($from, $to, $deptId),
-            'upcomingExpiryDocs' => $this->upcomingExpiryDocs(60, $deptId),
-            'maintenanceDueSoon' => $this->maintenanceDueSoon(6, $deptId),
+            'statCards' => $this->statCards($from, $to, $deptId, $actor),
+            'monthlyExpenses' => $this->expenseSummary($from, $to, $deptId, $actor),
+            'expenseByType' => $this->expenseByType($from, $to, $deptId, $actor),
+            'vehicleStatusCounts' => $this->vehicleStatusCounts($deptId, $actor),
+            'vehiclesByDepartment' => $this->vehiclesByDepartment($actor),
+            'mileageByMonth' => $this->mileageByMonth($from, $to, $deptId, $actor),
+            'issuesTrend' => $this->issuesTrend($from, $to, $deptId, $actor),
+            'topExpensiveVehicles' => $this->topExpensiveVehicles($from, $to, 5, $deptId, $actor),
+            'issuesByType' => $this->issuesByType($from, $to, $deptId, $actor),
+            'upcomingExpiryDocs' => $this->upcomingExpiryDocs(60, $deptId, $actor),
+            'maintenanceDueSoon' => $this->maintenanceDueSoon(6, $deptId, $actor),
         ];
     }
 
-    public function expenseSummary(Carbon $from, Carbon $to, ?int $deptId): array
+    public function expenseSummary(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
             $months = $this->monthBuckets($from, $to);
-            $totals = $this->expenseQuery($from, $to, $deptId)
+            $totals = $this->expenseQuery($from, $to, $deptId, $actor)
                 ->get(['amount', 'expense_date'])
                 ->groupBy(fn (VehicleExpense $expense) => $expense->expense_date?->format('Y-m'))
                 ->map(fn ($items) => (float) $items->sum('amount'));
@@ -63,10 +68,10 @@ class ReportsService
         });
     }
 
-    public function expenseByType(Carbon $from, Carbon $to, ?int $deptId): array
+    public function expenseByType(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
-            $totals = $this->expenseQuery($from, $to, $deptId)
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
+            $totals = $this->expenseQuery($from, $to, $deptId, $actor)
                 ->get(['expense_type', 'amount'])
                 ->groupBy('expense_type')
                 ->map(fn ($items) => round((float) $items->sum('amount'), 2));
@@ -81,10 +86,10 @@ class ReportsService
         });
     }
 
-    public function vehicleStatusCounts(?int $deptId): array
+    public function vehicleStatusCounts(?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('deptId'), function () use ($deptId): array {
-            $counts = $this->vehicleQuery($deptId)
+        return $this->remember(__FUNCTION__, $actor, compact('deptId'), function () use ($deptId, $actor): array {
+            $counts = $this->vehicleQuery($deptId, $actor)
                 ->get(['status'])
                 ->groupBy('status')
                 ->map->count();
@@ -97,10 +102,10 @@ class ReportsService
         });
     }
 
-    public function vehiclesByDepartment(): array
+    public function vehiclesByDepartment(User $actor): array
     {
-        return $this->remember(__FUNCTION__, [], function (): array {
-            $rows = Vehicle::query()
+        return $this->remember(__FUNCTION__, $actor, [], function () use ($actor): array {
+            $rows = $this->vehicleQuery(null, $actor)
                 ->with('department')
                 ->get()
                 ->groupBy(fn (Vehicle $vehicle) => $vehicle->department?->department_name ?: 'Unassigned')
@@ -119,11 +124,12 @@ class ReportsService
         });
     }
 
-    public function mileageByMonth(Carbon $from, Carbon $to, ?int $deptId): array
+    public function mileageByMonth(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
             $months = $this->monthBuckets($from, $to);
-            $totals = \App\Models\MileageLog::query()
+            $totals = MileageLog::query()
+                ->visibleTo($actor)
                 ->with('vehicle')
                 ->whereBetween('trip_date', [$from->toDateString(), $to->toDateString()])
                 ->when($deptId, fn (Builder $query) => $query->whereHas('vehicle', fn (Builder $vehicle) => $vehicle->where('department_id', $deptId)))
@@ -138,16 +144,16 @@ class ReportsService
         });
     }
 
-    public function issuesTrend(Carbon $from, Carbon $to, ?int $deptId): array
+    public function issuesTrend(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
             $months = $this->monthBuckets($from, $to);
-            $reported = $this->issueQuery($deptId)
+            $reported = $this->issueQuery($deptId, $actor)
                 ->whereBetween('reported_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
                 ->get(['reported_at'])
                 ->groupBy(fn (VehicleIssue $issue) => $issue->reported_at?->format('Y-m'))
                 ->map->count();
-            $resolved = $this->issueQuery($deptId)
+            $resolved = $this->issueQuery($deptId, $actor)
                 ->whereBetween('resolved_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
                 ->get(['resolved_at'])
                 ->groupBy(fn (VehicleIssue $issue) => $issue->resolved_at?->format('Y-m'))
@@ -161,10 +167,10 @@ class ReportsService
         });
     }
 
-    public function topExpensiveVehicles(Carbon $from, Carbon $to, int $limit = 5, ?int $deptId = null): array
+    public function topExpensiveVehicles(Carbon $from, Carbon $to, int $limit, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'limit', 'deptId'), function () use ($from, $to, $limit, $deptId): array {
-            $rows = $this->expenseQuery($from, $to, $deptId)
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'limit', 'deptId'), function () use ($from, $to, $limit, $deptId, $actor): array {
+            $rows = $this->expenseQuery($from, $to, $deptId, $actor)
                 ->with('vehicle')
                 ->get()
                 ->groupBy('vehicle_id')
@@ -184,12 +190,12 @@ class ReportsService
         });
     }
 
-    public function issuesByType(Carbon $from, Carbon $to, ?int $deptId = null): array
+    public function issuesByType(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
             $counts = [];
 
-            $this->issueQuery($deptId)
+            $this->issueQuery($deptId, $actor)
                 ->whereBetween('reported_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
                 ->get(['issue_types'])
                 ->each(function (VehicleIssue $issue) use (&$counts): void {
@@ -228,14 +234,14 @@ class ReportsService
         });
     }
 
-    public function upcomingExpiryDocs(int $days = 60, ?int $deptId = null): array
+    public function upcomingExpiryDocs(int $days, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('days', 'deptId'), function () use ($days, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('days', 'deptId'), function () use ($days, $deptId, $actor): array {
             $today = today();
             $until = $today->copy()->addDays($days);
             $rows = collect();
 
-            $this->vehicleQuery($deptId)
+            $this->vehicleQuery($deptId, $actor)
                 ->where(function (Builder $query) use ($today, $until): void {
                     $query->whereBetween('insurance_expiry_date', [$today->toDateString(), $until->toDateString()])
                         ->orWhereBetween('road_worthiness_expiry_date', [$today->toDateString(), $until->toDateString()]);
@@ -265,10 +271,10 @@ class ReportsService
         });
     }
 
-    public function maintenanceDueSoon(int $limit = 6, ?int $deptId = null): array
+    public function maintenanceDueSoon(int $limit, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('limit', 'deptId'), function () use ($limit, $deptId): array {
-            $rows = $this->vehicleQuery($deptId)
+        return $this->remember(__FUNCTION__, $actor, compact('limit', 'deptId'), function () use ($limit, $deptId, $actor): array {
+            $rows = $this->vehicleQuery($deptId, $actor)
                 ->where('status', '!=', Vehicle::STATUS_RETIRED)
                 ->get()
                 ->map(fn (Vehicle $vehicle) => [
@@ -294,18 +300,18 @@ class ReportsService
         });
     }
 
-    public function statCards(Carbon $from, Carbon $to, ?int $deptId): array
+    public function statCards(Carbon $from, Carbon $to, ?int $deptId, User $actor): array
     {
-        return $this->remember(__FUNCTION__, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId): array {
+        return $this->remember(__FUNCTION__, $actor, compact('from', 'to', 'deptId'), function () use ($from, $to, $deptId, $actor): array {
             $periodDays = max(1, $from->diffInDays($to) + 1);
             $priorTo = $from->copy()->subDay()->endOfDay();
             $priorFrom = $priorTo->copy()->subDays($periodDays - 1)->startOfDay();
-            $spend = (float) $this->expenseQuery($from, $to, $deptId)->sum('amount');
-            $priorSpend = (float) $this->expenseQuery($priorFrom, $priorTo, $deptId)->sum('amount');
+            $spend = (float) $this->expenseQuery($from, $to, $deptId, $actor)->sum('amount');
+            $priorSpend = (float) $this->expenseQuery($priorFrom, $priorTo, $deptId, $actor)->sum('amount');
             $change = $priorSpend > 0 ? (($spend - $priorSpend) / $priorSpend) * 100 : ($spend > 0 ? 100 : 0);
-            $vehicles = $this->vehicleQuery($deptId)->get();
-            $issues = $this->issueQuery($deptId)->where('status', '!=', VehicleIssue::STATUS_RESOLVED)->get();
-            $docs30 = count($this->upcomingExpiryDocs(30, $deptId));
+            $vehicles = $this->vehicleQuery($deptId, $actor)->get();
+            $issues = $this->issueQuery($deptId, $actor)->where('status', '!=', VehicleIssue::STATUS_RESOLVED)->get();
+            $docs30 = count($this->upcomingExpiryDocs(30, $deptId, $actor));
 
             return [
                 [
@@ -342,22 +348,24 @@ class ReportsService
         });
     }
 
-    protected function expenseQuery(Carbon $from, Carbon $to, ?int $deptId): Builder
+    protected function expenseQuery(Carbon $from, Carbon $to, ?int $deptId, User $actor): Builder
     {
         return VehicleExpense::query()
+            ->visibleTo($actor)
             ->whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
             ->when($deptId, fn (Builder $query) => $query->whereHas('vehicle', fn (Builder $vehicle) => $vehicle->where('department_id', $deptId)));
     }
 
-    protected function issueQuery(?int $deptId): Builder
+    protected function issueQuery(?int $deptId, User $actor): Builder
     {
         return VehicleIssue::query()
+            ->visibleTo($actor)
             ->when($deptId, fn (Builder $query) => $query->whereHas('vehicle', fn (Builder $vehicle) => $vehicle->where('department_id', $deptId)));
     }
 
-    protected function vehicleQuery(?int $deptId): Builder
+    protected function vehicleQuery(?int $deptId, User $actor): Builder
     {
-        return Vehicle::query()
+        return $this->scope->vehicles($actor)
             ->when($deptId, fn (Builder $query) => $query->where('department_id', $deptId));
     }
 
@@ -371,8 +379,10 @@ class ReportsService
             ->values();
     }
 
-    protected function remember(string $method, array $params, Closure $callback): array
+    /** Cached per reach (TransportScope::keyFor): two users share figures only when they see the same vehicles. */
+    protected function remember(string $method, User $actor, array $params, Closure $callback): array
     {
+        $params['scope'] = $this->scope->keyFor($actor);
         $normalized = collect($params)
             ->map(fn ($value) => $value instanceof Carbon ? $value->toDateString() : $value)
             ->all();

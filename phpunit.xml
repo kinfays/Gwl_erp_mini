@@ -46,5 +46,6 @@
         <env name="GWL_ARKESEL_WEBHOOK_TOKEN" value="test-webhook-secret"/>
         <env name="GWL_HEALTH_SAFETY_MODULE_ENABLED" value="true"/>
         <env name="GWL_BLOG_MODULE_ENABLED" value="true"/>
+        <env name="GWL_GWATER_MODULE_ENABLED" value="true"/>
     </php>
 </phpunit>

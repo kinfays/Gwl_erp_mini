@@ -21,6 +21,8 @@ This folder contains split documentation pages for easier maintenance.
 - Commercial — billing and meter-reading analytics: [commercial-module-design.md](commercial-module-design.md)
 - Commercial — Customer List (millions of customers: import, rollups, analytics, privacy, benchmark): [15-module-commercial-customer-list.md](15-module-commercial-customer-list.md)
 - Commercial — SMS to customers (Arkesel, locked to Accra West: audiences, sending safety, delivery reports): [16-module-commercial-sms.md](16-module-commercial-sms.md)
+- Transport — region scoping (a vehicle belongs to a region or Head Office; who sees what, the backfill): [18-transport-region-scoping.md](18-transport-region-scoping.md)
+- G-Water — bottled and sachet water: prices, trips, daily sales, stock ledger, fuel reimbursement (Phase 1 built): [17-module-g-water.md](17-module-g-water.md)
 
 ## Reference Pages
 

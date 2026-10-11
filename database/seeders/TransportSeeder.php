@@ -37,6 +37,8 @@ class TransportSeeder extends Seeder
 
     protected function seedFleet(): void
     {
+        // The demo users below have no employee record, so these vehicles are unplaced (no region): only super_admin sees
+        // them until someone gives each a location on the vehicle form (Transport is region-scoped, TransportScope).
         $departments = collect(['Transport', 'Operations', 'Commercial', 'Finance', 'Administration'])
             ->mapWithKeys(fn (string $name) => [$name => Department::query()->firstOrCreate(['department_name' => $name])]);
 

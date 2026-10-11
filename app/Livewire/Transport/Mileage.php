@@ -4,8 +4,10 @@ namespace App\Livewire\Transport;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\MileageLog;
+use App\Models\User;
 use App\Models\Vehicle;
 use App\Repositories\Transport\VehicleRepository;
+use App\Services\Transport\TransportScope;
 use App\Services\Transport\TransportService;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -43,9 +45,9 @@ class Mileage extends Component
 
     public function save(TransportService $transport): void
     {
-        $user = auth()->user();
+        $user = $this->actor();
 
-        if (! $user || (! $user->hasRoles('super_admin', 'transport_manager') && ! $user->hasPermission('transport.log_mileage'))) {
+        if (! $this->scope()->can($user, 'transport.log_mileage')) {
             abort(403);
         }
 
@@ -76,36 +78,58 @@ class Mileage extends Component
             return null;
         }
 
-        return Vehicle::query()->find($this->vehicleId);
+        // Inside the user's reach and, unless they can view all vehicles, their own; anything else (a tampered id) is 404.
+        return $this->availableVehicles($this->actor())->whereKey($this->vehicleId)->firstOrFail();
+    }
+
+    protected function scope(): TransportScope
+    {
+        return app(TransportScope::class);
+    }
+
+    protected function actor(): User
+    {
+        $user = auth()->user();
+        abort_unless($user, 403);
+
+        return $user;
+    }
+
+    /** Vehicles the user may log mileage on: in their reach, not retired, and their own unless they can view all. */
+    protected function availableVehicles(User $user)
+    {
+        return $this->scope()->vehicles($user)
+            ->where('vehicles.status', '!=', Vehicle::STATUS_RETIRED)
+            ->when(! $this->scope()->can($user, 'transport.view_vehicles'), function ($query) use ($user): void {
+                $query->where(function ($inner) use ($user): void {
+                    $inner->where('vehicles.assigned_user_id', $user->id)
+                        ->orWhere('vehicles.assigned_driver_id', $user->id);
+                });
+            });
     }
 
     public function render(VehicleRepository $vehicles)
     {
-        $user = auth()->user();
-        $canManage = $user?->hasRoles('super_admin', 'transport_manager') || $user?->hasPermission('transport.view_vehicles');
-        $assignedVehicle = $user ? $vehicles->assignedTo($user) : null;
+        $user = $this->actor();
+        $canManage = $this->scope()->can($user, 'transport.view_vehicles');
+        $assignedVehicle = $vehicles->assignedTo($user);
 
-        $availableVehicles = Vehicle::query()
-            ->when(! $canManage, function ($query) use ($user): void {
-                $query->where(function ($inner) use ($user): void {
-                    $inner->where('assigned_user_id', $user?->id)
-                        ->orWhere('assigned_driver_id', $user?->id);
-                });
-            })
-            ->where('status', '!=', Vehicle::STATUS_RETIRED)
-            ->orderBy('number_plate')
-            ->get();
+        $availableVehicles = $this->availableVehicles($user)->orderBy('number_plate')->get();
 
         $logs = MileageLog::query()
+            ->visibleTo($user)
             ->with(['vehicle', 'driver'])
             ->when(! $canManage, function ($query) use ($user): void {
-                $query->where('driver_id', $user?->id)
-                    ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_user_id', $user?->id));
+                // Grouped, so the OR cannot escape the location scope above it.
+                $query->where(function ($inner) use ($user): void {
+                    $inner->where('driver_id', $user->id)
+                        ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_user_id', $user->id));
+                });
             })
             ->latest('trip_date')
             ->paginate(12);
 
-        $selectedVehicle = $this->selectedVehicle() ?? $assignedVehicle;
+        $selectedVehicle = ($this->vehicleId ? $this->availableVehicles($user)->whereKey($this->vehicleId)->first() : null) ?? $assignedVehicle;
 
         return view('livewire.transport.mileage', [
             'canManage' => $canManage,

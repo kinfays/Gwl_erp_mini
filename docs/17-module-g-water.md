@@ -1,6 +1,6 @@
 # G-Water module — design
 
-Status: **design, not built.** Flag: `GWL_GWATER_MODULE_ENABLED` (default off until Phase 1 ships).
+Status: **Phase 1 built** (section 11 lists what was built and where it departs from this design); Phases 2 to 4 are not. Phase 0 (Transport region scoping) is done, see `docs/18-transport-region-scoping.md`. Flag: `GWL_GWATER_MODULE_ENABLED` (default off).
 Replaces the hand-written ledger and the Excel "PART 14" sheets used to track bottle and sachet water.
 
 ## 1. What the paper/Excel records show
@@ -20,23 +20,24 @@ Not in the paper records but required now: fuel to collect water, loading and of
 
 ## 2. Decisions taken
 
-1. **Selling price** starts at GH₵25 per bottle pack and GH₵10 per sachet pack. **Both selling and purchase prices can change**, so both live in one dated price list (`gw_prices`), never hard-coded. Each sale and each purchase line freezes the price that applied on its date, so a later change never rewrites history.
-2. **Purchase cost** starts at **GH₵20 per bottle pack and GH₵8 per sachet pack** (the requester said "8 and 20"; read as sachet 8, bottle 20, since the reverse would sell sachets at a loss). The cost is required on every purchase line, defaulting to the price list. Opening margin: bottle GH₵5, sachet GH₵2 per pack, before fuel, labour and damages. **Confirm the bottle/sachet assignment.**
+1. **Each location sets its own prices and waybill numbers.** (As built, the 12 May 2026 bottle increase is also seeded in the placeholder list, see section 11.) Selling and purchase prices live in one dated price list (`gw_prices`) that the location's own G-Water users maintain on the **Prices** screen; nothing is hard-coded. Each sale and each purchase line freezes the price in force on its date, so a later change never rewrites history. **The amounts shipped with the module are dummy placeholders** (bottle pack sells 25 / costs 20, sachet pack sells 10 / costs 8, as a system default with no location) so the screens work on day one; every location is expected to enter its real prices, which then override the placeholder from their effective date. The real price history (e.g. the ledger's 12 May 2026 increase) is entered by the users, not seeded.
+2. **Waybills are entered by the user.** Each purchase trip carries a waybill number typed by the recorder (free text up to 30 characters, required, unique within the location among non-voided trips). There is no central waybill sequence to maintain, and a duplicate is refused with the existing trip shown.
 3. **Sales are recorded as daily totals** per product (not per customer). No credit sales, no customer table.
-4. **Every region keeps its own books and sees only its own.** No Head Office exception except `super_admin`.
-5. Money is stored as integer **pesewas**; quantities are integer packs.
+4. **Every location keeps its own books and sees only its own.** Head Office counts as its own location (it shares a region id with the Head Office district, so the scope is never "region alone"): a Head Office user sees Head Office records only, a regional user sees their region only, and only `super_admin` sees everything.
+5. **Loading and offloading labour is paid in cash**, so it is a plain expense with no reimbursement. **Only fuel is reimbursed.**
+6. Money is stored as integer **pesewas**; quantities are integer packs.
 
 ## 3. Data model
 
-All tables prefixed `gw_`, numeric ids, `region_id` on every row (copied from the recording user's employee), `created_by`, timestamps. Migrations guard with `Schema::hasTable/hasColumn` and seed permissions inside a migration (project convention).
+All tables prefixed `gw_`, numeric ids, `region_id` and `district_id` on every row (copied from the recording user's employee; together they give the Head Office-or-region scope), `created_by`, timestamps. Migrations guard with `Schema::hasTable/hasColumn` and seed permissions inside a migration (project convention).
 
 - `gw_products` — `code` (`bottle`, `sachet`), `name`, `units_per_pack` (15, 30), `is_active`.
-- `gw_prices` — `product_id`, `effective_from`, `selling_price`, `cost_price` (both required), `note`. A new row is added for every change (selling, cost or both); the latest row with `effective_from <= date` wins, so one product can have different selling and cost histories. Past rows are immutable. Seeded: bottle 25 / 20, sachet 10 / 8, effective 2026-01-01.
-- `gw_purchases` — one per collection trip: `purchase_date`, `waybill_no` (unique per region), `supplier_ref`, `note`, `status` (`posted`/`voided`), and the **Transport link** (all nullable): `vehicle_id`, `driver_id` (user), `mileage_log_id`, `vehicle_expense_id` (the fuel row, unique), plus the fuel reimbursement fields listed in section 5.
+- `gw_prices` — `region_id` and `district_id` (**both NULL = the system placeholder default**, editable by `super_admin` only; otherwise the owning location), `product_id`, `effective_from`, `selling_price`, `cost_price` (both required), `note`, `created_by`. A location adds a new row for every change (selling, cost or both); lookup takes the location's own latest row with `effective_from <= date`, else the placeholder default. Rows are immutable (a mistake is corrected by a new row with the same or a later date, never an edit); a row dated in the past is allowed (so history can be entered) but only before the first sale or purchase line that would use it is posted for that date, otherwise it is refused with the affected entries listed. Seeded placeholder only: bottle 25 / 20 and sachet 10 / 8, effective 2026-01-01, no location.
+- `gw_purchases` — one per collection trip: `purchase_date`, `waybill_no` (typed by the user, unique per location among non-voided trips), `supplier_ref`, `note`, `status` (`posted`/`voided`), and the **Transport link** (all nullable): `vehicle_id`, `driver_id` (user), `mileage_log_id`, `vehicle_expense_id` (the fuel row, unique), plus the fuel reimbursement fields listed in section 5.
 - `gw_purchase_lines` — `purchase_id`, `product_id`, `packs`, `unit_cost` (pesewas).
 - `gw_sales` — one per region/product/day: `sale_date`, `product_id`, `packs`, `unit_price` (snapshot of selling price at entry), `amount`, `status`. Unique (region, product, date, voided = false); a second entry the same day is an addition line, not a silent overwrite.
 - `gw_damages` — `damage_date`, `product_id`, `packs`, `stage` (`transit`/`loading`/`offloading`/`storage`), `unit_cost` snapshot, `reason`, optional `purchase_id`.
-- `gw_expenses` — `expense_date`, `category` (`fuel`, `loading`, `offloading`, `other`), `amount`, optional `purchase_id` (trip cost), `payee`, `receipt_ref`, `note`, plus reimbursement fields: `paid_by_user_id` (staff who paid out of pocket), `reimbursement_status` (`pending`/`reimbursed`/`not_applicable`), `reimbursed_on`, `reimbursement_ref`. Fuel and labour are normally linked to a purchase trip; others stand alone. A fuel expense linked to Transport holds no amount of its own (see section 5).
+- `gw_expenses` — `expense_date`, `category` (`fuel`, `loading`, `offloading`, `other`), `amount`, optional `purchase_id` (trip cost), `payee`, `receipt_ref`, `note`, plus reimbursement fields: `paid_by_user_id` (staff who paid out of pocket), `reimbursement_status` (`pending`/`reimbursed`; set only on `fuel` rows, labour and other rows are `not_applicable`), `reimbursed_on`, `reimbursement_ref`. Fuel and labour are normally linked to a purchase trip; others stand alone. A fuel expense linked to Transport holds no amount of its own (see section 5).
 - `gw_supplier_payments` — payment requests and payments to G Water: `request_date`, `reference`, `amount`, `paid_on` (nullable), `status` (`requested`/`paid`/`voided`).
 - `gw_stock_movements` — **immutable signed ledger** (same idea as `hs_ppe_stock_movements`): `product_id`, `movement_date`, `type` (`opening`, `purchase`, `sale`, `damage`, `adjustment`), `packs` (signed), `source_type`/`source_id`. Balance may never go negative; a correction is an `adjustment` row.
 - `gw_opening_balances` — one-off B/F per region: packs per product (e.g. bottle 960, sachet 1,365) and amount owed to G Water, dated. Posts the `opening` stock rows.
@@ -75,13 +76,17 @@ Fuel (and driver time) is already recorded by the Transport module, so G-Water *
 - The fuel figure in G-Water's P&L is the amount on that linked `VehicleExpense`. G-Water never writes to, edits or deletes Transport rows; it only holds the reference. If the linked expense is later changed in Transport, the P&L follows it and the trip shows a "changed in Transport" note. A fuel expense can be linked to **one** G-Water trip only (unique), so it is never counted twice.
 - If the fuel was paid out of pocket and is not in Transport, the recorder enters a G-Water `fuel` expense instead (`vehicle_id` optional) and the same rule applies: one source per trip's fuel, never both.
 - **Reimbursement** covers staff who paid out of pocket. For a fuel purchase linked to Transport, the amount comes from the `VehicleExpense`, and the reimbursement state sits on the trip (`fuel_paid_by_user_id`, `fuel_reimbursement_status`, `fuel_reimbursed_on`, `fuel_reimbursement_ref` on `gw_purchases`). For every other reimbursable cost it sits on the `gw_expenses` row. No copy of the Transport amount is ever created. A **Reimbursements** screen lists what is pending per person, marks it reimbursed with a reference, and shows totals. Marking reimbursed needs `gwater.reimburse`, and never the person who recorded the entry.
-- Vehicle pickers show vehicles the actor may use. `Vehicle` carries no region column, so the build must decide the rule by checking how vehicles are assigned (assigned user's region) and keep it in one place (`GwaterVisibility`). **Open point for the build.**
-- Transport Phase impact: none required in Transport. Optional later: a "G-Water trip" tag on the mileage log's `trip_purpose`.
+- Transport is now region-scoped (`vehicles.region_id` / `district_id`, Phase 0, `docs/18-transport-region-scoping.md`). G-Water must call `TransportScope::vehicles($user)` for its vehicle picker and `findVehicle()` for a chosen id (404 outside reach), and read fuel expenses and mileage logs through `VehicleExpense::visibleTo($user)` / `MileageLog::visibleTo($user)` (the `ScopedByVehicle` trait), never re-derive the rule in `GwaterVisibility`. A trip is refused if the vehicle, driver or linked fuel/mileage row is outside the actor's reach. Vehicles that were never placed are invisible to everyone but `super_admin`, so they cannot be chosen for a trip until given a location.
+- Optional later: a "G-Water trip" tag on the mileage log's `trip_purpose`.
+
+### 5.1 Phase 0: Transport region scoping (done)
+
+Built and documented in `docs/18-transport-region-scoping.md`: a regional or district user sees only their region's vehicles (Head Office district excluded), Head Office staff see only Head Office vehicles, `super_admin` sees all, anything outside reach answers 404, and the `transport_manager` bypass is gone. G-Water depends on it only through `TransportScope` (see the bullet above).
 
 ## 6. Access and the G-Water role
 
-- Module flag, `module_access` row, `GwaterVisibility` for region scope (own region only; `super_admin` all). Another region's record answers 404.
-- **New role `g_water`, display name "G-Water"** (created in a migration, like other roles, with `module_access` and the permissions below). It is a regional role (fits regional and district staff; not Head Office-only). Proposed flags: `ict_assignable = true` so a regional ICT user can assign it inside their own scope, `is_protected = false`, `is_system = false`. Confirm both flags.
+- Module flag, `module_access` row, `GwaterVisibility` for location scope (own Head Office-or-region scope only; `super_admin` all). Another location's record answers 404.
+- **New role `g_water`, display name "G-Water"** (created in a migration, like other roles, with `module_access` and the permissions below). It fits any location (regional, district or Head Office staff each work in their own scope). Flags: `ict_assignable = true` (confirmed: ICT may assign it inside their own scope), `is_protected = false`, `is_system = false`.
 - Permissions: `gwater.view`, `gwater.record` (sales, purchases, damages, expenses), `gwater.manage_prices`, `gwater.view_reports` (P&L), `gwater.void`, `gwater.reimburse`, `gwater.export`. The `g_water` role gets all of them by default; `admin` and `super_admin` get them through their usual bypass. If you want to split duties later (recorder vs. approver), create a second role from these permissions on the roles screen; no code change.
 - Rules that stay regardless of role: voiding needs a reason and is audited; the person who recorded a reimbursable expense cannot mark it reimbursed.
 - Layered checks as elsewhere: route middleware, then a Livewire `mount()` and action re-check.
@@ -89,18 +94,19 @@ Fuel (and driver time) is already recorded by the Transport module, so G-Water *
 ## 7. Screens (Livewire)
 
 1. **Overview** — stock on hand per product, month sales, net profit, owed to G Water, low-stock and damage-rate flags.
-2. **Daily sales** — add a day's packs per product; unit price pre-filled from the price list and shown, not editable without `manage_prices`.
-3. **Purchases (trips)** — waybill, packs per product, unit cost (pre-filled from the price list), vehicle and driver from Transport, the linked fuel expense and mileage log, and loading/offloading entered on the same form.
+2. **Daily sales** — add a day's packs per product; the selling price is pre-filled from the location's price list and shown. The recorder may not override it on the sale; to change a price, use the Prices screen.
+3. **Purchases (trips)** — the user types the **waybill number**, then packs per product, unit cost (pre-filled from the location's price list), vehicle and driver from Transport, the linked fuel expense and mileage log, and loading/offloading, all on one form.
 4. **Damages** — product, packs, stage, reason.
 5. **Expenses** and **Reimbursements** — category, amount, receipt reference; pending reimbursements per person with a mark-as-reimbursed action.
 6. **Payments to G Water** — payment requests and payments, balance owed.
 7. **Stock** — ledger per product with running balance and the waybill-outstanding view.
 8. **Profit and loss** — month/quarter/range, per product and combined, chart (Chart.js via its own Vite entry) and trip-cost table.
-9. **Prices** — dated price list for selling and purchase prices, with the history of each.
+9. **Prices** — the location's own dated price list: add a new selling and/or purchase price per product with an effective date, see the history of each, and see which price is currently in force and whether it is still the placeholder default. Needs `gwater.manage_prices` (the `g_water` role has it).
 10. **Export** — Excel and PDF of the P&L, stock and payments, through the existing export pattern; string cells only.
 
 ## 8. Phases
 
+0. **Transport region scoping** (section 5.1): done.
 1. Foundation: flag, permissions, products and prices, opening balances, purchases with trip costs, daily sales, stock ledger.
 2. Damages, expenses, supplier payments, owed balance.
 3. P&L, overview, charts, exports.
@@ -108,12 +114,31 @@ Fuel (and driver time) is already recorded by the Transport module, so G-Water *
 
 ## 9. Tests
 
-Plain PHPUnit, inline fixtures. Cover: price effective dating (the 12/5/26 increase), stock never negative, void reverses stock, region isolation (404 across regions), P&L arithmetic against a hand-worked month, damages and trip costs reduce profit, opening balance posts once, audit rows written.
+Plain PHPUnit, inline fixtures. Cover: price lookup (a location's own row overrides the placeholder from its effective date; a sale the day before uses the old price, the day of uses the new; two locations with different prices do not affect each other; a location without its own row falls back to the placeholder), waybill uniqueness per location (a voided trip frees its number; the same number in another location is allowed), the Transport scope (section 5.1), stock never negative, void reverses stock, location isolation (404 across regions and between Head Office and a region), P&L arithmetic against a hand-worked month, damages and trip costs reduce profit, opening balance posts once, audit rows written.
 
 ## 10. Open questions
 
-1. Confirm purchase cost: bottle 20 and sachet 8 per pack. Also, is the 26.00 on the payment request a newer selling or cost price? It would be added as a dated price row.
-2. Loading and offloading labour: paid in cash on the day, or also reimbursed? (Modelled as reimbursable like fuel; switch off if cash.)
-3. `g_water` role flags (`ict_assignable`) and whether recording and reimbursing should later be split into two roles.
-4. How to restrict the Transport vehicle picker by region (vehicles have no region column).
-5. Should unsold stock ever be returned or transferred between regions? (Not in scope now.)
+1. Which vehicles did the Transport backfill leave unplaced? G-Water trips cannot use them until a `super_admin` gives each a location (check the "Transport vehicle location backfill finished" log line).
+2. Should recording and reimbursing later be split into two roles? (No code change needed.)
+3. Should unsold stock ever be returned or transferred between locations? (Not in scope now.)
+
+## 11. Phase 1 as built
+
+Behind `GWL_GWATER_MODULE_ENABLED` (`config/gwl.php`, true in `phpunit.xml`); nothing was applied to the real database and nothing was committed. Run `php artisan migrate` (two migrations: tables, then permissions/role/module access/seed data).
+
+**Where it is:** migrations `2026_10_18_000001_create_gwater_tables` and `2026_10_18_000002_seed_gwater_module_access`; models `Gw*`; `app/Services/GWater/` (`GwaterVisibility`, `GwaterPricingService`, `GwaterStockService`, `GwaterWorkflowService`, `GwaterSummaryService`, `Money`); Livewire `app/Livewire/GWater/` (Overview, DailySales, Purchases, StockLedger, Prices, OpeningBalances, Reimbursements) with the `ScopesGwaterByActor` trait; views `resources/views/livewire/gwater/`; routes `gwater.*` in `routes/web.php`; sidebar in `ErpNavigation::gwaterSidebar()`; seeder `GwaterRolePermissionSeeder`; tests `tests/Feature/GWater/`.
+
+**Built:** products (bottle pack of 15, sachet pack of 30), the dated price list, trips (waybill unique per location among posted trips, one line per product at the cost in force, Transport vehicle/driver/mileage/fuel links, G-Water fuel when not in Transport, loading and offloading), daily sales, the immutable stock ledger with day-level non-negative check, stock corrections, the one-off opening balance, voids with reasons and reversing ledger rows, fuel reimbursement, audit rows for every write. `gw_damages`, `gw_expenses` (used already for a trip's fuel/loading/offloading) and `gw_supplier_payments` exist; the damages, expenses and payments screens are Phase 2.
+
+**Decisions taken where the design left room (change them here and in the code together):**
+1. **The 12 May 2026 bottle selling price (26.00, cost still 20.00) is seeded** as a third row of the placeholder list, next to the 25/10 selling and 20/8 cost rows dated 2026-01-01, because the ledger shows it (a sale on 11 May is 25.00, on 12 May 26.00). Section 2.1 said real history would be typed by users; a location's own rows still override all of it from their own date.
+2. **Sales:** no database unique key per day; a second entry for the same product and day is another line (an addition), each voidable on its own.
+3. **Purchase cost is not typed on the trip:** the line takes the cost price in force on the trip date and freezes it (the form shows it). A different cost is a new row on the Prices screen.
+4. **Opening balance** is one header row (`gw_opening_balances`: date and amount owed) plus `opening` ledger rows for the packs; it posts once per location, to correct it void and post again (refused if its packs were already sold).
+5. **super_admin** has no location: every screen shows a picker of districts, and writes go into the books of the chosen one. `admin` is not a G-Water user.
+6. **Reimbursement:** the person who paid the fuel cannot mark it reimbursed either (stricter than the design, which names only the recorder). The "changed in Transport" note compares the Transport row's `updated_at` with the trip's creation.
+7. **A trip's vehicle** must be based at the trip's own G-Water location, so a super_admin recording Head Office books cannot use a regional vehicle; vehicles never placed in Transport cannot be chosen by anyone but super_admin.
+8. **Stock rule:** the balance at the end of every day must be zero or more (not just today), so a backdated sale or a void can be refused for a past day.
+9. **Waybill:** refused when longer than 30 characters (never silently cut).
+10. `gwater.view_reports` and `gwater.export` are created and given to the role but unused until Phase 3.
+

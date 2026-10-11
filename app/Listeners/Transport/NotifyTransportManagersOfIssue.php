@@ -14,7 +14,12 @@ class NotifyTransportManagersOfIssue
         $issue = $event->issue->loadMissing(['vehicle', 'reporter']);
         $vehicle = $issue->vehicle;
 
+        if (! $vehicle) {
+            return;
+        }
+
         $this->notifications->notifyManagers(
+            $vehicle,
             'Vehicle issue reported',
             sprintf(
                 '%s reported a %s issue on %s.',

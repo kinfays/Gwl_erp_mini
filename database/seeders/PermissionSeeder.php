@@ -158,6 +158,15 @@ class PermissionSeeder extends Seeder
             'blog' => [
                 'blog.manage_posts',
             ],
+            'gwater' => [
+                'gwater.view',
+                'gwater.record',
+                'gwater.manage_prices',
+                'gwater.view_reports',
+                'gwater.void',
+                'gwater.reimburse',
+                'gwater.export',
+            ],
         ];
 
         foreach ($permissions as $module => $slugs) {

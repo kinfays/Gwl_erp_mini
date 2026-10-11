@@ -518,6 +518,9 @@ class HealthSafetyDemoSeeder extends Seeder
                     'year_purchased' => 2019 + $n,
                     'is_pool_car' => true,
                     'department_id' => $this->departments['Operations']->id,
+                    // Transport is region-scoped: a vehicle without a place is visible to super_admin only.
+                    'region_id' => $this->regions[$key]->id,
+                    'district_id' => $this->locations[$key]['districts'][0]->id,
                     'driver_type' => Vehicle::DRIVER_SELF_DRIVE,
                     'current_mileage' => 20000 * $n,
                     'maintenance_interval_km' => 5000,

@@ -88,6 +88,7 @@
                             <span class="ui-cell-stack">
                                 <span class="ui-person-name mono">{{ $vehicle->number_plate }}</span>
                                 <span class="ui-person-sub">{{ $vehicle->brand }} {{ $vehicle->model }} · {{ str($vehicle->type)->replace('_', ' ')->title() }}</span>
+                                <span class="ui-person-sub">{{ $vehicle->region ? $vehicle->region->region_name.($vehicle->district ? ' / '.$vehicle->district->district_name : '') : 'No location set' }}</span>
                             </span>
                         </td>
                         <td>
@@ -163,6 +164,25 @@
                         <option value="{{ $department->id }}">{{ $department->department_name }}</option>
                     @endforeach
                 </x-ui.select>
+
+                @if ($canPickLocation)
+                    <x-ui.select label="Region" wire:model.live="form.region_id">
+                        <option value="">Select region</option>
+                        @foreach ($regions as $region)
+                            <option value="{{ $region->id }}">{{ $region->region_name }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.select label="District" wire:model.live="form.district_id">
+                        <option value="">Whole region</option>
+                        @foreach ($districts as $district)
+                            <option value="{{ $district->id }}">{{ $district->district_name }}</option>
+                        @endforeach
+                    </x-ui.select>
+                @else
+                    <x-ui.field label="Location" for="f-vehicle-location" hint="Vehicles are based where you work.">
+                        <input id="f-vehicle-location" type="text" class="form-input" value="{{ $locationLabel }}" readonly>
+                    </x-ui.field>
+                @endif
 
                 @unless ($form['is_pool_car'])
                     <x-ui.select label="Assigned Employee" wire:model="form.assigned_user_id">

@@ -159,6 +159,13 @@ class ErpNavigation
                 'route' => $this->safeRoute('blog.home'),
             ],
             [
+                'slug' => Permission::MODULE_GWATER,
+                'title' => 'G-Water',
+                'short' => 'G-Water',
+                'icon_name' => 'droplets',
+                'route' => $this->safeRoute('gwater.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'short' => 'Access',
@@ -174,6 +181,7 @@ class ErpNavigation
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
                 Permission::MODULE_BLOG => (bool) config('gwl.blog_module_enabled'),
+                Permission::MODULE_GWATER => (bool) config('gwl.gwater_module_enabled'),
                 default => true,
             }
         ));
@@ -193,6 +201,7 @@ class ErpNavigation
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
             Permission::MODULE_BLOG => $this->blogSidebar($user),
+            Permission::MODULE_GWATER => $this->gwaterSidebar($user),
             default => [],
         };
 
@@ -1200,6 +1209,79 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'settings',
                 'can' => $can('health_safety.manage_settings'),
+            ],
+        ];
+    }
+
+    /** G-Water (docs/17-module-g-water.md): each entry needs its own permission; the screens re-check them. */
+    protected function gwaterSidebar(User $user): array
+    {
+        $can = fn (string $slug) => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission($slug);
+
+        return [
+            [
+                'label' => 'Overview',
+                'route' => 'gwater.home',
+                'active' => ['gwater.home'],
+                'icon' => $this->icon('dashboard'),
+                'icon_name' => 'layout-dashboard',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Daily work',
+            ],
+            [
+                'label' => 'Daily sales',
+                'route' => 'gwater.sales',
+                'active' => ['gwater.sales'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'banknote',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'label' => 'Purchases (trips)',
+                'route' => 'gwater.purchases',
+                'active' => ['gwater.purchases'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'car',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'label' => 'Stock',
+                'route' => 'gwater.stock',
+                'active' => ['gwater.stock'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'boxes',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'label' => 'Reimbursements',
+                'route' => 'gwater.reimbursements',
+                'active' => ['gwater.reimbursements'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'hand-coins',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Set-up',
+            ],
+            [
+                'label' => 'Prices',
+                'route' => 'gwater.prices',
+                'active' => ['gwater.prices'],
+                'icon' => $this->icon('spark'),
+                'icon_name' => 'percent',
+                'can' => $can('gwater.view'),
+            ],
+            [
+                'label' => 'Opening balances',
+                'route' => 'gwater.opening',
+                'active' => ['gwater.opening'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'clipboard-list',
+                'can' => $can('gwater.record'),
             ],
         ];
     }

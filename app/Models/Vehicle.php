@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Services\Transport\TransportScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -62,6 +64,8 @@ class Vehicle extends Model
         'is_pool_car',
         'assigned_user_id',
         'department_id',
+        'region_id',
+        'district_id',
         'driver_type',
         'assigned_driver_id',
         'current_mileage',
@@ -76,6 +80,8 @@ class Vehicle extends Model
         'is_pool_car' => 'boolean',
         'assigned_user_id' => 'integer',
         'department_id' => 'integer',
+        'region_id' => 'integer',
+        'district_id' => 'integer',
         'assigned_driver_id' => 'integer',
         'current_mileage' => 'integer',
         'maintenance_interval_km' => 'integer',
@@ -132,6 +138,16 @@ class Vehicle extends Model
         return $this->belongsTo(Department::class);
     }
 
+    public function region(): BelongsTo
+    {
+        return $this->belongsTo(Region::class);
+    }
+
+    public function district(): BelongsTo
+    {
+        return $this->belongsTo(District::class);
+    }
+
     public function assignmentHistories(): HasMany
     {
         return $this->hasMany(VehicleAssignmentHistory::class);
@@ -155,6 +171,18 @@ class Vehicle extends Model
     public function expenses(): HasMany
     {
         return $this->hasMany(VehicleExpense::class);
+    }
+
+    /** Only the vehicles the user may reach (Head Office-or-region rule, super_admin all): see TransportScope. */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return app(TransportScope::class)->apply($query, $user);
+    }
+
+    /** A vehicle with no region is unplaced: only super_admin sees it until someone gives it a location. */
+    public function isPlaced(): bool
+    {
+        return $this->region_id !== null;
     }
 
     public function scopeActive($query)

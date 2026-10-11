@@ -22,6 +22,7 @@ class Permission extends Model
     public const MODULE_COMMERCIAL = 'commercial';
     public const MODULE_HEALTH_SAFETY = 'health_safety';
     public const MODULE_BLOG = 'blog';
+    public const MODULE_GWATER = 'gwater';
 
     public const MODULES = [
         self::MODULE_UAC,
@@ -35,6 +36,7 @@ class Permission extends Model
         self::MODULE_COMMERCIAL,
         self::MODULE_HEALTH_SAFETY,
         self::MODULE_BLOG,
+        self::MODULE_GWATER,
     ];
 
     protected $fillable = [

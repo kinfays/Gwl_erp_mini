@@ -14,6 +14,7 @@ class NotifyTransportManagersOfMaintenanceDue
         $vehicle = $event->vehicle;
 
         $this->notifications->notifyManagers(
+            $vehicle,
             'Vehicle maintenance due',
             sprintf(
                 '%s is within %s km of its next maintenance point.',

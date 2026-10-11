@@ -2,6 +2,7 @@
 
 namespace App\Exports\Transport;
 
+use App\Models\User;
 use App\Models\VehicleExpense;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -9,11 +10,13 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 
 class VehicleExpensesExport implements FromCollection, WithHeadings
 {
-    public function __construct(protected array $filters = []) {}
+    /** The export reads only what $actor may reach (TransportScope), whatever the controller checked. */
+    public function __construct(protected User $actor, protected array $filters = []) {}
 
     public function collection(): Collection
     {
         return VehicleExpense::query()
+            ->visibleTo($this->actor)
             ->with(['vehicle', 'recorder'])
             ->when($this->filters['vehicle_id'] ?? null, fn ($query, $vehicleId) => $query->where('vehicle_id', $vehicleId))
             ->when($this->filters['expense_type'] ?? null, fn ($query, $type) => $query->where('expense_type', $type))

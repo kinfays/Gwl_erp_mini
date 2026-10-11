@@ -4,6 +4,7 @@ namespace App\Services\Transport;
 
 use App\Events\Transport\MaintenanceDue;
 use App\Events\Transport\VehicleIssueReported;
+use App\Models\District;
 use App\Models\MaintenanceRecord;
 use App\Models\MileageLog;
 use App\Models\User;
@@ -19,17 +20,35 @@ use Illuminate\Validation\ValidationException;
 class TransportService
 {
     public function __construct(
-        protected VehicleRepository $vehicles
+        protected VehicleRepository $vehicles,
+        protected TransportScope $scope
     ) {}
 
-    public function saveVehicle(array $payload, ?Vehicle $vehicle = null, ?UploadedFile $photo = null): Vehicle
+    /**
+     * Creates or updates a vehicle for the acting user (defaults to the signed-in one; with nobody acting nothing is
+     * written). The vehicle must be inside the actor's reach (404 otherwise), its location is the actor's own unless
+     * they are super_admin, and a person put on it must be based at that location.
+     */
+    public function saveVehicle(array $payload, ?Vehicle $vehicle = null, ?UploadedFile $photo = null, ?User $actor = null): Vehicle
     {
+        $actor = $this->actor($actor);
+
+        if ($vehicle) {
+            $this->scope->authorizeVehicle($actor, $vehicle);
+        }
+
         $payload = $this->normalizeNullableIds($payload, [
             'assigned_user_id',
             'assigned_driver_id',
             'department_id',
             'year_purchased',
+            'region_id',
+            'district_id',
         ]);
+
+        $location = $this->resolveLocation($payload, $vehicle, $actor);
+        $payload['region_id'] = $location['region_id'];
+        $payload['district_id'] = $location['district_id'];
 
         $payload['is_pool_car'] = (bool) ($payload['is_pool_car'] ?? false);
 
@@ -59,6 +78,11 @@ class TransportService
             ]);
         }
 
+        // Only people who are new on the vehicle, or every one of them when the vehicle moves, have to fit its location.
+        $moved = $vehicle !== null && ((int) $vehicle->region_id !== $location['region_id'] || (int) $vehicle->district_id !== (int) $location['district_id']);
+        $this->ensureFitsLocation($payload['assigned_user_id'] ?? null, $location, $moved ? null : $vehicle?->assigned_user_id, 'form.assigned_user_id', 'employee');
+        $this->ensureFitsLocation($payload['assigned_driver_id'] ?? null, $location, $moved ? null : $vehicle?->assigned_driver_id, 'form.assigned_driver_id', 'driver');
+
         if ($photo) {
             $payload['photo_path'] = $photo->store('transport/vehicles', 'public');
         }
@@ -83,8 +107,15 @@ class TransportService
         });
     }
 
-    public function assignVehicle(Vehicle $vehicle, ?int $userId, ?int $driverId, ?int $assignedBy, ?string $notes = null): Vehicle
+    public function assignVehicle(Vehicle $vehicle, ?int $userId, ?int $driverId, ?int $assignedBy, ?string $notes = null, ?User $actor = null): Vehicle
     {
+        $actor = $this->actor($actor, $assignedBy);
+        $this->scope->authorizeVehicle($actor, $vehicle);
+
+        $location = ['region_id' => $vehicle->region_id, 'district_id' => $vehicle->district_id];
+        $this->ensureFitsLocation($userId, $location, null, 'assignmentUserId', 'employee');
+        $this->ensureFitsLocation($driverId, $location, null, 'assignmentDriverId', 'driver');
+
         if ($userId && $this->vehicles->activeAssignmentsForUser($userId, $vehicle->id)) {
             throw ValidationException::withMessages([
                 'assignmentUserId' => 'This employee already has an active vehicle assignment.',
@@ -110,8 +141,10 @@ class TransportService
         });
     }
 
-    public function unassignVehicle(Vehicle $vehicle, ?int $assignedBy, ?string $notes = null): Vehicle
+    public function unassignVehicle(Vehicle $vehicle, ?int $assignedBy, ?string $notes = null, ?User $actor = null): Vehicle
     {
+        $this->scope->authorizeVehicle($this->actor($actor, $assignedBy), $vehicle);
+
         return DB::transaction(function () use ($vehicle, $assignedBy, $notes): Vehicle {
             VehicleAssignmentHistory::query()
                 ->where('vehicle_id', $vehicle->id)
@@ -139,6 +172,8 @@ class TransportService
 
     public function logMileage(Vehicle $vehicle, User $driver, array $payload): MileageLog
     {
+        $this->scope->authorizeVehicle($driver, $vehicle);
+
         $mileageAfter = (int) ($payload['mileage_after'] ?? 0);
         $mileageBefore = (int) ($payload['mileage_before'] ?? $vehicle->current_mileage);
 
@@ -169,6 +204,8 @@ class TransportService
 
     public function reportIssue(Vehicle $vehicle, User $reporter, array $payload, ?UploadedFile $photo = null): VehicleIssue
     {
+        $this->scope->authorizeVehicle($reporter, $vehicle);
+
         $data = [
             'vehicle_id' => $vehicle->id,
             'reported_by' => $reporter->id,
@@ -190,8 +227,10 @@ class TransportService
         return $issue;
     }
 
-    public function updateIssueStatus(VehicleIssue $issue, string $status): VehicleIssue
+    public function updateIssueStatus(VehicleIssue $issue, string $status, ?User $actor = null): VehicleIssue
     {
+        abort_unless(VehicleIssue::query()->visibleTo($this->actor($actor))->whereKey($issue->getKey())->exists(), 404);
+
         $issue->update([
             'status' => $status,
             'resolved_at' => $status === VehicleIssue::STATUS_RESOLVED ? now() : null,
@@ -200,8 +239,10 @@ class TransportService
         return $issue->refresh();
     }
 
-    public function recordMaintenance(Vehicle $vehicle, array $payload, ?UploadedFile $receipt = null): MaintenanceRecord
+    public function recordMaintenance(Vehicle $vehicle, array $payload, ?UploadedFile $receipt = null, ?User $actor = null): MaintenanceRecord
     {
+        $this->scope->authorizeVehicle($this->actor($actor), $vehicle);
+
         $payload = $this->normalizeNullableIds($payload, ['next_service_mileage', 'mileage_at_service']);
         $payload['vehicle_id'] = $vehicle->id;
 
@@ -218,8 +259,10 @@ class TransportService
         return $record;
     }
 
-    public function recordExpense(Vehicle $vehicle, array $payload, ?UploadedFile $receipt = null, ?int $recordedBy = null): VehicleExpense
+    public function recordExpense(Vehicle $vehicle, array $payload, ?UploadedFile $receipt = null, ?int $recordedBy = null, ?User $actor = null): VehicleExpense
     {
+        $this->scope->authorizeVehicle($this->actor($actor, $recordedBy), $vehicle);
+
         $payload['vehicle_id'] = $vehicle->id;
         $payload['recorded_by'] = $recordedBy;
         $payload['currency'] = strtoupper($payload['currency'] ?? 'GHS');
@@ -231,8 +274,11 @@ class TransportService
         return VehicleExpense::query()->create($payload);
     }
 
-    public function renewDocument(Vehicle $vehicle, string $type, string $expiryDate, ?float $amount = null, ?int $recordedBy = null): Vehicle
+    public function renewDocument(Vehicle $vehicle, string $type, string $expiryDate, ?float $amount = null, ?int $recordedBy = null, ?User $actor = null): Vehicle
     {
+        $actor = $this->actor($actor, $recordedBy);
+        $this->scope->authorizeVehicle($actor, $vehicle);
+
         $column = $type === 'road_worthiness' ? 'road_worthiness_expiry_date' : 'insurance_expiry_date';
         $vehicle->update([$column => $expiryDate]);
 
@@ -243,10 +289,88 @@ class TransportService
                 'currency' => 'GHS',
                 'description' => str($type)->replace('_', ' ')->title().' renewal',
                 'expense_date' => today()->toDateString(),
-            ], null, $recordedBy);
+            ], null, $recordedBy, $actor);
         }
 
         return $vehicle->refresh();
+    }
+
+    /** The acting user: the one given, else the one with this id, else whoever is signed in. Nobody acting writes nothing. */
+    protected function actor(?User $actor, ?int $actorId = null): User
+    {
+        $actor ??= $actorId ? User::query()->find($actorId) : null;
+        $actor ??= auth()->user();
+
+        abort_unless($actor, 403);
+
+        return $actor;
+    }
+
+    /**
+     * The place the vehicle is based. super_admin chooses it (a district decides its own region); everyone else gets
+     * their own on a new vehicle and the vehicle's existing one on an edit, whatever the form says.
+     *
+     * @return array{region_id: int, district_id: int|null}
+     */
+    protected function resolveLocation(array $payload, ?Vehicle $vehicle, User $actor): array
+    {
+        if (! $this->scope->seesAll($actor)) {
+            $location = $vehicle
+                ? ['region_id' => $vehicle->region_id, 'district_id' => $vehicle->district_id]
+                : $this->scope->locationOf($actor);
+
+            if (! $location || ! $location['region_id']) {
+                throw ValidationException::withMessages([
+                    'form.region_id' => 'Your account has no region, so a vehicle cannot be placed. Ask an administrator.',
+                ]);
+            }
+
+            return ['region_id' => (int) $location['region_id'], 'district_id' => $location['district_id'] ? (int) $location['district_id'] : null];
+        }
+
+        $regionId = $payload['region_id'] ?? $vehicle?->region_id;
+        $districtId = array_key_exists('district_id', $payload) ? $payload['district_id'] : $vehicle?->district_id;
+
+        if ($districtId) {
+            $district = District::query()->find($districtId);
+
+            if (! $district) {
+                throw ValidationException::withMessages(['form.district_id' => 'Select a valid district.']);
+            }
+
+            if ($regionId && (int) $regionId !== (int) $district->region_id) {
+                throw ValidationException::withMessages(['form.district_id' => 'That district is not in the chosen region.']);
+            }
+
+            $regionId = $district->region_id;
+        }
+
+        if (! $regionId) {
+            throw ValidationException::withMessages(['form.region_id' => 'A location is required: choose the region of the vehicle.']);
+        }
+
+        return ['region_id' => (int) $regionId, 'district_id' => $districtId ? (int) $districtId : null];
+    }
+
+    /**
+     * Refuses a person based outside the vehicle's location. $unchanged is the user already on the vehicle: keeping
+     * them is not re-checked.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     */
+    protected function ensureFitsLocation(mixed $userId, array $location, mixed $unchanged, string $errorKey, string $label): void
+    {
+        if (empty($userId) || (int) $userId === (int) $unchanged) {
+            return;
+        }
+
+        $person = User::query()->find($userId);
+
+        if (! $person || ! $this->scope->personFits($person, $location['region_id'], $location['district_id'])) {
+            throw ValidationException::withMessages([
+                $errorKey => "This {$label} is not based at the vehicle's location.",
+            ]);
+        }
     }
 
     protected function recordAssignmentChange(Vehicle $vehicle, ?int $assignedBy, ?string $notes = null): void

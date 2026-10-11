@@ -57,7 +57,7 @@ class TransportModuleController extends Controller
             $request->input('custom_to')
         );
         $departmentId = $request->integer('department_id') ?: null;
-        $payload = $reports->reportPayload($from, $to, $departmentId);
+        $payload = $reports->reportPayload($from, $to, $departmentId, $request->user());
         $department = $departmentId ? Department::query()->find($departmentId) : null;
 
         $html = view('transport.exports.report-pdf', [
@@ -92,7 +92,7 @@ class TransportModuleController extends Controller
 
         return Excel::download(
             new TransportReportExport(
-                $reports->reportPayload($from, $to, $departmentId),
+                $reports->reportPayload($from, $to, $departmentId, $request->user()),
                 [
                     'from' => $from->toDateString(),
                     'to' => $to->toDateString(),

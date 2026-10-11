@@ -35,6 +35,7 @@ use App\Http\Controllers\Letters\LetterScanController;
 use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
+use App\Http\Controllers\GWater\GwaterController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
 use App\Http\Controllers\Transport\TransportModuleController;
 use App\Http\Controllers\UacController;
@@ -668,6 +669,24 @@ if (config('gwl.blog_module_enabled')) {
             Route::get('/posts/{post}/cover', [BlogController::class, 'cover'])
                 ->whereNumber('post')
                 ->name('cover');
+        });
+}
+
+if (config('gwl.gwater_module_enabled')) {
+    // G-Water (docs/17-module-g-water.md): the module and a gwater.* permission per screen. Which location's books a user
+    // reaches is GwaterVisibility's (Head Office, or a region without it; super_admin all), re-checked in every component and
+    // service; another location's record answers 404.
+    Route::middleware(['auth', 'active', 'module:gwater'])
+        ->prefix('gwater')
+        ->name('gwater.')
+        ->group(function () {
+            Route::get('/', [GwaterController::class, 'home'])->middleware('permission:gwater.view')->name('home');
+            Route::get('/sales', [GwaterController::class, 'sales'])->middleware('permission:gwater.view')->name('sales');
+            Route::get('/purchases', [GwaterController::class, 'purchases'])->middleware('permission:gwater.view')->name('purchases');
+            Route::get('/stock', [GwaterController::class, 'stock'])->middleware('permission:gwater.view')->name('stock');
+            Route::get('/prices', [GwaterController::class, 'prices'])->middleware('permission:gwater.view')->name('prices');
+            Route::get('/opening-balances', [GwaterController::class, 'opening'])->middleware('permission:gwater.record')->name('opening');
+            Route::get('/reimbursements', [GwaterController::class, 'reimbursements'])->middleware('permission:gwater.view')->name('reimbursements');
         });
 }
 
