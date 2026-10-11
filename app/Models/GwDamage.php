@@ -27,6 +27,11 @@ class GwDamage extends Model
         'voided_at' => 'datetime',
     ];
 
+    public function purchase(): BelongsTo
+    {
+        return $this->belongsTo(GwPurchase::class, 'purchase_id');
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(GwProduct::class, 'product_id');

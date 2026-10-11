@@ -9,6 +9,7 @@ use App\Models\GwPurchase;
 use App\Models\GwPurchaseLine;
 use App\Models\GwSale;
 use App\Models\GwSupplierPayment;
+use App\Models\GwSupplierPaymentLine;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -69,22 +70,101 @@ class GwaterSummaryService
     }
 
     /**
-     * Amount owed to G Water: the opening amount owed + purchases at cost - payments marked paid.
+     * Amount owed to G Water: the opening amount owed + purchases at their frozen cost - payments marked paid (up to a day,
+     * when given). The same figure as the end of owedStatement().
      *
      * @param  array{region_id: int|null, district_id: int|null}  $location
      */
-    public function owedToGwater(array $location): int
+    public function owedToGwater(array $location, ?Carbon $asOf = null): int
     {
-        $opening = (int) $this->visibility->atLocation(GwOpeningBalance::query()->posted(), $location)->sum('owed_amount');
+        return $this->owedStatement($location, $asOf)['owed'];
+    }
 
-        $purchases = GwPurchaseLine::query()
-            ->whereHas('purchase', fn ($purchase) => $this->visibility->atLocation($purchase->posted(), $location))
-            ->get()
-            ->sum(fn (GwPurchaseLine $line) => $line->packs * $line->unit_cost);
+    /**
+     * The account with G Water line by line, oldest first, with the running balance: the opening amount owed, every trip at
+     * the cost it was bought at (its lines' frozen unit cost), and every payment marked paid. Payment requests not yet paid
+     * are listed apart, as "requested", and do not reduce what is owed.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     * @return array{lines: list<array<string, mixed>>, owed: int, opening: int, purchases: int, paid: int, requested: int}
+     */
+    public function owedStatement(array $location, ?Carbon $asOf = null): array
+    {
+        $upTo = fn ($query, string $column) => $asOf ? $query->whereDate($column, '<=', $asOf->toDateString()) : $query;
 
-        $paid = (int) $this->visibility->atLocation(GwSupplierPayment::query()->where('status', 'paid'), $location)->sum('amount');
+        $lines = collect();
 
-        return $opening + (int) $purchases - $paid;
+        foreach ($upTo($this->visibility->atLocation(GwOpeningBalance::query()->posted(), $location), 'as_of_date')->get() as $opening) {
+            $lines->push(['date' => $opening->as_of_date->toDateString(), 'order' => 0, 'kind' => 'opening', 'id' => $opening->id, 'label' => 'Brought forward', 'charge' => (int) $opening->owed_amount, 'payment' => 0]);
+        }
+
+        $trips = $upTo($this->visibility->atLocation(GwPurchase::query()->posted(), $location), 'purchase_date')->with('lines')->get();
+
+        foreach ($trips as $trip) {
+            $lines->push(['date' => $trip->purchase_date->toDateString(), 'order' => 1, 'kind' => 'trip', 'id' => $trip->id, 'label' => 'Waybill '.$trip->waybill_no, 'charge' => $trip->totalCost(), 'payment' => 0]);
+        }
+
+        $payments = $this->visibility->atLocation(GwSupplierPayment::query()->posted(), $location)->get();
+
+        foreach ($payments->where('status', GwSupplierPayment::PAID)->filter(fn (GwSupplierPayment $payment) => ! $asOf || $payment->paid_on->lte($asOf)) as $payment) {
+            $lines->push(['date' => $payment->paid_on->toDateString(), 'order' => 2, 'kind' => 'payment', 'id' => $payment->id, 'label' => 'Payment '.$payment->reference, 'charge' => 0, 'payment' => (int) $payment->amount]);
+        }
+
+        $balance = 0;
+        $lines = $lines->sortBy([['date', 'asc'], ['order', 'asc'], ['id', 'asc']])->values()->map(function (array $line) use (&$balance) {
+            $balance += $line['charge'] - $line['payment'];
+
+            return $line + ['balance' => $balance];
+        });
+
+        return [
+            'lines' => $lines->all(),
+            'owed' => $balance,
+            'opening' => (int) $lines->where('kind', 'opening')->sum('charge'),
+            'purchases' => (int) $lines->where('kind', 'trip')->sum('charge'),
+            'paid' => (int) $lines->where('kind', 'payment')->sum('payment'),
+            'requested' => (int) $payments->where('status', GwSupplierPayment::REQUESTED)->sum('amount'),
+        ];
+    }
+
+    /**
+     * The "outstanding on waybills" view of the Excel sheets, per product: packs paid for or ordered (brought forward plus the
+     * packs on payment requests) against packs delivered on waybills since the opening date. A report built from trips and
+     * payment requests, not a second stock. A negative outstanding means more was delivered than was paid for.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     * @return Collection<int, array{product: GwProduct, brought_forward: int, requested: int, ordered: int, delivered: int, outstanding: int, waybills: list<array{waybill: string, date: Carbon, packs: int}>}>
+     */
+    public function waybillOutstanding(array $location): Collection
+    {
+        $opening = $this->visibility->atLocation(GwOpeningBalance::query()->posted(), $location)->with('lines')->first();
+        $since = $opening?->as_of_date;
+
+        $trips = $this->visibility->atLocation(GwPurchase::query()->posted(), $location)
+            ->when($since, fn ($query) => $query->whereDate('purchase_date', '>=', $since->toDateString()))
+            ->with('lines')->orderByRaw('DATE(purchase_date) asc')->orderBy('id')->get();
+
+        $paymentLines = GwSupplierPaymentLine::query()
+            ->whereHas('payment', fn ($payment) => $this->visibility->atLocation($payment->posted(), $location))
+            ->get()->groupBy('product_id');
+
+        return GwProduct::query()->active()->orderBy('id')->get()->map(function (GwProduct $product) use ($opening, $trips, $paymentLines) {
+            $broughtForward = (int) ($opening?->lines->where('product_id', $product->id)->sum('outstanding_packs') ?? 0);
+            $requested = (int) ($paymentLines[$product->id] ?? collect())->sum('packs');
+            $waybills = $trips->map(fn (GwPurchase $trip) => ['waybill' => $trip->waybill_no, 'date' => $trip->purchase_date, 'packs' => (int) $trip->lines->where('product_id', $product->id)->sum('packs')])
+                ->filter(fn (array $row) => $row['packs'] > 0)->values();
+            $delivered = (int) $waybills->sum('packs');
+
+            return [
+                'product' => $product,
+                'brought_forward' => $broughtForward,
+                'requested' => $requested,
+                'ordered' => $broughtForward + $requested,
+                'delivered' => $delivered,
+                'outstanding' => $broughtForward + $requested - $delivered,
+                'waybills' => $waybills->all(),
+            ];
+        });
     }
 
     /**

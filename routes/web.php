@@ -683,6 +683,9 @@ if (config('gwl.gwater_module_enabled')) {
             Route::get('/', [GwaterController::class, 'home'])->middleware('permission:gwater.view')->name('home');
             Route::get('/sales', [GwaterController::class, 'sales'])->middleware('permission:gwater.view')->name('sales');
             Route::get('/purchases', [GwaterController::class, 'purchases'])->middleware('permission:gwater.view')->name('purchases');
+            Route::get('/damages', [GwaterController::class, 'damages'])->middleware('permission:gwater.view')->name('damages');
+            Route::get('/expenses', [GwaterController::class, 'expenses'])->middleware('permission:gwater.view')->name('expenses');
+            Route::get('/payments', [GwaterController::class, 'payments'])->middleware('permission:gwater.view')->name('payments');
             Route::get('/stock', [GwaterController::class, 'stock'])->middleware('permission:gwater.view')->name('stock');
             Route::get('/prices', [GwaterController::class, 'prices'])->middleware('permission:gwater.view')->name('prices');
             Route::get('/opening-balances', [GwaterController::class, 'opening'])->middleware('permission:gwater.record')->name('opening');

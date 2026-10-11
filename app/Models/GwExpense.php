@@ -25,7 +25,7 @@ class GwExpense extends Model
     public const CATEGORIES = [self::FUEL, self::LOADING, self::OFFLOADING, self::OTHER];
 
     protected $fillable = [
-        'region_id', 'district_id', 'expense_date', 'category', 'amount', 'purchase_id', 'payee', 'receipt_ref', 'note',
+        'region_id', 'district_id', 'expense_date', 'category', 'amount', 'purchase_id', 'vehicle_id', 'payee', 'receipt_ref', 'note',
         'paid_by_user_id', 'reimbursement_status', 'reimbursed_on', 'reimbursement_ref', 'reimbursed_by_user_id', 'status',
         'voided_at', 'voided_by', 'void_reason', 'created_by',
     ];
@@ -42,6 +42,11 @@ class GwExpense extends Model
     public function purchase(): BelongsTo
     {
         return $this->belongsTo(GwPurchase::class, 'purchase_id');
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(Vehicle::class)->withTrashed();
     }
 
     public function paidBy(): BelongsTo

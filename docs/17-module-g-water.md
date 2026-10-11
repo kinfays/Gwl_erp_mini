@@ -142,3 +142,15 @@ Behind `GWL_GWATER_MODULE_ENABLED` (`config/gwl.php`, true in `phpunit.xml`); no
 9. **Waybill:** refused when longer than 30 characters (never silently cut).
 10. `gwater.view_reports` and `gwater.export` are created and given to the role but unused until Phase 3.
 
+## 12. Phase 2 as built
+
+Migration `2026_10_19_000001_create_gwater_phase2_tables` (adds `gw_expenses.vehicle_id`, `gw_supplier_payment_lines`, `gw_opening_balance_lines`; opening balances already posted get their lines from their ledger rows). Workflow methods in `GwaterWorkflowService`: `recordDamage`/`voidDamage`, `recordExpense`/`voidExpense`, `recordPayment`/`markPaymentPaid`/`voidPayment`; `GwaterSummaryService::owedStatement()` and `waybillOutstanding()`. Screens: Damages, Expenses, Payments to G Water (with the owed statement); the Stock screen gained the waybill-outstanding view. The Reimbursements screen was already built in Phase 1.
+
+**Rules and decisions:**
+1. **Damages** post a `damage` ledger row (the day-level balance rule applies), freeze the cost in force on their date, and may name a trip (the damaged packs of a product cannot exceed what the trip brought).
+2. **Expenses:** fuel is counted once per trip: a trip that links Transport fuel, or already has a non-voided G-Water fuel expense, takes no second one (void it to replace it). `paid_by_user_id` is allowed on fuel only; loading, offloading and other costs are never reimbursable. A fuel expense that was already paid back cannot be voided. The optional vehicle goes through `TransportScope::findVehicle()` and must be based at the same location.
+3. **Payments:** a request may carry the packs it was raised for (lines of product, packs, price per pack; the price defaults to the cost in force); the amount is then their total or must agree with it. The reference is unique per location among non-voided payments. A request becomes `paid` on a date not before the request; voiding a paid payment makes the amount owed again.
+4. **Owed balance** = opening amount owed + every posted trip at its frozen line costs - payments marked paid, as a dated statement with a running balance (`owedStatement()`; `owedToGwater()` is its last line, optionally as of a date). Requests not yet paid are shown apart.
+5. **Waybill outstanding** per product = packs brought forward as "paid for, not yet delivered" (a new field of the opening balance) + packs on non-voided payment requests - packs delivered on trips since the opening date. A negative figure means more arrived than was paid for.
+6. **Opening balance lines** freeze the cost of the packs brought forward (cost in force on the opening date) for the profit and loss, which never reads the price list for history.
+

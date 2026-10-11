@@ -58,6 +58,27 @@ class GwaterController extends Controller
         return view('gwater.opening');
     }
 
+    public function damages(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.damages');
+    }
+
+    public function expenses(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.expenses');
+    }
+
+    public function payments(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_GWATER);
+
+        return view('gwater.payments');
+    }
+
     public function reimbursements(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_GWATER);

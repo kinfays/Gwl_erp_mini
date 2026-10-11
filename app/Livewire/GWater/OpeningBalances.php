@@ -23,6 +23,9 @@ class OpeningBalances extends Component
     /** @var array<int|string, string> */
     public array $packs = [];
 
+    /** @var array<int|string, string> packs already paid for but not yet delivered on a waybill */
+    public array $outstanding = [];
+
     public bool $voiding = false;
 
     public string $voidReason = '';
@@ -50,12 +53,14 @@ class OpeningBalances extends Component
             'note' => $this->form['note'],
             'owed_amount' => $owed,
             'packs' => $this->packs,
+            'outstanding' => $this->outstanding,
             'location_district_id' => $this->recordingDistrict(),
         ];
 
         $this->run(fn () => $workflow->recordOpeningBalance($this->actor(), $data));
 
         $this->packs = [];
+        $this->outstanding = [];
         $this->form['owed_amount'] = '';
         $this->form['note'] = '';
         $this->resetErrorBag();
@@ -90,7 +95,7 @@ class OpeningBalances extends Component
     public function render()
     {
         $location = $this->workingLocation();
-        $opening = $location ? $this->books(GwOpeningBalance::query()->posted())->with('creator')->first() : null;
+        $opening = $location ? $this->books(GwOpeningBalance::query()->posted())->with(['creator', 'lines'])->first() : null;
 
         return view('livewire.gwater.opening-balances', [
             'products' => GwProduct::query()->active()->orderBy('id')->get(),

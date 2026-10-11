@@ -9,7 +9,7 @@
                 <dl class="ui-dl">
                     <div><dt>As of</dt><dd>{{ $opening->as_of_date->format('d M Y') }}</dd></div>
                     @foreach ($products as $product)
-                        <div><dt>{{ $product->name }}</dt><dd>{{ number_format($openingPacks[$product->id] ?? 0) }} packs</dd></div>
+                        <div><dt>{{ $product->name }}</dt><dd>{{ number_format($openingPacks[$product->id] ?? 0) }} packs · {{ number_format($opening->lines->where('product_id', $product->id)->sum('outstanding_packs')) }} paid for, not yet delivered</dd></div>
                     @endforeach
                     <div><dt>Owed to G Water</dt><dd>GH¢ {{ \App\Services\GWater\Money::format($opening->owed_amount) }}</dd></div>
                     <div><dt>Recorded by</dt><dd>{{ $opening->creator?->full_name }}</dd></div>
@@ -26,6 +26,9 @@
                     <x-ui.input label="As of" type="date" wire:model.defer="form.as_of_date" :max="today()->toDateString()" />
                     @foreach ($products as $product)
                         <x-ui.input :label="$product->name.' brought forward (packs)'" type="number" min="0" step="1" inputmode="numeric" wire:model.defer="packs.{{ $product->id }}" />
+                    @endforeach
+                    @foreach ($products as $product)
+                        <x-ui.input :label="$product->name.' paid for, not yet delivered (packs)'" type="number" min="0" step="1" inputmode="numeric" wire:model.defer="outstanding.{{ $product->id }}" hint="The 'outstanding on waybills' of your sheets." />
                     @endforeach
                     <x-ui.input label="Amount owed to G Water (GH¢)" wire:model.defer="form.owed_amount" inputmode="decimal" />
                     <x-ui.input label="Note (optional)" wire:model.defer="form.note" maxlength="255" />

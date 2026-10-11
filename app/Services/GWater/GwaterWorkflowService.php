@@ -3,6 +3,7 @@
 namespace App\Services\GWater;
 
 use App\Models\AuditLog;
+use App\Models\GwDamage;
 use App\Models\GwExpense;
 use App\Models\GwOpeningBalance;
 use App\Models\GwPrice;
@@ -10,6 +11,7 @@ use App\Models\GwProduct;
 use App\Models\GwPurchase;
 use App\Models\GwSale;
 use App\Models\GwStockMovement;
+use App\Models\GwSupplierPayment;
 use App\Models\MileageLog;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -279,11 +281,22 @@ class GwaterWorkflowService
             $packs[(int) $productId] = $this->packs($count, 'packs');
         }
 
-        if ($packs === [] && $owed === 0) {
-            throw ValidationException::withMessages(['packs' => 'Enter the packs brought forward or the amount owed.']);
+        // Packs already paid for but not yet delivered on a waybill (the "outstanding" of the Excel sheets).
+        $outstanding = [];
+
+        foreach ((array) ($data['outstanding'] ?? []) as $productId => $count) {
+            if ($count === null || $count === '' || (int) $count === 0) {
+                continue;
+            }
+
+            $outstanding[(int) $productId] = $this->packs($count, 'outstanding');
         }
 
-        return DB::transaction(function () use ($actor, $location, $date, $owed, $packs, $data) {
+        if ($packs === [] && $outstanding === [] && $owed === 0) {
+            throw ValidationException::withMessages(['packs' => 'Enter the packs brought forward, the packs still to be delivered, or the amount owed.']);
+        }
+
+        return DB::transaction(function () use ($actor, $location, $date, $owed, $packs, $outstanding, $data) {
             $this->stock->lock();
 
             $existing = $this->visibility->atLocation(GwOpeningBalance::query()->posted(), $location)->first();
@@ -294,7 +307,7 @@ class GwaterWorkflowService
                 ]);
             }
 
-            $products = GwProduct::query()->whereIn('id', array_keys($packs))->get()->keyBy('id');
+            $products = GwProduct::query()->whereIn('id', array_unique([...array_keys($packs), ...array_keys($outstanding)]))->get()->keyBy('id');
 
             $opening = GwOpeningBalance::query()->create([
                 ...$location,
@@ -305,23 +318,40 @@ class GwaterWorkflowService
                 'created_by' => $actor->id,
             ]);
 
-            foreach ($packs as $productId => $count) {
+            foreach (array_unique([...array_keys($packs), ...array_keys($outstanding)]) as $productId) {
                 abort_unless($products->has($productId), 404);
 
-                $this->stock->post($actor, $location, $products[$productId], GwStockMovement::OPENING, $count, $date, [
-                    'source_type' => 'gw_opening_balance',
-                    'source_id' => $opening->id,
-                    'note' => 'Brought forward',
+                // The brought-forward packs are valued at the cost in force on the opening date, frozen on this line: the
+                // profit and loss never reads the price list for history.
+                $unitCost = ($packs[$productId] ?? 0) > 0
+                    ? ($this->pricing->costPrice($productId, $date, $location)
+                        ?? throw ValidationException::withMessages(['packs' => 'No purchase price is on the price list for '.strtoupper($products[$productId]->code).' on '.$date->format('d M Y').'. Add one on the Prices screen first.']))
+                    : 0;
+
+                $opening->lines()->create([
+                    'product_id' => $productId,
+                    'packs' => $packs[$productId] ?? 0,
+                    'unit_cost' => $unitCost,
+                    'outstanding_packs' => $outstanding[$productId] ?? 0,
                 ]);
+
+                if (($packs[$productId] ?? 0) > 0) {
+                    $this->stock->post($actor, $location, $products[$productId], GwStockMovement::OPENING, $packs[$productId], $date, [
+                        'source_type' => 'gw_opening_balance',
+                        'source_id' => $opening->id,
+                        'note' => 'Brought forward',
+                    ]);
+                }
             }
 
             $this->audit('gwater.opening_balance_recorded', $opening, [
                 'as_of_date' => $date->toDateString(),
                 'packs' => $packs,
+                'outstanding' => $outstanding,
                 'owed_amount' => $owed,
             ]);
 
-            return $opening;
+            return $opening->load('lines');
         });
     }
 
@@ -476,6 +506,341 @@ class GwaterWorkflowService
         });
     }
 
+    // ------------------------------------------------------------------ damages
+
+    /**
+     * Damaged packs: taken out of stock and written off at the cost price in force on the day, frozen on the row. Optionally
+     * tied to a trip (then the damaged packs of a product cannot exceed what the trip brought).
+     *
+     * @param  array{damage_date?: mixed, product_id?: mixed, packs?: mixed, stage?: mixed, reason?: mixed, purchase_id?: mixed, location_district_id?: mixed}  $data
+     */
+    public function recordDamage(User $actor, array $data): GwDamage
+    {
+        $this->authorise($actor, 'gwater.record');
+
+        $location = $this->visibility->recordingLocation($actor, $this->optionalId($data['location_district_id'] ?? null));
+        $date = $this->date($data['damage_date'] ?? null, 'damage_date');
+        $product = $this->product($data['product_id'] ?? null);
+        $packs = $this->packs($data['packs'] ?? null, 'packs');
+        $stage = (string) ($data['stage'] ?? '');
+        $reason = $this->text($data['reason'] ?? null, 500);
+
+        if (! in_array($stage, GwDamage::STAGES, true)) {
+            throw ValidationException::withMessages(['stage' => 'Choose where the damage happened: '.implode(', ', GwDamage::STAGES).'.']);
+        }
+
+        if ($reason === null || mb_strlen($reason) < 3) {
+            throw ValidationException::withMessages(['reason' => 'Say what was damaged and why (at least 3 characters).']);
+        }
+
+        return DB::transaction(function () use ($actor, $location, $date, $product, $packs, $stage, $reason, $data) {
+            $this->stock->lock();
+
+            $trip = $this->tripOf($actor, $location, $data['purchase_id'] ?? null);
+
+            if ($trip) {
+                $brought = (int) $trip->lines()->where('product_id', $product->id)->sum('packs');
+                $already = (int) GwDamage::query()->posted()->where('purchase_id', $trip->id)->where('product_id', $product->id)->sum('packs');
+
+                if ($packs + $already > $brought) {
+                    throw ValidationException::withMessages([
+                        'packs' => 'That trip brought '.$brought.' pack(s) of '.strtolower($product->code).' and '.$already.' are already recorded as damaged.',
+                    ]);
+                }
+            }
+
+            $cost = $this->pricing->costPrice($product->id, $date, $location)
+                ?? throw ValidationException::withMessages(['product_id' => 'No purchase price is on the price list for '.$date->format('d M Y').'. Add one on the Prices screen first.']);
+
+            $damage = GwDamage::query()->create([
+                ...$location,
+                'damage_date' => $date->toDateString(),
+                'product_id' => $product->id,
+                'packs' => $packs,
+                'stage' => $stage,
+                'unit_cost' => $cost,
+                'reason' => $reason,
+                'purchase_id' => $trip?->id,
+                'status' => 'posted',
+                'created_by' => $actor->id,
+            ]);
+
+            $this->stock->post($actor, $location, $product, GwStockMovement::DAMAGE, -$packs, $date, [
+                'source_type' => 'gw_damage',
+                'source_id' => $damage->id,
+                'note' => ucfirst($stage).' damage',
+            ]);
+
+            $this->audit('gwater.damage_recorded', $damage, [
+                'product' => $product->code,
+                'packs' => $packs,
+                'stage' => $stage,
+                'unit_cost' => $cost,
+                'write_off' => $packs * $cost,
+                'purchase_id' => $trip?->id,
+            ]);
+
+            return $damage;
+        });
+    }
+
+    public function voidDamage(GwDamage $damage, User $actor, string $reason): GwDamage
+    {
+        $this->authorise($actor, 'gwater.void');
+        $reason = $this->reason($reason);
+
+        return DB::transaction(function () use ($damage, $actor, $reason) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwDamage::class, $damage->id, $actor);
+            $this->assertNotVoided($fresh);
+
+            $this->stock->reverseSource($actor, $this->placeOf($fresh), 'gw_damage', $fresh->id, 'Void of damage #'.$fresh->id);
+            $this->markVoided($fresh, $actor, $reason);
+            $this->audit('gwater.damage_voided', $fresh, ['packs' => $fresh->packs, 'reason' => $reason]);
+
+            return $fresh;
+        });
+    }
+
+    // ------------------------------------------------------------------ expenses
+
+    /**
+     * A cost of the trade in pesewas. Fuel counts ONCE per trip: a trip whose fuel is linked from Transport, or that already
+     * has a G-Water fuel expense, takes no second one. Only fuel can be reimbursable (paid out of pocket by `paid_by_user_id`);
+     * loading and offloading are paid in cash and can never be.
+     *
+     * @param  array{expense_date?: mixed, category?: mixed, amount?: mixed, purchase_id?: mixed, vehicle_id?: mixed, payee?: mixed, receipt_ref?: mixed, note?: mixed, paid_by_user_id?: mixed, location_district_id?: mixed}  $data
+     */
+    public function recordExpense(User $actor, array $data): GwExpense
+    {
+        $this->authorise($actor, 'gwater.record');
+
+        $location = $this->visibility->recordingLocation($actor, $this->optionalId($data['location_district_id'] ?? null));
+        $date = $this->date($data['expense_date'] ?? null, 'expense_date');
+        $category = (string) ($data['category'] ?? '');
+        $amount = $this->amount($data['amount'] ?? null, 'amount');
+
+        if (! in_array($category, GwExpense::CATEGORIES, true)) {
+            throw ValidationException::withMessages(['category' => 'Choose a category: '.implode(', ', GwExpense::CATEGORIES).'.']);
+        }
+
+        if ($amount < 1) {
+            throw ValidationException::withMessages(['amount' => 'Enter an amount above zero.']);
+        }
+
+        $payerId = $this->optionalId($data['paid_by_user_id'] ?? null);
+
+        if ($payerId !== null && $category !== GwExpense::FUEL) {
+            throw ValidationException::withMessages(['paid_by_user_id' => 'Only fuel is paid back. Loading and offloading are paid in cash, and other costs are not reimbursable.']);
+        }
+
+        return DB::transaction(function () use ($actor, $location, $date, $category, $amount, $payerId, $data) {
+            $this->stock->lock();
+
+            $trip = $this->tripOf($actor, $location, $data['purchase_id'] ?? null);
+
+            if ($category === GwExpense::FUEL && $trip) {
+                if ($trip->vehicle_expense_id !== null) {
+                    throw ValidationException::withMessages(['purchase_id' => 'That trip already takes its fuel from Transport. Fuel is counted once per trip.']);
+                }
+
+                if ($trip->expenses()->posted()->where('category', GwExpense::FUEL)->exists()) {
+                    throw ValidationException::withMessages(['purchase_id' => 'That trip already has a fuel expense. Fuel is counted once per trip: void it first to replace it.']);
+                }
+            }
+
+            $vehicleId = $this->optionalId($data['vehicle_id'] ?? null);
+
+            if ($vehicleId !== null) {
+                $vehicle = $this->transport->findVehicle($actor, $vehicleId);
+
+                if (! $this->visibility->sameLocation(['region_id' => $vehicle->region_id, 'district_id' => $vehicle->district_id], $location)) {
+                    throw ValidationException::withMessages(['vehicle_id' => 'That vehicle is based at another location.']);
+                }
+            }
+
+            $payer = $this->fuelPayer($location, $payerId, $category === GwExpense::FUEL);
+            $reimbursable = $category === GwExpense::FUEL && $payer !== null;
+
+            $expense = GwExpense::query()->create([
+                ...$location,
+                'expense_date' => $date->toDateString(),
+                'category' => $category,
+                'amount' => $amount,
+                'purchase_id' => $trip?->id,
+                'vehicle_id' => $vehicleId,
+                'payee' => $this->text($data['payee'] ?? null, 120),
+                'receipt_ref' => $this->text($data['receipt_ref'] ?? null, 60),
+                'note' => $this->text($data['note'] ?? null, 2000),
+                'paid_by_user_id' => $reimbursable ? $payer->id : null,
+                'reimbursement_status' => $reimbursable ? GwPurchase::PENDING : GwPurchase::NOT_APPLICABLE,
+                'status' => 'posted',
+                'created_by' => $actor->id,
+            ]);
+
+            $this->audit('gwater.expense_recorded', $expense, [
+                'category' => $category,
+                'amount' => $amount,
+                'purchase_id' => $trip?->id,
+                'vehicle_id' => $vehicleId,
+                'reimbursable' => $reimbursable,
+            ]);
+
+            return $expense;
+        });
+    }
+
+    /** A fuel expense that was already paid back cannot be voided: the payment would be left untracked. */
+    public function voidExpense(GwExpense $expense, User $actor, string $reason): GwExpense
+    {
+        $this->authorise($actor, 'gwater.void');
+        $reason = $this->reason($reason);
+
+        return DB::transaction(function () use ($expense, $actor, $reason) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwExpense::class, $expense->id, $actor);
+            $this->assertNotVoided($fresh);
+
+            if ($fresh->reimbursement_status === GwPurchase::REIMBURSED) {
+                throw ValidationException::withMessages(['reason' => 'This fuel was already paid back, so it cannot be voided.']);
+            }
+
+            $this->markVoided($fresh, $actor, $reason);
+            $this->audit('gwater.expense_voided', $fresh, ['category' => $fresh->category, 'amount' => $fresh->amount, 'reason' => $reason]);
+
+            return $fresh;
+        });
+    }
+
+    // ------------------------------------------------------------------ payments to G Water
+
+    /**
+     * A payment request (status requested) or, when `paid_on` is given, a payment already made. A request may carry the packs
+     * it was raised for ("550 bottle packs x 26.00"); the amount is then the total of those lines, or must agree with it.
+     * The reference is unique among the location's non-voided payments.
+     *
+     * @param  array{request_date?: mixed, reference?: mixed, amount?: mixed, lines?: mixed, paid_on?: mixed, note?: mixed, location_district_id?: mixed}  $data
+     */
+    public function recordPayment(User $actor, array $data): GwSupplierPayment
+    {
+        $this->authorise($actor, 'gwater.record');
+
+        $location = $this->visibility->recordingLocation($actor, $this->optionalId($data['location_district_id'] ?? null));
+        $date = $this->date($data['request_date'] ?? null, 'request_date');
+        $reference = $this->text($data['reference'] ?? null, 60);
+        $paidOn = ($data['paid_on'] ?? null) === null || ($data['paid_on'] ?? '') === '' ? null : $this->date($data['paid_on'], 'paid_on');
+        $lines = $this->paymentLines($data['lines'] ?? []);
+        $typed = $this->amount($data['amount'] ?? 0, 'amount');
+
+        if ($reference === null) {
+            throw ValidationException::withMessages(['reference' => 'Enter the reference of the payment request.']);
+        }
+
+        if ($paidOn && $paidOn->lt($date)) {
+            throw ValidationException::withMessages(['paid_on' => 'It cannot be paid before it was requested.']);
+        }
+
+        return DB::transaction(function () use ($actor, $location, $date, $reference, $paidOn, $lines, $typed, $data) {
+            $this->stock->lock();
+
+            $products = GwProduct::query()->active()->whereIn('id', collect($lines)->pluck('product_id'))->get()->keyBy('id');
+
+            // A line left without a price takes the cost price in force on the request date.
+            $lines = collect($lines)->map(function (array $line) use ($products, $date, $location) {
+                abort_unless($products->has($line['product_id']), 404);
+
+                $line['unit_price'] ??= $this->pricing->costPrice($line['product_id'], $date, $location)
+                    ?? throw ValidationException::withMessages(['lines' => 'No purchase price is on the price list for that date. Type the price per pack or add one on the Prices screen.']);
+
+                return $line;
+            })->all();
+
+            $linesTotal = collect($lines)->sum(fn (array $line) => $line['packs'] * $line['unit_price']);
+            $amount = $lines === [] ? $typed : ($typed > 0 ? $typed : $linesTotal);
+
+            if ($lines !== [] && $amount !== $linesTotal) {
+                throw ValidationException::withMessages(['amount' => 'The amount ('.Money::format($amount).') does not match the packs and prices ('.Money::format($linesTotal).').']);
+            }
+
+            if ($amount < 1) {
+                throw ValidationException::withMessages(['amount' => 'Enter the amount, or the packs and their price.']);
+            }
+
+            $existing = $this->visibility->atLocation(GwSupplierPayment::query()->posted(), $location)
+                ->whereRaw('LOWER(reference) = ?', [mb_strtolower($reference)])->first();
+
+            if ($existing) {
+                throw ValidationException::withMessages(['reference' => 'Reference '.$reference.' is already used by a payment of '.$existing->request_date->format('d M Y').' for this location.']);
+            }
+
+            $payment = GwSupplierPayment::query()->create([
+                ...$location,
+                'request_date' => $date->toDateString(),
+                'reference' => $reference,
+                'amount' => $amount,
+                'paid_on' => $paidOn?->toDateString(),
+                'note' => $this->text($data['note'] ?? null, 255),
+                'status' => $paidOn ? GwSupplierPayment::PAID : GwSupplierPayment::REQUESTED,
+                'created_by' => $actor->id,
+            ]);
+
+            foreach ($lines as $line) {
+                $payment->lines()->create($line);
+            }
+
+            $this->audit('gwater.payment_recorded', $payment, [
+                'reference' => $reference,
+                'amount' => $amount,
+                'status' => $payment->status,
+                'packs' => collect($lines)->sum('packs'),
+            ]);
+
+            return $payment->load('lines');
+        });
+    }
+
+    public function markPaymentPaid(GwSupplierPayment $payment, User $actor, mixed $paidOn = null): GwSupplierPayment
+    {
+        $this->authorise($actor, 'gwater.record');
+        $date = $paidOn === null || $paidOn === '' ? today() : $this->date($paidOn, 'paid_on');
+
+        return DB::transaction(function () use ($payment, $actor, $date) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwSupplierPayment::class, $payment->id, $actor);
+
+            if ($fresh->status !== GwSupplierPayment::REQUESTED) {
+                throw ValidationException::withMessages(['paid_on' => 'Only a payment request that is still waiting can be marked paid.']);
+            }
+
+            if ($date->lt($fresh->request_date)) {
+                throw ValidationException::withMessages(['paid_on' => 'It cannot be paid before it was requested ('.$fresh->request_date->format('d M Y').').']);
+            }
+
+            $fresh->forceFill(['status' => GwSupplierPayment::PAID, 'paid_on' => $date->toDateString()])->save();
+            $this->audit('gwater.payment_paid', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'paid_on' => $date->toDateString()]);
+
+            return $fresh;
+        });
+    }
+
+    public function voidPayment(GwSupplierPayment $payment, User $actor, string $reason): GwSupplierPayment
+    {
+        $this->authorise($actor, 'gwater.void');
+        $reason = $this->reason($reason);
+
+        return DB::transaction(function () use ($payment, $actor, $reason) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwSupplierPayment::class, $payment->id, $actor);
+            $this->assertNotVoided($fresh);
+
+            $wasPaid = $fresh->status === GwSupplierPayment::PAID;
+            $this->markVoided($fresh, $actor, $reason);
+            $this->audit('gwater.payment_voided', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'was_paid' => $wasPaid, 'reason' => $reason]);
+
+            return $fresh;
+        });
+    }
+
     // ------------------------------------------------------------------ the Transport link (read-only)
 
     /**
@@ -596,6 +961,49 @@ class GwaterWorkflowService
         }
 
         return $totals;
+    }
+
+    /**
+     * A trip of the books being written to, if one was named: posted, inside the actor's reach and at the recording location.
+     * Anything else is a 404.
+     */
+    protected function tripOf(User $actor, array $location, mixed $id): ?GwPurchase
+    {
+        $id = $this->optionalId($id);
+
+        if ($id === null) {
+            return null;
+        }
+
+        $query = $this->visibility->atLocation(GwPurchase::query()->posted(), $location);
+        $trip = $this->visibility->scope($query, $actor)->whereKey($id)->first();
+
+        abort_unless($trip, 404);
+
+        return $trip;
+    }
+
+    /** @return list<array{product_id: int, packs: int, unit_price: int|null}> */
+    protected function paymentLines(mixed $lines): array
+    {
+        $out = [];
+
+        foreach ((array) $lines as $line) {
+            $packs = $line['packs'] ?? null;
+
+            if ($packs === null || $packs === '' || (int) $packs === 0) {
+                continue;
+            }
+
+            $price = $line['unit_price'] ?? null;
+            $out[] = [
+                'product_id' => (int) ($line['product_id'] ?? 0),
+                'packs' => $this->packs($packs, 'lines'),
+                'unit_price' => $price === null || $price === '' ? null : $this->price($price, 'lines'),
+            ];
+        }
+
+        return $out;
     }
 
     protected function waybill(mixed $value): string
