@@ -8,6 +8,7 @@ use App\Models\GwOpeningBalance;
 use App\Models\GwProduct;
 use App\Models\GwPurchase;
 use App\Models\GwSale;
+use App\Models\GwSaleReceipt;
 use App\Models\GwStockMovement;
 use App\Models\User;
 use App\Models\VehicleExpense;
@@ -30,6 +31,8 @@ use Illuminate\Support\Facades\Cache;
  *   Fuel               = the linked Transport expense of a trip (read live, so it follows a later change in Transport) or the
  *                        G-Water fuel expenses; labour = loading + offloading; other = other expenses;
  *   Net profit         = gross profit - damages - fuel - labour - other.
+ * Revenue is recognised when the sale is made, paid at once or on credit. Next to it the report shows the cash side: credit sales
+ * made in the period, cash collected (cash sales + money received on credit sales) and what customers still owe at its end.
  * No price is read from the price list for history: only the prices frozen on the lines. Voided rows are ignored. Money is
  * integer pesewas; ratios are recomputed from sums and are null on a zero denominator. The payload holds only arrays and
  * scalars so it can be cached; the cache key carries the user's scope, the location's books version (bumped on every write,
@@ -116,6 +119,12 @@ class GwaterProfitService
         $other = $this->expenseSum($data['expenses'], GwExpense::OTHER, $inPeriod);
 
         $combined = $this->combine($perProduct, $fuel, $labourLoading, $labourOffloading, $other);
+        $combined += [
+            'credit_sales' => (int) $data['sales']->where('credit', true)->filter(fn (array $s) => $inPeriod($s['date']))->sum('amount'),
+            'cash_collected' => (int) $data['sales']->where('credit', false)->filter(fn (array $s) => $inPeriod($s['date']))->sum('amount')
+                + (int) $data['receipts']->filter(fn (array $r) => $inPeriod($r['date']))->sum('amount'),
+            'owed_by_customers' => $this->summary->owedByCustomers($location, $to)['total'],
+        ];
 
         $today = today();
         $inProgress = $from->lte($today) && $to->gte($today);
@@ -141,7 +150,7 @@ class GwaterProfitService
     /**
      * Everything dated up to the end of the period, as plain arrays: the rolling average needs the whole history.
      *
-     * @return array{openings: Collection, lines: Collection, adjustments: Collection, sales: Collection, damages: Collection, expenses: Collection, trips: Collection}
+     * @return array{openings: Collection, lines: Collection, adjustments: Collection, sales: Collection, receipts: Collection, damages: Collection, expenses: Collection, trips: Collection}
      */
     protected function gather(array $location, Carbon $to): array
     {
@@ -164,7 +173,10 @@ class GwaterProfitService
             ->map(fn (GwStockMovement $movement) => ['date' => $movement->movement_date->toDateString(), 'order' => 2, 'id' => $movement->id, 'product_id' => $movement->product_id, 'packs' => $movement->packs]);
 
         $sales = $at(GwSale::query()->posted())->whereDate('sale_date', '<=', $day)->get()
-            ->map(fn (GwSale $sale) => ['date' => $sale->sale_date->toDateString(), 'order' => 3, 'id' => $sale->id, 'product_id' => $sale->product_id, 'packs' => $sale->packs, 'amount' => $sale->amount]);
+            ->map(fn (GwSale $sale) => ['date' => $sale->sale_date->toDateString(), 'order' => 3, 'id' => $sale->id, 'product_id' => $sale->product_id, 'packs' => $sale->packs, 'amount' => $sale->amount, 'credit' => $sale->isCredit()]);
+
+        $receipts = $at(GwSaleReceipt::query()->posted())->whereDate('received_on', '<=', $day)->get()
+            ->map(fn (GwSaleReceipt $receipt) => ['date' => $receipt->received_on->toDateString(), 'amount' => $receipt->amount]);
 
         $damages = $at(GwDamage::query()->posted())->whereDate('damage_date', '<=', $day)->get()
             ->map(fn (GwDamage $damage) => ['date' => $damage->damage_date->toDateString(), 'order' => 4, 'id' => $damage->id, 'product_id' => $damage->product_id, 'packs' => $damage->packs, 'write_off' => $damage->packs * $damage->unit_cost]);
@@ -172,7 +184,7 @@ class GwaterProfitService
         $expenses = $at(GwExpense::query()->posted())->whereDate('expense_date', '<=', $day)->get()
             ->map(fn (GwExpense $expense) => ['date' => $expense->expense_date->toDateString(), 'id' => $expense->id, 'category' => $expense->category, 'amount' => $expense->amount, 'purchase_id' => $expense->purchase_id]);
 
-        return compact('openings', 'lines', 'adjustments', 'sales', 'damages', 'expenses', 'trips');
+        return compact('openings', 'lines', 'adjustments', 'sales', 'receipts', 'damages', 'expenses', 'trips');
     }
 
     /**

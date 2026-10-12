@@ -107,7 +107,8 @@ class GwaterExportAndPnlScreenTest extends GwaterTestCase
         $place = ['region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id];
         $exports = app(GwaterExportService::class);
 
-        foreach (array_keys(GwaterExportService::REPORTS) as $key) {
+        // (The receivables report has its own test: this fixture has no credit sales.)
+        foreach (array_diff(array_keys(GwaterExportService::REPORTS), ['receivables']) as $key) {
             $built = $exports->build($key, $place, '2026-10-01', '2026-10-31', $user, 'Accra West');
             $this->assertSame(GwaterExportService::REPORTS[$key]['title'], $built['title']);
             $this->assertGreaterThan(0, $built['row_count'], $key);

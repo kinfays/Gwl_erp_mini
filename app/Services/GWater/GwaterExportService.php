@@ -30,6 +30,7 @@ class GwaterExportService
         'expenses' => ['title' => 'Expenses', 'formats' => ['excel', 'pdf']],
         'reimbursements' => ['title' => 'Fuel reimbursements', 'formats' => ['excel', 'pdf']],
         'payments' => ['title' => 'Payments to G Water', 'formats' => ['excel', 'pdf']],
+        'receivables' => ['title' => 'Owed by customers (credit sales)', 'formats' => ['excel', 'pdf']],
     ];
 
     public function __construct(
@@ -63,6 +64,7 @@ class GwaterExportService
             'expenses' => $this->expenses($location, $from, $to, $meta),
             'reimbursements' => $this->reimbursements($location, $from, $to, $meta),
             'payments' => $this->payments($location, $from, $to, $meta),
+            'receivables' => $this->receivables($location, $to, $meta),
         };
     }
 
@@ -100,6 +102,9 @@ class GwaterExportService
             $row('Average selling price per pack (GH¢)', 'average_price'),
             $row('Average cost per pack sold (GH¢)', 'average_cost'),
             $row('Break-even packs', 'break_even_packs', false, true),
+            $row('Credit sales made in the period (GH¢)', 'credit_sales', true, true),
+            $row('Cash collected: cash sales + money received on credit (GH¢)', 'cash_collected', true, true),
+            $row('Owed by customers at the end of the period (GH¢)', 'owed_by_customers', true, true),
         ];
 
         $trips = collect($report['trips'])->map(fn (array $trip) => [
@@ -210,6 +215,27 @@ class GwaterExportService
             ['title' => 'Statement of the account', 'headings' => ['Date', 'Entry', 'Owed (GH¢)', 'Paid (GH¢)', 'Balance (GH¢)'], 'rows' => $lines],
             ['title' => 'Owed to G Water at the end of the period', 'headings' => ['Measure', 'GH¢'], 'rows' => [['Owed', $this->cell($statement['owed'])]]],
         ], $from, $to);
+    }
+
+    /** Credit sales not paid in full as at the end of the period: by customer, then sale by sale. */
+    protected function receivables(array $location, Carbon $to, array $meta): array
+    {
+        $owing = $this->summary->creditSalesOwing($location, $to);
+        $byCustomer = $this->summary->owingByCustomer($location, $to)->map(fn (array $row) => [
+            $row['customer'], (string) ($row['phone'] ?? ''), $row['sales'], $this->cell($row['owed']), $row['oldest']->format('d M Y'), (int) $row['oldest']->diffInDays($to),
+        ])->all();
+        $sales = $owing->map(fn (array $row) => [
+            $row['date']->format('d M Y'), $row['customer'], $row['sale']->product->name, $row['sale']->packs, $this->cell($row['amount']), $this->cell($row['received']), $this->cell($row['owed']),
+            $row['last_payment']?->format('d M Y') ?? '',
+        ])->all();
+
+        return $this->report('receivables', ['Location' => $meta['Location'], 'As at' => $to->format('d M Y')], [
+            'Credit sales made up to the end date and not yet paid in full, with what is owed on each then.',
+            'Revenue is counted when the sale is made; this is the money still to come in.',
+        ], [
+            ['title' => 'By customer', 'headings' => ['Customer', 'Phone', 'Sales', 'Owes (GH¢)', 'Oldest sale', 'Days since'], 'rows' => $byCustomer],
+            ['title' => 'Sale by sale', 'headings' => ['Sale date', 'Customer', 'Product', 'Packs', 'Amount (GH¢)', 'Received (GH¢)', 'Owed (GH¢)', 'Last payment'], 'rows' => $sales],
+        ], $to->copy()->startOfMonth(), $to);
     }
 
     // ------------------------------------------------------------------ helpers

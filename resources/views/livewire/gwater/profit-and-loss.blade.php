@@ -52,6 +52,7 @@
             <x-ui.stat-tile label="Gross profit" :value="$money($all['gross_profit'])" icon="trending-up" :meta="'Margin '.$pct($all['gross_margin_pct'])" :tone="$all['gross_profit'] < 0 ? 'danger' : 'primary'" />
             <x-ui.stat-tile label="Net profit" :value="$money($all['net_profit'])" icon="chart-column" :meta="'Margin '.$pct($all['net_margin_pct'])" :tone="$all['net_profit'] < 0 ? 'danger' : 'success'" />
             <x-ui.stat-tile label="Owed to G Water" :value="$money($report['owed'])" icon="landmark" meta="at the end of the period" tone="muted" />
+            <x-ui.stat-tile label="Owed by customers" :value="$money($all['owed_by_customers'])" icon="hourglass" meta="on credit sales, at the end of the period" tone="muted" />
         </div>
 
         <x-ui.card title="Profit and loss" :padded="false" class="dash-row">
@@ -104,6 +105,13 @@
                         <td>{{ $label }}</td>
                         <td class="num">{{ $show($all[$key]) }}</td>
                         @foreach ($products as $line)<td class="num">{{ $show($line[$key]) }}</td>@endforeach
+                    </tr>
+                @endforeach
+                @foreach ([['Credit sales made in the period', 'credit_sales'], ['Cash collected (cash sales + money received on credit)', 'cash_collected'], ['Owed by customers at the end of the period', 'owed_by_customers']] as [$label, $key])
+                    <tr wire:key="m-{{ $key }}">
+                        <td>{{ $label }}</td>
+                        <td class="num">{{ $money($all[$key]) }}</td>
+                        @foreach ($products as $line)<td class="num"></td>@endforeach
                     </tr>
                 @endforeach
                 <tr wire:key="m-be">

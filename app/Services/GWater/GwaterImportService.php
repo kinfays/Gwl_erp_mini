@@ -63,7 +63,7 @@ class GwaterImportService
         return match ($sheet) {
             'opening' => ['as_of_date', ...$packs, ...array_map(fn (string $code) => $code.'_outstanding_packs', $codes), 'owed_amount', 'note'],
             'purchases' => ['purchase_date', 'waybill_no', ...$packs, ...array_map(fn (string $code) => $code.'_unit_cost', $codes), 'supplier_ref', 'fuel_amount', 'loading_amount', 'offloading_amount', 'payee', 'receipt_ref', 'note'],
-            'sales' => ['sale_date', 'product', 'packs', 'note'],
+            'sales' => ['sale_date', 'product', 'packs', 'on_credit', 'customer_name', 'customer_phone', 'note'],
             'damages' => ['damage_date', 'product', 'packs', 'stage', 'reason', 'waybill_no'],
             'expenses' => ['expense_date', 'category', 'amount', 'waybill_no', 'payee', 'receipt_ref', 'paid_by_staff_id', 'note'],
             'payments' => ['request_date', 'reference', 'amount', 'paid_on', ...$packs, 'note'],
@@ -221,6 +221,9 @@ class GwaterImportService
                 'sale_date' => $date,
                 'product_id' => $this->product($row['product'] ?? null, $products)->id,
                 'packs' => $this->text($row['packs'] ?? null),
+                'payment_type' => $this->paymentType($row['on_credit'] ?? null),
+                'customer_name' => $this->text($row['customer_name'] ?? null),
+                'customer_phone' => $this->text($row['customer_phone'] ?? null),
                 'note' => $this->text($row['note'] ?? null),
             ]),
             'damages' => $this->workflow->recordDamage($actor, $base + [
@@ -443,6 +446,18 @@ class GwaterImportService
             ?? throw new \RuntimeException('Staff ID "'.$staffId.'" is not a member of staff at this location.');
     }
 
+    /** The "on_credit" cell: yes / credit / 1 / true for a credit sale, blank / no / cash for a sale paid at once. */
+    protected function paymentType(mixed $cell): string
+    {
+        $text = mb_strtolower($this->text($cell));
+
+        return match (true) {
+            in_array($text, ['', 'no', 'n', 'false', '0', 'cash'], true) => 'cash',
+            in_array($text, ['yes', 'y', 'true', '1', 'credit'], true) => 'credit',
+            default => throw new \RuntimeException('on_credit "'.$this->text($cell).'" is not yes or no.'),
+        };
+    }
+
     protected function sameName(string $a, string $b): bool
     {
         $strip = fn (string $name) => preg_replace('/[^a-z0-9]/', '', mb_strtolower($name));
@@ -461,6 +476,7 @@ class GwaterImportService
             ['Money', 'Amounts in cedis, at most two decimals (for example 1430.00). Prices are never typed: they come from the Prices screen for the date of the row. In Purchases, the optional unit cost columns must agree with it.'],
             ['Packs', 'Whole numbers. One column per product (bottle_packs, sachet_packs).'],
             ['Product', 'In Daily sales and Damages: bottle or sachet.'],
+            ['Credit sales', 'In Daily sales put yes in on_credit and the customer_name (customer_phone is optional) for a sale the customer pays for later. Payments received since are recorded on the Daily sales screen, not in this file.'],
             ['Damages', 'stage is transit, loading, offloading or storage. waybill_no ties the damage to a trip (optional).'],
             ['Expenses', 'category is fuel, loading, offloading or other. paid_by_staff_id (fuel only) is the staff ID of the person who paid out of pocket.'],
             ['Payments', 'Give the packs and the amount is worked out, or only the amount. paid_on makes it a payment already made; leave it empty for a request.'],

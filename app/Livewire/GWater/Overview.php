@@ -32,7 +32,7 @@ class Overview extends Component
         $location = $this->workingLocation();
         $canReports = $this->visibility()->can($this->actor(), 'gwater.view_reports');
 
-        $data = ['stock' => collect(), 'month' => collect(), 'owed' => 0, 'pending' => collect(), 'recentSales' => collect(), 'recentTrips' => collect(), 'report' => null, 'damageFlags' => collect()];
+        $data = ['stock' => collect(), 'month' => collect(), 'owed' => 0, 'pending' => collect(), 'recentSales' => collect(), 'recentTrips' => collect(), 'report' => null, 'damageFlags' => collect(), 'customersOwe' => ['total' => 0, 'count' => 0, 'customers' => 0, 'oldest_days' => null]];
 
         if ($location) {
             $stock = $summary->stockOnHand($location)->map(fn (array $row) => $row + [
@@ -46,6 +46,7 @@ class Overview extends Component
                 'stock' => $stock,
                 'month' => $summary->monthFigures($location),
                 'owed' => $summary->owedToGwater($location),
+                'customersOwe' => $summary->owedByCustomers($location),
                 'pending' => $summary->pendingReimbursements($location),
                 'recentSales' => $this->books(GwSale::query()->posted())->with('product')->orderByRaw('DATE(sale_date) desc')->orderByDesc('id')->limit(8)->get(),
                 'recentTrips' => $this->books(GwPurchase::query()->posted())->with('lines.product')->orderByRaw('DATE(purchase_date) desc')->orderByDesc('id')->limit(6)->get(),

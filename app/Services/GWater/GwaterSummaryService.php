@@ -8,6 +8,7 @@ use App\Models\GwProduct;
 use App\Models\GwPurchase;
 use App\Models\GwPurchaseLine;
 use App\Models\GwSale;
+use App\Models\GwSaleReceipt;
 use App\Models\GwSupplierPayment;
 use App\Models\GwSupplierPaymentLine;
 use Illuminate\Support\Carbon;
@@ -165,6 +166,76 @@ class GwaterSummaryService
                 'waybills' => $waybills->all(),
             ];
         });
+    }
+
+    /**
+     * Credit sales not yet paid in full, as at a day (default: now): each with what is owed on it then. The customer's
+     * receipts count only up to that day, so the figure at the end of a past period is what the books said then.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     * @return Collection<int, array{sale: GwSale, customer: string, phone: string|null, date: Carbon, amount: int, received: int, owed: int, last_payment: Carbon|null}>
+     */
+    public function creditSalesOwing(array $location, ?Carbon $asOf = null): Collection
+    {
+        $day = $asOf?->toDateString();
+
+        return $this->visibility->atLocation(GwSale::query()->posted()->where('payment_type', GwSale::CREDIT), $location)
+            ->when($day, fn ($query) => $query->whereDate('sale_date', '<=', $day))
+            ->with(['product', 'receipts' => fn ($receipts) => $receipts->posted()->when($day, fn ($query) => $query->whereDate('received_on', '<=', $day))])
+            ->orderByRaw('DATE(sale_date) asc')->orderBy('id')
+            ->get()
+            ->map(fn (GwSale $sale) => [
+                'sale' => $sale,
+                'customer' => (string) $sale->customer_name,
+                'phone' => $sale->customer_phone,
+                'date' => $sale->sale_date,
+                'amount' => $sale->amount,
+                'received' => $sale->receivedAmount(),
+                'owed' => max(0, $sale->amount - $sale->receivedAmount()),
+                'last_payment' => $sale->receipts->max('received_on'),
+            ])
+            ->filter(fn (array $row) => $row['owed'] > 0)
+            ->values();
+    }
+
+    /**
+     * What customers owe on credit sales, in total, and how old the oldest debt is.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     * @return array{total: int, count: int, customers: int, oldest_days: int|null}
+     */
+    public function owedByCustomers(array $location, ?Carbon $asOf = null): array
+    {
+        $rows = $this->creditSalesOwing($location, $asOf);
+        $today = ($asOf ?? today())->copy()->startOfDay();
+
+        return [
+            'total' => (int) $rows->sum('owed'),
+            'count' => $rows->count(),
+            'customers' => $rows->pluck('customer')->map(fn (string $name) => mb_strtolower(trim($name)))->unique()->count(),
+            'oldest_days' => $rows->isEmpty() ? null : (int) $rows->min('date')->diffInDays($today),
+        ];
+    }
+
+    /**
+     * The same debts grouped by customer (the same name typed in a different case or with spaces is one customer), biggest first.
+     *
+     * @param  array{region_id: int|null, district_id: int|null}  $location
+     * @return Collection<int, array{customer: string, phone: string|null, sales: int, owed: int, oldest: Carbon}>
+     */
+    public function owingByCustomer(array $location, ?Carbon $asOf = null): Collection
+    {
+        return $this->creditSalesOwing($location, $asOf)
+            ->groupBy(fn (array $row) => mb_strtolower(trim($row['customer'])))
+            ->map(fn (Collection $rows) => [
+                'customer' => $rows->first()['customer'],
+                'phone' => $rows->pluck('phone')->filter()->last(),
+                'sales' => $rows->count(),
+                'owed' => (int) $rows->sum('owed'),
+                'oldest' => $rows->min('date'),
+            ])
+            ->sortByDesc('owed')
+            ->values();
     }
 
     /**

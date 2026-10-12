@@ -23,6 +23,9 @@
                     :href="route('gwater.pnl')" :tone="$report['combined']['net_profit'] < 0 ? 'danger' : 'success'" />
             @endif
             <x-ui.stat-tile label="Owed to G Water" :value="\App\Services\GWater\Money::format($owed)" icon="landmark" meta="opening owed + purchases - payments paid" tone="muted" />
+            <x-ui.stat-tile label="Owed by customers" :value="\App\Services\GWater\Money::format($customersOwe['total'])" icon="hourglass"
+                :meta="$customersOwe['count'] ? $customersOwe['customers'].' customer(s) on credit; oldest '.$customersOwe['oldest_days'].' day(s)' : 'no credit sales outstanding'"
+                :href="route('gwater.sales', ['show' => 'owing'])" tone="muted" />
             <x-ui.stat-tile label="Fuel to pay back" :value="\App\Services\GWater\Money::format($pending->sum('amount'))" icon="hand-coins" :meta="$pending->count().' pending'" :href="route('gwater.reimbursements')" tone="muted" />
         </div>
 

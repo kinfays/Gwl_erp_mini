@@ -10,6 +10,7 @@ use App\Models\GwPrice;
 use App\Models\GwProduct;
 use App\Models\GwPurchase;
 use App\Models\GwSale;
+use App\Models\GwSaleReceipt;
 use App\Models\GwSetting;
 use App\Models\GwStockMovement;
 use App\Models\GwSupplierPayment;
@@ -52,7 +53,11 @@ class GwaterWorkflowService
      * One line of a day's sales. The selling price is the one in force on that day at the location and cannot be overridden
      * here (a different price is a new row on the Prices screen); a second entry the same day is simply another line.
      *
-     * @param  array{sale_date?: mixed, product_id?: mixed, packs?: mixed, note?: mixed, location_district_id?: mixed}  $data
+     * A sale is paid at once ('cash', the default) or on credit for a named customer who pays later (payment_type 'credit',
+     * customer_name required, customer_phone optional); the money that comes in afterwards is recordSaleReceipt(). Stock and
+     * revenue are the same either way.
+     *
+     * @param  array{sale_date?: mixed, product_id?: mixed, packs?: mixed, note?: mixed, payment_type?: mixed, customer_name?: mixed, customer_phone?: mixed, location_district_id?: mixed}  $data
      */
     public function recordSale(User $actor, array $data): GwSale
     {
@@ -62,8 +67,18 @@ class GwaterWorkflowService
         $date = $this->date($data['sale_date'] ?? null, 'sale_date');
         $product = $this->product($data['product_id'] ?? null);
         $packs = $this->packs($data['packs'] ?? null, 'packs');
+        $type = strtolower(trim((string) ($data['payment_type'] ?? GwSale::CASH))) ?: GwSale::CASH;
+        $customer = $this->text($data['customer_name'] ?? null, 120);
 
-        return DB::transaction(function () use ($actor, $location, $date, $product, $packs, $data) {
+        if (! in_array($type, [GwSale::CASH, GwSale::CREDIT], true)) {
+            throw ValidationException::withMessages(['payment_type' => 'A sale is paid in cash or on credit.']);
+        }
+
+        if ($type === GwSale::CREDIT && ($customer === null || mb_strlen($customer) < 2)) {
+            throw ValidationException::withMessages(['customer_name' => 'Enter the name of the customer who will pay later.']);
+        }
+
+        return DB::transaction(function () use ($actor, $location, $date, $product, $packs, $type, $customer, $data) {
             $this->stock->lock();
 
             $price = $this->pricing->sellingPrice($product->id, $date, $location)
@@ -76,6 +91,9 @@ class GwaterWorkflowService
                 'packs' => $packs,
                 'unit_price' => $price,
                 'amount' => $packs * $price,
+                'payment_type' => $type,
+                'customer_name' => $type === GwSale::CREDIT ? $customer : null,
+                'customer_phone' => $type === GwSale::CREDIT ? $this->text($data['customer_phone'] ?? null, 30) : null,
                 'note' => $this->text($data['note'] ?? null, 255),
                 'status' => 'posted',
                 'created_by' => $actor->id,
@@ -91,10 +109,84 @@ class GwaterWorkflowService
                 'packs' => $packs,
                 'unit_price' => $price,
                 'amount' => $sale->amount,
+                'payment_type' => $type,
                 'sale_date' => $date->toDateString(),
             ]);
 
             return $sale;
+        });
+    }
+
+    /**
+     * Money received from a customer against a credit sale. At most what is still owed, not before the sale's day, not in the
+     * future; as many receipts as it takes to clear the sale. Needs gwater.record.
+     *
+     * @param  array{amount?: mixed, received_on?: mixed, reference?: mixed, note?: mixed}  $data  amount in pesewas
+     */
+    public function recordSaleReceipt(User $actor, GwSale|int $sale, array $data): GwSaleReceipt
+    {
+        $this->authorise($actor, 'gwater.record');
+
+        $date = $this->date($data['received_on'] ?? null, 'received_on');
+        $amount = $this->amount($data['amount'] ?? null, 'amount');
+
+        if ($amount < 1) {
+            throw ValidationException::withMessages(['amount' => 'Enter the amount received.']);
+        }
+
+        return DB::transaction(function () use ($actor, $sale, $date, $amount, $data) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwSale::class, $sale instanceof GwSale ? $sale->id : $sale, $actor);
+
+            if ($fresh->isVoided() || ! $fresh->isCredit()) {
+                throw ValidationException::withMessages(['amount' => $fresh->isVoided() ? 'This sale is voided.' : 'This sale was paid at once: there is nothing owed on it.']);
+            }
+
+            if ($date->lt($fresh->sale_date)) {
+                throw ValidationException::withMessages(['received_on' => 'The money cannot have come in before the sale ('.$fresh->sale_date->format('d M Y').').']);
+            }
+
+            $owed = $fresh->balanceOwed();
+
+            if ($amount > $owed) {
+                throw ValidationException::withMessages(['amount' => $owed === 0
+                    ? 'This sale has been paid in full.'
+                    : 'Only GH¢ '.Money::format($owed).' is still owed on this sale.']);
+            }
+
+            $receipt = GwSaleReceipt::query()->create([
+                ...$this->placeOf($fresh),
+                'sale_id' => $fresh->id,
+                'received_on' => $date->toDateString(),
+                'amount' => $amount,
+                'reference' => $this->text($data['reference'] ?? null, 60),
+                'note' => $this->text($data['note'] ?? null, 255),
+                'status' => 'posted',
+                'created_by' => $actor->id,
+            ]);
+
+            // The customer's name is in the sale, never in the audit row.
+            $this->audit('gwater.sale_payment_received', $receipt, ['sale_id' => $fresh->id, 'amount' => $amount, 'balance_after' => $owed - $amount, 'received_on' => $date->toDateString()]);
+
+            return $receipt;
+        });
+    }
+
+    /** A receipt entered by mistake: voided with a reason, and the sale owes that money again. Needs gwater.void. */
+    public function voidSaleReceipt(GwSaleReceipt $receipt, User $actor, string $reason): GwSaleReceipt
+    {
+        $this->authorise($actor, 'gwater.void');
+        $reason = $this->reason($reason);
+
+        return DB::transaction(function () use ($receipt, $actor, $reason) {
+            $this->stock->lock();
+            $fresh = $this->lockedOwnRow(GwSaleReceipt::class, $receipt->id, $actor);
+            $this->assertNotVoided($fresh);
+
+            $this->markVoided($fresh, $actor, $reason);
+            $this->audit('gwater.sale_payment_voided', $fresh, ['sale_id' => $fresh->sale_id, 'amount' => $fresh->amount, 'reason' => $reason]);
+
+            return $fresh;
         });
     }
 
@@ -107,6 +199,10 @@ class GwaterWorkflowService
             $this->stock->lock();
             $fresh = $this->lockedOwnRow(GwSale::class, $sale->id, $actor);
             $this->assertNotVoided($fresh);
+
+            if ($fresh->isCredit() && $fresh->receipts()->posted()->exists()) {
+                throw ValidationException::withMessages(['reason' => 'Money has been received on this credit sale. Void those payments first, then the sale.']);
+            }
 
             $this->stock->reverseSource($actor, $this->placeOf($fresh), 'gw_sale', $fresh->id, 'Void of sale #'.$fresh->id);
             $this->markVoided($fresh, $actor, $reason);
