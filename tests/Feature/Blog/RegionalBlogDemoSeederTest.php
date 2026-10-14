@@ -51,11 +51,12 @@ class RegionalBlogDemoSeederTest extends BlogTestCase
         });
 
         if (extension_loaded('gd')) {
-            $covered = (clone $accra)->whereNotNull('cover_path')->get();
+            $covered = (clone $accra)->whereNotNull('cover_media_id')->with('coverMedia')->get();
             $this->assertGreaterThanOrEqual(4, $covered->count());
             $covered->each(function (BlogPost $post) {
-                Storage::disk('local')->assertExists($post->cover_path);
-                $this->assertSame([1200, 675], array_slice(getimagesizefromstring(Storage::disk('local')->get($post->cover_path)), 0, 2));
+                $this->assertSame([1200, 675], [$post->coverMedia->width, $post->coverMedia->height]);
+                Storage::disk('local')->assertExists($post->coverMedia->path);
+                $this->assertTrue($post->coverMedia->in_use);
             });
         }
 

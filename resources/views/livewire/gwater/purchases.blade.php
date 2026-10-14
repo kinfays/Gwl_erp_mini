@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Purchases (trips)" description="Each collection trip from G Water: the waybill, the packs bought, the vehicle, the fuel and the loading and offloading.">
+    <x-ui.page-header title="Purchases (trips)" description="Each collection trip from G Water: the waybill, the packs bought, the vehicle, the fuel and the loading / offloading payment.">
         @if ($canRecord && $location)
             <x-slot:actions>
                 <x-ui.button variant="primary" icon="plus" wire:click="openForm">Record a trip</x-ui.button>
@@ -56,8 +56,7 @@
                             @endif
                         </td>
                         <td class="num">
-                            {{ \App\Services\GWater\Money::format($trip->expenses->where('category', 'loading')->reject(fn ($e) => $e->isVoided())->sum('amount')) }}
-                            / {{ \App\Services\GWater\Money::format($trip->expenses->where('category', 'offloading')->reject(fn ($e) => $e->isVoided())->sum('amount')) }}
+                            {{ \App\Services\GWater\Money::format($trip->expenses->whereIn('category', \App\Models\GwExpense::LOADING_OFFLOADING)->reject(fn ($e) => $e->isVoided())->sum('amount')) }}
                         </td>
                         <td>
                             @if ($trip->isVoided())
@@ -138,8 +137,7 @@
                         <option value="{{ $person->id }}">{{ $person->full_name ?? $person->email }}</option>
                     @endforeach
                 </x-ui.select>
-                <x-ui.input label="Loading (paid in cash)" wire:model.defer="form.loading_amount" inputmode="decimal" />
-                <x-ui.input label="Offloading (paid in cash)" wire:model.defer="form.offloading_amount" inputmode="decimal" />
+                <x-ui.input label="Loading / offloading (paid in cash)" wire:model.defer="form.loading_offloading_amount" inputmode="decimal" />
                 <x-ui.input label="Paid to (optional)" wire:model.defer="form.payee" maxlength="120" />
                 <x-ui.input label="Receipt reference (optional)" wire:model.defer="form.receipt_ref" maxlength="60" />
                 <div class="span-2">

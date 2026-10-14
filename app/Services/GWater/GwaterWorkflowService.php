@@ -220,7 +220,7 @@ class GwaterWorkflowService
      *
      * @param  array<string, mixed>  $data  purchase_date, waybill_no, supplier_ref, note, lines [[product_id, packs]], vehicle_id,
      *                                       driver_id, mileage_log_id, vehicle_expense_id, fuel_paid_by_user_id, fuel_amount,
-     *                                       loading_amount, offloading_amount (pesewas), payee, receipt_ref, location_district_id
+     *                                       loading_offloading_amount (pesewas, one payment), payee, receipt_ref, location_district_id
      */
     public function recordPurchase(User $actor, array $data): GwPurchase
     {
@@ -231,10 +231,9 @@ class GwaterWorkflowService
         $waybill = $this->waybill($data['waybill_no'] ?? null);
         $lines = $this->purchaseLines($data['lines'] ?? []);
         $fuel = $this->amount($data['fuel_amount'] ?? 0, 'fuel_amount');
-        $loading = $this->amount($data['loading_amount'] ?? 0, 'loading_amount');
-        $offloading = $this->amount($data['offloading_amount'] ?? 0, 'offloading_amount');
+        $loading = $this->amount($data['loading_offloading_amount'] ?? 0, 'loading_offloading_amount');
 
-        return DB::transaction(function () use ($actor, $location, $date, $waybill, $lines, $fuel, $loading, $offloading, $data) {
+        return DB::transaction(function () use ($actor, $location, $date, $waybill, $lines, $fuel, $loading, $data) {
             $this->stock->lock();
 
             $this->assertWaybillFree($location, $waybill);
@@ -280,12 +279,12 @@ class GwaterWorkflowService
                 ]);
             }
 
-            foreach ([GwExpense::FUEL => $fuel, GwExpense::LOADING => $loading, GwExpense::OFFLOADING => $offloading] as $category => $amount) {
+            foreach ([GwExpense::FUEL => $fuel, GwExpense::LOADING => $loading] as $category => $amount) {
                 if ($amount <= 0) {
                     continue;
                 }
 
-                // Only fuel is reimbursable; labour is paid in cash and is never marked pending.
+                // Only fuel is reimbursable; loading/offloading is paid in cash and is never marked pending.
                 $reimbursable = $category === GwExpense::FUEL && $payer !== null;
 
                 GwExpense::query()->create([
@@ -312,8 +311,7 @@ class GwaterWorkflowService
                 'vehicle_id' => $transport['vehicle_id'],
                 'vehicle_expense_id' => $transport['vehicle_expense_id'],
                 'mileage_log_id' => $transport['mileage_log_id'],
-                'loading' => $loading,
-                'offloading' => $offloading,
+                'loading_offloading' => $loading,
                 'fuel_amount' => $fuel,
             ]);
 
@@ -436,7 +434,7 @@ class GwaterWorkflowService
                     $this->stock->post($actor, $location, $products[$productId], GwStockMovement::OPENING, $packs[$productId], $date, [
                         'source_type' => 'gw_opening_balance',
                         'source_id' => $opening->id,
-                        'note' => 'Brought forward',
+                        'note' => 'Opening balance',
                     ]);
                 }
             }
@@ -704,7 +702,7 @@ class GwaterWorkflowService
     /**
      * A cost of the trade in pesewas. Fuel counts ONCE per trip: a trip whose fuel is linked from Transport, or that already
      * has a G-Water fuel expense, takes no second one. Only fuel can be reimbursable (paid out of pocket by `paid_by_user_id`);
-     * loading and offloading are paid in cash and can never be.
+     * loading/offloading is paid in cash and can never be.
      *
      * @param  array{expense_date?: mixed, category?: mixed, amount?: mixed, purchase_id?: mixed, vehicle_id?: mixed, payee?: mixed, receipt_ref?: mixed, note?: mixed, paid_by_user_id?: mixed, location_district_id?: mixed}  $data
      */
@@ -728,7 +726,7 @@ class GwaterWorkflowService
         $payerId = $this->optionalId($data['paid_by_user_id'] ?? null);
 
         if ($payerId !== null && $category !== GwExpense::FUEL) {
-            throw ValidationException::withMessages(['paid_by_user_id' => 'Only fuel is paid back. Loading and offloading are paid in cash, and other costs are not reimbursable.']);
+            throw ValidationException::withMessages(['paid_by_user_id' => 'Only fuel is paid back. Loading / offloading is paid in cash, and other costs are not reimbursable.']);
         }
 
         return DB::transaction(function () use ($actor, $location, $date, $category, $amount, $payerId, $data) {
@@ -812,37 +810,32 @@ class GwaterWorkflowService
     // ------------------------------------------------------------------ payments to G Water
 
     /**
-     * A payment request (status requested) or, when `paid_on` is given, a payment already made. A request may carry the packs
-     * it was raised for ("550 bottle packs x 26.00"); the amount is then the total of those lines, or must agree with it.
-     * The reference is unique among the location's non-voided payments.
+     * A payment to G Water, made on `paid_on`. It may carry the packs it paid for ("550 bottle packs x 26.00"); the amount is
+     * then the total of those lines, or must agree with it. The reference is unique among the location's non-voided payments.
+     * There is no request step: a payment is recorded when it is paid and reduces what is owed from that day.
      *
-     * @param  array{request_date?: mixed, reference?: mixed, amount?: mixed, lines?: mixed, paid_on?: mixed, note?: mixed, location_district_id?: mixed}  $data
+     * @param  array{paid_on?: mixed, reference?: mixed, amount?: mixed, lines?: mixed, note?: mixed, location_district_id?: mixed}  $data
      */
     public function recordPayment(User $actor, array $data): GwSupplierPayment
     {
         $this->authorise($actor, 'gwater.record');
 
         $location = $this->visibility->recordingLocation($actor, $this->optionalId($data['location_district_id'] ?? null));
-        $date = $this->date($data['request_date'] ?? null, 'request_date');
+        $date = $this->date($data['paid_on'] ?? null, 'paid_on');
         $reference = $this->text($data['reference'] ?? null, 60);
-        $paidOn = ($data['paid_on'] ?? null) === null || ($data['paid_on'] ?? '') === '' ? null : $this->date($data['paid_on'], 'paid_on');
         $lines = $this->paymentLines($data['lines'] ?? []);
         $typed = $this->amount($data['amount'] ?? 0, 'amount');
 
         if ($reference === null) {
-            throw ValidationException::withMessages(['reference' => 'Enter the reference of the payment request.']);
+            throw ValidationException::withMessages(['reference' => 'Enter the reference of the payment (cheque, transfer or voucher number).']);
         }
 
-        if ($paidOn && $paidOn->lt($date)) {
-            throw ValidationException::withMessages(['paid_on' => 'It cannot be paid before it was requested.']);
-        }
-
-        return DB::transaction(function () use ($actor, $location, $date, $reference, $paidOn, $lines, $typed, $data) {
+        return DB::transaction(function () use ($actor, $location, $date, $reference, $lines, $typed, $data) {
             $this->stock->lock();
 
             $products = GwProduct::query()->active()->whereIn('id', collect($lines)->pluck('product_id'))->get()->keyBy('id');
 
-            // A line left without a price takes the cost price in force on the request date.
+            // A line left without a price takes the cost price in force on the payment date.
             $lines = collect($lines)->map(function (array $line) use ($products, $date, $location) {
                 abort_unless($products->has($line['product_id']), 404);
 
@@ -867,7 +860,7 @@ class GwaterWorkflowService
                 ->whereRaw('LOWER(reference) = ?', [mb_strtolower($reference)])->first();
 
             if ($existing) {
-                throw ValidationException::withMessages(['reference' => 'Reference '.$reference.' is already used by a payment of '.$existing->request_date->format('d M Y').' for this location.']);
+                throw ValidationException::withMessages(['reference' => 'Reference '.$reference.' is already used by a payment of '.($existing->paid_on ?? $existing->request_date)->format('d M Y').' for this location.']);
             }
 
             $payment = GwSupplierPayment::query()->create([
@@ -875,9 +868,9 @@ class GwaterWorkflowService
                 'request_date' => $date->toDateString(),
                 'reference' => $reference,
                 'amount' => $amount,
-                'paid_on' => $paidOn?->toDateString(),
+                'paid_on' => $date->toDateString(),
                 'note' => $this->text($data['note'] ?? null, 255),
-                'status' => $paidOn ? GwSupplierPayment::PAID : GwSupplierPayment::REQUESTED,
+                'status' => GwSupplierPayment::PAID,
                 'created_by' => $actor->id,
             ]);
 
@@ -888,35 +881,11 @@ class GwaterWorkflowService
             $this->audit('gwater.payment_recorded', $payment, [
                 'reference' => $reference,
                 'amount' => $amount,
-                'status' => $payment->status,
+                'paid_on' => $date->toDateString(),
                 'packs' => collect($lines)->sum('packs'),
             ]);
 
             return $payment->load('lines');
-        });
-    }
-
-    public function markPaymentPaid(GwSupplierPayment $payment, User $actor, mixed $paidOn = null): GwSupplierPayment
-    {
-        $this->authorise($actor, 'gwater.record');
-        $date = $paidOn === null || $paidOn === '' ? today() : $this->date($paidOn, 'paid_on');
-
-        return DB::transaction(function () use ($payment, $actor, $date) {
-            $this->stock->lock();
-            $fresh = $this->lockedOwnRow(GwSupplierPayment::class, $payment->id, $actor);
-
-            if ($fresh->status !== GwSupplierPayment::REQUESTED) {
-                throw ValidationException::withMessages(['paid_on' => 'Only a payment request that is still waiting can be marked paid.']);
-            }
-
-            if ($date->lt($fresh->request_date)) {
-                throw ValidationException::withMessages(['paid_on' => 'It cannot be paid before it was requested ('.$fresh->request_date->format('d M Y').').']);
-            }
-
-            $fresh->forceFill(['status' => GwSupplierPayment::PAID, 'paid_on' => $date->toDateString()])->save();
-            $this->audit('gwater.payment_paid', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'paid_on' => $date->toDateString()]);
-
-            return $fresh;
         });
     }
 
@@ -930,9 +899,8 @@ class GwaterWorkflowService
             $fresh = $this->lockedOwnRow(GwSupplierPayment::class, $payment->id, $actor);
             $this->assertNotVoided($fresh);
 
-            $wasPaid = $fresh->status === GwSupplierPayment::PAID;
             $this->markVoided($fresh, $actor, $reason);
-            $this->audit('gwater.payment_voided', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'was_paid' => $wasPaid, 'reason' => $reason]);
+            $this->audit('gwater.payment_voided', $fresh, ['reference' => $fresh->reference, 'amount' => $fresh->amount, 'reason' => $reason]);
 
             return $fresh;
         });

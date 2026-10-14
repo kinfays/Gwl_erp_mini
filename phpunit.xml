@@ -46,6 +46,10 @@
         <env name="GWL_ARKESEL_WEBHOOK_TOKEN" value="test-webhook-secret"/>
         <env name="GWL_HEALTH_SAFETY_MODULE_ENABLED" value="true"/>
         <env name="GWL_BLOG_MODULE_ENABLED" value="true"/>
+        <env name="GWL_BLOG_MEDIA_MAX_MB" value="4"/>
+        <env name="GWL_BLOG_MEDIA_MAX_DIMENSION" value="3000"/>
+        <env name="GWL_BLOG_MEDIA_MAX_MEGAPIXELS" value="8"/>
+        <env name="GWL_BLOG_MEDIA_MAX_PER_ARTICLE" value="6"/>
         <env name="GWL_GWATER_MODULE_ENABLED" value="true"/>
     </php>
 </phpunit>

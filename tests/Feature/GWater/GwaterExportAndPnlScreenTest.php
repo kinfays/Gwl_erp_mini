@@ -49,7 +49,7 @@ class GwaterExportAndPnlScreenTest extends GwaterTestCase
     private function someMonth(User $user): void
     {
         $this->actingAs($user);
-        $this->trip($user, 'WB-1', 100, 30, '2026-10-01', ['loading_amount' => 3000, 'fuel_amount' => 5000]);
+        $this->trip($user, 'WB-1', 100, 30, '2026-10-01', ['loading_offloading_amount' => 3000, 'fuel_amount' => 5000]);
         $this->workflow()->recordSale($user, $this->saleData(40, '2026-10-03'));
         $this->workflow()->recordDamage($user, ['damage_date' => '2026-10-04', 'product_id' => $this->bottle->id, 'packs' => 5, 'stage' => 'storage', 'reason' => 'Cracked']);
     }
@@ -103,7 +103,7 @@ class GwaterExportAndPnlScreenTest extends GwaterTestCase
         $this->someMonth($user);
         $payer = $this->person('P1', $this->sowutuom);
         $this->workflow()->recordExpense($user, ['expense_date' => '2026-10-05', 'category' => 'fuel', 'amount' => 8000, 'paid_by_user_id' => $payer->id]);
-        $this->workflow()->recordPayment($user, ['request_date' => '2026-10-06', 'reference' => 'PR-1', 'amount' => 40000, 'paid_on' => '2026-10-07']);
+        $this->workflow()->recordPayment($user, ['paid_on' => '2026-10-07', 'reference' => 'PR-1', 'amount' => 40000]);
         $place = ['region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id];
         $exports = app(GwaterExportService::class);
 

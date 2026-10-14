@@ -41,11 +41,11 @@ class GwaterImportService
         'sales' => ['title' => 'Daily sales', 'required' => ['sale_date', 'product', 'packs']],
         'damages' => ['title' => 'Damages', 'required' => ['damage_date', 'product', 'packs', 'stage', 'reason']],
         'expenses' => ['title' => 'Expenses', 'required' => ['expense_date', 'category', 'amount']],
-        'payments' => ['title' => 'Payments', 'required' => ['request_date', 'reference']],
+        'payments' => ['title' => 'Payments', 'required' => ['paid_on', 'reference']],
     ];
 
     protected const DATE_COLUMN = [
-        'opening' => 'as_of_date', 'purchases' => 'purchase_date', 'sales' => 'sale_date', 'damages' => 'damage_date', 'expenses' => 'expense_date', 'payments' => 'request_date',
+        'opening' => 'as_of_date', 'purchases' => 'purchase_date', 'sales' => 'sale_date', 'damages' => 'damage_date', 'expenses' => 'expense_date', 'payments' => 'paid_on',
     ];
 
     public function __construct(
@@ -62,11 +62,11 @@ class GwaterImportService
 
         return match ($sheet) {
             'opening' => ['as_of_date', ...$packs, ...array_map(fn (string $code) => $code.'_outstanding_packs', $codes), 'owed_amount', 'note'],
-            'purchases' => ['purchase_date', 'waybill_no', ...$packs, ...array_map(fn (string $code) => $code.'_unit_cost', $codes), 'supplier_ref', 'fuel_amount', 'loading_amount', 'offloading_amount', 'payee', 'receipt_ref', 'note'],
+            'purchases' => ['purchase_date', 'waybill_no', ...$packs, ...array_map(fn (string $code) => $code.'_unit_cost', $codes), 'supplier_ref', 'fuel_amount', 'loading_offloading_amount', 'payee', 'receipt_ref', 'note'],
             'sales' => ['sale_date', 'product', 'packs', 'on_credit', 'customer_name', 'customer_phone', 'note'],
             'damages' => ['damage_date', 'product', 'packs', 'stage', 'reason', 'waybill_no'],
             'expenses' => ['expense_date', 'category', 'amount', 'waybill_no', 'payee', 'receipt_ref', 'paid_by_staff_id', 'note'],
-            'payments' => ['request_date', 'reference', 'amount', 'paid_on', ...$packs, 'note'],
+            'payments' => ['paid_on', 'reference', 'amount', ...$packs, 'note'],
         };
     }
 
@@ -245,10 +245,9 @@ class GwaterImportService
                 'note' => $this->text($row['note'] ?? null),
             ]),
             'payments' => $this->workflow->recordPayment($actor, $base + [
-                'request_date' => $date,
+                'paid_on' => $date,
                 'reference' => $this->text($row['reference'] ?? null),
                 'amount' => $this->money($row['amount'] ?? null, 'amount', zeroIfBlank: true),
-                'paid_on' => $this->optionalDate($row['paid_on'] ?? null, 'paid_on'),
                 'lines' => $products->map(fn (GwProduct $product) => ['product_id' => $product->id, 'packs' => $this->text($row[$product->code.'_packs'] ?? null)])->all(),
                 'note' => $this->text($row['note'] ?? null),
             ]),
@@ -284,8 +283,7 @@ class GwaterImportService
             'note' => $this->text($row['note'] ?? null),
             'lines' => $products->map(fn (GwProduct $product) => ['product_id' => $product->id, 'packs' => $this->text($row[$product->code.'_packs'] ?? null)])->all(),
             'fuel_amount' => $this->money($row['fuel_amount'] ?? null, 'fuel_amount', zeroIfBlank: true),
-            'loading_amount' => $this->money($row['loading_amount'] ?? null, 'loading_amount', zeroIfBlank: true),
-            'offloading_amount' => $this->money($row['offloading_amount'] ?? null, 'offloading_amount', zeroIfBlank: true),
+            'loading_offloading_amount' => $this->money($row['loading_offloading_amount'] ?? null, 'loading_offloading_amount', zeroIfBlank: true),
             'payee' => $this->text($row['payee'] ?? null),
             'receipt_ref' => $this->text($row['receipt_ref'] ?? null),
         ]);
@@ -478,7 +476,7 @@ class GwaterImportService
             ['Product', 'In Daily sales and Damages: bottle or sachet.'],
             ['Credit sales', 'In Daily sales put yes in on_credit and the customer_name (customer_phone is optional) for a sale the customer pays for later. Payments received since are recorded on the Daily sales screen, not in this file.'],
             ['Damages', 'stage is transit, loading, offloading or storage. waybill_no ties the damage to a trip (optional).'],
-            ['Expenses', 'category is fuel, loading, offloading or other. paid_by_staff_id (fuel only) is the staff ID of the person who paid out of pocket.'],
+            ['Expenses', 'category is fuel, loading (the one loading / offloading payment) or other. paid_by_staff_id (fuel only) is the staff ID of the person who paid out of pocket.'],
             ['Payments', 'Give the packs and the amount is worked out, or only the amount. paid_on makes it a payment already made; leave it empty for a request.'],
             ['Never overwrites', 'A row that already exists (the opening balance, a waybill, a payment reference) is refused, never updated. Rows that fail are listed with the reason.'],
         ];

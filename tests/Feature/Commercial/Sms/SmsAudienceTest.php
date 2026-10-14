@@ -371,7 +371,7 @@ class SmsAudienceTest extends SmsTestCase
         $this->assertStringContainsString('All customers', $text($this->spec()));
         $this->assertStringContainsString('first number', $text($this->spec()));
         $this->assertStringContainsString('both numbers', $text($this->spec(['include_second' => true])));
-        $this->assertStringContainsString('to be confirmed', $text($this->group('debtors', ['min_debt' => 100])));
+        $this->assertStringContainsString('a positive balance is owed', $text($this->group('debtors', ['min_debt' => 100])));
         $this->assertStringContainsString('file date', $text($this->group('no_payment', ['days' => 60])));
         $this->assertStringContainsString('top 5%', $text($this->group('valuable', ['top_pct' => 5])));
         $this->assertStringContainsString('top 500', $text($this->group('valuable', ['top_n' => 500])));

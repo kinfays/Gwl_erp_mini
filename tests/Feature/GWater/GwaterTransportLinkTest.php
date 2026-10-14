@@ -199,13 +199,13 @@ class GwaterTransportLinkTest extends GwaterTestCase
         $payer = $this->person('P1', $this->sowutuom);
 
         $trip = $this->trip($user, 'WB-1', 10, 0, '2026-06-01', [
-            'fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_amount' => 3000, 'offloading_amount' => 2000,
+            'fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_offloading_amount' => 5000,
         ]);
 
         $byCategory = GwExpense::query()->where('purchase_id', $trip->id)->get()->keyBy('category');
-        $this->assertSame(['pending', 'not_applicable', 'not_applicable'], [
-            $byCategory['fuel']->reimbursement_status, $byCategory['loading']->reimbursement_status, $byCategory['offloading']->reimbursement_status,
-        ]);
+        $this->assertSame(['pending', 'not_applicable'], [$byCategory['fuel']->reimbursement_status, $byCategory['loading']->reimbursement_status]);
+        $this->assertSame(5000, $byCategory['loading']->amount, 'loading and offloading are one payment');
+        $this->assertCount(2, $byCategory);
         $this->assertSame($payer->id, $byCategory['fuel']->paid_by_user_id);
         $this->assertNull($byCategory['loading']->paid_by_user_id);
 
@@ -302,7 +302,7 @@ class GwaterTransportLinkTest extends GwaterTestCase
     {
         $recorder = $this->gw('G1', $this->sowutuom);
         $approver = $this->gw('G2', $this->odorkor);
-        $trip = $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 4000, 'loading_amount' => 3000]);
+        $trip = $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 4000, 'loading_offloading_amount' => 3000]);
         $this->actingAs($approver);
 
         foreach (GwExpense::query()->where('purchase_id', $trip->id)->get() as $expense) {
@@ -319,7 +319,7 @@ class GwaterTransportLinkTest extends GwaterTestCase
     {
         $recorder = $this->gw('G1', $this->sowutuom);
         $payer = $this->person('P1', $this->sowutuom);
-        $trip = $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_amount' => 3000]);
+        $trip = $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_offloading_amount' => 3000]);
         $place = ['region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id];
         $summary = app(GwaterSummaryService::class);
 

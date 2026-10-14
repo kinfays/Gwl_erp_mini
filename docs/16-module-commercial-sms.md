@@ -23,7 +23,7 @@ Related: the customer data it reads is described in `docs/15-module-commercial-c
 Answered by the Commercial lead on 2026-10-10 unless marked *open*:
 
 1. **Who is messaged:** the customer's **first** number only (`phone_primary`). The second number is never used (the audience code can do both, but nothing in the screens or the campaign service switches it on).
-2. **Debtors:** balance **greater than** a minimum the sender types for each campaign; the starting value is the setting `commercial_sms_debtors_min` (GH¢ 100), editable by super_admin. A positive balance is taken as **owed** (the sign convention is still to be confirmed with the Commercial team: "to be confirmed" is printed on the screen). An arrears bucket can narrow it.
+2. **Debtors:** balance **greater than** a minimum the sender types for each campaign; the starting value is the setting `commercial_sms_debtors_min` (GH¢ 100), editable by super_admin. A positive balance is **owed** and a negative one is a customer credit (**confirmed by the Commercial team on 2026-10-12**). An arrears bucket can narrow it.
 3. **No payment in N days:** starts on **60**; 30, 60, 90 and 180 are offered. Counted from **each district's file date** (not today), and includes accounts that never paid. Combine with the "Billing (ACTB)" group or the status filter to leave out disconnected accounts.
 4. **Most valuable customers:** the **top N** (default 500) or **top X percent** (default 5) of **billing** accounts by *last bill amount*, ranked inside the district / route / category / status filters chosen; ties at the cut-off are all included. Both numbers are editable. *Open: this definition is a proposal.*
 5. **Faulty meter group:** meter status F (faulty) or N (no meter).

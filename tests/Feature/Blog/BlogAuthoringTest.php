@@ -6,11 +6,13 @@ use App\Livewire\Blog\Feed;
 use App\Livewire\Blog\ManagePosts;
 use App\Livewire\Blog\PostForm;
 use App\Models\AuditLog;
+use App\Models\BlogMedia;
 use App\Models\BlogPost;
 use App\Services\Blog\BlogPostService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class BlogAuthoringTest extends BlogTestCase
 {
@@ -19,7 +21,7 @@ class BlogAuthoringTest extends BlogTestCase
         return $component->set([
             'category' => 'workshop',
             'title' => 'Customer care workshop',
-            'body' => 'Forty staff attended the customer care workshop at the regional office.',
+            'bodyJson' => $this->docJson('Forty staff attended the customer care workshop at the regional office.'),
             ...$overrides,
         ]);
     }
@@ -70,9 +72,15 @@ class BlogAuthoringTest extends BlogTestCase
             ->set('tags', 'Customer-Care, workshop, customer-care')
             ->call('saveDraft')
             ->assertHasNoErrors()
-            ->assertRedirect(route('blog.manage'));
+            ->assertNoRedirect();
 
         $post = BlogPost::query()->firstOrFail();
+
+        // The editor document became the stored, rendered article.
+        $this->assertSame(BlogPost::FORMAT_RICH, $post->body_format);
+        $this->assertStringContainsString('<p>Forty staff attended', $post->body_html);
+        $this->assertStringContainsString('Forty staff attended', $post->body_text);
+        $this->assertSame(1, $post->revisions()->count());
 
         $this->assertSame($this->accraWest->id, $post->region_id);
         $this->assertSame($officer->id, $post->author_user_id);
@@ -102,14 +110,31 @@ class BlogAuthoringTest extends BlogTestCase
         Livewire::actingAs($this->reader('100002', $this->ashanti))->test(Feed::class)->assertDontSee('Customer care workshop');
     }
 
-    public function test_the_form_requires_a_title_a_kind_and_a_body(): void
+    public function test_the_form_requires_a_title_and_a_kind_and_a_published_article_needs_text(): void
     {
         Livewire::actingAs($this->prOfficer())
             ->test(PostForm::class)
             ->call('saveDraft')
-            ->assertHasErrors(['title', 'category', 'body']);
+            ->assertHasErrors(['title', 'category']);
 
         $this->assertSame(0, BlogPost::query()->count());
+
+        // A draft may be empty; publishing an empty article is refused.
+        Livewire::actingAs($this->prOfficer())
+            ->test(PostForm::class)
+            ->set(['title' => 'Empty for now', 'category' => 'activity'])
+            ->call('saveDraft')
+            ->assertHasNoErrors();
+
+        $this->assertSame(1, BlogPost::query()->count());
+
+        Livewire::actingAs($this->prOfficer())
+            ->test(PostForm::class)
+            ->set(['title' => 'Still empty', 'category' => 'activity', 'bodyJson' => $this->docJson('')])
+            ->call('publish')
+            ->assertHasErrors(['bodyJson']);
+
+        $this->assertSame(0, BlogPost::query()->published()->count());
     }
 
     public function test_a_district_from_another_region_is_refused(): void
@@ -194,7 +219,7 @@ class BlogAuthoringTest extends BlogTestCase
             try {
                 $attempt();
                 $this->fail('The service should have refused.');
-            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            } catch (HttpException $e) {
                 $this->assertSame(403, $e->getStatusCode());
             }
         }
@@ -300,25 +325,41 @@ class BlogAuthoringTest extends BlogTestCase
 
         $this->fill(Livewire::actingAs($officer)->test(PostForm::class))
             ->set('cover', UploadedFile::fake()->image('first.jpg', 800, 450))
+            ->set(['coverCaption' => 'Day one', 'coverCredit' => 'PR team', 'coverFocalX' => 20, 'coverFocalY' => 70])
             ->call('saveDraft')
             ->assertHasNoErrors();
 
-        $post = BlogPost::query()->firstOrFail();
-        $first = $post->cover_path;
-        $this->assertStringStartsWith('blog/covers/', $first);
-        $disk->assertExists($first);
+        $post = BlogPost::query()->with('coverMedia')->firstOrFail();
+        $first = $post->coverMedia;
 
-        // Replacing the photo deletes the old file.
+        $this->assertNull($post->cover_path, 'a new cover is a picture, not the old single file');
+        $this->assertSame('cover', $first->kind);
+        $this->assertTrue($first->in_use);
+        $this->assertSame([20, 70, 'Day one', 'PR team'], [$post->cover_focal_x, $post->cover_focal_y, $post->cover_caption, $post->cover_credit]);
+
+        foreach ($first->allPaths() as $path) {
+            $disk->assertExists($path);
+            $this->assertStringStartsWith('blog/media/', $path);
+        }
+
+        // Replacing the photo deletes the old picture and its files.
         Livewire::actingAs($officer)
             ->test(PostForm::class, ['postId' => $post->id])
             ->set('cover', UploadedFile::fake()->image('second.png', 800, 450))
             ->call('saveDraft')
             ->assertHasNoErrors();
 
-        $second = $post->fresh()->cover_path;
-        $this->assertNotSame($first, $second);
-        $disk->assertMissing($first);
-        $disk->assertExists($second);
+        $second = $post->fresh()->coverMedia;
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertNull(BlogMedia::query()->find($first->id));
+
+        foreach ($first->allPaths() as $path) {
+            $disk->assertMissing($path);
+        }
+
+        foreach ($second->allPaths() as $path) {
+            $disk->assertExists($path);
+        }
 
         // Removing it without a replacement does too.
         Livewire::actingAs($officer)
@@ -327,8 +368,22 @@ class BlogAuthoringTest extends BlogTestCase
             ->call('saveDraft')
             ->assertHasNoErrors();
 
-        $this->assertNull($post->fresh()->cover_path);
-        $disk->assertMissing($second);
+        $this->assertNull($post->fresh()->cover_media_id);
+        $this->assertNull(BlogMedia::query()->find($second->id));
+
+        foreach ($second->allPaths() as $path) {
+            $disk->assertMissing($path);
+        }
+    }
+
+    public function test_a_cover_that_is_not_a_real_picture_is_refused(): void
+    {
+        $this->fill(Livewire::actingAs($this->prOfficer())->test(PostForm::class))
+            ->set('cover', UploadedFile::fake()->createWithContent('cover.jpg', '<?php echo 1;'))
+            ->call('saveDraft')
+            ->assertHasErrors(['cover']);
+
+        $this->assertSame(0, BlogMedia::query()->count());
     }
 
     public function test_deleting_an_article_deletes_its_cover_photo(): void

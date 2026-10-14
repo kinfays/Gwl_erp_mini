@@ -20,6 +20,7 @@ class ErpNavigation
             return [
                 'modules' => [],
                 'sidebar' => [],
+                'blog' => null,
                 'currentModule' => [
                     'slug' => $currentModule,
                     'title' => Str::of($currentModule)->replace('_', ' ')->title()->toString(),
@@ -71,6 +72,7 @@ class ErpNavigation
         return [
             'modules' => $modules,
             'sidebar' => $this->sidebarFor($user, $currentModule),
+            'blog' => $this->blogLink($user),
             'currentModule' => collect($this->moduleDefinitions())->firstWhere('slug', $currentModule)
                 ?? ['slug' => $currentModule, 'title' => Str::of($currentModule)->replace('_', ' ')->title()->toString()],
             'identity' => [
@@ -83,6 +85,22 @@ class ErpNavigation
                 ])->filter()->join(' - ') ?: 'Location not assigned',
             ],
         ];
+    }
+
+    /**
+     * The Regional Blog is not a module tab: it is a standalone, full-page blog that opens in a new tab from a link at the right
+     * of the header. The link shows only while the module flag is on and the person's role may enter the `blog` module (every
+     * role does, so what each person then sees is decided by BlogVisibility, never here).
+     *
+     * @return array{url: string, label: string, icon_name: string}|null
+     */
+    public function blogLink(User $user): ?array
+    {
+        if (! config('gwl.blog_module_enabled') || ! Route::has('blog.home') || ! $this->userCanAccessModule($user, Permission::MODULE_BLOG)) {
+            return null;
+        }
+
+        return ['url' => route('blog.home'), 'label' => 'Blog', 'icon_name' => 'scroll-text'];
     }
 
     protected function moduleDefinitions(): array
@@ -152,13 +170,6 @@ class ErpNavigation
                 'route' => $this->safeRoute('health_safety.home'),
             ],
             [
-                'slug' => Permission::MODULE_BLOG,
-                'title' => 'Regional Blog',
-                'short' => 'Blog',
-                'icon_name' => 'scroll-text',
-                'route' => $this->safeRoute('blog.home'),
-            ],
-            [
                 'slug' => Permission::MODULE_GWATER,
                 'title' => 'G-Water',
                 'short' => 'G-Water',
@@ -180,7 +191,6 @@ class ErpNavigation
                 Permission::MODULE_CREDIT_UNION => (bool) config('gwl.credit_union_module_enabled'),
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
-                Permission::MODULE_BLOG => (bool) config('gwl.blog_module_enabled'),
                 Permission::MODULE_GWATER => (bool) config('gwl.gwater_module_enabled'),
                 default => true,
             }
@@ -200,7 +210,6 @@ class ErpNavigation
             Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
-            Permission::MODULE_BLOG => $this->blogSidebar($user),
             Permission::MODULE_GWATER => $this->gwaterSidebar($user),
             default => [],
         };
@@ -995,6 +1004,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
             ],
             [
+                'label' => 'KPIs',
+                'route' => 'commercial.kpis',
+                'active' => ['commercial.kpis', 'commercial.kpis.targets'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'target',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
+            ],
+            [
                 'label' => 'Customer List',
                 'route' => 'commercial.customers',
                 'active' => ['commercial.customers', 'commercial.customers.list', 'commercial.customers.show'],
@@ -1330,38 +1347,6 @@ class ErpNavigation
                 'icon' => $this->icon('plus-circle'),
                 'icon_name' => 'clipboard-list',
                 'can' => $can('gwater.record'),
-            ],
-        ];
-    }
-
-    /** Everyone reads their region's blog; writing (manage, new) is for holders of blog.manage_posts. */
-    protected function blogSidebar(User $user): array
-    {
-        $canManage = fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('blog.manage_posts');
-
-        return [
-            [
-                'label' => 'Latest articles',
-                'route' => 'blog.home',
-                'active' => ['blog.home', 'blog.show'],
-                'icon' => $this->icon('list'),
-                'icon_name' => 'scroll-text',
-            ],
-            [
-                'label' => 'Manage posts',
-                'route' => 'blog.manage',
-                'active' => ['blog.manage', 'blog.edit'],
-                'icon' => $this->icon('stack'),
-                'icon_name' => 'list',
-                'can' => $canManage,
-            ],
-            [
-                'label' => 'New article',
-                'route' => 'blog.create',
-                'active' => ['blog.create'],
-                'icon' => $this->icon('plus-circle'),
-                'icon_name' => 'circle-plus',
-                'can' => $canManage,
             ],
         ];
     }

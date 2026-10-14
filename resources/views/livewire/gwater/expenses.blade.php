@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Expenses" description="Fuel, loading, offloading and other costs. Only fuel paid out of pocket is paid back; loading and offloading are paid in cash. Fuel is counted once per trip." />
+    <x-ui.page-header title="Expenses" description="Fuel, loading / offloading and other costs. Only fuel paid out of pocket is paid back; loading / offloading is paid in cash. Fuel is counted once per trip." />
 
     @include('livewire.gwater.partials.location-picker')
     @include('livewire.gwater.partials.exports')
@@ -11,7 +11,7 @@
                     <x-ui.input label="Date" type="date" wire:model.defer="form.expense_date" :max="today()->toDateString()" />
                     <x-ui.select label="Category" wire:model.live="form.category">
                         @foreach ($categories as $category)
-                            <option value="{{ $category }}">{{ ucfirst($category) }}</option>
+                            <option value="{{ $category }}">{{ \App\Models\GwExpense::label($category) }}</option>
                         @endforeach
                     </x-ui.select>
                     <x-ui.input label="Amount (GH¢)" wire:model.defer="form.amount" inputmode="decimal" />
@@ -72,7 +72,7 @@
                 @forelse ($expenses as $expense)
                     <tr wire:key="expense-{{ $expense->id }}" @class(['is-voided' => $expense->isVoided()])>
                         <td class="nowrap">{{ $expense->expense_date->format('d M Y') }}</td>
-                        <td>{{ ucfirst($expense->category) }}@if ($expense->vehicle) <div class="cell-muted mono">{{ $expense->vehicle->number_plate }}</div>@endif</td>
+                        <td>{{ \App\Models\GwExpense::label($expense->category) }}@if ($expense->vehicle) <div class="cell-muted mono">{{ $expense->vehicle->number_plate }}</div>@endif</td>
                         <td class="num">{{ \App\Services\GWater\Money::format($expense->amount) }}</td>
                         <td class="mono">{{ $expense->purchase?->waybill_no ?? '-' }}</td>
                         <td>

@@ -11,17 +11,17 @@
             @endforeach
         </div>
 
-        <x-ui.card title="Outstanding on waybills" description="Packs paid for or ordered (brought forward + payment requests) against packs delivered on waybills. A report, not a second stock." :padded="false" class="dash-row">
+        <x-ui.card title="Outstanding on waybills" description="Packs paid for (opening balance + payments) against packs delivered on waybills. A report, not a second stock." :padded="false" class="dash-row">
             <x-ui.table label="Outstanding on waybills" :sticky="false" dense>
                 <x-slot:head>
-                    <tr><th>Product</th><th class="num">Brought forward</th><th class="num">On payment requests</th><th class="num">Paid for / ordered</th><th class="num">Delivered</th><th class="num">Outstanding</th><th>Waybills</th></tr>
+                    <tr><th>Product</th><th class="num">Opening balance</th><th class="num">On payments</th><th class="num">Paid for</th><th class="num">Delivered</th><th class="num">Outstanding</th><th>Waybills</th></tr>
                 </x-slot:head>
                 @foreach ($waybills as $row)
                     <tr wire:key="wb-{{ $row['product']->id }}">
                         <td>{{ $row['product']->name }}</td>
-                        <td class="num">{{ number_format($row['brought_forward']) }}</td>
-                        <td class="num">{{ number_format($row['requested']) }}</td>
-                        <td class="num">{{ number_format($row['ordered']) }}</td>
+                        <td class="num">{{ number_format($row['opening']) }}</td>
+                        <td class="num">{{ number_format($row['on_payments']) }}</td>
+                        <td class="num">{{ number_format($row['paid_for']) }}</td>
                         <td class="num">{{ number_format($row['delivered']) }}</td>
                         <td class="num"><strong class="{{ $row['outstanding'] < 0 ? 'text-danger' : '' }}">{{ number_format($row['outstanding']) }}</strong></td>
                         <td class="cell-muted">

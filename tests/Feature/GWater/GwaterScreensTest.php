@@ -151,15 +151,14 @@ class GwaterScreensTest extends GwaterTestCase
             ->set("packs.{$this->sachet->id}", '25')
             ->set('form.vehicle_id', (string) $vehicle->id)
             ->set('form.fuel_amount', '120.50')
-            ->set('form.loading_amount', '30')
-            ->set('form.offloading_amount', '20.00')
+            ->set('form.loading_offloading_amount', '50')
             ->call('save')
             ->assertHasNoErrors();
 
         $trip = GwPurchase::query()->with('lines')->firstOrFail();
         $this->assertSame([65, 40 * 2000 + 25 * 800], [$trip->totalPacks(), $trip->totalCost()]);
         $this->assertSame($vehicle->id, $trip->vehicle_id);
-        $this->assertSame(['fuel' => 12050, 'loading' => 3000, 'offloading' => 2000], GwExpense::query()->pluck('amount', 'category')->all());
+        $this->assertSame(['fuel' => 12050, 'loading' => 5000], GwExpense::query()->pluck('amount', 'category')->all());
 
         // A vehicle id the form never offered is refused.
         Livewire::actingAs($user)->test(Purchases::class)
@@ -250,7 +249,7 @@ class GwaterScreensTest extends GwaterTestCase
         $recorder = $this->gw('G1', $this->sowutuom);
         $approver = $this->gw('G2', $this->odorkor);
         $payer = $this->person('P1', $this->sowutuom);
-        $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_amount' => 3000]);
+        $this->trip($recorder, 'WB-1', 10, 0, '2026-06-01', ['fuel_amount' => 12000, 'fuel_paid_by_user_id' => $payer->id, 'loading_offloading_amount' => 3000]);
         $expense = GwExpense::query()->where('category', 'fuel')->firstOrFail();
 
         Livewire::actingAs($recorder)->test(Reimbursements::class)

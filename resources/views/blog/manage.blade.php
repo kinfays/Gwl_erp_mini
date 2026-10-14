@@ -1,9 +1,5 @@
-<x-erp-layout module="blog" title="Manage posts">
-    <div class="content">
-        @if (session('blog_notice'))
-            <x-ui.alert tone="success" role="status" class="dash-row">{{ session('blog_notice') }}</x-ui.alert>
-        @endif
-
+<x-blog-layout title="Manage articles" active="manage" :region-name="$regionName" :wide="true">
+    <div class="b-wrap b-wrap-wide">
         <livewire:blog.manage-posts />
     </div>
-</x-erp-layout>
+</x-blog-layout>

@@ -19,7 +19,7 @@ use Livewire\WithPagination;
 
 /**
  * Purchases (collection trips): the waybill, the packs bought per product at the cost price in force, the vehicle and driver
- * from Transport, the fuel (linked from Transport, or typed here) and the loading and offloading, all on one form. Transport
+ * from Transport, the fuel (linked from Transport, or typed here) and the one loading / offloading payment, all on one form. Transport
  * is only READ, and always through TransportScope: the vehicle picker, the mileage entries and the fuel expenses offered are
  * the ones the user reaches, and the service re-checks every id it is sent.
  */
@@ -98,7 +98,7 @@ class Purchases extends Component
 
         $data = $this->form + ['location_district_id' => $this->recordingDistrict()];
 
-        foreach (['fuel_amount', 'loading_amount', 'offloading_amount'] as $field) {
+        foreach (['fuel_amount', 'loading_offloading_amount'] as $field) {
             $typed = trim((string) ($this->form[$field] ?? ''));
             $data[$field] = $typed === '' ? 0 : Money::toPesewas($typed);
 
@@ -158,8 +158,7 @@ class Purchases extends Component
             'vehicle_expense_id' => '',
             'fuel_paid_by_user_id' => '',
             'fuel_amount' => '',
-            'loading_amount' => '',
-            'offloading_amount' => '',
+            'loading_offloading_amount' => '',
             'payee' => '',
             'receipt_ref' => '',
         ];

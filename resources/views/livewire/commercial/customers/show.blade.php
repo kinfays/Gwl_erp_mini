@@ -22,7 +22,7 @@
                 <dt>Status</dt><dd>{{ $customer['status'] }}</dd>
                 <dt>Meter</dt><dd>{{ $customer['meter_status'] }}@if ($customer['meter_no']) · <span class="mono">{{ $customer['meter_no'] }}</span>@endif</dd>
                 <dt>Connected</dt><dd>{{ $date($customer['connect_date']) }}</dd>
-                <dt>Balance</dt><dd><strong>{{ $money($customer['balance']) }}</strong> · {{ $customer['bucket'] }} <span class="ui-hint">(sign convention to be confirmed)</span></dd>
+                <dt>Balance</dt><dd><strong>{{ $money($customer['balance']) }}</strong> · {{ $customer['bucket'] }}</dd>
                 <dt>Last bill</dt><dd>{{ $date($customer['last_bill_date']) }} · {{ $money($customer['last_bill_amount']) }}</dd>
                 <dt>Last payment</dt><dd>{{ $date($customer['last_paid_date']) }} · {{ $money($customer['last_paid_amount']) }}</dd>
                 <dt>Last read</dt><dd>{{ $date($customer['last_read_date']) }}</dd>

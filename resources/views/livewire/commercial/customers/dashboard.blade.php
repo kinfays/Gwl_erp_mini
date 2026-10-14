@@ -8,7 +8,7 @@
         $pct = fn ($value, $digits = 1) => $value === null ? '–' : number_format($value, $digits).'%';
         $money = fn ($value) => $value === null ? '–' : number_format($value, 2);
         $signed = fn ($value) => $value === null ? '–' : ($value > 0 ? '+' : '').number_format($value);
-        $creditHint = 'A negative balance is treated as a customer credit and a positive one as owed. The sign convention is still to be confirmed with the Commercial team.';
+        $creditHint = 'A negative balance is a customer credit and a positive one is owed (confirmed by the Commercial team).';
         $listUrl = fn (array $extra = []) => route('commercial.customers.list', array_filter(['district' => $districtId ?? null, 'route' => $route ?? null, 'group' => $group ?: null, 'status' => $status ?: null, 'meter' => $meter ?: null, ...$extra], fn ($v) => $v !== null && $v !== ''));
         $drill = fn ($key) => route('commercial.customers', array_filter(['tab' => $activeTab, 'district' => $key, 'period' => $periodKey]));
     @endphp
@@ -384,6 +384,57 @@
                 </x-ui.table>
             </x-ui.card>
 
+        {{-- ================================================ J. coverage and efficiency --}}
+        @elseif ($activeTab === 'coverage')
+            @php $cv = $coverage; @endphp
+            @if (! $cv['available'])
+                <x-ui.alert tone="info" class="dash-row">The coverage figures need the measures added to the customer rollups. None of the {{ $cv['batches'] }} upload(s) in view has them yet: they appear from the next customer-list upload of each district.</x-ui.alert>
+            @else
+                @if ($cv['ready'] < $cv['batches'])
+                    <x-ui.alert tone="warning" class="dash-row">Only {{ $cv['ready'] }} of the {{ $cv['batches'] }} district upload(s) in view carry these figures; the others are left out until they are uploaded again.</x-ui.alert>
+                @endif
+
+                <div class="stat-grid dash-row">
+                    <x-ui.stat-tile label="Active accounts" :value="$n($cv['total']['active'])" icon="users" tone="primary" :meta="$n($cv['total']['eligible']).' billing accounts (eligible)'" />
+                    <x-ui.stat-tile label="Billing coverage" :value="$pct($cv['total']['billing_coverage'])" icon="receipt" tone="success" :meta="$n($cv['total']['billed_valid']).' of '.$n($cv['total']['eligible']).' eligible accounts have a valid bill in the last '.$cv['days'].' days'" />
+                    <x-ui.stat-tile label="Meter-reading coverage" :value="$pct($cv['total']['reading_coverage'])" icon="gauge" tone="primary" :meta="$n($cv['total']['read']).' of '.$n($cv['total']['metered']).' metered accounts read in the last '.$cv['days'].' days'" />
+                    <x-ui.stat-tile label="Estimated-reading rate" :value="$pct($cv['total']['estimated_rate'])" icon="triangle-alert" tone="warning" :meta="$n($cv['total']['estimated']).' eligible accounts billed on an estimate'" />
+                </div>
+
+                <x-ui.card title="By district" description="Eligible = billing accounts (ACTB). A valid bill is dated in the last {{ $cv['days'] }} days and is for more than zero. A read counts if the last read date is in the last {{ $cv['days'] }} days (the file does not say whether it was accepted). Metered = working or faulty meter." :padded="false" class="dash-row">
+                    <x-ui.table label="Coverage by district" :sticky="true">
+                        <x-slot:head><tr><th>District</th><th class="num">Active accounts</th><th class="num">Eligible</th><th class="num">Billing coverage</th><th class="num">Metered</th><th class="num">Reading coverage</th><th class="num">Estimated rate</th></tr></x-slot:head>
+                        @foreach ($cv['districts'] as $row)
+                            <tr wire:key="cv-{{ $row['key'] }}">
+                                <td><a href="{{ $drill($row['key']) }}">{{ $row['label'] }}</a></td><td class="num">{{ $n($row['active']) }}</td><td class="num">{{ $n($row['eligible']) }}</td>
+                                <td class="num">{{ $pct($row['billing_coverage']) }}</td><td class="num">{{ $n($row['metered']) }}</td><td class="num">{{ $pct($row['reading_coverage']) }}</td><td class="num">{{ $pct($row['estimated_rate']) }}</td>
+                            </tr>
+                        @endforeach
+                        <tr class="ui-total-row"><td>All in view</td><td class="num">{{ $n($cv['total']['active']) }}</td><td class="num">{{ $n($cv['total']['eligible']) }}</td><td class="num">{{ $pct($cv['total']['billing_coverage']) }}</td><td class="num">{{ $n($cv['total']['metered']) }}</td><td class="num">{{ $pct($cv['total']['reading_coverage']) }}</td><td class="num">{{ $pct($cv['total']['estimated_rate']) }}</td></tr>
+                    </x-ui.table>
+                </x-ui.card>
+
+                <x-ui.card title="Arrears by time since the last payment" description="What customers owe (credits are not arrears), grouped by how long ago the customer last paid. The customer file has no age of debt, so this is a proxy for ageing: true ageing needs an aged-debtors report." :padded="false" class="dash-row">
+                    <x-ui.table label="Arrears by time since last payment" :sticky="false">
+                        <x-slot:head><tr><th>Time since the last payment</th><th class="num">Owed (GH¢)</th><th class="num">Share of what is owed</th></tr></x-slot:head>
+                        @foreach ($cv['arrears_ageing'] as $slice)
+                            <tr wire:key="ag-{{ $loop->index }}"><td>{{ $slice['label'] }}</td><td class="num">{{ $money($slice['amount']) }}</td><td class="num">{{ $pct($slice['share']) }}</td></tr>
+                        @endforeach
+                        <tr class="ui-total-row"><td>Owed in total</td><td class="num">{{ $money($cv['total']['owed']) }}</td><td class="num">{{ $pct(100.0) }}</td></tr>
+                    </x-ui.table>
+                </x-ui.card>
+
+                <x-ui.card title="Owed by customers who have not paid for 90 days" :padded="false" class="dash-row">
+                    <x-ui.table label="Owed with no payment in 90 days, by district" :sticky="false">
+                        <x-slot:head><tr><th>District</th><th class="num">Owed (GH¢)</th><th class="num">Of it, no payment in 90 days (GH¢)</th><th class="num">Share</th></tr></x-slot:head>
+                        @foreach ($cv['districts'] as $row)
+                            <tr wire:key="cd-{{ $row['key'] }}"><td>{{ $row['label'] }}</td><td class="num">{{ $money($row['owed']) }}</td><td class="num">{{ $money($row['owed_no_pay_90']) }}</td><td class="num">{{ $pct($row['owed_no_pay_90_share']) }}</td></tr>
+                        @endforeach
+                    </x-ui.table>
+                </x-ui.card>
+            @endif
+
+
         {{-- ================================================ I. trends and compare --}}
         @elseif ($activeTab === 'compare')
             @php $series = $trend; $l = $league; $last = end($series) ?: null; @endphp
@@ -401,15 +452,15 @@
             </x-ui.card>
             <x-ui.card title="Period by period" :padded="false" class="dash-row">
                 <x-ui.table label="Trend" :sticky="false">
-                    <x-slot:head><tr><th>Period</th><th class="num">Districts</th><th class="num">Customers</th><th class="num">Change</th><th class="num">Billing</th><th class="num">Owed (GH¢)</th><th class="num">Faulty %</th><th class="num">No payment 90d %</th><th class="num">Paid ÷ billed</th></tr></x-slot:head>
+                    <x-slot:head><tr><th>Period</th><th class="num">Districts</th><th class="num">Customers</th><th class="num">Active accounts</th><th class="num">Change in active</th><th class="num">Billing</th><th class="num">Owed (GH¢)</th><th class="num">Faulty %</th><th class="num">No payment 90d %</th><th class="num">Paid ÷ billed</th></tr></x-slot:head>
                     @forelse (array_reverse($series) as $p)
                         <tr wire:key="tp-{{ $p['period'] }}">
                             <td>{{ $p['period'] }}<span class="ui-hint"> as of {{ \Illuminate\Support\Carbon::parse($p['as_of'])->format('d M') }}</span></td><td class="num">{{ $p['districts'] }}</td><td class="num">{{ $n($p['customers']) }}</td>
-                            <td class="num">{{ $p['change'] ? $signed($p['change']['customers']) : '–' }}</td><td class="num">{{ $n($p['billing']) }}</td><td class="num">{{ $money($p['debit']) }}</td>
+                            <td class="num">{{ $n($p['active']) }}</td><td class="num">{{ $p['change'] ? $signed($p['change']['active']) : '–' }}</td><td class="num">{{ $n($p['billing']) }}</td><td class="num">{{ $money($p['debit']) }}</td>
                             <td class="num">{{ $pct($p['faulty_pct']) }}</td><td class="num">{{ $pct($p['no_pay_90_pct']) }}</td><td class="num">{{ $pct($p['paid_to_billed']) }}</td>
                         </tr>
                     @empty
-                        <x-ui.empty-row :colspan="9" icon="chart-line" title="Not enough uploads yet." />
+                        <x-ui.empty-row :colspan="10" icon="chart-line" title="Not enough uploads yet." />
                     @endforelse
                 </x-ui.table>
             </x-ui.card>

@@ -160,10 +160,10 @@ class AccessAndNavigationTest extends CommercialTestCase
 
         $labels = collect($navigation->build($officer, 'commercial')['sidebar'])->pluck('label')->all();
         // the officer works in Accra West, where SMS to customers is switched on (it is locked to that region)
-        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Customer List', 'Customer uploads', 'SMS', 'Uploads'], $labels);
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List', 'Customer uploads', 'SMS', 'Uploads'], $labels);
 
         $managerLabels = collect($navigation->build($this->userWithRoles('900031', ['commercial_manager']), 'commercial')['sidebar'])->pluck('label')->all();
-        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'Customer List'], $managerLabels);
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List'], $managerLabels);
 
         config(['gwl.commercial_module_enabled' => false]);
 

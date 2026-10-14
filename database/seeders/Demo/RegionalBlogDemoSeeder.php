@@ -493,7 +493,7 @@ class RegionalBlogDemoSeeder extends Seeder
             (clone $posts)->published()->count(),
             (clone $posts)->where('status', BlogPost::STATUS_DRAFT)->count(),
             (clone $posts)->where('is_pinned', true)->count(),
-            (clone $posts)->whereNotNull('cover_path')->count(),
+            (clone $posts)->whereNotNull('cover_media_id')->count(),
             (clone $posts)->whereDate('event_date', '>', $this->now->toDateString())->count(),
         ]]);
 

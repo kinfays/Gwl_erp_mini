@@ -103,6 +103,11 @@ Artisan::command('transport:check-expiries', function () {
 
 Schedule::command('transport:check-expiries')->dailyAt('07:30');
 
+// Regional Blog: delete pictures that were uploaded but never used in an article, or that no article or saved version shows
+// any more (older than gwl.blog_media_orphan_hours). Needs the scheduler running, like the other daily jobs.
+if (config('gwl.blog_module_enabled')) {
+    Schedule::command('blog:prune-media')->dailyAt('03:20')->withoutOverlapping();
+}
 // Android Enterprise (MDM). Schedules exist only while the feature flag is on. These need BOTH a running scheduler
 // (`php artisan schedule:work`, or a per-minute cron / Task Scheduler entry) and a queue worker — see docs/assets/mdm.md.
 if (config('gwl.mdm_enabled')) {
@@ -123,10 +128,9 @@ if (config('gwl.gwater_module_enabled')) {
         $summary = $reminders->remind(dryRun: $dryRun);
 
         $this->info(sprintf(
-            '%d location(s): %d low-stock product(s), %d overdue payment request(s); %s %d reminder(s) to %d notification(s); %d already reminded recently; %d with nobody to tell.',
+            '%d location(s): %d low-stock product(s); %s %d reminder(s) to %d notification(s); %d already reminded recently; %d with nobody to tell.',
             $summary['locations'],
             $summary['low_stock'],
-            $summary['overdue'],
             $dryRun ? 'would send' : 'sent',
             $summary['reminded'],
             $summary['notifications'],
@@ -135,7 +139,7 @@ if (config('gwl.gwater_module_enabled')) {
         ));
 
         return 0;
-    })->purpose('Remind G-Water users of low stock and overdue payment requests');
+    })->purpose('Remind G-Water users of low stock');
 
     Schedule::command('gwater:remind')->dailyAt('07:55')->withoutOverlapping();
 }

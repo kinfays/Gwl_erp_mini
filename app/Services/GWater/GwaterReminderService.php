@@ -12,12 +12,11 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Tells the G-Water users of a location, in-app, when a product's stock is at or below its low-stock threshold or a payment
- * request to G Water is overdue. Run daily by `php artisan gwater:remind` (registered, and scheduled, only while the G-Water
+ * Tells the G-Water users of a location, in-app, when a product's stock is at or below its low-stock threshold. Run daily by `php artisan gwater:remind` (registered, and scheduled, only while the G-Water
  * module flag is on; it needs the scheduler to be running).
  *
  *  - the thresholds and intervals are the location's own settings (GwaterSettings), else the config defaults;
- *  - one item (a product, a payment request) is reminded about at most once per repeat interval, whatever happens to it in
+ *  - one item (a product) is reminded about at most once per repeat interval, whatever happens to it in
  *    between (gw_reminder_states);
  *  - a notice carries only the product, the location and counts: no reference, no amount, no name, no number of a person;
  *  - the people told are active staff based at that location who can record in G-Water (gwater.record); the developer
@@ -32,12 +31,12 @@ class GwaterReminderService
     ) {}
 
     /**
-     * @return array{enabled: bool, locations: int, low_stock: int, overdue: int, reminded: int, notifications: int, skipped: int, nobody: int}
+     * @return array{enabled: bool, locations: int, low_stock: int, reminded: int, notifications: int, skipped: int, nobody: int}
      */
     public function remind(?Carbon $asOf = null, bool $dryRun = false): array
     {
         $asOf ??= now();
-        $summary = ['enabled' => (bool) config('gwl.gwater_module_enabled'), 'locations' => 0, 'low_stock' => 0, 'overdue' => 0, 'reminded' => 0, 'notifications' => 0, 'skipped' => 0, 'nobody' => 0];
+        $summary = ['enabled' => (bool) config('gwl.gwater_module_enabled'), 'locations' => 0, 'low_stock' => 0, 'reminded' => 0, 'notifications' => 0, 'skipped' => 0, 'nobody' => 0];
 
         if (! $summary['enabled']) {
             return $summary;
@@ -83,25 +82,6 @@ class GwaterReminderService
                 );
             }
 
-            $overdueDays = max(1, $this->settings->value($location, GwaterSettings::PAYMENT_OVERDUE_DAYS));
-            $overdue = $this->visibility->atLocation(GwSupplierPayment::query()->where('status', GwSupplierPayment::REQUESTED), $location)
-                ->whereDate('request_date', '<=', $asOf->copy()->subDays($overdueDays)->toDateString())
-                ->get();
-
-            $summary['overdue'] += $overdue->count();
-            $due = $overdue->filter(fn (GwSupplierPayment $payment) => $this->due($location, GwReminderState::PAYMENT_OVERDUE, $payment->id, $repeat, $asOf));
-            $summary['skipped'] += $overdue->count() - $due->count();
-
-            if ($due->isNotEmpty()) {
-                $oldest = (int) $overdue->map(fn (GwSupplierPayment $payment) => $payment->request_date->diffInDays($asOf))->max();
-
-                $this->deliver($summary, $recipients, $dryRun, $location, GwReminderState::PAYMENT_OVERDUE, $due->pluck('id')->all(), $asOf,
-                    'G-Water: payment requests overdue',
-                    sprintf('%d payment request(s) to G Water at %s are overdue (the oldest by %d days; the limit is %d days).', $overdue->count(), $label, $oldest, $overdueDays),
-                    route('gwater.payments'),
-                    ['kind' => 'gwater_payment_overdue', 'count' => $overdue->count()]
-                );
-            }
         }
 
         return $summary;

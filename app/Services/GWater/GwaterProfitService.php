@@ -29,8 +29,8 @@ use Illuminate\Support\Facades\Cache;
  *   Gross profit       = revenue - cost of water sold;
  *   Damages            = damaged packs x the cost frozen on the damage (written off at cost);
  *   Fuel               = the linked Transport expense of a trip (read live, so it follows a later change in Transport) or the
- *                        G-Water fuel expenses; labour = loading + offloading; other = other expenses;
- *   Net profit         = gross profit - damages - fuel - labour - other.
+ *                        G-Water fuel expenses; loading/offloading = one cost (the loading and the old offloading categories); other = other expenses;
+ *   Net profit         = gross profit - damages - fuel - loading/offloading - other.
  * Revenue is recognised when the sale is made, paid at once or on credit. Next to it the report shows the cash side: credit sales
  * made in the period, cash collected (cash sales + money received on credit sales) and what customers still owe at its end.
  * No price is read from the price list for history: only the prices frozen on the lines. Voided rows are ignored. Money is
@@ -38,7 +38,7 @@ use Illuminate\Support\Facades\Cache;
  * scalars so it can be cached; the cache key carries the user's scope, the location's books version (bumped on every write,
  * GwaterBooksVersion) and a fingerprint of the Transport fuel rows, so it is never stale.
  *
- * Fuel, loading, offloading and other costs belong to trips, not to products, so net profit is a combined figure; per product
+ * Fuel, loading/offloading and other costs belong to trips, not to products, so net profit is a combined figure; per product
  * the evaluation goes down to gross profit and damages.
  */
 class GwaterProfitService
@@ -114,11 +114,10 @@ class GwaterProfitService
 
         // Fuel: the Transport expense of a trip counts on the trip's date; G-Water fuel expenses count on their own date.
         $fuel = (int) $trips->where('fuel_source', 'Transport')->sum('fuel') + $this->expenseSum($data['expenses'], GwExpense::FUEL, $inPeriod);
-        $labourLoading = $this->expenseSum($data['expenses'], GwExpense::LOADING, $inPeriod);
-        $labourOffloading = $this->expenseSum($data['expenses'], GwExpense::OFFLOADING, $inPeriod);
+        $loadingOffloading = $this->expenseSum($data['expenses'], GwExpense::LOADING_OFFLOADING, $inPeriod);
         $other = $this->expenseSum($data['expenses'], GwExpense::OTHER, $inPeriod);
 
-        $combined = $this->combine($perProduct, $fuel, $labourLoading, $labourOffloading, $other);
+        $combined = $this->combine($perProduct, $fuel, $loadingOffloading, $other);
         $combined += [
             'credit_sales' => (int) $data['sales']->where('credit', true)->filter(fn (array $s) => $inPeriod($s['date']))->sum('amount'),
             'cash_collected' => (int) $data['sales']->where('credit', false)->filter(fn (array $s) => $inPeriod($s['date']))->sum('amount')
@@ -272,7 +271,7 @@ class GwaterProfitService
      * @param  array<string, array<string, mixed>>  $perProduct
      * @return array<string, mixed>
      */
-    protected function combine(array $perProduct, int $fuel, int $loading, int $offloading, int $other): array
+    protected function combine(array $perProduct, int $fuel, int $loadingOffloading, int $other): array
     {
         $sum = fn (string $key) => (int) collect($perProduct)->sum($key);
 
@@ -286,12 +285,10 @@ class GwaterProfitService
             'received_packs' => $sum('received_packs'),
             'purchase_cost' => $sum('purchase_cost'),
             'fuel' => $fuel,
-            'loading' => $loading,
-            'offloading' => $offloading,
-            'labour' => $loading + $offloading,
+            'loading_offloading' => $loadingOffloading,
             'other' => $other,
         ];
-        $line['net_profit'] = $line['gross_profit'] - $line['damages'] - $line['fuel'] - $line['labour'] - $line['other'];
+        $line['net_profit'] = $line['gross_profit'] - $line['damages'] - $line['fuel'] - $line['loading_offloading'] - $line['other'];
 
         return $line + $this->ratios($line);
     }
@@ -304,7 +301,7 @@ class GwaterProfitService
     public function ratios(array $line): array
     {
         $pct = fn (?int $part, int $whole) => $whole > 0 && $part !== null ? round($part / $whole * 100, 1) : null;
-        $fixed = ($line['damages'] ?? 0) + ($line['fuel'] ?? 0) + ($line['labour'] ?? 0) + ($line['other'] ?? 0);
+        $fixed = ($line['damages'] ?? 0) + ($line['fuel'] ?? 0) + ($line['loading_offloading'] ?? 0) + ($line['other'] ?? 0);
         $unitGross = $line['packs_sold'] > 0 ? $line['gross_profit'] / $line['packs_sold'] : null;
 
         return [
@@ -333,9 +330,8 @@ class GwaterProfitService
             $fuel = $trip->vehicle_expense_id
                 ? (int) round(((float) ($trip->vehicleExpense?->amount ?? 0)) * 100)
                 : (int) $posted->where('category', GwExpense::FUEL)->sum('amount');
-            $loading = (int) $posted->where('category', GwExpense::LOADING)->sum('amount');
-            $offloading = (int) $posted->where('category', GwExpense::OFFLOADING)->sum('amount');
-            $running = $fuel + $loading + $offloading;
+            $loading = (int) $posted->whereIn('category', GwExpense::LOADING_OFFLOADING)->sum('amount');
+            $running = $fuel + $loading;
             $km = (int) ($trip->mileageLog?->distance_driven ?? 0);
 
             return [
@@ -348,8 +344,7 @@ class GwaterProfitService
                 'fuel' => $fuel,
                 'fuel_source' => $trip->vehicle_expense_id ? 'Transport' : ($fuel > 0 ? 'G-Water' : 'none'),
                 'changed_in_transport' => $this->summary->changedInTransport($trip),
-                'loading' => $loading,
-                'offloading' => $offloading,
+                'loading_offloading' => $loading,
                 'trip_cost' => $running,
                 'landed_cost_per_pack' => $packs > 0 ? (int) round(($purchase + $running) / $packs) : null,
                 'trip_cost_per_pack' => $packs > 0 ? (int) round($running / $packs) : null,
@@ -397,7 +392,7 @@ class GwaterProfitService
         $notes = [
             'Cost of water sold is the rolling weighted-average cost of each product on the day of the sale.',
             'Damages are written off at the cost frozen on each damage. No price is read from the price list for history.',
-            'Fuel, loading, offloading and other costs belong to trips, not products, so net profit is a combined figure.',
+            'Fuel, loading / offloading and other costs belong to trips, not products, so net profit is a combined figure.',
             'Fuel linked from Transport follows that expense if it is changed there.',
             'Stock corrections move packs but not the average cost.',
         ];
@@ -405,9 +400,12 @@ class GwaterProfitService
         return $notes;
     }
 
-    protected function expenseSum(Collection $expenses, string $category, \Closure $inPeriod): int
+    /** @param  string|list<string>  $categories */
+    protected function expenseSum(Collection $expenses, string|array $categories, \Closure $inPeriod): int
     {
-        return (int) $expenses->filter(fn (array $e) => $e['category'] === $category && $inPeriod($e['date']))->sum('amount');
+        $categories = (array) $categories;
+
+        return (int) $expenses->filter(fn (array $e) => in_array($e['category'], $categories, true) && $inPeriod($e['date']))->sum('amount');
     }
 
     /** The newest change to any Transport fuel row a trip of this location reads, so a change in Transport is never cached over. */

@@ -6,12 +6,13 @@ use App\Models\Concerns\GwBooksRow;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** A payment request / payment to G Water. The table exists from Phase 1; its screen comes in Phase 2. */
+/**
+ * A payment made to G Water. `request_date` is kept for the rows written when payments were first requested and then paid;
+ * a payment recorded now carries the date it was paid in BOTH columns. Nothing is requested any more: a payment is paid.
+ */
 class GwSupplierPayment extends Model
 {
     use GwBooksRow;
-
-    public const REQUESTED = 'requested';
 
     public const PAID = 'paid';
 

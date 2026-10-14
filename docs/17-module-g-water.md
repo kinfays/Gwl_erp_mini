@@ -12,9 +12,9 @@ From the four photos:
 | Handwritten "New Price" ledger | Date, description (bottle / sachets), quantity received and sold, unit price (25 bottle, 10 sachet), amount, payment, balance, B/F. A **price increment started 12/5/26**. |
 | Excel "BOTTLE WATER – PART 14" | B/F 960 + purchases 550 = 1,510 packs on the left; waybill deliveries (e.g. 800 on 3/9/2026) on the right; **outstanding 710**. |
 | Excel "SACHET WATER" | B/F 1,365; waybills 2901, 2923, 2931 (100 + 105 + 105 + 210 = 520); **outstanding 845**. |
-| Excel "PAYMENT REQUEST" | Payment raised for 550 bottle packs x 26.00 = 14,300.00 (grand total new paid). |
+| Excel "PAYMENT REQUEST" | A payment to G Water for 550 bottle packs x 26.00 = 14,300.00. The system records it when it is **paid** (there is no separate request step, see section 17). |
 
-Reading: stock is counted in **packs** (bottle pack = 15 bottles, sachet pack = 30 sachets), every delivery is tied to a **waybill number**, a **balance brought forward** carries across periods, **prices change on a date**, and money owed is raised through **payment requests** that settle earlier balances.
+Reading: stock is counted in **packs** (bottle pack = 15 bottles, sachet pack = 30 sachets), every delivery is tied to a **waybill number**, an **opening balance** carries across periods, **prices change on a date**, and money owed is raised through **payment requests** that settle earlier balances.
 
 Not in the paper records but required now: fuel to collect water, loading and offloading labour, damaged packs, and profit and loss.
 
@@ -24,7 +24,7 @@ Not in the paper records but required now: fuel to collect water, loading and of
 2. **Waybills are entered by the user.** Each purchase trip carries a waybill number typed by the recorder (free text up to 30 characters, required, unique within the location among non-voided trips). There is no central waybill sequence to maintain, and a duplicate is refused with the existing trip shown.
 3. **Sales are recorded as daily totals** per product (not per customer), **paid at once or on credit** (changed after the first design, which had no credit sales): a credit sale names the customer who pays later and the money that comes in afterwards is recorded against it (section 16). There is still no customer table: the name is typed on the sale.
 4. **Every location keeps its own books and sees only its own.** Head Office counts as its own location (it shares a region id with the Head Office district, so the scope is never "region alone"): a Head Office user sees Head Office records only, a regional user sees their region only, and only `super_admin` sees everything.
-5. **Loading and offloading labour is paid in cash**, so it is a plain expense with no reimbursement. **Only fuel is reimbursed.**
+5. **Loading and offloading is ONE payment (one amount per trip, category `loading`, shown as "Loading / offloading"; older separate `offloading` rows are still counted into it) paid in cash**, so it is a plain expense with no reimbursement. **Only fuel is reimbursed.**
 6. Money is stored as integer **pesewas**; quantities are integer packs.
 
 ## 3. Data model
@@ -37,8 +37,8 @@ All tables prefixed `gw_`, numeric ids, `region_id` and `district_id` on every r
 - `gw_purchase_lines` — `purchase_id`, `product_id`, `packs`, `unit_cost` (pesewas).
 - `gw_sales` — (`payment_type` cash/credit, `customer_name`, `customer_phone` on credit sales; receipts in `gw_sale_receipts`, section 16) one per region/product/day: `sale_date`, `product_id`, `packs`, `unit_price` (snapshot of selling price at entry), `amount`, `status`. Unique (region, product, date, voided = false); a second entry the same day is an addition line, not a silent overwrite.
 - `gw_damages` — `damage_date`, `product_id`, `packs`, `stage` (`transit`/`loading`/`offloading`/`storage`), `unit_cost` snapshot, `reason`, optional `purchase_id`.
-- `gw_expenses` — `expense_date`, `category` (`fuel`, `loading`, `offloading`, `other`), `amount`, optional `purchase_id` (trip cost), `payee`, `receipt_ref`, `note`, plus reimbursement fields: `paid_by_user_id` (staff who paid out of pocket), `reimbursement_status` (`pending`/`reimbursed`; set only on `fuel` rows, labour and other rows are `not_applicable`), `reimbursed_on`, `reimbursement_ref`. Fuel and labour are normally linked to a purchase trip; others stand alone. A fuel expense linked to Transport holds no amount of its own (see section 5).
-- `gw_supplier_payments` — payment requests and payments to G Water: `request_date`, `reference`, `amount`, `paid_on` (nullable), `status` (`requested`/`paid`/`voided`).
+- `gw_expenses` — `expense_date`, `category` (`fuel`, `loading` = the one loading / offloading payment, `other`; `offloading` only on rows from before they became one), `amount`, optional `purchase_id` (trip cost), `payee`, `receipt_ref`, `note`, plus reimbursement fields: `paid_by_user_id` (staff who paid out of pocket), `reimbursement_status` (`pending`/`reimbursed`; set only on `fuel` rows, labour and other rows are `not_applicable`), `reimbursed_on`, `reimbursement_ref`. Fuel and labour are normally linked to a purchase trip; others stand alone. A fuel expense linked to Transport holds no amount of its own (see section 5).
+- `gw_supplier_payments` — payments to G Water: `reference`, `amount`, `paid_on` (the date paid; `request_date` is kept only for older rows and carries the same date on new ones), `status` (`paid`/`voided`; `requested` existed before section 17).
 - `gw_stock_movements` — **immutable signed ledger** (same idea as `hs_ppe_stock_movements`): `product_id`, `movement_date`, `type` (`opening`, `purchase`, `sale`, `damage`, `adjustment`), `packs` (signed), `source_type`/`source_id`. Balance may never go negative; a correction is an `adjustment` row.
 - `gw_opening_balances` — one-off B/F per region: packs per product (e.g. bottle 960, sachet 1,365) and amount owed to G Water, dated. Posts the `opening` stock rows.
 - `gw_settings` — per-region options, if any (kept small; overrides of `config/gwl.php`).
@@ -49,7 +49,7 @@ No hard deletes. A wrong entry is **voided** (reason required, audited) and the 
 
 Closing stock (packs) = opening + purchases − sold − damaged ± adjustments.
 
-Packs outstanding on waybills (as the Excel sheets show) = packs ordered/paid for − packs delivered on waybills. This is a report built from purchases vs payment requests, not a second stock.
+Packs outstanding on waybills (as the Excel sheets show) = packs ordered/paid for − packs delivered on waybills. This is a report built from purchases vs payments, not a second stock.
 
 Profit and loss for a period and region:
 
@@ -60,7 +60,7 @@ Profit and loss for a period and region:
 | **Gross profit** | Revenue − cost of water sold |
 | Damages | Σ damaged packs × unit cost (written off at cost) |
 | Fuel | Σ fuel expenses |
-| Loading and offloading | Σ labour expenses |
+| Loading / offloading | Σ loading (+ old offloading) expenses |
 | Other expenses | Σ other |
 | **Net profit** | Gross profit − damages − fuel − labour − other |
 
@@ -98,7 +98,7 @@ Built and documented in `docs/18-transport-region-scoping.md`: a regional or dis
 3. **Purchases (trips)** — the user types the **waybill number**, then packs per product, unit cost (pre-filled from the location's price list), vehicle and driver from Transport, the linked fuel expense and mileage log, and loading/offloading, all on one form.
 4. **Damages** — product, packs, stage, reason.
 5. **Expenses** and **Reimbursements** — category, amount, receipt reference; pending reimbursements per person with a mark-as-reimbursed action.
-6. **Payments to G Water** — payment requests and payments, balance owed.
+6. **Payments to G Water** — payments made, balance owed.
 7. **Stock** — ledger per product with running balance and the waybill-outstanding view.
 8. **Profit and loss** — month/quarter/range, per product and combined, chart (Chart.js via its own Vite entry) and trip-cost table.
 9. **Prices** — the location's own dated price list: add a new selling and/or purchase price per product with an effective date, see the history of each, and see which price is currently in force and whether it is still the placeholder default. Needs `gwater.manage_prices` (the `g_water` role has it).
@@ -151,8 +151,8 @@ Migration `2026_10_19_000001_create_gwater_phase2_tables` (adds `gw_expenses.veh
 1. **Damages** post a `damage` ledger row (the day-level balance rule applies), freeze the cost in force on their date, and may name a trip (the damaged packs of a product cannot exceed what the trip brought).
 2. **Expenses:** fuel is counted once per trip: a trip that links Transport fuel, or already has a non-voided G-Water fuel expense, takes no second one (void it to replace it). `paid_by_user_id` is allowed on fuel only; loading, offloading and other costs are never reimbursable. A fuel expense that was already paid back cannot be voided. The optional vehicle goes through `TransportScope::findVehicle()` and must be based at the same location.
 3. **Payments:** a request may carry the packs it was raised for (lines of product, packs, price per pack; the price defaults to the cost in force); the amount is then their total or must agree with it. The reference is unique per location among non-voided payments. A request becomes `paid` on a date not before the request; voiding a paid payment makes the amount owed again.
-4. **Owed balance** = opening amount owed + every posted trip at its frozen line costs - payments marked paid, as a dated statement with a running balance (`owedStatement()`; `owedToGwater()` is its last line, optionally as of a date). Requests not yet paid are shown apart.
-5. **Waybill outstanding** per product = packs brought forward as "paid for, not yet delivered" (a new field of the opening balance) + packs on non-voided payment requests - packs delivered on trips since the opening date. A negative figure means more arrived than was paid for.
+4. **Owed balance** = opening amount owed + every posted trip at its frozen line costs - payments made, as a dated statement with a running balance (`owedStatement()`; `owedToGwater()` is its last line, optionally as of a date). Requests not yet paid are shown apart.
+5. **Waybill outstanding** per product = packs in the opening balance as "paid for, not yet delivered" (a new field of the opening balance) + packs on non-voided payments - packs delivered on trips since the opening date. A negative figure means more arrived than was paid for.
 6. **Opening balance lines** freeze the cost of the packs brought forward (cost in force on the opening date) for the profit and loss, which never reads the price list for history.
 
 ## 13. Phase 3 as built
@@ -173,9 +173,9 @@ Migration `2026_10_19_000001_create_gwater_phase2_tables` (adds `gw_expenses.veh
 
 Migration `2026_10_20_000001_create_gwater_settings_and_reminder_tables` (`gw_settings`, `gw_reminder_states`). `GwaterSettings`, `GwaterReminderService` (command `gwater:remind`), `GwaterImportService` (+ `GwaterImportTemplateExport`), the **Settings** and **Import past records** screens, `GwaterWorkflowService::saveSettings()`.
 
-**Settings:** `low_stock_<product code>`, `payment_overdue_days`, `reminder_repeat_days`, per location (Head Office, or a region without it), overrides of `gwater_low_stock_packs` / `gwater_payment_overdue_days` / `gwater_reminder_repeat_days`; a value equal to its default is stored as no row; saving needs `gwater.manage_prices` and is audited (old and new values, numbers only). The Overview's low-stock flag reads the location's value.
+**Settings:** `low_stock_<product code>`, `reminder_repeat_days`, per location (Head Office, or a region without it), overrides of `gwater_low_stock_packs` / `gwater_reminder_repeat_days`; a value equal to its default is stored as no row; saving needs `gwater.manage_prices` and is audited (old and new values, numbers only). The Overview's low-stock flag reads the location's value.
 
-**Reminders:** `php artisan gwater:remind [--dry-run]`, daily at 07:55, registered in `routes/console.php` only while `GWL_GWATER_MODULE_ENABLED` is on (the scheduler must be running; the service also does nothing with the flag off). For each location with G-Water records: one notice per product at or below its threshold, and one for the overdue payment requests (requested and older than the overdue days). An item is reminded about at most once per repeat interval; with nobody who can record at the location nothing is sent or marked. Notices go through `GeneralDatabaseNotification` and carry only the product, the location and counts. Recipients: active staff based there who hold `gwater.record` (the developer super_admin is never told).
+**Reminders:** `php artisan gwater:remind [--dry-run]`, daily at 07:55, registered in `routes/console.php` only while `GWL_GWATER_MODULE_ENABLED` is on (the scheduler must be running; the service also does nothing with the flag off). For each location with G-Water records: one notice per product at or below its threshold. An item is reminded about at most once per repeat interval; with nobody who can record at the location nothing is sent or marked. Notices go through `GeneralDatabaseNotification` and carry only the product, the location and counts. Recipients: active staff based there who hold `gwater.record` (the developer super_admin is never told).
 
 **Import of past records:** one .xlsx with the sheets Opening balance, Purchases, Daily sales, Damages, Expenses, Payments (template: headings only and a Read me, no example rows). Preview posts everything through the workflow inside a transaction that is rolled back; confirm re-reads the file and posts for real, all or nothing, or "valid rows only". Create-only (an existing opening balance, waybill or payment reference is refused), always into the importer's own location (super_admin: the one chosen), dates dd/MM/yyyy or Excel dates, amounts in cedis, prices never typed (a unit cost in the file must agree with the price list on the row's date; a sale or purchase with no price in force is refused), a damage or expense names its trip by waybill, at most `gwater_import_max_rows` rows (default 2,000) in all. Imported entries are indistinguishable from typed ones in stock, profit and loss and the owed balance (a test pins this).
 
@@ -189,7 +189,7 @@ Migration `2026_10_20_000001_create_gwater_settings_and_reminder_tables` (`gw_se
 php artisan db:seed --class="Database\Seeders\Demo\GwaterDemoSeeder"
 ```
 
-It adds the Accra West people it needs (`GWA001` recorder and `GWA002` approver, both `g_water`; `GWA101` driver; `GWA102` plain employee with no G-Water access; `GWSA01` super_admin; password `12345`), a pickup in Transport, the location's own price list with a rise part-way, an opening balance, a trip every week (Transport-linked fuel, fuel typed in G-Water, fuel the driver paid out of pocket, some already paid back), daily sales Monday to Saturday, damages, other expenses, five payment requests to G Water (most paid, one overdue, one recent), one voided sale, and a sachet low-stock limit that makes the Overview flag it. It is deterministic and idempotent: if Accra West already has demo trips or any opening balance it adds nothing. Test: `tests/Feature/GWater/GwaterDemoSeederTest.php`.
+It adds the Accra West people it needs (`GWA001` recorder and `GWA002` approver, both `g_water`; `GWA101` driver; `GWA102` plain employee with no G-Water access; `GWSA01` super_admin; password `12345`), a pickup in Transport, the location's own price list with a rise part-way, an opening balance, a trip every week (Transport-linked fuel, fuel typed in G-Water, fuel the driver paid out of pocket, some already paid back), daily sales Monday to Saturday, damages, other expenses, five a payment to G Water every fortnight, one voided sale, and a sachet low-stock limit that makes the Overview flag it. It is deterministic and idempotent: if Accra West already has demo trips or any opening balance it adds nothing. Test: `tests/Feature/GWater/GwaterDemoSeederTest.php`.
 
 ## 16. Credit sales (added after Phase 4)
 
@@ -205,4 +205,14 @@ For customers who take water now and pay later. Migration `2026_10_21_000001_add
 7. **Personal data:** the customer's name and phone live on the sale. The audit rows, notices and logs never carry them (a test pins it); audit rows say only that a sale was `credit`, the amounts and the sale id.
 8. **Import:** the Daily sales sheet takes optional `on_credit` (yes/no), `customer_name` and `customer_phone` columns. Payments received since are recorded on the screen, not in the file.
 9. **Not done:** no due date or "overdue debt" reminder for credit customers yet; no credit limit per customer; no customer table (a customer is the typed name).
+
+## 17. Payments are recorded when paid (no payment requests)
+
+The first design had a **request** (status `requested`, a "Mark paid" action, a "Requested, not yet paid" tile and an overdue reminder). It was removed: the G-Water user just pays, and records the payment.
+
+1. **`GwaterWorkflowService::recordPayment()`** takes `paid_on` (the day it was paid, not in the future), `reference` (unique among the location's non-voided payments), the packs paid for and/or the amount, and a note. The row is `paid` at once and reduces what is owed from that day. `markPaymentPaid()`, the `requested` status constant, the `gwater.payment_paid` audit action, the `payment_overdue_days` setting (and `GWL_GWATER_PAYMENT_OVERDUE_DAYS`) and the overdue reminder no longer exist. A wrong payment is voided with a reason and is owed again.
+2. **The Payments screen** shows Owed to G Water, **Opening balance**, Bought on trips and Paid; the form is "Record a payment" with a "Date paid".
+3. **"Brought forward" is now "Opening balance"** everywhere a person reads it: the Payments tile and statement, the stock screen's waybill table and the opening balance form (the opening stock ledger note too, from now on).
+4. **Past records:** the Payments sheet of the import has `paid_on`, `reference`, `amount`, the packs columns and `note` (`request_date` and the second date column are gone; re-download the template).
+5. **Old data (migration `2026_10_22_000001_remove_gwater_payment_requests`):** a payment that was only requested never reduced what was owed, so it is marked voided ("Payment requests were removed: record a payment when it is paid."), which leaves the owed balance exactly as it was; the old overdue setting and its reminder rows are deleted. Paid payments are untouched.
 

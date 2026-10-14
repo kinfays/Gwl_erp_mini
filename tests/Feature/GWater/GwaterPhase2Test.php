@@ -183,7 +183,7 @@ class GwaterPhase2Test extends GwaterTestCase
         $recorder = $this->gw('G1', $this->sowutuom);
         $payer = $this->person('P1', $this->sowutuom);
 
-        foreach (['loading', 'offloading', 'other'] as $category) {
+        foreach (['loading', 'other'] as $category) {
             try {
                 $this->workflow()->recordExpense($recorder, ['expense_date' => '2026-06-01', 'category' => $category, 'amount' => 3000, 'paid_by_user_id' => $payer->id]);
                 $this->fail("{$category} is not reimbursable.");
@@ -268,20 +268,20 @@ class GwaterPhase2Test extends GwaterTestCase
         $user = $this->gw('G1', $this->sowutuom);
         $this->actingAs($user);
 
-        // Brought forward 2026-01-01: 100 bottle packs, 50 more paid for but not delivered, GH¢500.00 owed.
+        // Opening balance 2026-01-01: 100 bottle packs, 50 more paid for but not delivered, GH¢500.00 owed.
         $this->workflow()->recordOpeningBalance($user, [
             'as_of_date' => '2026-01-01', 'packs' => [$this->bottle->id => 100], 'outstanding' => [$this->bottle->id => 50], 'owed_amount' => 50000,
         ]);
         // Trip A: 40 bottle @ 20.00 = 800.00. Trip B: 10 bottle @ 20.00 + 20 sachet @ 8.00 = 200.00 + 160.00.
         $this->trip($user, 'WB-A', 40, 0, '2026-06-01');
         $this->trip($user, 'WB-B', 10, 20, '2026-06-10');
-        // P1: 50 bottle packs @ 20.00 = 1,000.00, paid on 5 June. P2: 30 sachet packs @ 8.00 = 240.00, still only requested.
+        // P1: 50 bottle packs @ 20.00 = 1,000.00, paid on 5 June. P2: 30 sachet packs @ 8.00 = 240.00, paid on 12 June.
         $this->workflow()->recordPayment($user, [
-            'request_date' => '2026-06-04', 'reference' => 'PR-1', 'paid_on' => '2026-06-05',
+            'paid_on' => '2026-06-05', 'reference' => 'PR-1',
             'lines' => [['product_id' => $this->bottle->id, 'packs' => 50, 'unit_price' => 2000]],
         ]);
         $this->workflow()->recordPayment($user, [
-            'request_date' => '2026-06-12', 'reference' => 'PR-2', 'lines' => [['product_id' => $this->sachet->id, 'packs' => 30]],
+            'paid_on' => '2026-06-12', 'reference' => 'PR-2', 'lines' => [['product_id' => $this->sachet->id, 'packs' => 30]],
         ]);
 
         return [$user, ['region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id]];
@@ -293,14 +293,16 @@ class GwaterPhase2Test extends GwaterTestCase
         $summary = app(GwaterSummaryService::class);
         $statement = $summary->owedStatement($place);
 
-        // 500.00 + 800.00 + 360.00 - 1,000.00 = 660.00; the 240.00 request is not paid yet.
-        $this->assertSame(66000, $statement['owed']);
-        $this->assertSame(66000, $summary->owedToGwater($place));
-        $this->assertSame([50000, 116000, 100000, 24000], [$statement['opening'], $statement['purchases'], $statement['paid'], $statement['requested']]);
+        // 500.00 + 800.00 + 360.00 - 1,000.00 - 240.00 = 420.00.
+        $this->assertSame(42000, $statement['owed']);
+        $this->assertSame(42000, $summary->owedToGwater($place));
+        $this->assertSame([50000, 116000, 124000], [$statement['opening'], $statement['purchases'], $statement['paid']]);
+        $this->assertSame('Opening balance', $statement['lines'][0]['label']);
+        $this->assertArrayNotHasKey('requested', $statement);
 
         // Oldest first, with the running balance after each line.
         $this->assertSame(
-            [['opening', 50000], ['trip', 130000], ['payment', 30000], ['trip', 66000]],
+            [['opening', 50000], ['trip', 130000], ['payment', 30000], ['trip', 66000], ['payment', 42000]],
             collect($statement['lines'])->map(fn ($line) => [$line['kind'], $line['balance']])->all()
         );
 
@@ -308,28 +310,20 @@ class GwaterPhase2Test extends GwaterTestCase
         $this->assertSame(30000, $summary->owedToGwater($place, \Illuminate\Support\Carbon::parse('2026-06-09')));
     }
 
-    public function test_marking_a_request_paid_and_voiding_a_payment_move_the_balance(): void
+    public function test_a_payment_reduces_the_balance_from_the_day_it_is_paid_and_voiding_it_makes_it_owed_again(): void
     {
         [$user, $place] = $this->workedExample();
         $summary = app(GwaterSummaryService::class);
-        $request = GwSupplierPayment::query()->where('reference', 'PR-2')->firstOrFail();
+        $payment = GwSupplierPayment::query()->where('reference', 'PR-2')->firstOrFail();
 
-        $this->workflow()->markPaymentPaid($request, $user, '2026-06-15');
-        $this->assertSame(66000 - 24000, $summary->owedToGwater($place));
-        $this->assertSame('paid', $request->fresh()->status);
+        // Recorded as paid on the spot: there is no "requested" state and nothing left to mark paid.
+        $this->assertSame(['paid', '2026-06-12'], [$payment->status, $payment->paid_on->toDateString()]);
+        $this->assertFalse(method_exists($this->workflow(), 'markPaymentPaid'));
+        $this->assertSame(66000, $summary->owedToGwater($place, \Illuminate\Support\Carbon::parse('2026-06-11')));
+        $this->assertSame(42000, $summary->owedToGwater($place, \Illuminate\Support\Carbon::parse('2026-06-12')));
 
-        // Paid twice, or paid before it was requested, is refused.
-        foreach (['2026-06-16', '2026-06-01'] as $date) {
-            try {
-                $this->workflow()->markPaymentPaid($request->fresh(), $user, $date);
-                $this->fail('Expected a refusal.');
-            } catch (ValidationException) {
-                $this->assertSame('paid', $request->fresh()->status);
-            }
-        }
-
-        // Voiding a paid payment makes the amount owed again and keeps the row.
-        $this->workflow()->voidPayment($request, $user, 'Bank reversed it');
+        // Voiding a payment makes the amount owed again and keeps the row.
+        $this->workflow()->voidPayment($payment, $user, 'Bank reversed it');
         $this->assertSame(66000, $summary->owedToGwater($place));
         $this->assertSame(2, GwSupplierPayment::query()->count());
     }
@@ -339,13 +333,13 @@ class GwaterPhase2Test extends GwaterTestCase
         [, $place] = $this->workedExample();
         $rows = app(GwaterSummaryService::class)->waybillOutstanding($place)->keyBy(fn ($row) => $row['product']->code);
 
-        // Bottle: 50 brought forward + 50 on PR-1 = 100 paid for; 40 + 10 delivered; 50 still to come.
-        $this->assertSame([50, 50, 100, 50, 50], [$rows['bottle']['brought_forward'], $rows['bottle']['requested'], $rows['bottle']['ordered'], $rows['bottle']['delivered'], $rows['bottle']['outstanding']]);
+        // Bottle: 50 in the opening balance + 50 on PR-1 = 100 paid for; 40 + 10 delivered; 50 still to come.
+        $this->assertSame([50, 50, 100, 50, 50], [$rows['bottle']['opening'], $rows['bottle']['on_payments'], $rows['bottle']['paid_for'], $rows['bottle']['delivered'], $rows['bottle']['outstanding']]);
         $this->assertSame(['WB-A', 'WB-B'], collect($rows['bottle']['waybills'])->pluck('waybill')->all());
-        // Sachet: 30 on PR-2 (requested), 20 delivered on WB-B; 10 to come.
-        $this->assertSame([0, 30, 30, 20, 10], [$rows['sachet']['brought_forward'], $rows['sachet']['requested'], $rows['sachet']['ordered'], $rows['sachet']['delivered'], $rows['sachet']['outstanding']]);
+        // Sachet: 30 on PR-2, 20 delivered on WB-B; 10 to come.
+        $this->assertSame([0, 30, 30, 20, 10], [$rows['sachet']['opening'], $rows['sachet']['on_payments'], $rows['sachet']['paid_for'], $rows['sachet']['delivered'], $rows['sachet']['outstanding']]);
 
-        // A voided request stops counting.
+        // A voided payment stops counting.
         $this->workflow()->voidPayment(GwSupplierPayment::query()->where('reference', 'PR-2')->firstOrFail(), $this->gw('G2', $this->odorkor), 'Cancelled order');
         $this->assertSame(-20, app(GwaterSummaryService::class)->waybillOutstanding($place)->firstWhere(fn ($row) => $row['product']->code === 'sachet')['outstanding']);
     }
@@ -355,21 +349,21 @@ class GwaterPhase2Test extends GwaterTestCase
         $user = $this->gw('G1', $this->sowutuom);
         $line = ['product_id' => $this->bottle->id, 'packs' => 10, 'unit_price' => 2600];
 
-        $ok = $this->workflow()->recordPayment($user, ['request_date' => '2026-06-04', 'reference' => 'PR-1', 'lines' => [$line]]);
-        $this->assertSame([26000, 'requested'], [$ok->amount, $ok->status], 'the amount is worked out from the packs');
+        $ok = $this->workflow()->recordPayment($user, ['paid_on' => '2026-06-04', 'reference' => 'PR-1', 'lines' => [$line]]);
+        $this->assertSame([26000, 'paid'], [$ok->amount, $ok->status], 'the amount is worked out from the packs');
 
         // A plain amount with no packs is fine.
-        $this->assertSame(5000, $this->workflow()->recordPayment($user, ['request_date' => '2026-06-04', 'reference' => 'PR-3', 'amount' => 5000])->amount);
+        $this->assertSame(5000, $this->workflow()->recordPayment($user, ['paid_on' => '2026-06-04', 'reference' => 'PR-3', 'amount' => 5000])->amount);
 
         foreach ([
             ['reference' => 'pr-1', 'lines' => [$line]],                              // duplicate reference, any case
             ['reference' => 'PR-4', 'lines' => [$line], 'amount' => 25000],           // amount disagrees with the packs
             ['reference' => 'PR-5'],                                                  // no amount, no packs
             ['reference' => ' '],                                                     // no reference
-            ['reference' => 'PR-6', 'amount' => 100, 'paid_on' => '2026-06-01'],      // paid before it was requested
+            ['reference' => 'PR-7', 'amount' => 100, 'paid_on' => '2999-01-01'],      // not yet paid
         ] as $bad) {
             try {
-                $this->workflow()->recordPayment($user, ['request_date' => '2026-06-04', ...$bad]);
+                $this->workflow()->recordPayment($user, ['paid_on' => '2026-06-04', ...$bad]);
                 $this->fail('Expected a refusal for '.json_encode($bad));
             } catch (ValidationException) {
                 $this->assertSame(2, GwSupplierPayment::query()->count());
@@ -378,30 +372,25 @@ class GwaterPhase2Test extends GwaterTestCase
 
         // The same reference in another location is fine.
         $other = $this->gw('G2', $this->kumasi);
-        $this->workflow()->recordPayment($other, ['request_date' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 100]);
+        $this->workflow()->recordPayment($other, ['paid_on' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 100]);
         $this->assertSame(3, GwSupplierPayment::query()->count());
     }
 
-    public function test_payments_of_another_location_cannot_be_paid_or_voided(): void
+    public function test_payments_of_another_location_cannot_be_voided(): void
     {
         $accra = $this->gw('G1', $this->sowutuom);
-        $payment = $this->workflow()->recordPayment($accra, ['request_date' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 5000]);
+        $payment = $this->workflow()->recordPayment($accra, ['paid_on' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 5000]);
         $headOffice = $this->gw('G3', $this->headOffice);
         $kumasi = $this->gw('G2', $this->kumasi);
 
         foreach ([$kumasi, $headOffice] as $stranger) {
             $this->actingAs($stranger);
 
-            foreach ([
-                fn () => $this->workflow()->markPaymentPaid($payment, $stranger, '2026-06-05'),
-                fn () => $this->workflow()->voidPayment($payment, $stranger, 'Not mine'),
-            ] as $attempt) {
-                try {
-                    $attempt();
-                    $this->fail('Another location\'s payment must not be found.');
-                } catch (NotFoundHttpException) {
-                    $this->assertSame('requested', $payment->fresh()->status);
-                }
+            try {
+                $this->workflow()->voidPayment($payment, $stranger, 'Not mine');
+                $this->fail('Another location\'s payment must not be found.');
+            } catch (NotFoundHttpException) {
+                $this->assertSame('paid', $payment->fresh()->status);
             }
         }
     }
@@ -427,14 +416,13 @@ class GwaterPhase2Test extends GwaterTestCase
 
         $damage = $this->workflow()->recordDamage($user, $this->damageData(2));
         $expense = $this->workflow()->recordExpense($user, ['expense_date' => '2026-06-01', 'category' => 'other', 'amount' => 1000]);
-        $payment = $this->workflow()->recordPayment($user, ['request_date' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 5000]);
-        $this->workflow()->markPaymentPaid($payment, $user, '2026-06-05');
+        $payment = $this->workflow()->recordPayment($user, ['paid_on' => '2026-06-05', 'reference' => 'PR-1', 'amount' => 5000]);
         $this->workflow()->voidDamage($damage, $user, 'Mistake');
         $this->workflow()->voidExpense($expense, $user, 'Mistake');
         $this->workflow()->voidPayment($payment, $user, 'Mistake');
 
         $this->assertSame([
-            'gwater.purchase_recorded', 'gwater.damage_recorded', 'gwater.expense_recorded', 'gwater.payment_recorded', 'gwater.payment_paid',
+            'gwater.purchase_recorded', 'gwater.damage_recorded', 'gwater.expense_recorded', 'gwater.payment_recorded',
             'gwater.damage_voided', 'gwater.expense_voided', 'gwater.payment_voided',
         ], AuditLog::query()->where('module', 'gwater')->orderBy('id')->pluck('action')->all());
 
@@ -453,7 +441,7 @@ class GwaterPhase2Test extends GwaterTestCase
         foreach ([
             fn () => $this->workflow()->recordDamage($viewer, $this->damageData(1)),
             fn () => $this->workflow()->recordExpense($viewer, ['expense_date' => '2026-06-01', 'category' => 'other', 'amount' => 100]),
-            fn () => $this->workflow()->recordPayment($viewer, ['request_date' => '2026-06-04', 'reference' => 'X', 'amount' => 100]),
+            fn () => $this->workflow()->recordPayment($viewer, ['paid_on' => '2026-06-04', 'reference' => 'X', 'amount' => 100]),
             fn () => $this->workflow()->voidDamage($damage, $viewer, 'No permission'),
         ] as $attempt) {
             try {
@@ -490,13 +478,13 @@ class GwaterPhase2Test extends GwaterTestCase
         $this->assertSame(3550, GwExpense::query()->firstOrFail()->amount);
 
         Livewire::actingAs($accra)->test(Payments::class)
-            ->set('form.request_date', '2026-10-03')->set('form.reference', 'PR-77')->set('form.amount', '1430.00')
-            ->call('save')->assertHasNoErrors()->assertSee('PR-77')->assertSee('1,430.00');
+            ->set('form.paid_on', '2026-10-03')->set('form.reference', 'PR-77')->set('form.amount', '1430.00')
+            ->call('save')->assertHasNoErrors()->assertSee('PR-77')->assertSee('1,430.00')->assertSee('Opening balance')
+            ->assertDontSee('Requested')->assertDontSee('Mark paid');
         Livewire::actingAs($kumasi)->test(Payments::class)->assertDontSee('PR-77');
 
         $payment = GwSupplierPayment::query()->firstOrFail();
-        Livewire::actingAs($accra)->test(Payments::class)->call('openPay', $payment->id)->set('paidOn', '2026-10-04')->call('pay')->assertHasNoErrors();
-        $this->assertSame('paid', $payment->fresh()->status);
+        $this->assertSame(['paid', '2026-10-03'], [$payment->status, $payment->paid_on->toDateString()]);
         Livewire::actingAs($kumasi)->test(Payments::class)->call('openVoid', $payment->id)->assertNotFound();
 
         Livewire::actingAs($accra)->test(Damages::class)->call('openVoid', $damage->id)->set('voidReason', 'Counted twice')->call('confirmVoid')->assertHasNoErrors();

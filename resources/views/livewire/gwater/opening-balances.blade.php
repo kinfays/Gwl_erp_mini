@@ -25,7 +25,7 @@
                 <div class="ui-form-grid">
                     <x-ui.input label="As of" type="date" wire:model.defer="form.as_of_date" :max="today()->toDateString()" />
                     @foreach ($products as $product)
-                        <x-ui.input :label="$product->name.' brought forward (packs)'" type="number" min="0" step="1" inputmode="numeric" wire:model.defer="packs.{{ $product->id }}" />
+                        <x-ui.input :label="$product->name.' opening balance (packs)'" type="number" min="0" step="1" inputmode="numeric" wire:model.defer="packs.{{ $product->id }}" />
                     @endforeach
                     @foreach ($products as $product)
                         <x-ui.input :label="$product->name.' paid for, not yet delivered (packs)'" type="number" min="0" step="1" inputmode="numeric" wire:model.defer="outstanding.{{ $product->id }}" hint="The 'outstanding on waybills' of your sheets." />

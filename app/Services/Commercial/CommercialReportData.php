@@ -23,6 +23,7 @@ class CommercialReportData
         protected ReadingAnalyticsService $reading,
         protected BillingAnalyticsService $billing,
         protected CommercialInsightsService $insights,
+        protected CommercialKpiService $kpi,
     ) {
     }
 
@@ -301,6 +302,46 @@ class CommercialReportData
         }
 
         return $cards;
+    }
+
+    /**
+     * The KPI scorecard (sales, billing, collection against the district targets, and the arrears table) for the viewer's own
+     * scope. Returns what the screen and the export both need: the choices (regions, segments), what was chosen, and the tables.
+     * A viewer who sees one region only ever gets that region; a requested region or segment that does not exist falls back to the
+     * default instead of saying it exists elsewhere.
+     *
+     * @return array<string, mixed>
+     */
+    public function kpis(?int $regionId = null, ?string $segment = null, int $months = 3, ?int $districtId = null): array
+    {
+        $snapshots = array_values(array_filter($this->snapshots(), fn (array $s) => $s['is_single_month']));
+        $regions = collect($snapshots)->unique('region_id')->mapWithKeys(fn (array $s) => [(int) $s['region_id'] => $s['region']])->all();
+
+        // newest snapshot first: the default region is the one with the latest data
+        $regionId = $regionId !== null && isset($regions[$regionId]) ? $regionId : (isset($snapshots[0]) ? (int) $snapshots[0]['region_id'] : null);
+        $inRegion = array_values(array_filter($snapshots, fn (array $s) => (int) $s['region_id'] === $regionId));
+        $segments = collect($inRegion)->groupBy('segment')->map(fn ($group) => ['label' => $group->first()['segment_label'], 'months' => $group->count()])->all();
+
+        if ($segment === null || ! array_key_exists($segment, $segments)) {
+            $segment = collect($segments)->sortByDesc('months')->keys()->first();
+        }
+
+        $picked = $this->kpi->months($snapshots, $regionId, $segment === '' ? null : $segment, max(1, min(12, $months)));
+
+        $base = ['regions' => $regions, 'region_id' => $regionId, 'region' => $regions[$regionId] ?? null, 'segments' => $segments, 'segment' => $segment, 'months_asked' => $months, 'age_note' => CommercialKpiService::AGE_NOTE, 'arrears_note' => CommercialKpiService::ARREARS_NOTE];
+
+        if ($picked === []) {
+            return $base + ['empty' => true, 'months' => [], 'districts' => [], 'total' => null, 'district_options' => []];
+        }
+
+        $card = $this->kpi->scorecard($picked);
+        $options = collect($card['districts'])->mapWithKeys(fn (array $d) => [($d['id'] ?? 'x'.crc32($d['name'])) => $d['name']])->all();
+
+        if ($districtId !== null) {
+            $card['districts'] = array_values(array_filter($card['districts'], fn (array $d) => $d['id'] === $districtId));
+        }
+
+        return $base + ['empty' => false, 'district_options' => $options, 'district_id' => $districtId] + $card;
     }
 
     /** The routes of one billing snapshot, as every analysis reads them. @return Collection<int, CommercialBillingRoute> */

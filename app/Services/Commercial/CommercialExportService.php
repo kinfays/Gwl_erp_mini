@@ -24,6 +24,7 @@ class CommercialExportService
         'reading-trend' => ['title' => 'Meter reading: region trend', 'formats' => ['excel'], 'permissions' => ['commercial.view_reading'], 'any' => []],
         'readers' => ['title' => 'Meter reading: readers', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reader_performance'], 'any' => []],
         'billing' => ['title' => 'Billing snapshot', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
+        'kpis' => ['title' => 'District KPIs against targets', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'scorecard' => ['title' => 'District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing', 'commercial.view_reading'], 'any' => []],
     ];
 
@@ -182,7 +183,7 @@ class CommercialExportService
             $notes[] = 'This is a multi-month period: it overlaps single months and cannot be compared or trended.';
         }
 
-        $notes[] = 'Negative balances are treated as customer credits (to be confirmed).';
+        $notes[] = 'A negative balance is a customer credit (confirmed by the Commercial team).';
 
         $tables = [
             ['title' => 'Overview', 'headings' => ['District', 'Routes', 'Billing (GH¢)', 'Share (%)', 'Volume (000 litres)', 'Customers billed', 'GH¢ per customer', 'GH¢ per m3'], 'rows' => [
@@ -195,8 +196,8 @@ class CommercialExportService
             ['title' => 'Balance roll-forward', 'headings' => ['District', 'Opening (GH¢)', 'Billing', 'Adjustments', 'Receivable', 'Payments', 'Closing', 'Adds up'], 'rows' => array_map(fn (array $r) => [
                 $r['key'] === '' ? 'All shown' : $r['district'], $r['opening'], $r['billing'], $r['adjustment'], $r['receivable'], $r['payments'], $r['closing'], $r['balances'] ? 'Yes' : 'No',
             ], [...$d['roll']['districts'], $d['roll']['total']])],
-            ['title' => 'Collections', 'headings' => ['District', 'Billing (GH¢)', 'Payments (GH¢)', 'This period', 'Earlier months', 'Offsets', 'Cash collection ratio (%)', 'Against this period (%)', 'Arrears share of cash (%)'], 'rows' => array_map(fn (array $r) => [
-                $r['key'] === '' ? 'All shown' : $r['district'], $r['billing'], $r['payments'], $r['payment_for_month'], $r['prev_month_payment'], $r['offset_payments'], $this->n($r['cash_ratio']), $this->n($r['current_ratio']), $this->n($r['prior_share']),
+            ['title' => 'Collections', 'headings' => ['District', 'Billing (GH¢)', 'Payments (GH¢)', 'This period', 'Earlier months', 'Offsets', 'Cash collection ratio (%)', 'Against this period (%)', 'Amount due (GH¢)', 'Collected of amount due (%)', 'Arrears share of cash (%)'], 'rows' => array_map(fn (array $r) => [
+                $r['key'] === '' ? 'All shown' : $r['district'], $r['billing'], $r['payments'], $r['payment_for_month'], $r['prev_month_payment'], $r['offset_payments'], $this->n($r['cash_ratio']), $this->n($r['current_ratio']), $r['receivable'], $this->n($r['due_ratio']), $this->n($r['prior_share']),
             ], [...$d['collections']['districts'], $d['collections']['total']])],
             ['title' => 'Balances (credits)', 'headings' => ['District', 'Routes', 'Routes with credit', 'Credit (GH¢)', 'Net closing (GH¢)'], 'rows' => array_map(fn (array $r) => [
                 $r['key'] === '' ? 'All shown' : $r['district'], $r['routes'], $r['credit_routes'], $r['credit_amount'], $r['closing'],
@@ -221,6 +222,52 @@ class CommercialExportService
             'Period' => $d['snapshot']['period_label'],
             'District' => $d['district'] !== '' ? $d['district'] : 'All districts',
         ], $notes, $tables, $d['snapshot']['period_label']);
+    }
+
+    // ---------------------------------------------------------------- KPIs against targets
+
+    /** @param  array<string, mixed>  $d  CommercialReportData::kpis() */
+    public function kpis(array $d): array
+    {
+        $months = $d['months'];
+        $labels = array_map(fn (array $m) => $m['label'].' '.$m['year'], $months);
+        $short = array_map(fn (array $m) => $m['short'], $months);
+        $notes = [
+            'Sales is the volume billed (thousand litres, which is 1 m3 per thousand); billing is "billing for the period"; collection is total payments. Efficiency = actual ÷ target × 100, left blank where there is no target.',
+            $d['arrears_note'],
+            $d['age_note'],
+            'Each month comes from the single-month billing snapshot of that month (the newest non-voided upload); snapshots are never added together.',
+        ];
+
+        $tables = [];
+
+        foreach (array_filter([$d['total'], ...$d['districts']]) as $block) {
+            $tables[] = [
+                'title' => 'KPIs: '.($block['id'] === null && $block['name'] === 'All districts' ? 'all districts' : $block['name']),
+                'headings' => ['KPI', 'Target', ...$labels, ...array_map(fn ($s) => 'Efficiency '.$s.' (%)', $short)],
+                'rows' => array_map(fn (array $row) => [
+                    $row['label'].' ('.$row['unit'].')', $this->n($row['target']),
+                    ...array_map(fn (array $m) => $this->n($row['actuals'][$m['key']] ?? null), $months),
+                    ...array_map(fn (array $m) => $this->n($row['efficiency'][$m['key']] ?? null), $months),
+                ], $block['rows']),
+            ];
+            $tables[] = [
+                'title' => 'Arrears: '.($block['id'] === null && $block['name'] === 'All districts' ? 'all districts' : $block['name']),
+                'headings' => ['Month', 'Arrears: owed (GH¢)', 'Age of arrears (months)', 'Customer credits (GH¢)', 'Net balance (GH¢)', 'Change in arrears (GH¢)', 'Source'],
+                'rows' => array_map(fn (array $a) => [$a['label'], $a['arrears'], $this->n($a['age']), $a['credit'], $a['net'], $this->n($a['change']), ['customers' => 'Customer list', 'routes' => 'Billing routes', 'mixed' => 'Both'][$a['source']] ?? $a['source']], $block['arrears']),
+            ];
+        }
+
+        $first = $months[0] ?? null;
+        $last = $months[count($months) - 1] ?? null;
+        $period = $first && $last ? ($first['key'] === $last['key'] ? $labels[0] : $labels[0].' to '.end($labels)) : 'no months';
+
+        return $this->report('kpis', [
+            'Region' => (string) $d['region'],
+            'Customer segment' => (string) ($d['segments'][$d['segment']]['label'] ?? 'All customers'),
+            'Months' => $period,
+            'District' => ($d['district_id'] ?? null) ? (string) ($d['districts'][0]['name'] ?? '') : 'All districts',
+        ], $notes, $tables, $period);
     }
 
     // ---------------------------------------------------------------- scorecard (C1)

@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A cost of the trade in pesewas. Fuel paid out of pocket is the only reimbursable kind; loading and offloading are paid in
- * cash and stay not_applicable.
+ * A cost of the trade in pesewas. Fuel paid out of pocket is the only reimbursable kind; loading/offloading (one payment) is
+ * paid in cash and stays not_applicable.
  */
 class GwExpense extends Model
 {
@@ -16,13 +16,26 @@ class GwExpense extends Model
 
     public const FUEL = 'fuel';
 
+    /** Loading and offloading are ONE payment, kept under this category. */
     public const LOADING = 'loading';
 
+    /** Only on rows recorded before loading and offloading became one payment; nothing new is written with it. */
     public const OFFLOADING = 'offloading';
 
     public const OTHER = 'other';
 
-    public const CATEGORIES = [self::FUEL, self::LOADING, self::OFFLOADING, self::OTHER];
+    public const CATEGORIES = [self::FUEL, self::LOADING, self::OTHER];
+
+    /** The categories that make up the one loading/offloading cost (the old separate offloading rows included). */
+    public const LOADING_OFFLOADING = [self::LOADING, self::OFFLOADING];
+
+    public static function label(string $category): string
+    {
+        return match ($category) {
+            self::LOADING, self::OFFLOADING => 'Loading / offloading',
+            default => ucfirst($category),
+        };
+    }
 
     protected $fillable = [
         'region_id', 'district_id', 'expense_date', 'category', 'amount', 'purchase_id', 'vehicle_id', 'payee', 'receipt_ref', 'note',

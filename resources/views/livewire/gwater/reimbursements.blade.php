@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Reimbursements" description="Fuel that staff paid out of pocket and are waiting to be paid back. Loading and offloading are paid in cash, so they never appear here." />
+    <x-ui.page-header title="Reimbursements" description="Fuel that staff paid out of pocket and are waiting to be paid back. Loading / offloading is paid in cash, so it never appears here." />
 
     @include('livewire.gwater.partials.location-picker')
     @include('livewire.gwater.partials.exports')

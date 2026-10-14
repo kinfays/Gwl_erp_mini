@@ -39,10 +39,11 @@ class GwaterSettingsAndRemindersTest extends GwaterTestCase
         $this->actingAs($user);
         $settings = app(GwaterSettings::class);
 
-        $this->assertSame([50, 30, 7], [$settings->lowStock($this->place($this->sowutuom), 'bottle'), $settings->value($this->place($this->sowutuom), 'payment_overdue_days'), $settings->value($this->place($this->sowutuom), 'reminder_repeat_days')]);
+        $this->assertSame([50, 7], [$settings->lowStock($this->place($this->sowutuom), 'bottle'), $settings->value($this->place($this->sowutuom), 'reminder_repeat_days')]);
+        $this->assertArrayNotHasKey('payment_overdue_days', $settings->definitions());
 
-        $after = $this->workflow()->saveSettings($user, ['low_stock_bottle' => 80, 'payment_overdue_days' => 14]);
-        $this->assertSame([80, 14, 7, 50], [$after['low_stock_bottle'], $after['payment_overdue_days'], $after['reminder_repeat_days'], $after['low_stock_sachet']]);
+        $after = $this->workflow()->saveSettings($user, ['low_stock_bottle' => 80, 'reminder_repeat_days' => 14]);
+        $this->assertSame([80, 14, 50], [$after['low_stock_bottle'], $after['reminder_repeat_days'], $after['low_stock_sachet']]);
         $this->assertSame(2, GwSetting::query()->count(), 'only what differs from the default is stored');
 
         // Another district of the same region shares it; Head Office (same region id) and Kumasi do not.
@@ -74,7 +75,7 @@ class GwaterSettingsAndRemindersTest extends GwaterTestCase
         $user = $this->gw('G1', $this->sowutuom);
         $this->actingAs($user);
 
-        foreach ([['low_stock_bottle' => -1], ['low_stock_bottle' => 'many'], ['payment_overdue_days' => 0], ['reminder_repeat_days' => 1000], ['low_stock_bottle' => 1.5]] as $bad) {
+        foreach ([['low_stock_bottle' => -1], ['low_stock_bottle' => 'many'], ['reminder_repeat_days' => 0], ['reminder_repeat_days' => 1000], ['low_stock_bottle' => 1.5]] as $bad) {
             try {
                 $this->workflow()->saveSettings($user, $bad);
                 $this->fail('Expected a refusal for '.json_encode($bad));
@@ -205,36 +206,19 @@ class GwaterSettingsAndRemindersTest extends GwaterTestCase
         $this->assertSame(1, $reminders->remind(now()->addDays(2))['reminded'], 'the location asked for a 2-day interval');
     }
 
-    public function test_an_overdue_payment_request_is_reminded_once_per_interval_and_stops_when_paid(): void
+    public function test_payments_to_g_water_never_trigger_a_reminder(): void
     {
         $accra = $this->gw('G1', $this->sowutuom);
         $this->actingAs($accra);
-        $this->trip($accra, 'WB-1', 500, 500);   // plenty of stock: only the payments matter
-        $old = $this->workflow()->recordPayment($accra, ['request_date' => '2026-08-20', 'reference' => 'PR-SECRET-1', 'amount' => 123456]);       // 52 days old
-        $this->workflow()->recordPayment($accra, ['request_date' => '2026-10-01', 'reference' => 'PR-NEW', 'amount' => 5000]);                  // 10 days: not yet
-        $this->workflow()->recordPayment($accra, ['request_date' => '2026-08-01', 'reference' => 'PR-PAID', 'amount' => 5000, 'paid_on' => '2026-08-02']);
+        $this->trip($accra, 'WB-1', 500, 500);   // plenty of stock: nothing is low
+        $this->workflow()->recordPayment($accra, ['paid_on' => '2026-08-20', 'reference' => 'PAY-OLD', 'amount' => 123456]);
         $reminders = app(GwaterReminderService::class);
 
-        $summary = $reminders->remind(now());
+        $summary = $reminders->remind(now()->addDays(60));
 
-        $this->assertSame([1, 1], [$summary['overdue'], $summary['reminded']]);
-        $notice = $this->noticesTo($accra)[0];
-        $this->assertSame('G-Water: payment requests overdue', $notice['title']);
-        $this->assertStringContainsString('1 payment request(s) to G Water at Accra West are overdue', $notice['message']);
-        $this->assertStringNotContainsString('PR-SECRET-1', json_encode($notice));
-        $this->assertStringNotContainsString('1,234', json_encode($notice));
-
-        $this->assertSame(0, $reminders->remind(now()->addDays(3))['reminded']);
-        $this->assertSame(1, $reminders->remind(now()->addDays(7))['reminded']);
-
-        // Once paid it is no longer overdue (the other request is still under the limit eight days on).
-        $this->workflow()->markPaymentPaid($old, $accra, '2026-10-11');
-        $later = $reminders->remind(now()->addDays(8));
-        $this->assertSame([0, 0], [$later['overdue'], $later['reminded']]);
-
-        // The overdue limit is the location's own setting.
-        $this->workflow()->saveSettings($accra, ['payment_overdue_days' => 5]);
-        $this->assertSame(1, $reminders->remind(now()->addDays(60))['overdue'], 'PR-NEW is now older than 5 days');
+        $this->assertSame([0, 0], [$summary['low_stock'], $summary['reminded']]);
+        $this->assertArrayNotHasKey('overdue', $summary);
+        Notification::assertNotSentTo($accra, GeneralDatabaseNotification::class);
     }
 
     public function test_head_office_and_its_region_are_reminded_separately(): void

@@ -14,8 +14,8 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 /**
- * Expenses: fuel, loading, offloading and other costs, optionally tied to a trip. Only FUEL can be paid back to the person who
- * paid it out of pocket (the Reimbursements screen); loading and offloading are paid in cash. Fuel is counted once per trip.
+ * Expenses: fuel, loading / offloading (one payment) and other costs, optionally tied to a trip. Only FUEL can be paid back to the person who
+ * paid it out of pocket (the Reimbursements screen); loading / offloading is paid in cash. Fuel is counted once per trip.
  */
 class Expenses extends Component
 {

@@ -32,6 +32,7 @@ class Dashboard extends Component
         'growth' => 'Growth & churn',
         'consumption' => 'Consumption',
         'quality' => 'Data quality',
+        'coverage' => 'Coverage & efficiency',
         'compare' => 'Trends & compare',
     ];
 
@@ -152,6 +153,7 @@ class Dashboard extends Component
             'growth' => ['growth' => $analytics->growth($filters)],
             'consumption' => ['consumption' => $analytics->consumption($filters)],
             'quality' => ['quality' => $analytics->quality($filters)],
+            'coverage' => ['coverage' => $analytics->coverage($filters)],
             'compare' => [
                 'trend' => $analytics->trend($restriction, $regionId, $districtId, 12, $this->trendBy === 'month')['series'],
                 'league' => $analytics->league($filters, $restriction === null ? $snapshots->filters($everything, null) : null),

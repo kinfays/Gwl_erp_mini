@@ -7,15 +7,13 @@ use App\Models\GwSetting;
 use Illuminate\Support\Collection;
 
 /**
- * The few options a location may change: the low-stock threshold per product and the two reminder intervals. The defaults
+ * The few options a location may change: the low-stock threshold per product and the reminder interval. The defaults
  * are config/gwl.php (and .env); a location's own value is an OVERRIDE row in gw_settings for its books (Head Office, or a
  * region without it), and a value saved equal to its default is stored as no row at all, so "default" keeps meaning "whatever
  * config says". Read only here; written only by GwaterWorkflowService::saveSettings().
  */
 class GwaterSettings
 {
-    public const PAYMENT_OVERDUE_DAYS = 'payment_overdue_days';
-
     public const REMINDER_REPEAT_DAYS = 'reminder_repeat_days';
 
     public function __construct(protected GwaterVisibility $visibility) {}
@@ -40,18 +38,9 @@ class GwaterSettings
             ];
         }
 
-        $definitions[self::PAYMENT_OVERDUE_DAYS] = [
-            'label' => 'Payment request overdue after',
-            'help' => 'A payment request to G Water still not paid after this many days is overdue.',
-            'unit' => 'days',
-            'min' => 1,
-            'max' => 365,
-            'default' => (int) config('gwl.gwater_payment_overdue_days'),
-        ];
-
         $definitions[self::REMINDER_REPEAT_DAYS] = [
             'label' => 'Remind again after',
-            'help' => 'The same low stock or overdue request is reminded about at most once in this many days.',
+            'help' => 'The same low stock is reminded about at most once in this many days.',
             'unit' => 'days',
             'min' => 1,
             'max' => 365,

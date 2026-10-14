@@ -13,8 +13,8 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 /**
- * Payments to G Water: requests (and the packs they were raised for), marking them paid, voiding; and the owed balance as a
- * statement of the account (opening owed, every trip at its frozen cost, every payment marked paid).
+ * Payments to G Water: recording a payment (and the packs it paid for), voiding; and the owed balance as a statement of the
+ * account (opening balance, every trip at its frozen cost, every payment made).
  */
 class Payments extends Component
 {
@@ -28,10 +28,6 @@ class Payments extends Component
 
     /** @var array<int|string, string> price per pack typed per product id (cedis); empty = the cost price in force */
     public array $prices = [];
-
-    public ?int $payingId = null;
-
-    public string $paidOn = '';
 
     public ?int $voidingId = null;
 
@@ -74,10 +70,9 @@ class Payments extends Component
         }
 
         $this->run(fn () => $workflow->recordPayment($this->actor(), [
-            'request_date' => $this->form['request_date'],
+            'paid_on' => $this->form['paid_on'],
             'reference' => $this->form['reference'],
             'amount' => $amount,
-            'paid_on' => $this->form['already_paid'] ? ($this->form['paid_on'] ?: today()->toDateString()) : null,
             'note' => $this->form['note'],
             'lines' => $lines,
             'location_district_id' => $this->recordingDistrict(),
@@ -88,33 +83,6 @@ class Payments extends Component
         $this->prices = [];
         $this->resetErrorBag();
         $this->dispatch('toast', type: 'success', message: 'Payment recorded.');
-    }
-
-    public function openPay(int $paymentId): void
-    {
-        $this->guard('gwater.record');
-        $this->books(GwSupplierPayment::query())->findOrFail($paymentId);
-
-        $this->payingId = $paymentId;
-        $this->paidOn = today()->toDateString();
-        $this->resetErrorBag();
-    }
-
-    public function cancelPay(): void
-    {
-        $this->payingId = null;
-    }
-
-    public function pay(GwaterWorkflowService $workflow): void
-    {
-        $this->guard('gwater.record');
-        abort_unless($this->payingId, 422);
-
-        $payment = $this->books(GwSupplierPayment::query())->findOrFail($this->payingId);
-        $this->run(fn () => $workflow->markPaymentPaid($payment, $this->actor(), $this->paidOn), 'pay');
-
-        $this->cancelPay();
-        $this->dispatch('toast', type: 'success', message: 'Marked as paid.');
     }
 
     public function openVoid(int $paymentId): void
@@ -147,7 +115,7 @@ class Payments extends Component
 
     protected function resetForm(): void
     {
-        $this->form = ['request_date' => today()->toDateString(), 'reference' => '', 'amount' => '', 'already_paid' => false, 'paid_on' => today()->toDateString(), 'note' => ''];
+        $this->form = ['paid_on' => today()->toDateString(), 'reference' => '', 'amount' => '', 'note' => ''];
     }
 
     public function render(GwaterSummaryService $summary)
@@ -156,7 +124,7 @@ class Payments extends Component
 
         return view('livewire.gwater.payments', [
             'products' => GwProduct::query()->active()->orderBy('id')->get(),
-            'payments' => $location ? $this->books(GwSupplierPayment::query())->with(['lines.product', 'creator'])->orderByRaw('DATE(request_date) desc')->orderByDesc('id')->limit(100)->get() : collect(),
+            'payments' => $location ? $this->books(GwSupplierPayment::query())->with(['lines.product', 'creator'])->orderByRaw('DATE(COALESCE(paid_on, request_date)) desc')->orderByDesc('id')->limit(100)->get() : collect(),
             'statement' => $location ? $summary->owedStatement($location) : null,
             'canRecord' => $this->visibility()->can($this->actor(), 'gwater.record'),
             'canVoid' => $this->visibility()->can($this->actor(), 'gwater.void'),

@@ -249,6 +249,9 @@ class BillingAnalyticsService
                 'payment_for_month' => $t['payment_for_month'],
                 'prev_month_payment' => $t['prev_month_payment'],
                 'offset_payments' => $t['offset_payments'],
+                'receivable' => $t['total_receivable'],
+                // Against the amount DUE: opening balance + billing + adjustments (the report's "Total Receivable"), the fuller denominator.
+                'due_ratio' => ReadingAnalyticsService::rate($t['total_payments'], $t['total_receivable']),
                 'cash_ratio' => ReadingAnalyticsService::rate($t['total_payments'], $t['billing_for_period']),
                 'current_ratio' => ReadingAnalyticsService::rate($t['payment_for_month'], $t['billing_for_period']),
                 'prior_share' => ReadingAnalyticsService::rate($t['prev_month_payment'], $t['total_payments']),
@@ -273,8 +276,8 @@ class BillingAnalyticsService
     // ---------------------------------------------------------------- B7 balances
 
     /**
-     * B7: routes whose closing balance is negative (treated as customer credits, to be confirmed with the Commercial
-     * team): how many, how much, and the largest.
+     * B7: routes whose closing balance is negative (customer credits: the Commercial team confirmed on 2026-10-12 that a
+     * negative balance is a credit): how many, how much, and the largest.
      *
      * @return array<string, mixed>
      */

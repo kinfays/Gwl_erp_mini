@@ -65,6 +65,17 @@ return [
     'blog_module_enabled' => (bool) env('GWL_BLOG_MODULE_ENABLED', true),
     // Biggest cover photo accepted (MB). Keep at or below PHP upload_max_filesize / post_max_size.
     'blog_cover_max_mb' => (int) env('GWL_BLOG_COVER_MAX_MB', 3),
+    // Rich articles and pictures (docs/14-module-regional-blog.md). Every picture is checked by content, re-encoded and stored
+    // on the private disk; these are the limits. Keep blog_media_max_mb at or below PHP upload_max_filesize / post_max_size.
+    'blog_media_max_mb' => (int) env('GWL_BLOG_MEDIA_MAX_MB', 8),
+    'blog_media_max_dimension' => (int) env('GWL_BLOG_MEDIA_MAX_DIMENSION', 6000),
+    'blog_media_max_megapixels' => (int) env('GWL_BLOG_MEDIA_MAX_MEGAPIXELS', 24),
+    'blog_media_max_per_article' => (int) env('GWL_BLOG_MEDIA_MAX_PER_ARTICLE', 60),
+    // A picture uploaded but never used in an article is deleted by blog:prune-media after this many hours.
+    'blog_media_orphan_hours' => (int) env('GWL_BLOG_MEDIA_ORPHAN_HOURS', 24),
+    // Saved versions kept per article, and how often (seconds) the editor saves a DRAFT by itself.
+    'blog_revisions_keep' => (int) env('GWL_BLOG_REVISIONS_KEEP', 20),
+    'blog_autosave_seconds' => (int) env('GWL_BLOG_AUTOSAVE_SECONDS', 10),
 
     // G-Water (bottled and sachet water bought from G Water and sold by each location: prices, trips, daily sales, stock,
     // reimbursements): off by default; when off the routes don't register and the module is hidden from navigation
@@ -77,9 +88,8 @@ return [
     // (damaged / received) above this percentage is flagged.
     'gwater_low_stock_packs' => (int) env('GWL_GWATER_LOW_STOCK_PACKS', 50),
     'gwater_damage_rate_flag_pct' => (float) env('GWL_GWATER_DAMAGE_RATE_FLAG_PCT', 5),
-    // Reminders (php artisan gwater:remind, daily, needs the scheduler): a payment request still unpaid after this many days is
-    // overdue, and the same item is reminded about at most once per repeat interval. Each location may set its own.
-    'gwater_payment_overdue_days' => (int) env('GWL_GWATER_PAYMENT_OVERDUE_DAYS', 30),
+    // Reminders (php artisan gwater:remind, daily, needs the scheduler): low stock is reminded about at most once per repeat
+    // interval. Each location may set its own.
     'gwater_reminder_repeat_days' => (int) env('GWL_GWATER_REMINDER_REPEAT_DAYS', 7),
     // Most rows (all sheets together) one past-ledger import file may hold; the file is read into memory.
     'gwater_import_max_rows' => (int) env('GWL_GWATER_IMPORT_MAX_ROWS', 2000),

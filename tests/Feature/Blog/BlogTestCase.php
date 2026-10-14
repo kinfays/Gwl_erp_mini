@@ -136,6 +136,22 @@ abstract class BlogTestCase extends TestCase
         return $this->userWithRoles($staffId, ['super_admin']);
     }
 
+    // ---------------------------------------------------------------- editor documents
+
+    /** An editor document (as the browser would send it) made of plain paragraphs. */
+    protected function docJson(string ...$paragraphs): string
+    {
+        return json_encode($this->paragraphsDoc(...$paragraphs));
+    }
+
+    protected function paragraphsDoc(string ...$paragraphs): array
+    {
+        return ['type' => 'doc', 'content' => array_map(
+            fn (string $text) => ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $text]]],
+            $paragraphs ?: ['']
+        )];
+    }
+
     // ---------------------------------------------------------------- posts
 
     /** An article written straight to the database (bypassing the service). */

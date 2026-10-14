@@ -49,7 +49,7 @@ use RuntimeException;
  * What you get: the location's own price list (a price rise part-way through), an opening balance, a collection trip every
  * week (some with a Transport vehicle, mileage entry and fuel expense linked, some with fuel typed in G-Water, some with fuel
  * a member of staff paid out of pocket, a few of which are already paid back), daily sales Monday to Saturday (about one in seven on credit to named customers who pay in full, in part or not yet), a few damages
- * and other expenses, payment requests to G Water (most paid, one recent, one overdue), one voided sale, and a low-stock
+ * and other expenses, payments to G Water every fortnight, one voided sale, and a low-stock
  * limit for sachet water that makes the Overview show a flag. Everything goes through GwaterWorkflowService acting as the demo G-Water
  * users, so stock, prices, audit rows and reimbursement rules are exactly what the application produces; History is
  * back-dated by moving the clock (Carbon::setTestNow) to each day, restored in a finally.
@@ -377,7 +377,7 @@ class GwaterDemoSeeder extends Seeder
             'note' => 'Brought forward from the paper ledger',
         ]);
 
-        /** @var list<array{day: Carbon, packs: array<int, int>, trip: GwPurchase}> $delivered trips, for the payment requests */
+        /** @var list<array{day: Carbon, packs: array<int, int>, trip: GwPurchase}> $delivered trips, for the payments */
         $delivered = [];
         $toPay = [];       // [paying day, kind, id, reference, amount for a customer's payment]
         $tripNumber = 0;
@@ -386,13 +386,10 @@ class GwaterDemoSeeder extends Seeder
         for ($day = $start->copy()->addDay(); $day->lte($yesterday); $day->addDay()) {
             $age = (int) $start->diffInDays($day);
 
-            // Money paid back, and payment requests marked paid, on their later day.
+            // Money paid back, and what customers pay of their debts, on their later day.
             foreach ($toPay as $index => [$when, $kind, $id, $reference, $amount]) {
                 if ($day->toDateString() === $when) {
-                    if ($kind === 'payment') {
-                        $this->actingAt($day, $recorder);
-                        $this->workflow->markPaymentPaid(GwSupplierPayment::query()->findOrFail($id), $recorder, $day->toDateString());
-                    } elseif ($kind === 'receipt') {
+                    if ($kind === 'receipt') {
                         // A customer comes to pay what they owe, all or part of it.
                         $this->actingAt($day, $recorder);
                         $this->workflow->recordSaleReceipt($recorder, $id, ['amount' => $amount, 'received_on' => $day->toDateString(), 'reference' => $reference]);
@@ -488,23 +485,15 @@ class GwaterDemoSeeder extends Seeder
                 $this->counts['expenses']++;
             }
 
-            // A payment request to G Water every fortnight for what was delivered since the last one. Most are paid three days
-            // later; the one from five weeks ago is left unpaid (overdue) and the latest one is still waiting.
+            // A payment to G Water every fortnight for the packs delivered since the last one.
             if ($age >= 14 && $age % 14 === 0 && $delivered !== []) {
                 $this->actingAt($day, $recorder);
                 $payments++;
                 $lines = $this->deliveredLines($delivered, $day->copy()->subDays(14), $day, $bottle, $sachet);
 
                 if ($lines !== []) {
-                    $payment = $this->workflow->recordPayment($recorder, ['request_date' => $day->toDateString(), 'reference' => 'PR-'.(2600 + $payments), 'lines' => $lines]);
+                    $this->workflow->recordPayment($recorder, ['paid_on' => $day->toDateString(), 'reference' => 'PAY-'.(2600 + $payments), 'lines' => $lines]);
                     $this->counts['payments']++;
-
-                    $overdueOne = $age === 28;
-                    $latest = $age + 14 > self::DAYS;
-
-                    if (! $overdueOne && ! $latest) {
-                        $toPay[] = [$day->copy()->addDays(3)->toDateString(), 'payment', $payment->id, '', null];
-                    }
                 }
             }
         }
@@ -548,8 +537,7 @@ class GwaterDemoSeeder extends Seeder
             'waybill_no' => self::WAYBILL_PREFIX.(2900 + $number),
             'supplier_ref' => 'DN-'.(7100 + $number * 3),
             'lines' => [['product_id' => $bottle->id, 'packs' => $packs[$bottle->id]], ['product_id' => $sachet->id, 'packs' => $packs[$sachet->id]]],
-            'loading_amount' => $this->rng->getInt(5, 9) * 500,
-            'offloading_amount' => $this->rng->getInt(3, 6) * 500,
+            'loading_offloading_amount' => $this->rng->getInt(8, 15) * 500,
             'driver_id' => $driver->id,
         ];
         $fuel = $this->rng->getInt(24, 40) * 500;
@@ -588,7 +576,7 @@ class GwaterDemoSeeder extends Seeder
     }
 
     /**
-     * The packs delivered between two days, as payment-request lines (price per pack: the cost price in force).
+     * The packs delivered between two days, as payment lines (price per pack: the cost price in force).
      *
      * @param  list<array{day: Carbon, trip: array{packs: array<int, int>}}>  $delivered
      * @return list<array{product_id: int, packs: int}>
@@ -659,7 +647,6 @@ class GwaterDemoSeeder extends Seeder
         $owe = $summary->owedByCustomers($this->place);
         $this->checks[] = 'owed by customers: GH¢ '.Money::format($owe['total']).' ('.$owe['customers'].' customer(s) on '.$owe['count'].' credit sale(s))';
         $this->checks[] = 'fuel waiting to be paid back: '.$summary->pendingReimbursements($this->place)->count().' item(s)';
-        $this->checks[] = 'payment requests: '.GwSupplierPayment::query()->where('region_id', $this->region->id)->where('status', 'requested')->count().' waiting';
 
         $month = $profit->report($this->place, $this->today->copy()->subMonthNoOverflow()->startOfMonth(), $this->today->copy()->subMonthNoOverflow()->endOfMonth(), $recorder);
         $this->checks[] = 'last month: revenue GH¢ '.Money::format($month['combined']['revenue']).', net profit GH¢ '.Money::format($month['combined']['net_profit']);
@@ -683,7 +670,7 @@ class GwaterDemoSeeder extends Seeder
         }
 
         $this->command->info(sprintf(
-            'G-Water demo data for %s: %d trips, %d sales (%d on credit, %d customer payments, %d voided), %d damages, %d other expenses, %d payment requests, %d fuel items paid back.',
+            'G-Water demo data for %s: %d trips, %d sales (%d on credit, %d customer payments, %d voided), %d damages, %d other expenses, %d payments to G Water, %d fuel items paid back.',
             self::REGION_NAME,
             $this->counts['trips'],
             $this->counts['sales'],

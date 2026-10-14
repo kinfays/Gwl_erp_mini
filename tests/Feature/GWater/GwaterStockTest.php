@@ -103,7 +103,7 @@ class GwaterStockTest extends GwaterTestCase
     public function test_voiding_a_trip_takes_its_packs_back_out_unless_they_are_already_sold(): void
     {
         $user = $this->gw('G1', $this->sowutuom);
-        $trip = $this->trip($user, 'WB-1', 100, 20, '2026-06-01', ['loading_amount' => 5000]);
+        $trip = $this->trip($user, 'WB-1', 100, 20, '2026-06-01', ['loading_offloading_amount' => 5000]);
         $this->workflow()->recordSale($user, $this->saleData(70));
 
         try {

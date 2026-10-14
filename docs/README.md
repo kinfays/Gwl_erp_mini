@@ -17,7 +17,7 @@ This folder contains split documentation pages for easier maintenance.
 - Assets (inventory and agent): [assets-module.md](assets-module.md)
 - Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
 - Health & Safety — incident reporting (design, and Phase 1 as built): [health-safety-module-design.md](health-safety-module-design.md)
-- Regional Blog — PR articles read by the staff of one region: [14-module-regional-blog.md](14-module-regional-blog.md)
+- Regional Blog — a standalone, magazine-style blog (opened in a new tab from the ERP header) of the PR team's articles with a rich editor, pictures and galleries, read by the staff of one region; includes the editor's manual QA checklist: [14-module-regional-blog.md](14-module-regional-blog.md)
 - Commercial — billing and meter-reading analytics: [commercial-module-design.md](commercial-module-design.md)
 - Commercial — Customer List (millions of customers: import, rollups, analytics, privacy, benchmark): [15-module-commercial-customer-list.md](15-module-commercial-customer-list.md)
 - Commercial — SMS to customers (Arkesel, locked to Accra West: audiences, sending safety, delivery reports): [16-module-commercial-sms.md](16-module-commercial-sms.md)

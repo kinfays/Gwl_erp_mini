@@ -2,6 +2,7 @@
 
 namespace App\Services\Blog;
 
+use App\Models\BlogMedia;
 use App\Models\BlogPost;
 use App\Models\Employee;
 use App\Models\Region;
@@ -97,6 +98,40 @@ class BlogVisibility
         }
 
         return $this->limitToRegions($query, $user);
+    }
+
+    /**
+     * May this person be sent this picture? Its region comes first (a reader of another region gets a 404, as for an article).
+     * The region's writers see every picture of the region, uploaded or not, draft or published. A reader is only given a
+     * picture that a PUBLISHED article of their region currently shows (so a draft's pictures and a picture the author
+     * took out stay private).
+     */
+    public function canViewMedia(User $user, BlogMedia $media): bool
+    {
+        if (! $this->inRegion($user, (int) $media->region_id)) {
+            return false;
+        }
+
+        if ($this->canManageIn($user, (int) $media->region_id)) {
+            return true;
+        }
+
+        if (! $media->in_use || $media->blog_post_id === null) {
+            return false;
+        }
+
+        $post = $media->relationLoaded('post') ? $media->post : BlogPost::query()->find($media->blog_post_id);
+
+        return $post !== null && $this->canRead($user, $post) && $post->isPublished();
+    }
+
+    /** The pictures of the published articles the user may read (the photo gallery page). */
+    public function scopeGallery(Builder $query, User $user): Builder
+    {
+        return $query
+            ->where('blog_media.in_use', true)
+            ->whereIn('blog_media.kind', [BlogMedia::KIND_INLINE, BlogMedia::KIND_GALLERY])
+            ->whereHas('post', fn (Builder $post) => $this->scopeFeed($post, $user));
     }
 
     /**

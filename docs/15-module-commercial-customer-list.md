@@ -49,7 +49,7 @@ style, keeps the original row numbers, and opens sheets by **name**. OpenSpout s
 4. **Arrears have no age in the file.** "Arrears aging" is therefore *how many of the customer's last bills are owed*
    (balance ÷ last bill): credit, nil, up to 1, 1 to 3, 3 to 6, 6 to 12, over 12 bills, and "owes with no usable last bill". The limits
    are `commercial_customer_arrears_bills` in `config/gwl.php`.
-5. **Sign of a balance is unconfirmed**: positive is treated as owed (debit), negative as a credit, and every screen says "to be confirmed".
+5. **Sign of a balance (confirmed by the Commercial team, 2026-10-12)**: positive is owed (debit), a negative balance is a customer credit.
 6. **Status codes TRFR, VACN, DISO, NFLO are unconfirmed**: stored with `meaning_confirmed = false`, shown everywhere as their raw code
    (never a guess), editable on the settings screen. ACTN, ACTB, DISC and SUSP are as you described.
 7. **The category grouping is a proposal** (`group_is_proposed`): Domestic, Commercial, Industrial, Institutions/Government, Bulk & Tanker,
@@ -202,6 +202,7 @@ Median and top-N facts are computed at import from the `(district_id, balance)` 
 | F. Growth & churn | new connections by month (24 months) and group, status migration matrix of an upload, reconnections (DISC to ACTB), net change, not in latest file, moved accounts | connections, change log, batches |
 | G. Consumption | average consumption distribution, typical (median) per category, outliers above N x median, zero-consumption billed accounts, meter-factor anomalies | consumption |
 | H. Data quality | counts and a drill-down list for: no mobile / e-mail / address / name, invalid phone, two or more mobile numbers, reachable (at least one valid number), future or implausible dates, UNKNOWN or unreviewed category, unconfirmed status, shared meter / mobile / e-mail, not in latest file; contact completeness per district | quality + issue lists |
+| J. Coverage & efficiency | active accounts; billing coverage (eligible accounts with a valid bill in the last 30 days); meter-reading coverage (eligible metered accounts read in the last 30 days); estimated-reading rate; what customers owe by time since their last payment; owed with no payment in 90 days by district. Eligible = billing accounts (ACTB). Needs batches built after migration 2026_10_22_000001 (rollup_version 2) | rollups |
 | I. Trends & compare | period-by-period series, district league table with ranks, selection vs company | district rollups |
 
 Filters: period, region (all-region viewers), district, route, category group, status, meter status, billing accounts only. Data-quality lists

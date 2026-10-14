@@ -15,7 +15,8 @@
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^4.2",
         "maatwebsite/excel": "^4.0",
-        "openspout/openspout": "^5.12"
+        "openspout/openspout": "^5.12",
+        "symfony/html-sanitizer": "^8.1"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

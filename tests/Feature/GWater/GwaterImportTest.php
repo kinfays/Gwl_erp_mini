@@ -75,11 +75,11 @@ class GwaterImportTest extends GwaterTestCase
     {
         return [
             'Opening balance' => [['as_of_date', 'bottle_packs', 'bottle_outstanding_packs', 'owed_amount'], ['01/01/2026', 100, 20, '50.00']],
-            'Purchases' => [['purchase_date', 'waybill_no', 'bottle_packs', 'bottle_unit_cost', 'loading_amount'], ['01/06/2026', 'WB-1', 50, '20.00', '10.00']],
+            'Purchases' => [['purchase_date', 'waybill_no', 'bottle_packs', 'bottle_unit_cost', 'loading_offloading_amount'], ['01/06/2026', 'WB-1', 50, '20.00', '10.00']],
             'Daily sales' => [['sale_date', 'product', 'packs'], ['02/06/2026', 'bottle', 30]],
             'Damages' => [['damage_date', 'product', 'packs', 'stage', 'reason', 'waybill_no'], ['03/06/2026', 'bottle', 2, 'transit', 'Burst', 'WB-1']],
             'Expenses' => [['expense_date', 'category', 'amount', 'receipt_ref'], ['03/06/2026', 'other', '5.00', 'R-1']],
-            'Payments' => [['request_date', 'reference', 'amount', 'paid_on'], ['04/06/2026', 'PR-1', '100.00', '05/06/2026']],
+            'Payments' => [['paid_on', 'reference', 'amount'], ['05/06/2026', 'PR-1', '100.00']],
         ];
     }
 
@@ -140,11 +140,11 @@ class GwaterImportTest extends GwaterTestCase
         $this->actingAs($typist);
         $w = $this->workflow();
         $w->recordOpeningBalance($typist, ['as_of_date' => '2026-01-01', 'packs' => [$this->bottle->id => 100], 'outstanding' => [$this->bottle->id => 20], 'owed_amount' => 5000]);
-        $trip = $w->recordPurchase($typist, ['purchase_date' => '2026-06-01', 'waybill_no' => 'WB-1', 'lines' => [['product_id' => $this->bottle->id, 'packs' => 50]], 'loading_amount' => 1000]);
+        $trip = $w->recordPurchase($typist, ['purchase_date' => '2026-06-01', 'waybill_no' => 'WB-1', 'lines' => [['product_id' => $this->bottle->id, 'packs' => 50]], 'loading_offloading_amount' => 1000]);
         $w->recordSale($typist, $this->saleData(30, '2026-06-02'));
         $w->recordDamage($typist, ['damage_date' => '2026-06-03', 'product_id' => $this->bottle->id, 'packs' => 2, 'stage' => 'transit', 'reason' => 'Burst', 'purchase_id' => $trip->id]);
         $w->recordExpense($typist, ['expense_date' => '2026-06-03', 'category' => 'other', 'amount' => 500, 'receipt_ref' => 'R-1']);
-        $w->recordPayment($typist, ['request_date' => '2026-06-04', 'reference' => 'PR-1', 'amount' => 10000, 'paid_on' => '2026-06-05']);
+        $w->recordPayment($typist, ['paid_on' => '2026-06-05', 'reference' => 'PR-1', 'amount' => 10000]);
 
         $at = fn ($district) => ['region_id' => $district->region_id, 'district_id' => $district->id];
         $stock = app(GwaterStockService::class);
@@ -178,7 +178,7 @@ class GwaterImportTest extends GwaterTestCase
         $sheets['Damages'][] = ['04/06/2026', 'bottle', 1, 'transit', 'Spilt', 'NO-SUCH']; // unknown waybill
         $sheets['Expenses'][] = ['04/06/2026', 'party', '5.00', ''];
         $sheets['Expenses'][] = ['04/06/2026', 'other', 'five', ''];
-        $sheets['Payments'][] = ['04/06/2026', 'PR-1', '1.00', ''];                       // reference already used in the file
+        $sheets['Payments'][] = ['06/06/2026', 'PR-1', '1.00'];                       // reference already used in the file
 
         $preview = $this->importer()->preview($this->workbook($sheets), $user);
         $messages = collect($preview['errors'])->mapWithKeys(fn ($e) => [$e['sheet'].'|'.$e['row'] => $e['message']]);

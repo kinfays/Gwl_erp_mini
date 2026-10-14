@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\GWater;
 
+use App\Models\GwExpense;
+use App\Models\GwPurchase;
 use App\Models\User;
 use App\Models\VehicleExpense;
 use App\Services\GWater\GwaterProfitService;
@@ -11,7 +13,7 @@ use Illuminate\Support\Carbon;
  * GwaterProfitService against a hand-worked month, in pesewas. The clock is fixed at 11 Oct 2026, so October is "in progress".
  *
  * October at Sowutuom (Accra West), with the location's own prices: bottle sells 25.00 / costs 20.00 until 7 Oct, then 27.00 / 24.00.
- *   1 Oct  trip T1: 100 bottle @ 20.00, 60 sachet @ 8.00; Transport fuel 100.00 (100 km run); loading 30.00; offloading 20.00
+ *   1 Oct  trip T1: 100 bottle @ 20.00, 60 sachet @ 8.00; Transport fuel 100.00 (100 km run); loading / offloading 50.00
  *   3 Oct  sell 40 bottle @ 25.00 (cost 20.00 each)
  *   4 Oct  other expense 25.00
  *   5 Oct  sell 20 sachet @ 10.00 (cost 8.00 each)
@@ -62,7 +64,7 @@ class GwaterProfitTest extends GwaterTestCase
             'purchase_date' => '2026-10-01', 'waybill_no' => 'T1',
             'lines' => [['product_id' => $this->bottle->id, 'packs' => 100], ['product_id' => $this->sachet->id, 'packs' => 60]],
             'vehicle_id' => $vehicle->id, 'mileage_log_id' => $log->id, 'vehicle_expense_id' => $fuel->id,
-            'loading_amount' => 3000, 'offloading_amount' => 2000,
+            'loading_offloading_amount' => 5000,
         ]);
         $w->recordSale($this->user, $this->saleData(40, '2026-10-03'));
         $w->recordExpense($this->user, ['expense_date' => '2026-10-04', 'category' => 'other', 'amount' => 2500]);
@@ -75,7 +77,7 @@ class GwaterProfitTest extends GwaterTestCase
         $t2 = $w->recordPurchase($this->user, [
             'purchase_date' => '2026-10-09', 'waybill_no' => 'T2',
             'lines' => [['product_id' => $this->bottle->id, 'packs' => 50]],
-            'fuel_amount' => 8000, 'loading_amount' => 1000,
+            'fuel_amount' => 8000, 'loading_offloading_amount' => 1000,
         ]);
         $w->recordSale($this->user, $this->saleData(60, '2026-10-10'));
 
@@ -89,7 +91,8 @@ class GwaterProfitTest extends GwaterTestCase
         $all = $report['combined'];
 
         $this->assertSame([282000, 228000, 54000], [$all['revenue'], $all['cost_of_sales'], $all['gross_profit']]);
-        $this->assertSame([20000, 18000, 4000, 2000, 6000, 2500], [$all['damages'], $all['fuel'], $all['loading'], $all['offloading'], $all['labour'], $all['other']]);
+        $this->assertSame([20000, 18000, 6000, 2500], [$all['damages'], $all['fuel'], $all['loading_offloading'], $all['other']]);
+        $this->assertArrayNotHasKey('offloading', $all);
         $this->assertSame(7500, $all['net_profit']);
 
         $bottle = $report['products']['bottle'];
@@ -148,7 +151,7 @@ class GwaterProfitTest extends GwaterTestCase
         $this->workedMonth();
         $trips = collect($this->october()['trips'])->keyBy('waybill');
 
-        // T1: 160 packs bought for 2,480.00; fuel 100.00 (Transport), loading 30.00, offloading 20.00; 100 km run.
+        // T1: 160 packs bought for 2,480.00; fuel 100.00 (Transport), loading / offloading 50.00; 100 km run.
         $this->assertSame([160, 248000, 10000, 'Transport', 15000], [$trips['T1']['packs'], $trips['T1']['purchase_cost'], $trips['T1']['fuel'], $trips['T1']['fuel_source'], $trips['T1']['trip_cost']]);
         $this->assertSame([1644, 94, 100, 100, 150], [$trips['T1']['landed_cost_per_pack'], $trips['T1']['trip_cost_per_pack'], $trips['T1']['km'], $trips['T1']['fuel_per_km'], $trips['T1']['trip_cost_per_km']]);
         $this->assertSame('ACC-1', $trips['T1']['vehicle']);
@@ -164,7 +167,7 @@ class GwaterProfitTest extends GwaterTestCase
         $report = $this->october();
         $combined = $report['combined'];
 
-        $this->assertSame($combined['gross_profit'] - $combined['damages'] - $combined['fuel'] - $combined['labour'] - $combined['other'], $combined['net_profit']);
+        $this->assertSame($combined['gross_profit'] - $combined['damages'] - $combined['fuel'] - $combined['loading_offloading'] - $combined['other'], $combined['net_profit']);
 
         // A further damage of 5 packs lowers net profit by exactly 5 x the cost frozen on it.
         $this->workflow()->recordDamage($this->user, ['damage_date' => '2026-10-10', 'product_id' => $this->bottle->id, 'packs' => 5, 'stage' => 'storage', 'reason' => 'Cracked']);
@@ -261,6 +264,34 @@ class GwaterProfitTest extends GwaterTestCase
         $this->assertSame(5 * 2600, $ho['combined']['revenue'], 'Head Office sells at the placeholder price and has only its own sale');
         $this->assertNotSame($region['combined']['revenue'], $ho['combined']['revenue']);
         $this->assertSame(['HO-1'], array_column($ho['trips'], 'waybill'));
+    }
+
+    public function test_loading_and_offloading_are_one_payment_and_old_offloading_rows_still_count(): void
+    {
+        $this->workedMonth();
+        $before = $this->october()['combined'];
+
+        // New entries accept only the one category; the retired 'offloading' is refused...
+        try {
+            $this->workflow()->recordExpense($this->user, ['expense_date' => '2026-10-06', 'category' => 'offloading', 'amount' => 1000]);
+            $this->fail('offloading is no longer a separate category');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('category', $exception->errors());
+        }
+
+        // ...but a row written before the change is counted into the same figure, on the P&L and in the trip's cost.
+        $trip = GwPurchase::query()->where('waybill_no', 'T1')->firstOrFail();
+        GwExpense::query()->create([
+            'region_id' => $trip->region_id, 'district_id' => $trip->district_id, 'expense_date' => '2026-10-02', 'category' => 'offloading',
+            'amount' => 700, 'purchase_id' => $trip->id, 'reimbursement_status' => 'not_applicable', 'status' => 'posted', 'created_by' => $this->user->id,
+        ]);
+        \App\Services\GWater\GwaterBooksVersion::touch($this->place);
+
+        $after = $this->october();
+
+        $this->assertSame($before['loading_offloading'] + 700, $after['combined']['loading_offloading']);
+        $this->assertSame($before['net_profit'] - 700, $after['combined']['net_profit']);
+        $this->assertSame(15700, collect($after['trips'])->firstWhere('waybill', 'T1')['trip_cost']);
     }
 
     public function test_owed_to_g_water_is_the_one_in_the_report(): void

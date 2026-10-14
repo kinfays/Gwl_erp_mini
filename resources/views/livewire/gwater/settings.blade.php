@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Settings" description="When stock counts as low and when a payment request counts as overdue for your location. Reminders use these values." />
+    <x-ui.page-header title="Settings" description="When stock counts as low for your location, and how often the reminder is repeated." />
 
     @include('livewire.gwater.partials.location-picker')
 

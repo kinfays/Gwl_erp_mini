@@ -87,8 +87,7 @@ class GwaterExportService
             $row('Gross profit (GH¢)', 'gross_profit'),
             $row('Damages written off at cost (GH¢)', 'damages'),
             $row('Fuel (GH¢)', 'fuel', true, true),
-            $row('Loading (GH¢)', 'loading', true, true),
-            $row('Offloading (GH¢)', 'offloading', true, true),
+            $row('Loading / offloading (GH¢)', 'loading_offloading', true, true),
             $row('Other expenses (GH¢)', 'other', true, true),
             $row('Net profit (GH¢)', 'net_profit', true, true),
         ];
@@ -109,7 +108,7 @@ class GwaterExportService
 
         $trips = collect($report['trips'])->map(fn (array $trip) => [
             Carbon::parse($trip['date'])->format('d M Y'), $trip['waybill'], $trip['vehicle'] ?? '', $trip['packs'], $this->cell($trip['purchase_cost']),
-            $this->cell($trip['fuel']), $trip['fuel_source'], $this->cell($trip['loading']), $this->cell($trip['offloading']), $this->cell($trip['trip_cost']),
+            $this->cell($trip['fuel']), $trip['fuel_source'], $this->cell($trip['loading_offloading']), $this->cell($trip['trip_cost']),
             $this->cell($trip['landed_cost_per_pack']), $this->cell($trip['trip_cost_per_pack']), $trip['km'] ?? '', $this->cell($trip['trip_cost_per_km']),
         ])->all();
 
@@ -122,7 +121,7 @@ class GwaterExportService
         return $this->report('pnl', $meta, $notes, [
             ['title' => 'Profit and loss', 'headings' => ['Line', ...array_keys($columns)], 'rows' => $lines],
             ['title' => 'Measures', 'headings' => ['Measure', ...array_keys($columns)], 'rows' => $measures],
-            ['title' => 'Trip costs', 'headings' => ['Date', 'Waybill', 'Vehicle', 'Packs', 'Bought (GH¢)', 'Fuel (GH¢)', 'Fuel from', 'Loading (GH¢)', 'Offloading (GH¢)', 'Trip cost (GH¢)', 'Landed cost per pack (GH¢)', 'Trip cost per pack (GH¢)', 'Km', 'Trip cost per km (GH¢)'], 'rows' => $trips],
+            ['title' => 'Trip costs', 'headings' => ['Date', 'Waybill', 'Vehicle', 'Packs', 'Bought (GH¢)', 'Fuel (GH¢)', 'Fuel from', 'Loading / offloading (GH¢)', 'Trip cost (GH¢)', 'Landed cost per pack (GH¢)', 'Trip cost per pack (GH¢)', 'Km', 'Trip cost per km (GH¢)'], 'rows' => $trips],
             ['title' => 'Owed to G Water', 'headings' => ['Measure', 'GH¢'], 'rows' => [['Owed at the end of the period', $this->cell($report['owed'])]]],
         ], $from, $to);
     }
@@ -169,7 +168,7 @@ class GwaterExportService
 
         return $this->report('expenses', $meta, [
             'Fuel that a trip takes from Transport is not here: it is read from Transport and shown in the trip costs of the profit and loss.',
-            'Only fuel is paid back; loading and offloading are paid in cash.',
+            'Only fuel is paid back; loading / offloading is paid in cash.',
         ], [['title' => 'Expenses', 'headings' => ['Date', 'Category', 'Amount (GH¢)', 'Waybill', 'Vehicle', 'Paid to', 'Receipt', 'Paid out of pocket by', 'Pay-back', 'Status'], 'rows' => $rows]], $from, $to);
     }
 
@@ -194,12 +193,12 @@ class GwaterExportService
     protected function payments(array $location, Carbon $from, Carbon $to, array $meta): array
     {
         $payments = $this->visibility->atLocation(GwSupplierPayment::query(), $location)->with(['lines.product'])
-            ->whereDate('request_date', '>=', $from->toDateString())->whereDate('request_date', '<=', $to->toDateString())
-            ->orderByRaw('DATE(request_date) asc')->orderBy('id')->get();
+            ->whereRaw('DATE(COALESCE(paid_on, request_date)) >= ?', [$from->toDateString()])->whereRaw('DATE(COALESCE(paid_on, request_date)) <= ?', [$to->toDateString()])
+            ->orderByRaw('DATE(COALESCE(paid_on, request_date)) asc')->orderBy('id')->get();
 
         $rows = $payments->map(fn (GwSupplierPayment $p) => [
-            $p->request_date->format('d M Y'), $p->reference, $p->lines->map(fn ($l) => $l->packs.' × '.$l->product->name)->implode('; '), $this->cell($p->amount),
-            $p->paid_on?->format('d M Y') ?? '', $p->isVoided() ? 'Voided: '.$p->void_reason : ucfirst($p->status),
+            ($p->paid_on ?? $p->request_date)->format('d M Y'), $p->reference, $p->lines->map(fn ($l) => $l->packs.' × '.$l->product->name)->implode('; '), $this->cell($p->amount),
+            $p->isVoided() ? 'Voided: '.$p->void_reason : 'Paid',
         ])->all();
 
         $statement = $this->summary->owedStatement($location, $to);
@@ -208,10 +207,10 @@ class GwaterExportService
         ])->values()->all();
 
         return $this->report('payments', $meta, [
-            'Owed = opening amount owed + trips at the cost they were bought at - payments marked paid.',
+            'Owed = opening balance + trips at the cost they were bought at - payments made.',
             'The statement starts with the balance carried from before the period: its first balance includes earlier lines.',
         ], [
-            ['title' => 'Payment requests and payments', 'headings' => ['Requested', 'Reference', 'Packs', 'Amount (GH¢)', 'Paid on', 'Status'], 'rows' => $rows],
+            ['title' => 'Payments to G Water', 'headings' => ['Date paid', 'Reference', 'Packs', 'Amount (GH¢)', 'Status'], 'rows' => $rows],
             ['title' => 'Statement of the account', 'headings' => ['Date', 'Entry', 'Owed (GH¢)', 'Paid (GH¢)', 'Balance (GH¢)'], 'rows' => $lines],
             ['title' => 'Owed to G Water at the end of the period', 'headings' => ['Measure', 'GH¢'], 'rows' => [['Owed', $this->cell($statement['owed'])]]],
         ], $from, $to);

@@ -6,7 +6,7 @@
 @php($pct = fn ($value) => $value === null ? 'n/a' : number_format($value, 1).'%')
 
 <div>
-    <x-ui.page-header title="Profit and loss" description="Revenue less the cost of the water sold, damages, fuel, loading and offloading and other costs, for your location. Amounts are in GH¢.">
+    <x-ui.page-header title="Profit and loss" description="Revenue less the cost of the water sold, damages, fuel, loading / offloading and other costs, for your location. Amounts are in GH¢.">
         @if ($report && $canExport)
             <x-slot:actions>
                 <x-ui.button :href="route('gwater.export', ['report' => 'pnl', 'format' => 'excel'] + $exportQuery)" icon="file-spreadsheet">Excel</x-ui.button>
@@ -70,8 +70,7 @@
                     ['Gross profit', 'gross_profit', true, false],
                     ['Damages (written off at cost)', 'damages', true, false],
                     ['Fuel', 'fuel', true, true],
-                    ['Loading', 'loading', true, true],
-                    ['Offloading', 'offloading', true, true],
+                    ['Loading / offloading', 'loading_offloading', true, true],
                     ['Other expenses', 'other', true, true],
                     ['Net profit', 'net_profit', true, true],
                 ] as [$label, $key, $isMoney, $combinedOnly])
@@ -84,7 +83,7 @@
                     </tr>
                 @endforeach
             </x-ui.table>
-            <p class="cell-muted" style="padding:8px 14px">Fuel, loading, offloading and other costs belong to trips, not to products, so net profit is a combined figure.</p>
+            <p class="cell-muted" style="padding:8px 14px">Fuel, loading / offloading and other costs belong to trips, not to products, so net profit is a combined figure.</p>
         </x-ui.card>
 
         <x-ui.card title="Measures" :padded="false" class="dash-row">
@@ -141,7 +140,7 @@
             <x-ui.table label="Trip costs">
                 <x-slot:head>
                     <tr>
-                        <th>Date</th><th>Waybill</th><th>Vehicle</th><th class="num">Packs</th><th class="num">Bought</th><th class="num">Fuel</th><th class="num">Loading + offloading</th>
+                        <th>Date</th><th>Waybill</th><th>Vehicle</th><th class="num">Packs</th><th class="num">Bought</th><th class="num">Fuel</th><th class="num">Loading / offloading</th>
                         <th class="num">Landed cost per pack</th><th class="num">Trip cost per pack</th><th class="num">Trip cost per km</th>
                     </tr>
                 </x-slot:head>
@@ -157,7 +156,7 @@
                             @if ($trip['fuel_source'] === 'Transport')<div><x-ui.badge tone="lagoon">From Transport</x-ui.badge></div>@endif
                             @if ($trip['changed_in_transport'])<div class="cell-muted">changed in Transport</div>@endif
                         </td>
-                        <td class="num">{{ $money($trip['loading'] + $trip['offloading']) }}</td>
+                        <td class="num">{{ $money($trip['loading_offloading']) }}</td>
                         <td class="num">{{ $trip['landed_cost_per_pack'] === null ? 'n/a' : $money($trip['landed_cost_per_pack']) }}</td>
                         <td class="num">{{ $trip['trip_cost_per_pack'] === null ? 'n/a' : $money($trip['trip_cost_per_pack']) }}</td>
                         <td class="num">{{ $trip['trip_cost_per_km'] === null ? 'n/a' : $money($trip['trip_cost_per_km']).' ('.number_format($trip['km']).' km)' }}</td>

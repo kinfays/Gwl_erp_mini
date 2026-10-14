@@ -4,6 +4,7 @@ namespace Tests\Feature\Blog;
 
 use App\Livewire\Blog\Feed;
 use App\Models\Permission;
+use App\Support\ErpNavigation;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -96,7 +97,7 @@ class BlogReadingTest extends BlogTestCase
             ->assertSee('Training')
             ->assertSee('Regional conference room')
             ->assertSee('Odorkor')
-            ->assertSee('05 Oct 2026')
+            ->assertSee('5 October 2026')
             ->assertSee('First paragraph.')
             ->assertSee('<li>one</li>', false);
     }
@@ -204,19 +205,9 @@ class BlogReadingTest extends BlogTestCase
 
         $this->assertNotContains(
             'blog',
-            collect(app(\App\Support\ErpNavigation::class)->build($this->reader(), 'home')['modules'])->pluck('slug')->all()
+            collect(app(ErpNavigation::class)->build($this->reader(), 'home')['modules'])->pluck('slug')->all()
         );
     }
 
-    public function test_the_blog_tab_and_sidebar_show_for_readers_and_the_manage_links_only_for_writers(): void
-    {
-        $navigation = app(\App\Support\ErpNavigation::class);
-
-        $reader = $navigation->build($this->reader(), 'blog');
-        $this->assertContains('blog', collect($reader['modules'])->pluck('slug')->all());
-        $this->assertSame(['blog.home'], collect($reader['sidebar'])->pluck('route')->all());
-
-        $officer = $navigation->build($this->prOfficer(), 'blog');
-        $this->assertSame(['blog.home', 'blog.manage', 'blog.create'], collect($officer['sidebar'])->pluck('route')->all());
-    }
+    // The module tab and sidebar are gone: see BlogNavigationTest for the header link that replaced them.
 }

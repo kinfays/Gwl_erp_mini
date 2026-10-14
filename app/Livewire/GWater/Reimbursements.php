@@ -11,7 +11,7 @@ use Livewire\Component;
 /**
  * Fuel staff paid out of pocket, waiting to be paid back, per person with totals; and the ones already paid. Marking one
  * reimbursed needs gwater.reimburse and never the person who recorded the entry (or paid the fuel): the service enforces it, the
- * screen only explains it. Only fuel is reimbursable; loading and offloading are paid in cash.
+ * screen only explains it. Only fuel is reimbursable; loading / offloading is paid in cash.
  */
 class Reimbursements extends Component
 {

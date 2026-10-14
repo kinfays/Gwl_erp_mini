@@ -51,6 +51,20 @@ class CommercialModuleController extends Controller
         return view('commercial.billing');
     }
 
+    public function kpis(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.kpis');
+    }
+
+    public function kpiTargets(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.kpi-targets');
+    }
+
     public function readerShow(Request $request, string $staffId): View
     {
         $this->enforceModule($request, Permission::MODULE_COMMERCIAL);

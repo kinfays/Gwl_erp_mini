@@ -8,7 +8,7 @@
         $pct = fn ($value, $digits = 1) => $value === null ? '–' : number_format($value, $digits).'%';
         $signedMoney = fn ($value) => $value === null ? '–' : ($value > 0 ? '+' : '').number_format($value, 2);
         $signedPts = fn ($value) => $value === null ? '–' : ($value > 0 ? '+' : '').number_format($value, 1).' pts';
-        $creditHint = 'Negative balances are treated as customer credits (to be confirmed with the Commercial team).';
+        $creditHint = 'A negative balance is a customer credit (confirmed by the Commercial team).';
         $flagLabels = ['zero_activity' => 'No activity', 'heavy_credit' => 'Heavy credit', 'high_unbilled' => 'High unbilled', 'high_estimation' => 'High estimation'];
         $drill = fn ($key, $extra = []) => route('commercial.billing', array_filter(['snapshot' => $chosen['id'] ?? null, 'tab' => $activeTab, 'district' => $key, ...$extra]));
     @endphp
@@ -161,6 +161,7 @@
             @php $total = $collections['total']; @endphp
             <div class="ui-stat-grid dash-row">
                 <x-ui.stat-tile label="Cash collection ratio" :value="$pct($total['cash_ratio'])" icon="trending-up" tone="primary" :meta="'Payments ÷ billing. Configured target: '.number_format($collections['target'], 0).'% (placeholder)'" />
+                <x-ui.stat-tile label="Collected of the amount due" :value="$pct($total['due_ratio'])" icon="receipt" tone="primary" :meta="'Payments ÷ amount due (opening balance + billing + adjustments): GH¢ '.$money($total['receivable'])" />
                 <x-ui.stat-tile label="Collected against this period's billing" :value="$pct($total['current_ratio'])" icon="receipt" :meta="'Payment for the month ÷ billing'" />
                 <x-ui.stat-tile label="Cash that was arrears from earlier months" :value="$pct($total['prior_share'])" icon="calendar-days" tone="warning" :meta="'Previous-month payments ÷ total payments'" />
                 <x-ui.stat-tile label="Payments" :value="'GH¢ '.$money($total['payments'])" icon="banknote" tone="success" :meta="'Billing GH¢ '.$money($total['billing'])" />
@@ -199,7 +200,7 @@
             <x-ui.card title="Collection by district" :padded="false" class="dash-row">
                 <x-ui.table label="Collection ratios by district" :sticky="false">
                     <x-slot:head>
-                        <tr><th>District</th><th class="num">Billing (GH¢)</th><th class="num">Payments (GH¢)</th><th class="num">Cash collection ratio</th><th class="num">Against this period</th><th class="num">Arrears share of cash</th></tr>
+                        <tr><th>District</th><th class="num">Billing (GH¢)</th><th class="num">Payments (GH¢)</th><th class="num">Cash collection ratio</th><th class="num">Against this period</th><th class="num">Amount due (GH¢)</th><th class="num">Collected of amount due</th><th class="num">Arrears share of cash</th></tr>
                     </x-slot:head>
                     @forelse ($collections['districts'] as $row)
                         <tr wire:key="colr-{{ $row['key'] }}">
@@ -208,10 +209,12 @@
                             <td class="num">{{ $money($row['payments']) }}</td>
                             <td class="num"><strong>{{ $pct($row['cash_ratio']) }}</strong></td>
                             <td class="num">{{ $pct($row['current_ratio']) }}</td>
+                            <td class="num">{{ $money($row['receivable']) }}</td>
+                            <td class="num">{{ $pct($row['due_ratio']) }}</td>
                             <td class="num">{{ $pct($row['prior_share']) }}</td>
                         </tr>
                     @empty
-                        <x-ui.empty-row :colspan="6" icon="map" title="No routes in this snapshot." />
+                        <x-ui.empty-row :colspan="8" icon="map" title="No routes in this snapshot." />
                     @endforelse
                     <tr class="ui-total-row">
                         <td><strong>All shown</strong></td>
@@ -219,6 +222,8 @@
                         <td class="num">{{ $money($total['payments']) }}</td>
                         <td class="num"><strong>{{ $pct($total['cash_ratio']) }}</strong></td>
                         <td class="num">{{ $pct($total['current_ratio']) }}</td>
+                        <td class="num">{{ $money($total['receivable']) }}</td>
+                        <td class="num">{{ $pct($total['due_ratio']) }}</td>
                         <td class="num">{{ $pct($total['prior_share']) }}</td>
                     </tr>
                 </x-ui.table>

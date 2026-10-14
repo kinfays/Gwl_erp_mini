@@ -82,6 +82,7 @@
                     'url' => $item['url'],
                     'icon' => $item['icon_name'] ?? 'circle',
                 ]))
+                ->when(! empty($navigation['blog']), fn ($items) => $items->push(['label' => __('Regional Blog (new tab)'), 'group' => __('Portal'), 'url' => $navigation['blog']['url'], 'icon' => 'scroll-text']))
                 ->push(['label' => __('Profile'), 'group' => __('Account'), 'url' => route('profile.edit'), 'icon' => 'user-round'])
                 ->unique('url')
                 ->values()
@@ -143,6 +144,20 @@
                         <kbd>Ctrl K</kbd>
                     </button>
 
+                    @if (! empty($navigation['blog']))
+                        {{-- The Regional Blog is a standalone blog, not a module: it opens in its own tab and shares this login. --}}
+                        <a
+                            href="{{ $navigation['blog']['url'] }}"
+                            target="_blank"
+                            rel="noopener"
+                            class="icon-btn blog-link"
+                            title="{{ __('Regional Blog (opens in a new tab)') }}"
+                            aria-label="{{ __('Regional Blog (opens in a new tab)') }}"
+                        >
+                            <x-ui.icon name="{{ $navigation['blog']['icon_name'] }}" />
+                            <span class="blog-link-label" aria-hidden="true">{{ __('Blog') }}</span>
+                        </a>
+                    @endif
                     <livewire:notifications.general-bell />
 
                     {{-- The letters bell on every page for anyone with the Letters module: a manager handed a letter is usually in Leave. --}}

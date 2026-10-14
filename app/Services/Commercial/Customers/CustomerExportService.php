@@ -65,6 +65,13 @@ class CustomerExportService
             ]],
             ['title' => 'Bills owed', 'headings' => ['Bucket', 'Customers', 'Share (%)'], 'rows' => array_map(fn ($b) => [$b['label'], $b['customers'], $b['share'] ?? ''], $r['buckets'])],
             ['title' => 'No activity', 'headings' => ['Window (days)', 'No read', 'No bill', 'No payment'], 'rows' => array_map(fn ($w) => [$w['days'], $w['no_read'], $w['no_bill'], $w['no_pay']], $d['windows'])],
+            ...(($c = $sections['coverage'] ?? null) && ($c['available'] ?? false) ? [
+                ['title' => 'Coverage', 'headings' => ['District', 'Active accounts', 'Eligible (billing) accounts', 'Billing coverage (%)', 'Metered', 'Reading coverage (%)', 'Estimated rate (%)'], 'rows' => [
+                    ...array_map(fn ($row) => [$row['label'], $row['active'], $row['eligible'], $row['billing_coverage'] ?? '', $row['metered'], $row['reading_coverage'] ?? '', $row['estimated_rate'] ?? ''], $c['districts']),
+                    ['All in view', $c['total']['active'], $c['total']['eligible'], $c['total']['billing_coverage'] ?? '', $c['total']['metered'], $c['total']['reading_coverage'] ?? '', $c['total']['estimated_rate'] ?? ''],
+                ]],
+                ['title' => 'Arrears by time since payment', 'headings' => ['Time since the last payment', 'Owed (GH¢)', 'Share (%)'], 'rows' => array_map(fn ($a) => [$a['label'], $a['amount'], $a['share'] ?? ''], $c['arrears_ageing'])],
+            ] : []),
             ['title' => 'Data quality', 'headings' => ['Issue', 'Accounts', 'Share (%)'], 'rows' => array_map(fn ($i) => [$i['label'], $i['count'], $i['share'] ?? ''], $q['issues'])],
         ];
 
@@ -75,7 +82,7 @@ class CustomerExportService
             'meta' => $meta,
             'notes' => [
                 'Aggregates only: no customer names, phone numbers, e-mails or addresses are in this file.',
-                'A negative balance is treated as a customer credit and a positive one as owed; the sign convention is to be confirmed.',
+                'A negative balance is a customer credit and a positive one is owed (confirmed by the Commercial team).',
                 'Status codes whose meaning is not confirmed are shown as their raw code. The category grouping is a proposal.',
                 'Bills owed = the balance divided by the customer\'s last bill: the file has no age of debt.',
             ],

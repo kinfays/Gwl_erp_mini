@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  * ids, set-based, and the whole thing is idempotent (a re-run adds nothing already there), so a crashed or repeated start cannot
  * double up. A phone number is read here only to de-duplicate inside SQL and to mask three sample lines; it is never stored.
  *
- * Sign of balance: positive = owed (the Phase 6 assumption, to be confirmed). Money is integer pesewas.
+ * Sign of balance: positive = owed, negative = a customer credit (confirmed by the Commercial team on 2026-10-12). Money is integer pesewas.
  */
 class SmsAudienceResolver
 {
@@ -561,7 +561,7 @@ class SmsAudienceResolver
         $group = (string) ($spec['group'] ?? '');
 
         return match ($group) {
-            'debtors' => 'Debtors: balance owed above GH¢ '.number_format((float) ($spec['min_debt'] ?? 0), 2).(isset($spec['bucket']) && $spec['bucket'] !== null ? ', arrears bucket '.(int) $spec['bucket'] : '').' (a positive balance is taken as owed: to be confirmed)',
+            'debtors' => 'Debtors: balance owed above GH¢ '.number_format((float) ($spec['min_debt'] ?? 0), 2).(isset($spec['bucket']) && $spec['bucket'] !== null ? ', arrears bucket '.(int) $spec['bucket'] : '').' (a positive balance is owed)',
             'no_payment' => 'No payment in '.(int) ($spec['days'] ?? 90).' days (counted from each district\'s file date)',
             'valuable' => 'Most valuable customers: the '.(! empty($spec['top_n']) ? 'top '.number_format((int) $spec['top_n']) : 'top '.rtrim(rtrim(number_format((float) $spec['top_pct'], 2), '0'), '.').'%').' of billing accounts by last bill amount (ties at the cut-off included; an assumption to be confirmed)',
             default => self::GROUPS[$group] ?? 'Group',

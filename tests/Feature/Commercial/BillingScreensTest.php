@@ -48,11 +48,11 @@ class BillingScreensTest extends CommercialTestCase
         $this->seedBilling($this->billingFixture());
 
         Livewire::actingAs($this->officer())->test(Billing::class)->set('tab', 'balances')
-            ->assertSee('Negative balances are treated as customer credits (to be confirmed')
+            ->assertSee('A negative balance is a customer credit (confirmed by the Commercial team')
             ->assertSee('ODORKOR 1')
             ->assertSee('300.00')
             ->set('tab', 'exceptions')
-            ->assertSee('Negative balances are treated as customer credits (to be confirmed')
+            ->assertSee('A negative balance is a customer credit (confirmed by the Commercial team')
             ->assertSee('High unbilled')
             ->assertSee('Heavy credit')
             ->assertSee('No activity')

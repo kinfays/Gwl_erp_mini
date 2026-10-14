@@ -149,7 +149,7 @@ class CommercialCustomerController extends Controller
         $filters = $snapshots->filters($batches, $restriction, ['district_id' => $districtId]);
         $report = $exports->summary([
             'overview' => $analytics->overview($filters), 'receivables' => $analytics->receivables($filters), 'meters' => $analytics->meters($filters, 'district'),
-            'dormancy' => $analytics->dormancy($filters), 'quality' => $analytics->quality($filters),
+            'dormancy' => $analytics->dormancy($filters), 'quality' => $analytics->quality($filters), 'coverage' => $analytics->coverage($filters),
         ], [
             'Scope' => $districtId ? (DB::table('districts')->where('id', $districtId)->value('district_name') ?? 'District') : ($restriction === null ? 'Every region' : 'Your region'),
             'Districts' => (string) $batches->count(),

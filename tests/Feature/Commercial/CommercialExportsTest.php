@@ -384,7 +384,7 @@ class CommercialExportsTest extends CommercialTestCase
         $this->assertCount(4 + 1, $sheets['Routes'], 'a heading row and the four routes');
         $this->assertSame(1600, (int) $sheets['Overview'][array_key_last($sheets['Overview'])][2], 'the All shown row carries the 1,600 total');
         $this->assertSame(2 + 1, count($sheets['Consumption bands']));
-        $this->assertStringContainsString('customer credits (to be confirmed)', json_encode($sheets['Notes']));
+        $this->assertStringContainsString('customer credit (confirmed by the Commercial team)', json_encode($sheets['Notes']));
         $this->assertStringNotContainsString('7777', json_encode($sheets), 'customers_count is in no export');
     }
 }

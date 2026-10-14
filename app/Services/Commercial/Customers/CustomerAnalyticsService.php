@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\DB;
  * thousand customers or five million: it reads a few thousand small rows.
  *
  * Money in the rollups is integer pesewas; it leaves this class as cedis (floats). Ratios are recomputed from sums and are
- * null on a zero denominator. The sign of a balance is NOT confirmed: positive is treated as owed (debit) and negative as a
- * credit, and every screen says "to be confirmed".
+ * null on a zero denominator. The Commercial team confirmed (2026-10-12) that a negative balance is a customer credit, so positive is owed
+ * (debit) and negative is a credit.
  */
 class CustomerAnalyticsService
 {
@@ -330,6 +330,74 @@ class CustomerAnalyticsService
         ];
     }
 
+    // ---------------------------------------------------------------- J. coverage and efficiency
+
+    /** The window "recent" means in the coverage figures: a billing or reading cycle, in days (the rollups hold the 30-day windows). */
+    public const COVERAGE_DAYS = 30;
+
+    /**
+     * Billing coverage, meter-reading coverage, estimated-reading rate and arrears by time since the last payment. Definitions (the
+     * rules are written once, here, and printed on the screen):
+     *
+     *   eligible account        a BILLING account (status ACTB), the accounts the utility should bill and read;
+     *   valid billing record    a last bill dated in the 30 days before the file's date and for more than zero;
+     *   billing coverage        eligible accounts with a valid billing record / eligible accounts;
+     *   eligible metered        eligible accounts whose meter is working or faulty (not "no meter");
+     *   accepted reading        a last read date in the 30 days before the file's date (the file does not say accepted or rejected);
+     *   reading coverage        eligible metered accounts with an accepted reading / eligible metered accounts;
+     *   estimated-reading rate  eligible accounts billed on an estimate (estimated consumption above zero) / eligible accounts;
+     *   arrears by time since payment   what customers OWE (credits are not arrears), grouped by the days since their last payment
+     *                           (a proxy for age: the file has no age of debt).
+     *
+     * Only batches built after the coverage measures existed (rollup_version 2) can be read; older ones are left out and counted.
+     *
+     * @return array<string, mixed>
+     */
+    public function coverage(CustomerFilters $f): array
+    {
+        $ready = DB::table('commercial_customer_batches')->whereIn('id', $f->batchIds ?: [0])->where('rollup_version', '>=', 2)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        if ($ready === []) {
+            return ['available' => false, 'batches' => count($f->batchIds), 'ready' => 0, 'days' => self::COVERAGE_DAYS];
+        }
+
+        $g = $f->with(['batchIds' => $ready]);
+        $extra = 'COALESCE(SUM(CASE WHEN s.is_active = 1 THEN r.customer_count ELSE 0 END), 0) AS active, '
+            .'COALESCE(SUM(CASE WHEN s.is_billing = 1 THEN r.customer_count ELSE 0 END), 0) AS eligible, '
+            .'COALESCE(SUM(CASE WHEN s.is_billing = 1 THEN r.billed_valid_30 ELSE 0 END), 0) AS billed_valid, '
+            ."COALESCE(SUM(CASE WHEN s.is_billing = 1 AND m.code IN ('W', 'F') THEN r.customer_count ELSE 0 END), 0) AS metered, "
+            ."COALESCE(SUM(CASE WHEN s.is_billing = 1 AND m.code IN ('W', 'F') THEN r.no_read_30 ELSE 0 END), 0) AS metered_unread, "
+            .'COALESCE(SUM(CASE WHEN s.is_billing = 1 THEN r.est_count ELSE 0 END), 0) AS estimated';
+
+        $columns = ['customer_count', 'debit_sum', 'debit_no_pay_30', 'debit_no_pay_60', 'debit_no_pay_90', 'debit_no_pay_180'];
+        $t = $this->one($g, $columns, $extra);
+        $rows = $this->grouped($g, 'district', $columns, $extra);
+
+        $figures = fn (object $r): array => [
+            'customers' => (int) $r->customer_count, 'active' => (int) $r->active, 'eligible' => (int) $r->eligible,
+            'billed_valid' => (int) $r->billed_valid, 'billing_coverage' => $this->pct((int) $r->billed_valid, (int) $r->eligible),
+            'metered' => (int) $r->metered, 'read' => (int) $r->metered - (int) $r->metered_unread, 'reading_coverage' => $this->pct((int) $r->metered - (int) $r->metered_unread, (int) $r->metered),
+            'estimated' => (int) $r->estimated, 'estimated_rate' => $this->pct((int) $r->estimated, (int) $r->eligible),
+            'owed' => $this->cedis($r->debit_sum), 'owed_no_pay_90' => $this->cedis($r->debit_no_pay_90), 'owed_no_pay_90_share' => $this->pct((int) $r->debit_no_pay_90, (int) $r->debit_sum),
+        ];
+
+        $owed = (int) $t->debit_sum;
+        $slices = [
+            ['label' => 'Paid in the last 30 days', 'amount' => $owed - (int) $t->debit_no_pay_30],
+            ['label' => 'Last paid 30 to 60 days ago', 'amount' => (int) $t->debit_no_pay_30 - (int) $t->debit_no_pay_60],
+            ['label' => 'Last paid 60 to 90 days ago', 'amount' => (int) $t->debit_no_pay_60 - (int) $t->debit_no_pay_90],
+            ['label' => 'Last paid 90 to 180 days ago', 'amount' => (int) $t->debit_no_pay_90 - (int) $t->debit_no_pay_180],
+            ['label' => 'Last paid over 180 days ago, or never', 'amount' => (int) $t->debit_no_pay_180],
+        ];
+
+        return [
+            'available' => true, 'batches' => count($f->batchIds), 'ready' => count($ready), 'days' => self::COVERAGE_DAYS,
+            'total' => $figures($t),
+            'districts' => $rows->map(fn ($r) => ['key' => (int) $r->dim_key, 'label' => (string) $r->dim_name] + $figures($r))->sortBy('label')->values()->all(),
+            'arrears_ageing' => array_map(fn (array $slice) => ['label' => $slice['label'], 'amount' => $this->cedis($slice['amount']), 'share' => $this->pct($slice['amount'], $owed)], $slices),
+        ];
+    }
+
     // ---------------------------------------------------------------- E. activity and dormancy
 
     /** @return array<string, mixed> */
@@ -518,7 +586,7 @@ class CustomerAnalyticsService
             ->when($regionId, fn ($q, $id) => $q->where('b.region_id', $id))
             ->when($districtId, fn ($q, $id) => $q->where('b.district_id', $id))
             ->selectRaw('b.period_key, b.period_type, MAX(b.as_of_date) AS as_of, COUNT(DISTINCT b.id) AS batches, SUM(r.customer_count) AS customers, '
-                .'SUM(CASE WHEN s.is_billing = 1 THEN r.customer_count ELSE 0 END) AS billing, SUM(r.debit_sum) AS debit_sum, SUM(r.credit_sum) AS credit_sum, '
+                .'SUM(CASE WHEN s.is_active = 1 THEN r.customer_count ELSE 0 END) AS active, SUM(CASE WHEN s.is_billing = 1 THEN r.customer_count ELSE 0 END) AS billing, SUM(r.debit_sum) AS debit_sum, SUM(r.credit_sum) AS credit_sum, '
                 ."SUM(CASE WHEN m.code = 'F' THEN r.customer_count ELSE 0 END) AS faulty, SUM(r.no_pay_90) AS no_pay_90, SUM(r.ghost_count) AS ghost, SUM(r.billed_sum) AS billed_sum, SUM(r.paid_sum) AS paid_sum")
             ->groupBy('b.period_key', 'b.period_type')->orderByDesc('as_of')->limit($periods)->get()->reverse()->values();
 
@@ -528,7 +596,7 @@ class CustomerAnalyticsService
         foreach ($rows as $row) {
             $point = [
                 'period' => $row->period_key, 'type' => $row->period_type, 'as_of' => $row->as_of, 'districts' => (int) $row->batches,
-                'customers' => (int) $row->customers, 'billing' => (int) $row->billing,
+                'customers' => (int) $row->customers, 'active' => (int) $row->active, 'billing' => (int) $row->billing,
                 'debit' => $this->cedis($row->debit_sum), 'credit' => $this->cedis($row->credit_sum),
                 'faulty_pct' => $this->pct((int) $row->faulty, (int) $row->customers),
                 'no_pay_90_pct' => $this->pct((int) $row->no_pay_90, (int) $row->customers),
@@ -538,6 +606,7 @@ class CustomerAnalyticsService
 
             $point['change'] = $previous && $previous['districts'] === $point['districts'] ? [
                 'customers' => $point['customers'] - $previous['customers'],
+                'active' => $point['active'] - $previous['active'],
                 'debit' => round($point['debit'] - $previous['debit'], 2),
                 'faulty_pct' => $point['faulty_pct'] !== null && $previous['faulty_pct'] !== null ? round($point['faulty_pct'] - $previous['faulty_pct'], 1) : null,
             ] : null;
@@ -577,7 +646,7 @@ class CustomerAnalyticsService
             ->join('commercial_customer_statuses AS s', 's.id', '=', 'r.status_id')
             ->join('commercial_meter_statuses AS m', 'm.id', '=', 'r.meter_status_id')
             ->whereIn('r.batch_id', $ids ?: [0])
-            ->selectRaw('r.batch_id, SUM(r.customer_count) AS customers, SUM(CASE WHEN s.is_billing = 1 THEN r.customer_count ELSE 0 END) AS billing, SUM(r.debit_sum) AS debit_sum, SUM(r.credit_sum) AS credit_sum, '
+            ->selectRaw('r.batch_id, SUM(r.customer_count) AS customers, SUM(CASE WHEN s.is_active = 1 THEN r.customer_count ELSE 0 END) AS active, SUM(CASE WHEN s.is_billing = 1 THEN r.customer_count ELSE 0 END) AS billing, SUM(r.debit_sum) AS debit_sum, SUM(r.credit_sum) AS credit_sum, '
                 ."SUM(CASE WHEN m.code = 'F' THEN r.customer_count ELSE 0 END) AS faulty, SUM(r.no_pay_90) AS no_pay_90, SUM(r.ghost_count) AS ghost, SUM(r.billed_sum) AS billed_sum, SUM(r.paid_sum) AS paid_sum")
             ->groupBy('r.batch_id')->get()->keyBy('batch_id');
 
@@ -585,7 +654,7 @@ class CustomerAnalyticsService
         $previous = null;
 
         foreach ($byMonth as $month => $group) {
-            $row = (object) ['customers' => 0, 'billing' => 0, 'debit_sum' => 0, 'credit_sum' => 0, 'faulty' => 0, 'no_pay_90' => 0, 'ghost' => 0, 'billed_sum' => 0, 'paid_sum' => 0];
+            $row = (object) ['customers' => 0, 'active' => 0, 'billing' => 0, 'debit_sum' => 0, 'credit_sum' => 0, 'faulty' => 0, 'no_pay_90' => 0, 'ghost' => 0, 'billed_sum' => 0, 'paid_sum' => 0];
 
             foreach ($group as $batch) {
                 foreach (array_keys((array) $row) as $key) {
@@ -595,12 +664,12 @@ class CustomerAnalyticsService
 
             $point = [
                 'period' => $month, 'type' => 'month-end', 'as_of' => $group->max('as_of_date'), 'districts' => $group->count(),
-                'customers' => (int) $row->customers, 'billing' => (int) $row->billing, 'debit' => $this->cedis($row->debit_sum), 'credit' => $this->cedis($row->credit_sum),
+                'customers' => (int) $row->customers, 'active' => (int) $row->active, 'billing' => (int) $row->billing, 'debit' => $this->cedis($row->debit_sum), 'credit' => $this->cedis($row->credit_sum),
                 'faulty_pct' => $this->pct((int) $row->faulty, (int) $row->customers), 'no_pay_90_pct' => $this->pct((int) $row->no_pay_90, (int) $row->customers),
                 'ghost' => (int) $row->ghost, 'paid_to_billed' => $this->pct((int) $row->paid_sum, (int) $row->billed_sum),
             ];
             $point['change'] = $previous && $previous['districts'] === $point['districts'] ? [
-                'customers' => $point['customers'] - $previous['customers'], 'debit' => round($point['debit'] - $previous['debit'], 2),
+                'customers' => $point['customers'] - $previous['customers'], 'active' => $point['active'] - $previous['active'], 'debit' => round($point['debit'] - $previous['debit'], 2),
                 'faulty_pct' => $point['faulty_pct'] !== null && $previous['faulty_pct'] !== null ? round($point['faulty_pct'] - $previous['faulty_pct'], 1) : null,
             ] : null;
 

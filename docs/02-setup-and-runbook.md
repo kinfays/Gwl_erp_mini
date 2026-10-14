@@ -56,6 +56,12 @@ G-Water reminders (daily at 07:55; registered, and scheduled, only while `GWL_GW
 php artisan gwater:remind
 ```
 
+Regional Blog picture clean-up (daily at 03:20; scheduled only while `GWL_BLOG_MODULE_ENABLED` is on). Deletes pictures that were uploaded but never used in an article, and pictures no article or saved version shows any more, once they are older than `GWL_BLOG_MEDIA_ORPHAN_HOURS` (`docs/14-module-regional-blog.md`):
+
+```bash
+php artisan blog:prune-media
+```
+
 Scheduler setup is in `routes/console.php`:
 
 ```bash
@@ -78,7 +84,7 @@ G-Water (`docs/17-module-g-water.md`; the module is off until `GWL_GWATER_MODULE
 - `GWL_GWATER_MODULE_ENABLED` (default off): routes, navigation, screens and the `gwater:remind` schedule.
 - `GWL_GWATER_EXPORT_MAX_ROWS` (5000) and `GWL_GWATER_EXPORT_PDF_MAX_ROWS` (1500): the longest Excel / PDF export.
 - `GWL_GWATER_LOW_STOCK_PACKS` (50) and `GWL_GWATER_DAMAGE_RATE_FLAG_PCT` (5): the Overview flags.
-- `GWL_GWATER_PAYMENT_OVERDUE_DAYS` (30) and `GWL_GWATER_REMINDER_REPEAT_DAYS` (7): the reminder defaults.
+- `GWL_GWATER_REMINDER_REPEAT_DAYS` (7): how often the same low-stock reminder is repeated (the old `GWL_GWATER_PAYMENT_OVERDUE_DAYS` is gone: payments are recorded when paid).
 - `GWL_GWATER_IMPORT_MAX_ROWS` (2000): most rows in one past-ledger import file.
 
 The low-stock limit and the two reminder intervals are defaults: each location may set its own on the G-Water Settings screen (an override is stored only when it differs from the default). After editing `.env` on a server run `php artisan config:cache` again.

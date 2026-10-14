@@ -39,7 +39,7 @@
                             <option value="">Any amount of bills owed</option>
                             @foreach (\App\Services\Commercial\Customers\CustomerAnalyticsService::BUCKET_LABELS as $key => $label)@if ($key >= 2)<option value="{{ $key }}">{{ $label }}</option>@endif @endforeach
                         </select>
-                        <span class="ui-hint">A positive balance is taken as owed (to be confirmed).</span>
+                        <span class="ui-hint">A positive balance is owed; a negative one is a customer credit.</span>
                     @elseif ($group === 'no_payment')
                         <select wire:model.live="days" class="form-input" aria-label="Days without payment">
                             @foreach (\App\Services\Commercial\Sms\SmsAudienceResolver::NO_PAYMENT_DAYS as $d)<option value="{{ $d }}">No payment in {{ $d }} days</option>@endforeach

@@ -1,100 +1,118 @@
-<div>
-    <x-ui.page-header title="Manage posts" description="Write, publish and pin the articles of your region's blog. Drafts are visible only to the PR team.">
-        <x-slot:actions>
-            <x-ui.button :href="route('blog.home')" icon="eye">View blog</x-ui.button>
-            <x-ui.button :href="route('blog.create')" variant="primary" icon="circle-plus">New article</x-ui.button>
-        </x-slot:actions>
-    </x-ui.page-header>
+<div class="b-manage">
+    <div class="b-manage-head">
+        <div>
+            <p class="b-kicker">{{ __('Public Relations') }}</p>
+            <h1>{{ __('Manage articles') }}</h1>
+            <p style="margin:.3rem 0 0;color:var(--b-ink-2)">{{ __("Write, publish and pin the articles of your region's blog. Drafts are visible only to the PR team.") }}</p>
+        </div>
+        <div class="be-actions">
+            <a class="b-btn" href="{{ route('blog.home') }}">{{ __('View the blog') }}</a>
+            <a class="b-btn b-btn-primary" href="{{ route('blog.create') }}">{{ __('New article') }}</a>
+        </div>
+    </div>
 
     @if ($notice)
-        <x-ui.alert tone="success" role="status" class="dash-row">{{ $notice }}</x-ui.alert>
+        <div class="b-notice" role="status">{{ $notice }}</div>
     @endif
     @if ($problem)
-        <x-ui.alert tone="danger" role="alert" class="dash-row">{{ $problem }}</x-ui.alert>
+        <div class="b-notice b-notice-warn" role="alert">{{ $problem }}</div>
+    @endif
+    @if (session('blog_notice'))
+        <div class="b-notice" role="status">{{ session('blog_notice') }}</div>
     @endif
 
-    <x-ui.card class="dash-row">
-        <div class="ui-form-grid">
-            <x-ui.input label="Search" wire:model.live.debounce.400ms="search" icon="search" placeholder="Title, place or tag" />
-            <x-ui.select label="Status" wire:model.live="status">
-                <option value="">All</option>
+    <div class="b-filters">
+        <label class="b-field" style="flex:1 1 14rem">{{ __('Search') }}
+            <input class="b-input" type="search" wire:model.live.debounce.400ms="search" placeholder="{{ __('Title, place or tag') }}">
+        </label>
+        <label class="b-field">{{ __('Status') }}
+            <select class="b-select" wire:model.live="status">
+                <option value="">{{ __('All') }}</option>
                 @foreach ($statuses as $value => $label)
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
-            </x-ui.select>
-            <x-ui.select label="Kind" wire:model.live="category">
-                <option value="">All kinds</option>
+            </select>
+        </label>
+        <label class="b-field">{{ __('Kind') }}
+            <select class="b-select" wire:model.live="category">
+                <option value="">{{ __('All kinds') }}</option>
                 @foreach ($categories as $value => $label)
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
-            </x-ui.select>
-        </div>
+            </select>
+        </label>
         @if ($search !== '' || $status !== '' || $category !== '')
-            <div class="ui-form-actions" style="margin-top:10px">
-                <x-ui.button size="sm" variant="ghost" wire:click="resetFilters">Clear filters</x-ui.button>
-            </div>
+            <div style="align-self:end"><button type="button" class="b-btn b-btn-ghost" wire:click="resetFilters">{{ __('Clear filters') }}</button></div>
         @endif
-    </x-ui.card>
+    </div>
 
-    <x-ui.card :padded="false" class="dash-row">
-        <x-ui.table label="Blog articles">
-            <x-slot:head>
+    <div class="b-table-wrap">
+        <table class="b-table">
+            <caption class="b-sr">{{ __('Blog articles') }}</caption>
+            <thead>
                 <tr>
-                    <th>Article</th>
+                    <th scope="col">{{ __('Article') }}</th>
                     @if ($showRegion)
-                        <th>Region</th>
+                        <th scope="col">{{ __('Region') }}</th>
                     @endif
-                    <th>Kind</th>
-                    <th>Status</th>
-                    <th>Activity date</th>
-                    <th>Updated</th>
-                    <th><span class="sr-only-text">Actions</span></th>
+                    <th scope="col">{{ __('Kind') }}</th>
+                    <th scope="col">{{ __('Status') }}</th>
+                    <th scope="col">{{ __('Activity date') }}</th>
+                    <th scope="col">{{ __('Updated') }}</th>
+                    <th scope="col"><span class="b-sr">{{ __('Actions') }}</span></th>
                 </tr>
-            </x-slot:head>
-            @forelse ($posts as $post)
-                <tr wire:key="blog-manage-{{ $post->id }}">
-                    <td>
-                        <a href="{{ route('blog.show', $post) }}">{{ $post->title }}</a>
-                        @if ($post->is_pinned)
-                            <x-ui.badge tone="lagoon">Pinned</x-ui.badge>
-                        @endif
-                        <div class="cell-muted">{{ $post->author?->full_name }}</div>
-                    </td>
-                    @if ($showRegion)
-                        <td>{{ $post->region?->region_name }}</td>
-                    @endif
-                    <td>{{ $post->categoryLabel() }}</td>
-                    <td>
-                        <x-ui.badge :tone="$post->isPublished() ? 'success' : 'neutral'">{{ $statuses[$post->status] ?? $post->status }}</x-ui.badge>
-                    </td>
-                    <td class="nowrap cell-muted">{{ $post->event_date?->format('d M Y') ?? '—' }}</td>
-                    <td class="nowrap cell-muted">{{ $post->updated_at->format('d M Y') }}</td>
-                    <td class="nowrap">
-                        <x-ui.button size="sm" variant="ghost" :href="route('blog.edit', $post)" icon="pencil">Edit</x-ui.button>
-                        @if ($post->isPublished())
+            </thead>
+            <tbody>
+                @forelse ($posts as $post)
+                    <tr wire:key="blog-manage-{{ $post->id }}">
+                        <td class="b-title">
+                            <a href="{{ $post->url() }}">{{ $post->title }}</a>
                             @if ($post->is_pinned)
-                                <x-ui.button size="sm" variant="ghost" wire:click="unpin({{ $post->id }})">Unpin</x-ui.button>
-                            @else
-                                <x-ui.button size="sm" variant="ghost" wire:click="pin({{ $post->id }})">Pin</x-ui.button>
+                                <span class="b-tag-pin">{{ __('Pinned') }}</span>
                             @endif
-                            <x-ui.button size="sm" variant="ghost" wire:click="unpublish({{ $post->id }})" wire:confirm="Move this article back to drafts? Staff will no longer be able to read it.">Unpublish</x-ui.button>
-                        @else
-                            <x-ui.button size="sm" variant="ghost" wire:click="publish({{ $post->id }})">Publish</x-ui.button>
+                            <div style="font-size:.8rem;color:var(--b-ink-3)">{{ $post->author?->full_name }}</div>
+                        </td>
+                        @if ($showRegion)
+                            <td>{{ $post->region?->region_name }}</td>
                         @endif
-                        <x-ui.button size="sm" variant="ghost" icon="trash-2" wire:click="delete({{ $post->id }})" wire:confirm="Delete this article for good? This cannot be undone.">Delete</x-ui.button>
-                    </td>
-                </tr>
-            @empty
-                <x-ui.empty-row :colspan="$showRegion ? 7 : 6" icon="scroll-text" title="No articles yet.">
-                    <x-ui.button size="sm" :href="route('blog.create')">Write the first article</x-ui.button>
-                </x-ui.empty-row>
-            @endforelse
+                        <td>{{ $post->categoryLabel() }}</td>
+                        <td><span class="b-status b-status-{{ $post->status }}">{{ $statuses[$post->status] ?? $post->status }}</span></td>
+                        <td style="white-space:nowrap">{{ $post->event_date?->format('d M Y') ?? '—' }}</td>
+                        <td style="white-space:nowrap">{{ $post->updated_at->format('d M Y') }}</td>
+                        <td>
+                            <div class="b-row-actions">
+                                <a class="b-btn" href="{{ route('blog.edit', $post) }}">{{ __('Edit') }}</a>
+                                @if ($post->isPublished())
+                                    @if ($post->is_pinned)
+                                        <button type="button" class="b-btn" wire:click="unpin({{ $post->id }})">{{ __('Unpin') }}</button>
+                                    @else
+                                        <button type="button" class="b-btn" wire:click="pin({{ $post->id }})">{{ __('Pin') }}</button>
+                                    @endif
+                                    <button type="button" class="b-btn" wire:click="unpublish({{ $post->id }})" wire:confirm="Move this article back to drafts? Staff will no longer be able to read it.">{{ __('Unpublish') }}</button>
+                                @else
+                                    <button type="button" class="b-btn" wire:click="publish({{ $post->id }})">{{ __('Publish') }}</button>
+                                @endif
+                                <button type="button" class="b-btn b-danger-btn" wire:click="delete({{ $post->id }})" wire:confirm="Delete this article for good? This cannot be undone.">{{ __('Delete') }}</button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="{{ $showRegion ? 7 : 6 }}" class="b-empty" style="padding:2.5rem 1rem">
+                            {{ __('No articles yet.') }}
+                            <a class="b-btn b-btn-primary" href="{{ route('blog.create') }}">{{ __('Write the first article') }}</a>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 
-            @if ($posts->hasPages())
-                <x-slot:footer>
-                    <div class="pager-end">{{ $posts->links() }}</div>
-                </x-slot:footer>
-            @endif
-        </x-ui.table>
-    </x-ui.card>
+    @if ($posts->hasPages())
+        <nav class="b-pager" aria-label="{{ __('Pages of articles') }}">
+            <button type="button" class="b-btn" wire:click="previousPage" @disabled($posts->onFirstPage())>← {{ __('Newer') }}</button>
+            <span>{{ __('Page :page of :last', ['page' => $posts->currentPage(), 'last' => $posts->lastPage()]) }}</span>
+            <button type="button" class="b-btn" wire:click="nextPage" @disabled(! $posts->hasMorePages())>{{ __('Older') }} →</button>
+        </nav>
+    @endif
 </div>

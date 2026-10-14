@@ -83,12 +83,9 @@ class GwaterDemoSeederTest extends GwaterTestCase
         $this->assertGreaterThan(0, GwExpense::query()->where('reimbursement_status', 'pending')->count() + GwPurchase::query()->where('fuel_reimbursement_status', 'pending')->count());
         $this->assertGreaterThan(0, GwExpense::query()->where('reimbursement_status', 'reimbursed')->count() + GwPurchase::query()->where('fuel_reimbursement_status', 'reimbursed')->count());
 
-        // Payments: most paid, one overdue (older than the 30-day limit), the latest still waiting.
-        $waiting = GwSupplierPayment::query()->where('status', 'requested')->orderBy('request_date')->get();
-        $this->assertCount(2, $waiting);
-        $this->assertTrue($waiting->first()->request_date->lt(now()->subDays(30)));
-        $this->assertTrue($waiting->last()->request_date->gte(now()->subDays(14)));
-        $this->assertSame(3, GwSupplierPayment::query()->where('status', 'paid')->count());
+        // Payments to G Water: one every fortnight, each recorded as paid (there is nothing to request or wait for).
+        $this->assertSame(0, GwSupplierPayment::query()->where('status', '!=', 'paid')->count());
+        $this->assertSame(5, GwSupplierPayment::query()->where('status', 'paid')->count());
 
         // The books are real: stock is never negative, there is something owed, and a month has a profit figure.
         $stock = app(GwaterStockService::class);
@@ -176,9 +173,9 @@ class GwaterDemoSeederTest extends GwaterTestCase
 
         $summary = app(GwaterReminderService::class)->remind(now());
 
-        $this->assertGreaterThanOrEqual(1, $summary['overdue'], 'the overdue payment request');
+        $this->assertGreaterThanOrEqual(1, $summary['low_stock'], 'sachet water is low in the demo books');
         $titles = Notification::sent($recorder, GeneralDatabaseNotification::class)->map(fn ($n) => $n->toArray($recorder)['title'])->all();
-        $this->assertContains('G-Water: payment requests overdue', $titles);
+        $this->assertContains('G-Water: low stock', $titles);
     }
 
     public function test_the_seeder_refuses_to_run_in_production(): void

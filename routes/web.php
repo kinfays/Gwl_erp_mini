@@ -13,6 +13,7 @@ use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\Blog\BlogController;
+use App\Http\Controllers\Blog\BlogMediaController;
 use App\Http\Controllers\Commercial\CommercialExportController;
 use App\Http\Controllers\Commercial\CommercialModuleController;
 use App\Http\Controllers\HealthSafety\EquipmentController;
@@ -528,6 +529,14 @@ if (config('gwl.commercial_module_enabled')) {
                 ->middleware('permission:commercial.view_billing')
                 ->name('billing');
 
+            Route::get('/kpis', [CommercialModuleController::class, 'kpis'])
+                ->middleware('permission:commercial.view_billing')
+                ->name('kpis');
+
+            Route::get('/kpis/targets', [CommercialModuleController::class, 'kpiTargets'])
+                ->middleware('permission:commercial.manage_settings')
+                ->name('kpis.targets');
+
             Route::get('/reading', [CommercialModuleController::class, 'reading'])
                 ->middleware('permission:commercial.view_reading,commercial.view_reader_performance')
                 ->name('reading');
@@ -642,34 +651,38 @@ if (SmsAccess::enabled()) {
 
 if (config('gwl.blog_module_enabled')) {
     // Regional Blog: every member of staff reads the published articles of their OWN region (module access is true for every
-    // role); only blog.manage_posts (PR Officer) writes. Region scope is BlogVisibility's, re-checked in every component and
-    // controller action: an article outside the user's region answers 404.
+    // role); only blog.manage_posts (PR Officer) writes. It is a standalone, full-page blog opened from the header (not a
+    // module tab), on its own layout. Region scope is BlogVisibility's, re-checked in every component and controller action:
+    // an article or picture outside the user's region answers 404. A guest is sent to the login and brought back here.
     Route::middleware(['auth', 'active', 'module:blog'])
         ->prefix('blog')
         ->name('blog.')
         ->group(function () {
             Route::get('/', [BlogController::class, 'home'])->name('home');
+            Route::get('/category/{category}', [BlogController::class, 'category'])->name('category');
+            Route::get('/tag/{tag}', [BlogController::class, 'tag'])->name('tag');
+            Route::get('/district/{district}', [BlogController::class, 'district'])->whereNumber('district')->name('district');
+            Route::get('/search', [BlogController::class, 'search'])->name('search');
+            Route::get('/gallery', [BlogController::class, 'gallery'])->name('gallery');
 
-            Route::get('/manage', [BlogController::class, 'manage'])
-                ->middleware('permission:blog.manage_posts')
-                ->name('manage');
+            // The id decides; the slug after it only makes the link readable.
+            Route::get('/posts/{post}/{slug?}', [BlogController::class, 'show'])->whereNumber('post')->name('show');
+            Route::get('/cover/{post}', [BlogController::class, 'cover'])->whereNumber('post')->name('cover');
 
-            Route::get('/manage/create', [BlogController::class, 'create'])
-                ->middleware('permission:blog.manage_posts')
-                ->name('create');
+            // Pictures: private files, served only after the region check; thumb / medium / large.
+            Route::get('/media/{media}/{size}', [BlogMediaController::class, 'show'])
+                ->whereNumber('media')
+                ->where('size', 'thumb|medium|large')
+                ->name('media');
 
-            Route::get('/manage/{post}/edit', [BlogController::class, 'edit'])
-                ->whereNumber('post')
-                ->middleware('permission:blog.manage_posts')
-                ->name('edit');
+            Route::middleware('permission:blog.manage_posts')->group(function () {
+                Route::get('/manage', [BlogController::class, 'manage'])->name('manage');
+                Route::get('/manage/create', [BlogController::class, 'create'])->name('create');
+                Route::get('/manage/{post}/edit', [BlogController::class, 'edit'])->whereNumber('post')->name('edit');
 
-            Route::get('/posts/{post}', [BlogController::class, 'show'])
-                ->whereNumber('post')
-                ->name('show');
-
-            Route::get('/posts/{post}/cover', [BlogController::class, 'cover'])
-                ->whereNumber('post')
-                ->name('cover');
+                // The editor's upload endpoint: CSRF (web group), the writer's permission, a region the writer manages.
+                Route::post('/manage/media', [BlogMediaController::class, 'store'])->middleware('throttle:60,1')->name('media.upload');
+            });
         });
 }
 

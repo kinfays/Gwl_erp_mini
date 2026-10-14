@@ -47,6 +47,9 @@ class CustomerRollupService
             $this->timed('debt', fn () => $this->debt($batch));
             $this->timed('issue_accounts', fn () => $this->issueAccounts($batch));
             $this->timed('quality', fn () => $this->quality($batch));
+
+            // Built with the coverage measures (billed_valid_30, debit_no_pay_N): the coverage screen reads only such batches.
+            DB::table('commercial_customer_batches')->where('id', $batch->id)->update(['rollup_version' => 2]);
         });
     }
 
@@ -82,8 +85,10 @@ class CustomerRollupService
         }
 
         foreach ([30, 60, 90, 180] as $days) {
-            array_push($columns, "no_read_{$days}", "no_bill_{$days}", "no_pay_{$days}", "billed_unpaid_{$days}");
+            array_push($columns, "no_read_{$days}", "no_bill_{$days}", "no_pay_{$days}", "billed_unpaid_{$days}", "debit_no_pay_{$days}");
         }
+
+        $columns[] = 'billed_valid_30';
 
         return $columns;
     }
@@ -179,8 +184,13 @@ class CustomerRollupService
             $measures['no_read_'.$days] = "SUM(CASE WHEN c.last_read_date IS NULL OR c.last_read_date < '{$cut}' THEN 1 ELSE 0 END)";
             $measures['no_bill_'.$days] = "SUM(CASE WHEN c.last_bill_date IS NULL OR c.last_bill_date < '{$cut}' THEN 1 ELSE 0 END)";
             $measures['no_pay_'.$days] = "SUM(CASE WHEN c.last_paid_date IS NULL OR c.last_paid_date < '{$cut}' THEN 1 ELSE 0 END)";
+            $measures['debit_no_pay_'.$days] = "COALESCE(SUM(CASE WHEN c.balance > 0 AND (c.last_paid_date IS NULL OR c.last_paid_date < '{$cut}') THEN c.balance ELSE 0 END), 0)";
             $measures['billed_unpaid_'.$days] = "SUM(CASE WHEN c.last_bill_amount > 0 AND (c.last_paid_date IS NULL OR c.last_paid_date < '{$cut}') THEN 1 ELSE 0 END)";
         }
+
+        // A valid bill: dated in the 30 days before the file's date and for more than zero (the numerator of billing coverage).
+        $cut30 = $asOf->copy()->subDays(30)->format('Y-m-d');
+        $measures['billed_valid_30'] = "SUM(CASE WHEN c.last_bill_amount > 0 AND c.last_bill_date IS NOT NULL AND c.last_bill_date >= '{$cut30}' THEN 1 ELSE 0 END)";
 
         $columns = implode(', ', ['batch_id', 'region_id', 'district_id', 'route_id', 'category_id', 'status_id', 'meter_status_id', ...array_keys($measures)]);
         $select = implode(', ', [(int) $batch->id, (int) $batch->region_id, (int) $batch->district_id, 'c.route_id', 'c.category_id', 'c.status_id', 'c.meter_status_id', ...array_values($measures)]);
