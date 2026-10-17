@@ -322,7 +322,7 @@ class CommercialSettingsTest extends CommercialTestCase
             ->assertSee($admin->full_name)
             ->assertSee('Billing route exceptions')
             ->assertSee('Upload reminders')
-            ->assertSee('Reader scorecard weights');
+            ->assertSee('CCA scorecard weights');
     }
 
     public function test_the_defaults_come_from_a_copy_of_the_config_never_from_a_file_so_config_cache_cannot_break_them(): void

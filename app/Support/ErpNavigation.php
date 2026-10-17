@@ -164,8 +164,8 @@ class ErpNavigation
             ],
             [
                 'slug' => Permission::MODULE_HEALTH_SAFETY,
-                'title' => 'Health & Safety',
-                'short' => 'Health & Safety',
+                'title' => 'Environmental Health and Safety',
+                'short' => 'EHS',
                 'icon_name' => 'triangle-alert',
                 'route' => $this->safeRoute('health_safety.home'),
             ],

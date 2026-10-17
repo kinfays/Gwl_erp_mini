@@ -426,6 +426,6 @@ class QrLabelsTest extends HealthSafetyTestCase
     /** The card the person reads. The surrounding layout carries per-request Livewire ids and the request path, which differ. */
     private function bodyOf($response): string
     {
-        return \Illuminate\Support\Str::of($response->getContent())->between('This item is not available to you', 'Go to Health')->squish()->toString();
+        return \Illuminate\Support\Str::of($response->getContent())->between('This item is not available to you', 'Go to Environmental')->squish()->toString();
     }
 }

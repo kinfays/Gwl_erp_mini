@@ -147,6 +147,9 @@ class CustomerListService
             case 'shared_meter':
             case 'shared_mobile':
             case 'shared_email':
+            case 'consumption_spike':
+            case 'consumption_drop':
+            case 'consumption_zero':
                 $query->whereIn('c.id', fn ($sub) => $sub->from('commercial_customer_issue_accounts')->select('customer_id')->where('batch_id', $batchId)->where('issue', $issue));
 
                 break;

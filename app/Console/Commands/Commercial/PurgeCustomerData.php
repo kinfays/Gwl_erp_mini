@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Commercial;
 
 use App\Models\CommercialCustomerBatch;
+use App\Services\Commercial\Customers\CustomerConsumptionHistory;
 use App\Services\Commercial\Customers\CustomerMergeService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Storage;
  *   1. leftover staging rows and uploaded workbooks of batches that did not finish (failed / parked for a match / queued for
  *      more than a week), which hold names and phone numbers;
  *   2. finished background exports older than a week;
+ *   2b. consumption-history rows older than commercial_customer_history_keep_months;
  *   3. OPTIONAL retention: with commercial_customer_contact_retention_days > 0, the contact details (name, address, phones,
  *      e-mail) of accounts that have been missing from the files for that many days are deleted. The account row itself and
  *      its figures stay. 0 (the default) deletes nothing.
@@ -69,6 +71,10 @@ class PurgeCustomerData extends Command
         }
 
         $this->line($exports.' old export file(s) '.($dry ? 'would be' : 'were').' deleted.');
+
+        // 2b. consumption history past the retention (no personal data, but it only grows)
+        $history = app(CustomerConsumptionHistory::class)->prune($dry);
+        $this->line($history.' consumption-history row(s) older than '.max(3, (int) config('gwl.commercial_customer_history_keep_months', 24)).' months '.($dry ? 'would be' : 'were').' deleted.');
 
         // 3. optional contact retention
         $days = (int) config('gwl.commercial_customer_contact_retention_days', 0);

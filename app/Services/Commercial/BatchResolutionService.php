@@ -83,7 +83,7 @@ class BatchResolutionService
     public function linkReader(CommercialImportBatch $batch, string $readerStaffId, Employee $employee): int
     {
         if (! $batch->isReading()) {
-            throw new CommercialImportException('Only reading batches have readers to link.');
+            throw new CommercialImportException('Only reading batches have CCAs to link.');
         }
 
         return DB::transaction(function () use ($batch, $readerStaffId, $employee): int {

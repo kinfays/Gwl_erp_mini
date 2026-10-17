@@ -32,6 +32,11 @@ class CustomerAnalyticsService
         'not_in_file' => 'Not in the latest file',
     ];
 
+    /** Drill-down lists behind the own-history consumption counts (read from the batch's stored account lists, like the quality issues). */
+    public const HISTORY_LABELS = [
+        'consumption_spike' => 'Consumption far above its own history', 'consumption_drop' => 'Consumption far below its own history', 'consumption_zero' => 'Zero consumption against a positive history',
+    ];
+
     // ---------------------------------------------------------------- plumbing
 
     /** Only a route filter (or a per-route breakdown) needs the route-level rollups; everything else reads the district-level ones. */
@@ -492,6 +497,7 @@ class CustomerAnalyticsService
 
         $rows = (clone $query)->selectRaw('k.id, k.code, k.name, k.is_unknown, SUM(c.customers) AS customers, SUM(c.outliers) AS outliers, SUM(c.zero_consume_billing) AS zero_consume, SUM(c.factor_not_one) AS factor_not_one, SUM(c.factor_odd) AS factor_odd, '
             .'SUM(c.median_average * c.customers) AS median_weighted, SUM(CASE WHEN c.median_average IS NOT NULL THEN c.customers ELSE 0 END) AS median_weight, '
+            .'SUM(c.hist_baseline) AS hist_baseline, SUM(c.hist_high) AS hist_high, SUM(c.hist_low) AS hist_low, SUM(c.hist_zero) AS hist_zero, '
             .'SUM(c.bin_0) AS bin_0, SUM(c.bin_1) AS bin_1, SUM(c.bin_2) AS bin_2, SUM(c.bin_3) AS bin_3, SUM(c.bin_4) AS bin_4, SUM(c.bin_5) AS bin_5')
             ->groupBy('k.id', 'k.code', 'k.name', 'k.is_unknown')->get();
 
@@ -510,6 +516,7 @@ class CustomerAnalyticsService
                 'typical' => (int) $r->median_weight > 0 ? round((float) $r->median_weighted / (int) $r->median_weight, 2) : null,
                 'outliers' => (int) $r->outliers, 'outlier_pct' => $this->pct((int) $r->outliers, (int) $r->customers),
                 'zero_consume' => (int) $r->zero_consume, 'factor_not_one' => (int) $r->factor_not_one, 'factor_odd' => (int) $r->factor_odd,
+                'hist_baseline' => (int) $r->hist_baseline, 'hist_high' => (int) $r->hist_high, 'hist_low' => (int) $r->hist_low, 'hist_zero' => (int) $r->hist_zero,
             ])->sortByDesc('customers')->values()->all(),
             'distribution' => $distribution,
             'customers' => (int) $rows->sum('customers'),
@@ -518,6 +525,35 @@ class CustomerAnalyticsService
             'factor_not_one' => (int) $rows->sum('factor_not_one'),
             'factor_odd' => (int) $rows->sum('factor_odd'),
             'multiple' => (float) config('gwl.commercial_customer_outlier_multiple', 5),
+            'history' => $this->consumptionHistory($f, $rows),
+        ];
+    }
+
+    /**
+     * Accounts against their OWN earlier months. The baseline is the mean of the account's stored months (see CustomerConsumptionHistory),
+     * which needs min_months of them: until then the counts are zero because there is nothing to compare with, and `ready` says so.
+     * `months` is the fewest earlier months any upload in view had, so a partly ready picture is not called ready.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return array<string, mixed>
+     */
+    protected function consumptionHistory(CustomerFilters $f, $rows): array
+    {
+        $months = DB::table('commercial_customer_batches')->whereIn('id', $f->batchIds ?: [0])
+            ->when($f->regionRestriction !== null, fn ($q) => $f->regionRestriction === 0 ? $q->whereRaw('1 = 0') : $q->where('region_id', $f->regionRestriction))
+            ->pluck('history_months');
+        $needed = max(2, (int) config('gwl.commercial_customer_history_min_months', 3));
+        $baseline = (int) $rows->sum('hist_baseline');
+
+        return [
+            'ready' => $baseline > 0,
+            'baseline' => $baseline,
+            'spike' => (int) $rows->sum('hist_high'), 'drop' => (int) $rows->sum('hist_low'), 'zero' => (int) $rows->sum('hist_zero'),
+            'months' => $months->isEmpty() ? 0 : (int) $months->map(fn ($m) => (int) $m)->min(),
+            'needed' => $needed,
+            'high_multiple' => (float) config('gwl.commercial_customer_history_high_multiple', 2),
+            'low_multiple' => (float) config('gwl.commercial_customer_history_low_multiple', 0.5),
+            'window' => max(1, (int) config('gwl.commercial_customer_history_window_months', 6)),
         ];
     }
 

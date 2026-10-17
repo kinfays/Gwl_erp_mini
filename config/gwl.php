@@ -190,6 +190,14 @@ return [
     'commercial_customer_arrears_bills' => [1, 3, 6, 12],
     // An average consumption above this multiple of its category's median is an outlier.
     'commercial_customer_outlier_multiple' => (float) env('GWL_COMMERCIAL_CUSTOMER_OUTLIER_MULTIPLE', 5),
+    // Consumption history: every upload keeps each billing account's average consumption for its calendar month. An account is compared with
+    // the mean of its own earlier months in the last `window` months, once it has at least `min_months` of them. Above `high` times that mean
+    // is a spike, below `low` times it (but not zero) a drop; zero against a positive baseline is its own flag. Rows older than `keep_months` are pruned.
+    'commercial_customer_history_window_months' => (int) env('GWL_COMMERCIAL_CUSTOMER_HISTORY_WINDOW_MONTHS', 6),
+    'commercial_customer_history_min_months' => (int) env('GWL_COMMERCIAL_CUSTOMER_HISTORY_MIN_MONTHS', 3),
+    'commercial_customer_history_high_multiple' => (float) env('GWL_COMMERCIAL_CUSTOMER_HISTORY_HIGH_MULTIPLE', 2),
+    'commercial_customer_history_low_multiple' => (float) env('GWL_COMMERCIAL_CUSTOMER_HISTORY_LOW_MULTIPLE', 0.5),
+    'commercial_customer_history_keep_months' => (int) env('GWL_COMMERCIAL_CUSTOMER_HISTORY_KEEP_MONTHS', 24),
     // Rollback data (the pre-image of what an upload rewrote) is kept for this many newest uploads per district; only those can be voided exactly.
     'commercial_customer_undo_keep_batches' => (int) env('GWL_COMMERCIAL_CUSTOMER_UNDO_KEEP_BATCHES', 1),
     // Personal data retention: the contact details (name, address, phones, e-mail) of an account that has been missing from

@@ -14,6 +14,7 @@
             'credit_union' => 'landmark',
             'commercial' => 'chart-column',
             'health_safety' => 'triangle-alert',
+            'gwater' => 'droplets',
             'uac' => 'shield-check',
         ];
         $leave = $summary['leave'] ?? null;
@@ -105,6 +106,9 @@
                             </span>
                             @if ($slug === 'leave')
                                 <span class="dashboard-badge">{{ __('Everyone') }}</span>
+                            @endif
+                            @if (($moduleCard['badge'] ?? 0) > 0)
+                                <span class="module-count"><span class="sr-only-text">{{ __('Pending: ') }}</span>{{ $moduleCard['badge'] > 99 ? '99+' : $moduleCard['badge'] }}</span>
                             @endif
                         </div>
 

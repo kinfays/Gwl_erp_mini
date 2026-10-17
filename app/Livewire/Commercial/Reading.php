@@ -29,7 +29,7 @@ class Reading extends Component
 
     public const TABS = [
         'trend' => 'Trend & coverage',
-        'readers' => 'Readers',
+        'readers' => 'CCAs',
         'exceptions' => 'Exceptions',
         'scorecard' => 'Scorecard',
     ];

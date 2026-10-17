@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Permission;
 use App\Services\HomeSummaryService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -22,87 +21,8 @@ class DashboardController extends Controller
         $employee = $user->employee ?? $user->employeeByStaffId;
         $roleName = $user->displayRoleNames();
 
-        $modules = collect([
-            [
-                'slug' => Permission::MODULE_STAFF,
-                'title' => 'Staff Management',
-                'description' => 'Manage employee records, import staff data, update profiles',
-                'route' => route('staff.index'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-sky-50',
-                'icon_color' => 'text-sky-700',
-                'always' => false,
-            ],
-            [
-                'slug' => Permission::MODULE_LEAVE,
-                'title' => 'Leave Management',
-                'description' => 'Apply for leave, track balances, and manage approvals',
-                'route' => route('leave.home'),
-                'badge' => 'Everyone',
-                'accent' => 'border-t-4 border-[#185FA5]',
-                'icon_bg' => 'bg-blue-50',
-                'icon_color' => 'text-[#185FA5]',
-                'always' => true,
-            ],
-            [
-                'slug' => Permission::MODULE_LETTERS,
-                'title' => 'Letters & Documents',
-                'description' => 'Receive, review, forward and close official correspondence',
-                'route' => route('letters.home'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-amber-50',
-                'icon_color' => 'text-amber-700',
-                'always' => false,
-            ],
-            [
-                'slug' => Permission::MODULE_VISITORS,
-                'title' => 'Visitors Log',
-                'description' => 'Monitor visitor sign-ins, manage check-ins and check-outs',
-                'route' => route('visitors.home'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-emerald-50',
-                'icon_color' => 'text-emerald-700',
-                'always' => false,
-            ],
-            [
-                'slug' => Permission::MODULE_ASSETS,
-                'title' => 'ICT Assets',
-                'description' => 'Track assets, maintenance, field issues, and device telemetry',
-                'route' => route('assets.home'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-cyan-50',
-                'icon_color' => 'text-cyan-700',
-                'always' => false,
-            ],
-            [
-                'slug' => Permission::MODULE_TRANSPORT,
-                'title' => 'Transport',
-                'description' => 'Manage fleet assignments, mileage, issues, maintenance, and expenses',
-                'route' => route('transport.home'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-emerald-50',
-                'icon_color' => 'text-emerald-700',
-                'always' => false,
-            ],
-            [
-                'slug' => Permission::MODULE_UAC,
-                'title' => 'User Access Control',
-                'description' => 'Manage users, roles, permissions, and bulk data imports',
-                'route' => route('uac.index'),
-                'badge' => $roleName,
-                'accent' => 'border-t-4 border-slate-200',
-                'icon_bg' => 'bg-indigo-50',
-                'icon_color' => 'text-indigo-700',
-                'always' => false,
-            ],
-        ])->filter(function (array $module) use ($user) {
-            return $module['always'] || in_array($module['slug'], $user->getAccessibleModules(), true);
-        })->sortByDesc(fn (array $module) => $module['always'] ? 1 : 0)->values();
+        // One list of module cards for the whole portal (flags and access are applied in the helper).
+        $modules = collect(dashboardModules());
 
         $location = collect([
             $employee?->district?->district_name,

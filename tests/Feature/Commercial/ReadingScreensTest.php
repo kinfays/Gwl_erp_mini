@@ -114,7 +114,7 @@ class ReadingScreensTest extends CommercialTestCase
 
         Livewire::actingAs($this->officer())->test(Reading::class)
             ->set('tab', 'exceptions')
-            ->assertSee('Inactive and under-used readers')
+            ->assertSee('Inactive and under-used CCAs')
             ->assertSee('Workload balance')
             ->assertSee('Skip-rate outliers')
             ->set('tab', 'scorecard')

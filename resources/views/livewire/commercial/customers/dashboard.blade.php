@@ -353,6 +353,8 @@
                 </x-ui.card>
             </div>
 
+            @include('livewire.commercial.customers.partials.consumption-history', ['hs' => $k['history'], 'rows' => $k['rows']])
+
         {{-- ================================================ H. data quality --}}
         @elseif ($activeTab === 'quality')
             @php $q = $quality; @endphp

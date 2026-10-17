@@ -69,7 +69,8 @@ class BlogNavigationTest extends BlogTestCase
         $this->assertMatchesRegularExpression('#<a\s[^>]*href="'.preg_quote(route('blog.home'), '#').'"[^>]*target="_blank"[^>]*rel="noopener"[^>]*>#', $html, 'opens in a new tab, without an opener');
         $this->assertStringContainsString('aria-label="Regional Blog (opens in a new tab)"', $html, 'the icon-only form has an accessible name');
 
-        // It sits in the right-hand cluster, after the modules and before the bell / account menu, and not among the module tabs.
+        // On a module page it sits in the right-hand cluster, after the module tabs and before the bell / account menu, and not among them.
+        $html = $this->actingAs($this->reader())->get(route('leave.home'))->assertOk()->getContent();
         $modules = strpos($html, 'class="app-modules"');
         $link = strpos($html, 'class="icon-btn blog-link"');
         $account = strpos($html, 'class="user-menu"');

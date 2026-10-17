@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Health & Safety" description="Incidents and near misses waiting for you, with the rows behind each number.">
+    <x-ui.page-header title="Environmental Health and Safety" description="Incidents and near misses waiting for you, with the rows behind each number.">
         <x-slot:actions>
             <x-ui.button :href="route('health_safety.report')" variant="primary" icon="circle-plus">Report an incident</x-ui.button>
         </x-slot:actions>

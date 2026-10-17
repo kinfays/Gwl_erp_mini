@@ -43,7 +43,7 @@
                     @endforeach
                 </select>
             @endif
-            <select wire:model.live="district" class="form-input" aria-label="Reader's home district">
+            <select wire:model.live="district" class="form-input" aria-label="CCA's home district">
                 <option value="">Any home district</option>
                 @foreach ($districts as $d)
                     <option value="{{ $d->id }}">{{ $d->district_name }}</option>
@@ -57,13 +57,13 @@
         </div>
 
         @if ($district !== '')
-            <p class="ui-hint dash-row">Filtered by the reader's <strong>home district</strong> in the staff directory. The report has no district split, so this is where the reader is posted, not where they read.</p>
+            <p class="ui-hint dash-row">Filtered by the CCA's <strong>home district</strong> in the staff directory. The report has no district split, so this is where the CCA is posted, not where they read.</p>
         @endif
 
         @if ($activeTab === 'trend')
             @if (! empty($smallGroup))
                 <x-ui.card>
-                    <x-ui.empty-state icon="users" title="Too few readers to show this district" :description="'This home district has fewer than '.$minReaders.' readers with visits in these months, so its figures would be an individual reader\'s. Users with access to reader-level figures can see it; otherwise pick a wider group or clear the district filter.'" />
+                    <x-ui.empty-state icon="users" title="Too few CCAs to show this district" :description="'This home district has fewer than '.$minReaders.' CCAs with visits in these months, so its figures would be an individual CCA\'s. Users with access to CCA-level figures can see it; otherwise pick a wider group or clear the district filter.'" />
                 </x-ui.card>
             @elseif (empty($trend))
                 <x-ui.card><x-ui.empty-state icon="chart-column" title="No reading data for these filters." description="Widen the months or clear the district filter." /></x-ui.card>
@@ -142,7 +142,7 @@
                                 <th class="num">Skipped</th>
                                 <th class="num">Read rate</th>
                                 <th class="num">Skip rate</th>
-                                <th class="num">Readers active</th>
+                                <th class="num">CCAs active</th>
                                 <th class="num">Verified strength</th>
                                 <th class="num">Coverage</th>
                             </tr>
@@ -193,14 +193,14 @@
             @endif
         @elseif ($activeTab === 'readers')
             @if (empty($readers))
-                <x-ui.card><x-ui.empty-state icon="users" title="No readers for these filters." description="Widen the months or clear the district filter." /></x-ui.card>
+                <x-ui.card><x-ui.empty-state icon="users" title="No CCAs for these filters." description="Widen the months or clear the district filter." /></x-ui.card>
             @else
-                <x-ui.card title="League table" description="Visits per reader over the months shown, busiest first. The system account is never listed." :padded="false" class="dash-row">
-                    <x-ui.table label="Readers ranked by visits" :sticky="false">
+                <x-ui.card title="League table" description="Visits per CCA over the months shown, busiest first. The system account is never listed." :padded="false" class="dash-row">
+                    <x-ui.table label="CCAs ranked by visits" :sticky="false">
                         <x-slot:head>
                             <tr>
                                 <th class="num">#</th>
-                                <th>Reader</th>
+                                <th>CCA</th>
                                 <th>Home district</th>
                                 <th class="num">Visited</th>
                                 <th class="num">Share</th>
@@ -227,35 +227,35 @@
                 </x-ui.card>
 
                 <div class="ui-grid ui-grid-2 dash-row">
-                    <x-ui.card title="Lowest skip rates" :description="'Best '.$quality['decile_size'].' of the readers with at least '.number_format($quality['min_visits']).' visits.'" :padded="false">
-                        <x-ui.table label="Readers with the lowest skip rate" :sticky="false">
-                            <x-slot:head><tr><th>Reader</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
+                    <x-ui.card title="Lowest skip rates" :description="'Best '.$quality['decile_size'].' of the CCAs with at least '.number_format($quality['min_visits']).' visits.'" :padded="false">
+                        <x-ui.table label="CCAs with the lowest skip rate" :sticky="false">
+                            <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
                             @forelse ($quality['best'] as $row)
                                 <tr wire:key="best-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
                             @empty
-                                <x-ui.empty-row :colspan="3" icon="users" title="No reader has enough visits to be ranked." />
+                                <x-ui.empty-row :colspan="3" icon="users" title="No CCA has enough visits to be ranked." />
                             @endforelse
                         </x-ui.table>
                     </x-ui.card>
 
-                    <x-ui.card title="Highest skip rates" :description="'Worst '.$quality['decile_size'].' of the readers with at least '.number_format($quality['min_visits']).' visits.'" :padded="false">
-                        <x-ui.table label="Readers with the highest skip rate" :sticky="false">
-                            <x-slot:head><tr><th>Reader</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
+                    <x-ui.card title="Highest skip rates" :description="'Worst '.$quality['decile_size'].' of the CCAs with at least '.number_format($quality['min_visits']).' visits.'" :padded="false">
+                        <x-ui.table label="CCAs with the highest skip rate" :sticky="false">
+                            <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
                             @forelse ($quality['worst'] as $row)
                                 <tr wire:key="worst-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
                             @empty
-                                <x-ui.empty-row :colspan="3" icon="users" title="No reader has enough visits to be ranked." />
+                                <x-ui.empty-row :colspan="3" icon="users" title="No CCA has enough visits to be ranked." />
                             @endforelse
                         </x-ui.table>
                     </x-ui.card>
                 </div>
 
-                <x-ui.card title="Consistency" description="How steady each reader's monthly visits are (standard deviation ÷ mean; lower is steadier). Complete months only." :padded="false" class="dash-row">
+                <x-ui.card title="Consistency" description="How steady each CCA's monthly visits are (standard deviation ÷ mean; lower is steadier). Complete months only." :padded="false" class="dash-row">
                     @if (! $consistency['enough_months'])
                         <x-ui.empty-state icon="calendar-days" title="Not enough months" :description="'Consistency needs at least '.$consistency['min_months'].' complete months; the months shown have '.$consistency['complete_months'].'. The current month is still in progress and is left out.'" />
                     @else
-                        <x-ui.table label="Reader consistency" :sticky="false">
-                            <x-slot:head><tr><th>Reader</th><th class="num">Months</th><th class="num">Average visits</th><th class="num">Lowest</th><th class="num">Highest</th><th class="num">Variation</th><th class="num">Months below own average</th></tr></x-slot:head>
+                        <x-ui.table label="CCA consistency" :sticky="false">
+                            <x-slot:head><tr><th>CCA</th><th class="num">Months</th><th class="num">Average visits</th><th class="num">Lowest</th><th class="num">Highest</th><th class="num">Variation</th><th class="num">Months below own average</th></tr></x-slot:head>
                             @foreach ($consistency['rows'] as $row)
                                 <tr wire:key="cv-{{ $row['staff_id'] }}">
                                     <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
@@ -275,8 +275,8 @@
                     @if (! $movement['enough_months'])
                         <x-ui.empty-state icon="calendar-days" title="Not enough months" description="Movement needs two complete months. The current month is still in progress and is left out." />
                     @else
-                        <x-ui.table label="Reader movement between the last two complete months" :sticky="false">
-                            <x-slot:head><tr><th>Reader</th><th class="num">Visited before</th><th class="num">Visited now</th><th class="num">Change</th><th class="num">Skip rate before</th><th class="num">Skip rate now</th><th class="num">Change (points)</th><th>Skip-rate trend</th></tr></x-slot:head>
+                        <x-ui.table label="CCA movement between the last two complete months" :sticky="false">
+                            <x-slot:head><tr><th>CCA</th><th class="num">Visited before</th><th class="num">Visited now</th><th class="num">Change</th><th class="num">Skip rate before</th><th class="num">Skip rate now</th><th class="num">Change (points)</th><th>Skip-rate trend</th></tr></x-slot:head>
                             @foreach ($movement['rows'] as $row)
                                 <tr wire:key="mv-{{ $row['staff_id'] }}">
                                     <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
@@ -296,11 +296,11 @@
         @elseif ($activeTab === 'exceptions')
             <p class="ui-hint dash-row">Exceptions use <strong>complete months</strong> only; the current month is still filling up and is left out.</p>
 
-            <x-ui.card title="Inactive and under-used readers" :description="'No visits at all, or below '.$inactive['low_pct'].'% of the median of the active readers that month.'" :padded="false" class="dash-row">
+            <x-ui.card title="Inactive and under-used CCAs" :description="'No visits at all, or below '.$inactive['low_pct'].'% of the median of the active CCAs that month.'" :padded="false" class="dash-row">
                 @if (! $inactive['enough_months'])
                     <x-ui.empty-state icon="calendar-days" title="No complete month in this range" description="Widen the months to include a finished month." />
                 @else
-                    <x-ui.table label="Inactive readers by month" :sticky="false">
+                    <x-ui.table label="Inactive CCAs by month" :sticky="false">
                         <x-slot:head><tr><th>Month</th><th>No visits</th><th>Well below the median</th></tr></x-slot:head>
                         @foreach ($inactive['months'] as $month)
                             <tr wire:key="inactive-{{ $month['month'] }}">
@@ -325,19 +325,19 @@
                 @endif
             </x-ui.card>
 
-            <x-ui.card title="Workload balance" :description="'Visits per reader against the median of active readers: low below '.$workload['low_pct'].'%, high above '.$workload['high_pct'].'%.'" :padded="false" class="dash-row">
+            <x-ui.card title="Workload balance" :description="'Visits per CCA against the median of active CCAs: low below '.$workload['low_pct'].'%, high above '.$workload['high_pct'].'%.'" :padded="false" class="dash-row">
                 @if (! $workload['enough_months'])
                     <x-ui.empty-state icon="calendar-days" title="No complete month in this range" description="Widen the months to include a finished month." />
                 @else
                     <div class="ui-stat-grid" style="padding:14px">
-                        <x-ui.stat-tile label="Median visits (active readers)" :value="$workload['median'] === null ? '–' : number_format($workload['median'])" icon="users" />
-                        <x-ui.stat-tile label="Busiest reader ÷ median" :value="$workload['max_over_median'] === null ? '–' : number_format($workload['max_over_median'], 2).'×'" icon="trending-up" />
+                        <x-ui.stat-tile label="Median visits (active CCAs)" :value="$workload['median'] === null ? '–' : number_format($workload['median'])" icon="users" />
+                        <x-ui.stat-tile label="Busiest CCA ÷ median" :value="$workload['max_over_median'] === null ? '–' : number_format($workload['max_over_median'], 2).'×'" icon="trending-up" />
                         <x-ui.stat-tile label="Above the high band" :value="$workload['counts']['high'] ?? 0" icon="triangle-alert" tone="warning" />
                         <x-ui.stat-tile label="Below the low band" :value="$workload['counts']['low'] ?? 0" icon="triangle-alert" tone="warning" />
                         <x-ui.stat-tile label="No visits" :value="$workload['counts']['inactive'] ?? 0" icon="users" tone="danger" />
                     </div>
-                    <x-ui.table label="Readers outside the normal workload band" :sticky="false">
-                        <x-slot:head><tr><th>Reader</th><th class="num">Visited</th><th class="num">% of median</th><th>Band</th></tr></x-slot:head>
+                    <x-ui.table label="CCAs outside the normal workload band" :sticky="false">
+                        <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">% of median</th><th>Band</th></tr></x-slot:head>
                         @forelse (array_filter($workload['rows'], fn ($row) => $row['band'] !== 'normal') as $row)
                             <tr wire:key="wl-{{ $row['staff_id'] }}">
                                 <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
@@ -346,22 +346,22 @@
                                 <td><x-ui.badge :tone="match ($row['band']) { 'high' => 'warning', 'low' => 'warning', default => 'danger' }">{{ ucfirst($row['band']) }}</x-ui.badge></td>
                             </tr>
                         @empty
-                            <x-ui.empty-row :colspan="4" icon="check" title="Every reader is within the normal band." />
+                            <x-ui.empty-row :colspan="4" icon="check" title="Every CCA is within the normal band." />
                         @endforelse
                     </x-ui.table>
                 @endif
             </x-ui.card>
 
-            <x-ui.card title="Skip-rate outliers" :description="'Skip rate more than '.number_format($outliers['threshold'], 1).' standard deviations above the other readers. Only readers with at least '.number_format($outliers['min_visits']).' visits are judged.'" :padded="false" class="dash-row">
+            <x-ui.card title="Skip-rate outliers" :description="'Skip rate more than '.number_format($outliers['threshold'], 1).' standard deviations above the other CCAs. Only CCAs with at least '.number_format($outliers['min_visits']).' visits are judged.'" :padded="false" class="dash-row">
                 @if (! $outliers['enough_months'])
                     <x-ui.empty-state icon="calendar-days" title="No complete month in this range" description="Widen the months to include a finished month." />
                 @else
                     <p class="ui-hint" style="padding:8px 14px">
-                        {{ $outliers['eligible'] }} readers judged, {{ $outliers['excluded'] }} left out for too few visits.
+                        {{ $outliers['eligible'] }} CCAs judged, {{ $outliers['excluded'] }} left out for too few visits.
                         Average skip rate {{ $pct($outliers['mean']) }}, spread {{ $pct($outliers['stdev']) }}.
                     </p>
-                    <x-ui.table label="Readers by skip-rate z-score" :sticky="false">
-                        <x-slot:head><tr><th>Reader</th><th class="num">Visited</th><th class="num">Skip rate</th><th class="num">z-score</th><th>Flag</th></tr></x-slot:head>
+                    <x-ui.table label="CCAs by skip-rate z-score" :sticky="false">
+                        <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th><th class="num">z-score</th><th>Flag</th></tr></x-slot:head>
                         @forelse ($outliers['rows'] as $row)
                             <tr wire:key="out-{{ $row['staff_id'] }}">
                                 <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
@@ -371,13 +371,13 @@
                                 <td>@if ($row['flagged'])<x-ui.badge tone="danger">Outlier</x-ui.badge>@endif</td>
                             </tr>
                         @empty
-                            <x-ui.empty-row :colspan="5" icon="users" title="No reader has enough visits to be judged." />
+                            <x-ui.empty-row :colspan="5" icon="users" title="No CCA has enough visits to be judged." />
                         @endforelse
                     </x-ui.table>
                 @endif
             </x-ui.card>
         @elseif ($activeTab === 'scorecard')
-            <x-ui.card title="Reader scorecard" description="An indicative 0-100 score from percentile ranks over the complete months. It is a first guess to start conversations, not a verdict." :padded="false" class="dash-row">
+            <x-ui.card title="CCA scorecard" description="An indicative 0-100 score from percentile ranks over the complete months. It is a first guess to start conversations, not a verdict." :padded="false" class="dash-row">
                 @if (! $scorecard['enough_months'])
                     <x-ui.empty-state icon="calendar-days" title="No complete month in this range" description="Widen the months to include a finished month." />
                 @else
@@ -385,10 +385,10 @@
                         Indicative weights: volume {{ number_format($scorecard['weights']['volume'] * 100) }}%,
                         skip rate (lower is better) {{ number_format($scorecard['weights']['skip'] * 100) }}%,
                         consistency (steadier is better) {{ number_format($scorecard['weights']['consistency'] * 100) }}%.
-                        Where a reader has too few months for consistency the other weights are scaled up.
+                        Where a CCA has too few months for consistency the other weights are scaled up.
                     </p>
-                    <x-ui.table label="Reader scorecard" :sticky="false">
-                        <x-slot:head><tr><th class="num">#</th><th>Reader</th><th class="num">Visited</th><th class="num">Skip rate</th><th class="num">Variation</th><th class="num">Volume</th><th class="num">Skip</th><th class="num">Consistency</th><th class="num">Score</th></tr></x-slot:head>
+                    <x-ui.table label="CCA scorecard" :sticky="false">
+                        <x-slot:head><tr><th class="num">#</th><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th><th class="num">Variation</th><th class="num">Volume</th><th class="num">Skip</th><th class="num">Consistency</th><th class="num">Score</th></tr></x-slot:head>
                         @forelse ($scorecard['rows'] as $i => $row)
                             <tr wire:key="score-{{ $row['staff_id'] }}">
                                 <td class="num">{{ $i + 1 }}</td>
@@ -402,7 +402,7 @@
                                 <td class="num"><strong>{{ $row['score'] === null ? '–' : number_format($row['score'], 0) }}</strong></td>
                             </tr>
                         @empty
-                            <x-ui.empty-row :colspan="9" icon="users" title="No reader has visits in these months." />
+                            <x-ui.empty-row :colspan="9" icon="users" title="No CCA has visits in these months." />
                         @endforelse
                     </x-ui.table>
                 @endif

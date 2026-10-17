@@ -11,7 +11,7 @@
         $met = fn ($value) => $value === null ? null : ($value ? 'good' : 'bad');
     @endphp
 
-    <x-ui.page-header title="Summary" :description="'The headline numbers, exceptions and data freshness for '.$region_label.'. No individual readers appear on this page.'">
+    <x-ui.page-header title="Summary" :description="'The headline numbers, exceptions and data freshness for '.$region_label.'. No individual CCAs appear on this page.'">
         <x-slot:actions>
             @if ($canExport)
                 <a href="{{ route('commercial.export', ['report' => 'summary', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
@@ -125,7 +125,7 @@
             @php $q = $s['quality']; @endphp
             <dl class="ui-dl">
                 @if ($q['unmatched_readers'] !== null)
-                    <dt>Readers not in the staff directory</dt>
+                    <dt>CCAs not in the staff directory</dt>
                     <dd><x-ui.badge :tone="$q['unmatched_readers'] > 0 ? 'warning' : 'success'">{{ $q['unmatched_readers'] }}</x-ui.badge></dd>
                 @endif
                 @if ($q['unresolved_districts'] !== null)
@@ -145,7 +145,7 @@
 
     {{-- C1 and C2: billing beside reading --}}
     @if ($can_combine && $scorecard)
-        <x-ui.card title="District scorecard" description="Billing from the snapshot above; reading is the complete months inside its period, grouped by the reader's home district." :padded="false" class="dash-row">
+        <x-ui.card title="District scorecard" description="Billing from the snapshot above; reading is the complete months inside its period, grouped by the CCA's home district." :padded="false" class="dash-row">
             @if ($canExportCombined)
                 <x-slot:actions>
                     <a href="{{ route('commercial.export', ['report' => 'scorecard', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-ghost btn-sm">Excel</a>
@@ -154,11 +154,11 @@
             @endif
 
             <p class="ui-hint" style="padding:8px 14px">
-                An approximation: it assumes a reader works in the district they are posted to, as the reading report has no district split.
+                An approximation: it assumes a CCA works in the district they are posted to, as the reading report has no district split.
                 @if ($scorecard['reading_available'])
                     Reading months: {{ implode(', ', $scorecard['reading_months']) }}. Coverage is not shown per district (the verified strength is region-wide).
                     @if ($scorecard['hide_small_groups'])
-                        A district's reading figures are left out when fewer than {{ $scorecard['min_readers'] }} readers had visits, as they would be one person's own.
+                        A district's reading figures are left out when fewer than {{ $scorecard['min_readers'] }} CCAs had visits, as they would be one person's own.
                     @endif
                 @else
                     No complete reading month falls inside this billing period, so the reading columns are empty.
@@ -169,12 +169,12 @@
                 <x-slot:head>
                     <tr>
                         <th>District</th><th class="num">Billing (GH¢)</th><th class="num">Cash ratio</th><th class="num">Estimated volume</th><th class="num">Unbilled rate</th>
-                        <th class="num">Visits</th><th class="num">Skip rate</th><th class="num">Active readers</th><th class="num">Visits per reader</th>
+                        <th class="num">Visits</th><th class="num">Skip rate</th><th class="num">Active CCAs</th><th class="num">Visits per CCA</th>
                     </tr>
                 </x-slot:head>
                 @forelse ($scorecard['rows'] as $row)
                     <tr wire:key="sc-{{ $row['district'] }}-{{ $row['key'] }}">
-                        <td>{{ $row['district'] }}@if ($row['reading_hidden'])<x-ui.badge tone="warning">Fewer than {{ $scorecard['min_readers'] }} readers</x-ui.badge>@endif @unless ($row['billing_side'])<x-ui.badge>Reading only</x-ui.badge>@endunless @unless ($row['reading_side'])<x-ui.badge>Billing only</x-ui.badge>@endunless</td>
+                        <td>{{ $row['district'] }}@if ($row['reading_hidden'])<x-ui.badge tone="warning">Fewer than {{ $scorecard['min_readers'] }} CCAs</x-ui.badge>@endif @unless ($row['billing_side'])<x-ui.badge>Reading only</x-ui.badge>@endunless @unless ($row['reading_side'])<x-ui.badge>Billing only</x-ui.badge>@endunless</td>
                         <td class="num">{{ $money($row['billing']) }}</td>
                         <td class="num">{{ $pct($row['cash_ratio']) }}</td>
                         <td class="num">{{ $pct($row['estimation']) }}</td>

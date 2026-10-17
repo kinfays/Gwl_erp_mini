@@ -90,7 +90,7 @@ class CommercialInsightsTest extends CommercialTestCase
         $this->assertNull($headOffice['cash_ratio']);
         $this->assertSame(50, $headOffice['visits']);
 
-        $unknown = $rows['No home district (reader not in the directory)'];
+        $unknown = $rows['No home district (CCA not in the directory)'];
         $this->assertSame(10, $unknown['visits']);
         $this->assertFalse($unknown['billing_side']);
 

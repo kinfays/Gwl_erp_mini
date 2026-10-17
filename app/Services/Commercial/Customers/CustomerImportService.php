@@ -44,6 +44,7 @@ class CustomerImportService
         protected CustomerMergeService $merge,
         protected CustomerRollupService $rollups,
         protected CustomerBatchLifecycle $lifecycle,
+        protected CustomerConsumptionHistory $history,
     ) {
     }
 
@@ -161,6 +162,7 @@ class CustomerImportService
             }
 
             if ($batch->phase === CommercialCustomerBatch::PHASE_ROLLUP) {
+                $this->timed('history', fn () => $this->history->record($batch, (new CustomerLookups)->billingStatusIds()));
                 $this->timed('rollups', fn () => $this->rollups->build($batch, (new CustomerLookups)->billingStatusIds()));
                 $this->timed('complete', fn () => $this->lifecycle->complete($batch));
             }

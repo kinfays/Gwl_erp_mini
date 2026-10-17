@@ -43,6 +43,7 @@ class CustomerRollupService
             $this->timed('route_rollups', fn () => $this->rollups($batch, $billingStatusIds));
             $this->timed('district_rollups', fn () => $this->districtRollups($batch));
             $this->timed('consumption', fn () => $this->consumption($batch, $billingStatusIds));
+            $this->timed('history', fn () => $this->historyAnomalies($batch, $billingStatusIds));
             $this->timed('connections', fn () => $this->connections($batch, $billingStatusIds));
             $this->timed('debt', fn () => $this->debt($batch));
             $this->timed('issue_accounts', fn () => $this->issueAccounts($batch));
@@ -252,6 +253,59 @@ class CustomerRollupService
                 : 0;
 
             DB::table('commercial_customer_consumption')->where('id', $row->id)->update(['median_average' => $median, 'outliers' => $outliers]);
+        }
+    }
+
+    /**
+     * Accounts far from their OWN earlier months (the history baseline, see CustomerConsumptionHistory): counted per category on the
+     * consumption rows, and the accounts behind the counts stored as drill-down lists (capped; the counts stay exact). An account
+     * has a baseline only after min_months earlier months are stored, so a district's first uploads count nothing; that is "no
+     * baseline yet", not "no anomalies", and the screen says so from the batch's history_months.
+     *
+     * @param  list<int>  $billing
+     */
+    protected function historyAnomalies(CommercialCustomerBatch $batch, array $billing): void
+    {
+        $billingList = $billing === [] ? '0' : implode(',', array_map('intval', $billing));
+        $b = (int) $batch->id;
+        $d = (int) $batch->district_id;
+        $live = "c.district_id = {$d} AND c.missing_since_batch_id IS NULL AND c.status_id IN ({$billingList}) AND c.average_consume IS NOT NULL";
+        $history = app(CustomerConsumptionHistory::class);
+        $base = $history->baselineSql($batch);
+        $high = sprintf('%.4F', (float) config('gwl.commercial_customer_history_high_multiple', 2));
+        $low = sprintf('%.4F', (float) config('gwl.commercial_customer_history_low_multiple', 0.5));
+
+        $conditions = [
+            'consumption_spike' => "c.average_consume > x.base * {$high}",
+            'consumption_drop' => "c.average_consume > 0 AND c.average_consume < x.base * {$low}",
+            'consumption_zero' => 'c.average_consume = 0',
+        ];
+
+        $rows = DB::select(
+            'SELECT c.category_id, COUNT(*) AS n, '
+            ."SUM(CASE WHEN {$conditions['consumption_spike']} THEN 1 ELSE 0 END) AS spike, "
+            ."SUM(CASE WHEN {$conditions['consumption_drop']} THEN 1 ELSE 0 END) AS drop_, "
+            ."SUM(CASE WHEN {$conditions['consumption_zero']} THEN 1 ELSE 0 END) AS zero "
+            ."FROM commercial_customers c INNER JOIN ({$base}) x ON x.customer_id = c.id WHERE {$live} GROUP BY c.category_id"
+        );
+
+        foreach ($rows as $row) {
+            DB::table('commercial_customer_consumption')->where('batch_id', $b)->where('category_id', $row->category_id)
+                ->update(['hist_baseline' => (int) $row->n, 'hist_high' => (int) $row->spike, 'hist_low' => (int) $row->drop_, 'hist_zero' => (int) $row->zero]);
+        }
+
+        $cap = self::ISSUE_LIST_CAP;
+        $counts = ['consumption_spike' => collect($rows)->sum('spike'), 'consumption_drop' => collect($rows)->sum('drop_'), 'consumption_zero' => collect($rows)->sum('zero')];
+
+        foreach ($conditions as $issue => $condition) {
+            if ((int) $counts[$issue] === 0) {
+                continue;
+            }
+
+            DB::affectingStatement(
+                "INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) SELECT {$b}, '{$issue}', c.id FROM commercial_customers c "
+                ."INNER JOIN ({$base}) x ON x.customer_id = c.id WHERE {$live} AND {$condition} LIMIT {$cap}"
+            );
         }
     }
 

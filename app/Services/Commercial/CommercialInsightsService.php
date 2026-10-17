@@ -79,7 +79,7 @@ class CommercialInsightsService
             if ($hideSmallGroups && $active < $minReaders) {
                 $readingRows[(string) $key] = [
                     'district_id' => $key === 'none' ? null : (int) $key,
-                    'name' => $key === 'none' ? 'No home district (reader not in the directory)' : (string) ($group->first()->district?->district_name ?? 'District '.$key),
+                    'name' => $key === 'none' ? 'No home district (CCA not in the directory)' : (string) ($group->first()->district?->district_name ?? 'District '.$key),
                     'hidden' => true,
                     'visits' => null, 'read' => null, 'skipped' => null, 'skip_rate' => null, 'active_readers' => null, 'visits_per_reader' => null,
                 ];
@@ -90,7 +90,7 @@ class CommercialInsightsService
             $readingRows[(string) $key] = [
                 'hidden' => false,
                 'district_id' => $key === 'none' ? null : (int) $key,
-                'name' => $key === 'none' ? 'No home district (reader not in the directory)' : (string) ($group->first()->district?->district_name ?? 'District '.$key),
+                'name' => $key === 'none' ? 'No home district (CCA not in the directory)' : (string) ($group->first()->district?->district_name ?? 'District '.$key),
                 'visits' => $visits,
                 'read' => (int) $group->sum('read_count'),
                 'skipped' => (int) $group->sum('skipped_count'),

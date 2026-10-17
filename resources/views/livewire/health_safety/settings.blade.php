@@ -1,7 +1,7 @@
 <div>
-    <x-ui.page-header title="Health &amp; Safety settings" description="The values the module measures against. A change applies everywhere at once and is recorded in the audit log.">
+    <x-ui.page-header title="Environmental Health and Safety settings" description="The values the module measures against. A change applies everywhere at once and is recorded in the audit log.">
         <x-slot:actions>
-            <button type="button" class="btn btn-secondary" wire:click="resetAll" wire:confirm="Put every Health &amp; Safety setting back to its default?">Reset everything to the defaults</button>
+            <button type="button" class="btn btn-secondary" wire:click="resetAll" wire:confirm="Put every Environmental Health and Safety setting back to its default?">Reset everything to the defaults</button>
         </x-slot:actions>
     </x-ui.page-header>
 

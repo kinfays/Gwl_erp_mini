@@ -31,7 +31,7 @@ class ReaderDetail extends Component
             // Rows exist but not in this user's regions: forbidden, not "unknown".
             $existsElsewhere = CommercialReadingStat::query()->effective()->readers()->where('reader_staff_id', $staffId)->exists();
 
-            abort($existsElsewhere ? 403 : 404, $existsElsewhere ? 'This reader belongs to another region.' : 'No such reader.');
+            abort($existsElsewhere ? 403 : 404, $existsElsewhere ? 'This CCA belongs to another region.' : 'No such CCA.');
         }
     }
 

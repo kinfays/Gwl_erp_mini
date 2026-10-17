@@ -87,7 +87,7 @@ class ReadingSummaryImportService extends ReportImportService
             $staffId = $sheet['reader']['staff_id'];
 
             if (isset($seenReaders[$staffId])) {
-                $errors[] = ['row' => 'Sheet '.$sheet['sheet'], 'message' => "Reader {$staffId} appears on more than one sheet ('{$seenReaders[$staffId]}' and '{$sheet['sheet']}')."];
+                $errors[] = ['row' => 'Sheet '.$sheet['sheet'], 'message' => "CCA {$staffId} appears on more than one sheet ('{$seenReaders[$staffId]}' and '{$sheet['sheet']}')."];
             }
 
             $seenReaders[$staffId] ??= $sheet['sheet'];
@@ -128,7 +128,7 @@ class ReadingSummaryImportService extends ReportImportService
         $grand = $this->pickGrandSheet($grandCandidates);
 
         if ($readerSheets !== [] && ! $grand) {
-            $errors[] = ['row' => 'File', 'message' => 'The grand-total sheet was not found, so the reader rows cannot be checked against the report\'s own totals.'];
+            $errors[] = ['row' => 'File', 'message' => 'The grand-total sheet was not found, so the CCA rows cannot be checked against the report\'s own totals.'];
         }
 
         // --- Months, strengths and the per-reader rows. ---
@@ -173,7 +173,7 @@ class ReadingSummaryImportService extends ReportImportService
             $chosen = (int) array_key_first($votes);
 
             if (count($votes) > 1) {
-                $warnings[] = ['row' => Carbon::parse($monthKey)->format('M Y'), 'message' => 'Verified strength differs between reader sheets ('.implode(', ', array_map('number_format', array_keys($votes))).'); '.number_format($chosen).' was used because most sheets show it.'];
+                $warnings[] = ['row' => Carbon::parse($monthKey)->format('M Y'), 'message' => 'Verified strength differs between CCA sheets ('.implode(', ', array_map('number_format', array_keys($votes))).'); '.number_format($chosen).' was used because most sheets show it.'];
             }
 
             $strengths[] = ['month' => $monthKey, 'verified_strength' => $chosen];
@@ -196,7 +196,7 @@ class ReadingSummaryImportService extends ReportImportService
                         $grandTotal += $fromGrand;
 
                         if ($fromReaders !== $fromGrand) {
-                            $mismatches[] = Carbon::parse($monthKey)->format('M Y').": reader sheets total ".number_format($fromReaders).' but the grand-total sheet shows '.number_format($fromGrand);
+                            $mismatches[] = Carbon::parse($monthKey)->format('M Y').": CCA sheets total ".number_format($fromReaders).' but the grand-total sheet shows '.number_format($fromGrand);
                         }
                     }
                 } else {
@@ -205,14 +205,14 @@ class ReadingSummaryImportService extends ReportImportService
                     $grandTotal = (int) ($grand['overall'][$measure] ?? 0);
 
                     if ($readerTotal !== $grandTotal) {
-                        $mismatches[] = 'overall: reader sheets total '.number_format($readerTotal).' but the grand-total sheet shows '.number_format($grandTotal);
+                        $mismatches[] = 'overall: CCA sheets total '.number_format($readerTotal).' but the grand-total sheet shows '.number_format($grandTotal);
                     }
                 }
 
                 $checks[] = [
-                    'label' => "{$label}: reader rows add up to the grand-total sheet",
+                    'label' => "{$label}: CCA rows add up to the grand-total sheet",
                     'passed' => $mismatches === [],
-                    'detail' => number_format($readerTotal).' on reader sheets, '.number_format($grandTotal).' on the grand-total sheet',
+                    'detail' => number_format($readerTotal).' on CCA sheets, '.number_format($grandTotal).' on the grand-total sheet',
                 ];
 
                 foreach (array_slice($mismatches, 0, 12) as $mismatch) {
@@ -222,7 +222,7 @@ class ReadingSummaryImportService extends ReportImportService
         }
 
         $checks[] = [
-            'label' => 'Visited = read + skipped on every reader row',
+            'label' => 'Visited = read + skipped on every CCA row',
             'passed' => $visitedOff === [],
             'detail' => $visitedOff === [] ? count($statRows).' rows checked' : count($visitedOff).' row(s) off by more than '.self::VISITED_TOLERANCE,
         ];
@@ -232,9 +232,9 @@ class ReadingSummaryImportService extends ReportImportService
         }
 
         $checks[] = [
-            'label' => 'Each reader appears on one sheet only',
+            'label' => 'Each CCA appears on one sheet only',
             'passed' => count($seenReaders) === count($readerSheets),
-            'detail' => count($readerSheets).' reader sheets',
+            'detail' => count($readerSheets).' CCA sheets',
         ];
 
         $checks[] = [
@@ -261,7 +261,7 @@ class ReadingSummaryImportService extends ReportImportService
         $unmatchedReaders = collect($readerSummaries)->where('match_status', CommercialReadingStat::MATCH_UNMATCHED);
 
         foreach ($unmatchedReaders as $staffId => $summary) {
-            $warnings[] = ['row' => 'Reader '.$staffId, 'message' => "{$staffId} - {$summary['name']} is not in the staff directory. The batch can still be imported; link the reader on the batch screen."];
+            $warnings[] = ['row' => 'CCA '.$staffId, 'message' => "{$staffId} - {$summary['name']} is not in the staff directory. The batch can still be imported; link the CCA on the batch screen."];
         }
 
         // --- What this file replaces. ---

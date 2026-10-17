@@ -72,7 +72,7 @@ class SummaryAndPaceScreensTest extends CommercialTestCase
             ->assertSee('Data freshness')
             ->assertSee('upload times')
             ->assertSee('Data quality')
-            ->assertSee('Readers not in the staff directory')
+            ->assertSee('CCAs not in the staff directory')
             ->assertDontSee('ADWOA BOATENG')
             ->assertDontSee('KWESI PAINTSIL');
     }
@@ -96,7 +96,7 @@ class SummaryAndPaceScreensTest extends CommercialTestCase
         // Both: the district scorecard, with its caveats.
         Livewire::actingAs($this->officer())->test(Summary::class)
             ->assertSee('District scorecard')
-            ->assertSee("grouped by the reader's home district")
+            ->assertSee("grouped by the CCA's home district")
             ->assertSee('An approximation')
             ->assertSee('Coverage is not shown per district')
             ->assertSee('Estimation and skip rate')
@@ -117,7 +117,7 @@ class SummaryAndPaceScreensTest extends CommercialTestCase
         $readingOnly->assertSee('latest complete month')->assertDontSee('Cash collection ratio')->assertDontSee('Route exceptions')->assertDontSee('Billing periods loaded');
 
         $billingOnly = Livewire::actingAs($this->userWith('900702', ['commercial.view_billing']))->test(Summary::class);
-        $billingOnly->assertSee('Cash collection ratio')->assertSee('Route exceptions')->assertDontSee('latest complete month')->assertDontSee('Readers not in the staff directory');
+        $billingOnly->assertSee('Cash collection ratio')->assertSee('Route exceptions')->assertDontSee('latest complete month')->assertDontSee('CCAs not in the staff directory');
 
         $dashboard = Livewire::actingAs($this->userWith('900703', ['commercial.view_dashboard']))->test(Summary::class);
         $dashboard->assertSee('latest complete month')->assertSee('Cash collection ratio');

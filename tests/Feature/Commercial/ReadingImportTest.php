@@ -78,7 +78,7 @@ class ReadingImportTest extends CommercialTestCase
 
         $this->assertTrue($preview['blocked']);
         $this->assertGreaterThan(0, $preview['error_count']);
-        $this->assertStringContainsString('overall: reader sheets total 1,420 but the grand-total sheet shows 9,999', collect($preview['errors'])->pluck('message')->implode(' '));
+        $this->assertStringContainsString('overall: CCA sheets total 1,420 but the grand-total sheet shows 9,999', collect($preview['errors'])->pluck('message')->implode(' '));
 
         Livewire::test(Batches::class)
             ->call('openUpload')
@@ -157,7 +157,7 @@ class ReadingImportTest extends CommercialTestCase
         $employee = $this->employee('77001', 'Kofi Mensah (directory)', $this->accraWest, $this->odorkor);
 
         Livewire::test(BatchShow::class, ['batch' => $batch])
-            ->assertSee('Readers not in the staff directory')
+            ->assertSee('CCAs not in the staff directory')
             ->call('startLinkingReader', '15071')
             ->set('employeeSearch', 'Kofi Mensah')
             ->assertSee('77001')
@@ -243,7 +243,7 @@ class ReadingImportTest extends CommercialTestCase
 
         $off = $this->previewOf($this->readingFile(['grand_layout' => 'monthly', 'grand' => ['2026-07-01' => [9999, 100, 10099]]]));
         $this->assertTrue($off['blocked']);
-        $this->assertStringContainsString('Jul 2026: reader sheets total', collect($off['errors'])->pluck('message')->implode(' '));
+        $this->assertStringContainsString('Jul 2026: CCA sheets total', collect($off['errors'])->pluck('message')->implode(' '));
     }
 
     public function test_the_real_exports_document_map_sheet_with_a_huge_used_range_is_never_loaded(): void

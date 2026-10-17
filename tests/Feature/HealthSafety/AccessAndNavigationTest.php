@@ -126,18 +126,18 @@ class AccessAndNavigationTest extends HealthSafetyTestCase
         $titles = fn ($user) => collect($navigation->build($user, 'leave')['modules'])->pluck('title')->all();
 
         $employee = $this->reporter();
-        $this->assertContains('Health & Safety', $titles($employee));
-        $this->assertContains('Health & Safety', $titles($this->superAdmin()));
+        $this->assertContains('Environmental Health and Safety', $titles($employee));
+        $this->assertContains('Environmental Health and Safety', $titles($this->superAdmin()));
 
         config(['gwl.health_safety_module_enabled' => false]);
 
-        $this->assertNotContains('Health & Safety', $titles($employee));
-        $this->assertNotContains('Health & Safety', $titles($this->superAdmin()));
+        $this->assertNotContains('Environmental Health and Safety', $titles($employee));
+        $this->assertNotContains('Environmental Health and Safety', $titles($this->superAdmin()));
     }
 
     public function test_the_dashboard_lists_the_module_while_it_is_on(): void
     {
-        $this->actingAs($this->reporter())->get(route('dashboard'))->assertOk()->assertSee('Health &amp; Safety', false);
+        $this->actingAs($this->reporter())->get(route('dashboard'))->assertOk()->assertSee('Environmental Health and Safety', false);
     }
 
     public function test_with_the_flag_off_the_routes_do_not_exist(): void

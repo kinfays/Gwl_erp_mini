@@ -54,12 +54,12 @@
         <div class="stat">
             <div class="stat-lbl">Rows</div>
             <div class="stat-val">{{ number_format($batch->row_count) }}</div>
-            <div class="stat-sub">{{ $batch->isReading() ? 'reader-month rows' : 'route rows' }}</div>
+            <div class="stat-sub">{{ $batch->isReading() ? 'CCA-month rows' : 'route rows' }}</div>
         </div>
         <div class="stat">
             <div class="stat-lbl">Needs matching</div>
             <div class="stat-val">{{ number_format(max(0, $batch->row_count - $batch->matched_count)) }}</div>
-            <div class="stat-sub">{{ $batch->isReading() ? 'readers not in the directory' : 'routes without a district' }}</div>
+            <div class="stat-sub">{{ $batch->isReading() ? 'CCAs not in the directory' : 'routes without a district' }}</div>
         </div>
         <div class="stat">
             <div class="stat-lbl">Warnings at import</div>
@@ -126,7 +126,7 @@
             <div class="pg-head"><span class="pg-title">By month</span></div>
             <table>
                 <thead>
-                    <tr><th>Month</th><th>Verified strength</th><th>Readers</th><th>Read</th><th>Skipped</th><th>Visited</th></tr>
+                    <tr><th>Month</th><th>Verified strength</th><th>CCAs</th><th>Read</th><th>Skipped</th><th>Visited</th></tr>
                 </thead>
                 <tbody>
                     @foreach ($monthSummary as $month)
@@ -142,13 +142,13 @@
                 </tbody>
             </table>
             @if ($systemRows > 0)
-                <p class="form-hint" style="padding:8px 14px">Totals above exclude the system account ({{ $systemRows }} rows), which is kept but never counted as a reader.</p>
+                <p class="form-hint" style="padding:8px 14px">Totals above exclude the system account ({{ $systemRows }} rows), which is kept but never counted as a CCA.</p>
             @endif
         </div>
 
         @if ($unmatchedReaders->isNotEmpty())
             <div class="pg">
-                <div class="pg-head"><span class="pg-title">Readers not in the staff directory</span></div>
+                <div class="pg-head"><span class="pg-title">CCAs not in the staff directory</span></div>
                 <table>
                     <thead><tr><th>Staff ID</th><th>Name in report</th><th>Months</th><th>Visited</th><th></th></tr></thead>
                     <tbody>
@@ -197,7 +197,7 @@
 
         <div class="pg">
             <div class="pg-head">
-                <span class="pg-title">Reader rows</span>
+                <span class="pg-title">CCA rows</span>
                 <div class="ph-right">
                     <select class="form-input" wire:model.live="matchFilter">
                         <option value="">All rows</option>

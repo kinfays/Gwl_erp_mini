@@ -65,7 +65,7 @@ class LettersBellAndBadgeTest extends TestCase
             ->assertSeeHtml('Letters notifications, 1 unread');
     }
 
-    public function test_the_letters_tab_carries_the_pending_incoming_count(): void
+    public function test_the_letters_card_on_home_carries_the_pending_incoming_count(): void
     {
         $this->page($this->manager, 'dashboard')->assertOk()->assertDontSee('module-count');
 
@@ -74,19 +74,19 @@ class LettersBellAndBadgeTest extends TestCase
         $single = $this->createLetter($this->hrSec);
         $this->lettersWorkflow()->dispatch($single, $this->hrSec, $this->manager);
 
-        $this->page($this->manager, 'leave.home')
+        $this->page($this->manager, 'dashboard')
             ->assertOk()
             ->assertSeeHtml('class="module-count"')
-            ->assertSeeInOrder(['Letters', 'Pending: ', '3']);
+            ->assertSeeInOrder(['Pending: ', '3', 'Letters &amp; Documents'], false);
 
         // The sender has nothing to confirm.
         $this->page($this->hrSec, 'dashboard')->assertOk()->assertDontSee('module-count');
 
         $this->lettersWorkflow()->confirmHardcopy($single, $this->manager);
-        $this->page($this->manager, 'leave.home')->assertSeeHtml('class="module-count"')->assertSeeInOrder(['Pending: ', '2']);
+        $this->page($this->manager, 'dashboard')->assertSeeHtml('class="module-count"')->assertSeeInOrder(['Pending: ', '2']);
 
         $this->lettersWorkflow()->confirmHardcopies($this->manager, $letters->pluck('id')->all());
-        $this->page($this->manager, 'leave.home')->assertDontSee('module-count');
+        $this->page($this->manager, 'dashboard')->assertDontSee('module-count');
     }
 
     public function test_the_badge_is_data_on_the_letters_module_entry_only(): void

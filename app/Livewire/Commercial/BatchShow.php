@@ -144,7 +144,7 @@ class BatchShow extends Component
 
         $this->batch->refresh();
         $this->cancelLinkingReader();
-        $this->dispatch('toast', type: 'success', message: "Reader linked to {$employee->full_name} ({$rows} rows).");
+        $this->dispatch('toast', type: 'success', message: "CCA linked to {$employee->full_name} ({$rows} rows).");
     }
 
     public function startVoid(): void

@@ -44,20 +44,12 @@
                 $sidebar[] = $item;
             }
 
-            // Pages without a module menu (home, profile) list the modules instead.
-            if ($sidebar === []) {
-                $sidebar[] = ['label' => __('Home'), 'url' => route('dashboard'), 'icon_name' => 'house', 'is_active' => $isHome];
+            // Home has no sidebar at all (the module cards are the menu); a page with no module menu of its own (profile)
+            // gets just a way back home. The sidebar never lists other modules: those are reached from Home or the jump search.
+            $hasSidebar = ! $isHome;
 
-                foreach ($modules as $moduleLink) {
-                    if (filled($moduleLink['route'] ?? null)) {
-                        $sidebar[] = [
-                            'label' => $moduleLink['title'],
-                            'url' => $moduleLink['route'],
-                            'icon_name' => $moduleLink['icon_name'] ?? 'layout-dashboard',
-                            'is_active' => false,
-                        ];
-                    }
-                }
+            if ($hasSidebar && $sidebar === []) {
+                $sidebar[] = ['label' => __('Home'), 'url' => route('dashboard'), 'icon_name' => 'house', 'is_active' => false];
             }
 
             $activeItem = collect($sidebar)->first(
@@ -98,16 +90,18 @@
             x-on:resize.window.debounce.150ms="if (window.innerWidth >= 1024) closeDrawer()"
         >
             <header class="app-top">
-                <button
-                    type="button"
-                    class="icon-btn app-menu-btn"
-                    x-on:click="openDrawer()"
-                    aria-controls="app-sidebar"
-                    x-bind:aria-expanded="drawer.toString()"
-                    aria-label="{{ __('Open navigation menu') }}"
-                >
-                    <x-ui.icon name="menu" />
-                </button>
+                @if ($hasSidebar)
+                    <button
+                        type="button"
+                        class="icon-btn app-menu-btn"
+                        x-on:click="openDrawer()"
+                        aria-controls="app-sidebar"
+                        x-bind:aria-expanded="drawer.toString()"
+                        aria-label="{{ __('Open navigation menu') }}"
+                    >
+                        <x-ui.icon name="menu" />
+                    </button>
+                @endif
 
                 <a href="{{ route('dashboard') }}" class="app-brand" aria-label="{{ __('GWL Staff Portal home') }}">
                     <img src="{{ asset('images/gwlnew.png') }}" alt="" class="app-brand-mark" width="32" height="32" decoding="async">
@@ -117,7 +111,8 @@
                     </span>
                 </a>
 
-                @if (count($modules) > 1)
+                {{-- Module tabs: only inside a module (Home lists the modules as cards). --}}
+                @if (count($modules) > 1 && ! $isHome)
                     <nav class="app-modules" aria-label="{{ __('Modules') }}">
                         @foreach ($modules as $moduleTab)
                             <a
@@ -226,6 +221,7 @@
             <div class="app-body">
                 <div class="app-scrim" x-show="drawer" x-transition.opacity x-on:click="closeDrawer()" x-cloak aria-hidden="true"></div>
 
+                @if ($hasSidebar)
                 <aside
                     id="app-sidebar"
                     class="app-side"
@@ -271,7 +267,7 @@
                         </nav>
                     @endif
 
-                    <nav class="side-nav" aria-label="{{ $isHome ? __('Modules') : ($moduleTitle ?? __('Sidebar menu')) }}">
+                    <nav class="side-nav" aria-label="{{ $moduleTitle ?? __('Sidebar menu') }}">
                         @foreach ($sidebar as $item)
                             @if (($item['type'] ?? 'item') === 'section')
                                 <div class="side-group" role="presentation">{{ $item['label'] ?? '' }}</div>
@@ -306,6 +302,7 @@
                         </button>
                     </div>
                 </aside>
+                @endif
 
                 <main id="main-content" class="app-main erp-main" tabindex="-1">
                     @unless ($isHome)

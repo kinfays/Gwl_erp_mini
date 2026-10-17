@@ -87,10 +87,17 @@ if (! function_exists('dashboardModules')) {
             ]] : []),
             ...(config('gwl.health_safety_module_enabled') ? [[
                 'slug' => 'health_safety',
-                'title' => 'Health & Safety',
+                'title' => 'Environmental Health and Safety',
                 'description' => 'Report incidents and near misses, and follow them to closure',
                 'icon' => 'HS',
                 'route' => route('health_safety.home'),
+            ]] : []),
+            ...(config('gwl.gwater_module_enabled') ? [[
+                'slug' => 'gwater',
+                'title' => 'G-Water',
+                'description' => 'Bottled and sachet water sales, stock, trips, expenses, and profit and loss',
+                'icon' => 'GW',
+                'route' => route('gwater.home'),
             ]] : []),
             [
                 'slug' => 'uac',
@@ -100,6 +107,15 @@ if (! function_exists('dashboardModules')) {
                 'route' => route('uac.index'),
             ],
         ];
+
+        // Hardcopies handed to this person that still wait for their confirmation, shown on the Letters card.
+        $employee = $user->employee ?? $user->employeeByStaffId;
+        $pendingLetters = $employee ? app(\App\Services\Letters\LetterWorkflowService::class)->pendingIncomingCount($employee) : 0;
+
+        $allModules = array_map(
+            fn (array $module) => $module['slug'] === 'letters' ? $module + ['badge' => $pendingLetters] : $module,
+            $allModules
+        );
 
         $visible = collect($allModules)->where('slug', 'leave');
         $allowedSlugs = $user->getAccessibleModules();

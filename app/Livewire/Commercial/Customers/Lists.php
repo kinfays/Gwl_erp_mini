@@ -139,7 +139,7 @@ class Lists extends Component
         $searchTypes = ['account' => 'Account number', 'meter' => 'Meter number'] + ($details ? ['phone' => 'Mobile number', 'email' => 'E-mail', 'name' => 'Name starts with'] : []);
         $type = array_key_exists($this->searchType, $searchTypes) ? $this->searchType : 'account';
         $searching = trim($this->search) !== '';
-        $issue = $this->issue !== '' && array_key_exists($this->issue, CustomerAnalyticsService::QUALITY_LABELS) ? $this->issue : null;
+        $issue = $this->issue !== '' && array_key_exists($this->issue, CustomerAnalyticsService::QUALITY_LABELS + CustomerAnalyticsService::HISTORY_LABELS) ? $this->issue : null;
         $missing = $this->missing;
 
         // "Not in the latest file" is a state of the account, not a stored list.
@@ -179,7 +179,7 @@ class Lists extends Component
             'meters' => DB::table('commercial_meter_statuses')->orderBy('code')->get(['id', 'code', 'label']),
             'buckets' => CustomerAnalyticsService::BUCKET_LABELS,
             'sorts' => CustomerListService::SORTS,
-            'issues' => CustomerAnalyticsService::QUALITY_LABELS,
+            'issues' => CustomerAnalyticsService::QUALITY_LABELS + CustomerAnalyticsService::HISTORY_LABELS,
             'searchTypes' => $searchTypes,
             'activeSearchType' => $type,
             'searching' => $searching,

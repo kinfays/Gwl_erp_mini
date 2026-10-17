@@ -22,7 +22,7 @@ class CommercialExportService
     public const REPORTS = [
         'summary' => ['title' => 'Executive summary', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_dashboard', 'commercial.view_billing', 'commercial.view_reading']],
         'reading-trend' => ['title' => 'Meter reading: region trend', 'formats' => ['excel'], 'permissions' => ['commercial.view_reading'], 'any' => []],
-        'readers' => ['title' => 'Meter reading: readers', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reader_performance'], 'any' => []],
+        'readers' => ['title' => 'Meter reading: CCAs', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reader_performance'], 'any' => []],
         'billing' => ['title' => 'Billing snapshot', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'kpis' => ['title' => 'District KPIs against targets', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'scorecard' => ['title' => 'District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing', 'commercial.view_reading'], 'any' => []],
@@ -98,7 +98,7 @@ class CommercialExportService
 
         $q = $s['quality'];
         $tables[] = ['title' => 'Data quality', 'headings' => ['Check', 'Count'], 'rows' => array_values(array_filter([
-            $q['unmatched_readers'] !== null ? ['Readers not in the staff directory', $q['unmatched_readers']] : null,
+            $q['unmatched_readers'] !== null ? ['CCAs not in the staff directory', $q['unmatched_readers']] : null,
             $q['unresolved_districts'] !== null ? ['Billing districts not matched to a district', $q['unresolved_districts']] : null,
             $q['multi_month_snapshots'] !== null ? ['Billing snapshots that cover several months (not comparable)', $q['multi_month_snapshots']] : null,
         ]))];
@@ -118,11 +118,11 @@ class CommercialExportService
         }
 
         if ($data['small_group'] ?? false) {
-            $notes[] = 'This home district has fewer than '.$data['min_readers'].' readers with visits in these months, so its figures are not shown without reader-level access (they would be an individual reader\'s).';
+            $notes[] = 'This home district has fewer than '.$data['min_readers'].' CCAs with visits in these months, so its figures are not shown without reader-level access (they would be an individual CCA\'s).';
         }
 
         return $this->report('reading-trend', $meta, $notes, [
-            ['title' => 'Month by month', 'headings' => ['Month', 'In progress', 'Visited', 'Read', 'Skipped', 'Read rate (%)', 'Skip rate (%)', 'Readers active', 'Verified strength', 'Coverage (%)'], 'rows' => array_map(fn (array $r) => [
+            ['title' => 'Month by month', 'headings' => ['Month', 'In progress', 'Visited', 'Read', 'Skipped', 'Read rate (%)', 'Skip rate (%)', 'CCAs active', 'Verified strength', 'Coverage (%)'], 'rows' => array_map(fn (array $r) => [
                 $r['label'], $r['in_progress'] ? 'Yes' : '', $r['visited'], $r['read'], $r['skipped'], $this->n($r['read_rate']), $this->n($r['skip_rate']), $r['readers'], $this->n($r['strength']), $this->n($r['coverage']),
             ], $data['trend'])],
             ['title' => 'Verified customer strength', 'headings' => ['Month', 'Verified strength', 'Change', 'Change (%)'], 'rows' => array_map(fn (array $r) => [
@@ -135,7 +135,7 @@ class CommercialExportService
     public function readers(array $d, array $meta): array
     {
         $who = fn (array $r) => [$r['staff_id'], $r['name'], $r['district'] ?? '', $r['match_status'] === 'unmatched' ? 'Not in staff directory' : ''];
-        $whoHeads = ['Staff ID', 'Reader', 'Home district', 'Directory'];
+        $whoHeads = ['Staff ID', 'CCA', 'Home district', 'Directory'];
 
         $tables = [
             ['title' => 'League table', 'headings' => [...$whoHeads, 'Visited', 'Share (%)', 'Read', 'Skipped', 'Skip rate (%)', 'Months active'], 'rows' => array_map(fn (array $r) => [
@@ -149,7 +149,7 @@ class CommercialExportService
             ['title' => 'Movement, last two complete months', 'headings' => [...$whoHeads, 'Visited before', 'Visited now', 'Change', 'Skip rate before (%)', 'Skip rate now (%)', 'Change (points)', 'Skip-rate trend'], 'rows' => array_map(fn (array $r) => [
                 ...$who($r), $r['visited_before'], $r['visited_after'], $r['visited_change'], $this->n($r['skip_rate_before']), $this->n($r['skip_rate_after']), $this->n($r['skip_rate_change']), $r['trend'],
             ], $d['movement']['rows'])],
-            ['title' => 'Inactive and under-used readers', 'headings' => ['Month', ...$whoHeads, 'Visited', 'Why'], 'rows' => $this->inactiveRows($d['inactive'], $who)],
+            ['title' => 'Inactive and under-used CCAs', 'headings' => ['Month', ...$whoHeads, 'Visited', 'Why'], 'rows' => $this->inactiveRows($d['inactive'], $who)],
             ['title' => 'Workload outside the normal band', 'headings' => [...$whoHeads, 'Visited', '% of median', 'Band'], 'rows' => array_map(fn (array $r) => [
                 ...$who($r), $r['visited'], $this->n($r['pct_of_median']), $r['band'],
             ], array_values(array_filter($d['workload']['rows'], fn (array $r) => $r['band'] !== 'normal')))],
@@ -165,7 +165,7 @@ class CommercialExportService
 
         return $this->report('readers', $meta, [
             'Individual staff performance: for people who may see it, not for circulation.',
-            'The district is the reader\'s home district in the staff directory; the report has no district split.',
+            'The district is the CCA\'s home district in the staff directory; the report has no district split.',
             'Movement, inactive, workload, consistency, outliers and the scorecard use complete months only; the current month is in progress.',
             'The scorecard is indicative (weights: volume '.($w['volume'] * 100).'%, skip rate '.($w['skip'] * 100).'%, consistency '.($w['consistency'] * 100).'%); it starts conversations, it is not a verdict.',
         ], $tables);
@@ -278,7 +278,7 @@ class CommercialExportService
         $c = $d['scorecard'];
         $snapshot = $d['snapshot'];
         $notes = [
-            'Reading is grouped by the reader\'s HOME district in the staff directory: an approximation, as the reading report has no district split.',
+            'Reading is grouped by the CCA\'s HOME district in the staff directory: an approximation, as the reading report has no district split.',
             'Reading figures are the complete months inside the billing period'.($c['reading_months'] === [] ? ': there are none yet.' : ': '.implode(', ', $c['reading_months']).'.'),
             'Coverage is not shown per district: the verified strength is region-wide.',
         ];
@@ -288,14 +288,14 @@ class CommercialExportService
         }
 
         if ($c['hide_small_groups']) {
-            $notes[] = 'A district\'s reading figures are left out where fewer than '.$c['min_readers'].' readers had visits: they would be one person\'s own figures.';
+            $notes[] = 'A district\'s reading figures are left out where fewer than '.$c['min_readers'].' CCAs had visits: they would be one person\'s own figures.';
         }
 
         return $this->report('scorecard', ['Region' => $snapshot['region'], 'Billing snapshot' => $snapshot['label']], $notes, [
-            ['title' => 'District scorecard', 'headings' => ['District', 'Billing (GH¢)', 'Payments (GH¢)', 'Cash collection ratio (%)', 'Estimated volume (%)', 'Unbilled rate (%)', 'Visits', 'Reads', 'Skip rate (%)', 'Active readers', 'Visits per reader', 'Reading figures'], 'rows' => array_map(fn (array $r) => [
+            ['title' => 'District scorecard', 'headings' => ['District', 'Billing (GH¢)', 'Payments (GH¢)', 'Cash collection ratio (%)', 'Estimated volume (%)', 'Unbilled rate (%)', 'Visits', 'Reads', 'Skip rate (%)', 'Active CCAs', 'Visits per CCA', 'Reading figures'], 'rows' => array_map(fn (array $r) => [
                 $r['district'], $this->n($r['billing']), $this->n($r['payments']), $this->n($r['cash_ratio']), $this->n($r['estimation']), $this->n($r['unbilled_rate']),
                 $this->n($r['visits']), $this->n($r['read']), $this->n($r['skip_rate']), $this->n($r['active_readers']), $this->n($r['visits_per_reader']),
-                $r['reading_hidden'] ? 'Fewer than '.$c['min_readers'].' readers' : '',
+                $r['reading_hidden'] ? 'Fewer than '.$c['min_readers'].' CCAs' : '',
             ], $c['rows'])],
         ], $snapshot['period_label']);
     }

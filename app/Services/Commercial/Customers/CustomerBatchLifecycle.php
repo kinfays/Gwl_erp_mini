@@ -126,7 +126,9 @@ class CustomerBatchLifecycle
             }
         }
 
-        // 3. the batch's derived data goes
+        // 3. the batch's derived data goes (including the consumption-history rows it wrote)
+        app(CustomerConsumptionHistory::class)->forgetBatch($b);
+
         DB::transaction(function () use ($b): void {
             foreach ([...CustomerRollupService::TABLES, 'commercial_customer_changes', 'commercial_customer_undo'] as $table) {
                 DB::table($table)->where('batch_id', $b)->delete();

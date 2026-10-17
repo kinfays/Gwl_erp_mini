@@ -366,7 +366,7 @@ class CommercialExportsTest extends CommercialTestCase
 
         $this->assertStringContainsString('not like for like', $notes('scorecard'));
         $this->assertStringContainsString('not like for like', $notes('summary'));
-        $this->assertStringContainsString("reader's HOME district", str_replace("\\u0027", "'", $notes('scorecard')));
+        $this->assertStringContainsString("CCA's HOME district", str_replace("\\u0027", "'", $notes('scorecard')));
 
         CommercialImportBatch::query()->where('report_type', 'billing_summary')->update(['customer_segment' => 'all']);
 

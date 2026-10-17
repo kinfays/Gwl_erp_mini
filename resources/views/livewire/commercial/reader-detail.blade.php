@@ -5,15 +5,15 @@
 
     @php $pct = fn ($value) => $value === null ? '–' : number_format($value, 1).'%'; @endphp
 
-    <x-ui.page-header :title="$reader['name']" :description="'Reader '.$reader['staff_id'].' · home district '.($reader['district'] ?? 'unknown').' (from the staff directory)'">
+    <x-ui.page-header :title="$reader['name']" :description="'CCA '.$reader['staff_id'].' · home district '.($reader['district'] ?? 'unknown').' (from the staff directory)'">
         <x-slot:actions>
-            <a href="{{ route('commercial.reading', array_filter(['tab' => 'readers', 'from' => $from, 'to' => $to])) }}" class="btn btn-secondary">Back to readers</a>
+            <a href="{{ route('commercial.reading', array_filter(['tab' => 'readers', 'from' => $from, 'to' => $to])) }}" class="btn btn-secondary">Back to CCAs</a>
         </x-slot:actions>
     </x-ui.page-header>
 
     @if ($reader['match_status'] === 'unmatched')
         <x-ui.alert tone="warning" class="dash-row">
-            This reader's staff ID is not in the staff directory, so there is no home district.
+            This CCA's staff ID is not in the staff directory, so there is no home district.
             @if ($canResolve)
                 <a href="{{ route('commercial.batches.show', $batchId) }}">Link them to an employee on the batch screen.</a>
             @endif
@@ -47,7 +47,7 @@
     </div>
 
     <x-ui.card title="Month by month" :padded="false" class="dash-row">
-        <x-ui.table label="Reader's months" :sticky="false">
+        <x-ui.table label="CCA's months" :sticky="false">
             <x-slot:head>
                 <tr><th>Month</th><th class="num">Visited</th><th class="num">Read</th><th class="num">Skipped</th><th class="num">Read rate</th><th class="num">Skip rate</th></tr>
             </x-slot:head>

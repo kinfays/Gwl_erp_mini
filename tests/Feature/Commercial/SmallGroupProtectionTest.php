@@ -108,12 +108,12 @@ class SmallGroupProtectionTest extends CommercialTestCase
         $this->assertSame([600, 3, 200.0], [$hidden['ODORKOR']['visits'], $hidden['ODORKOR']['active_readers'], $hidden['ODORKOR']['visits_per_reader']]);
 
         $this->assertTrue($hidden['Head Office']['reading_hidden'], 'two readers is below three');
-        $this->assertTrue($hidden['No home district (reader not in the directory)']['reading_hidden'], 'the no-home-district row follows the same rule');
+        $this->assertTrue($hidden['No home district (CCA not in the directory)']['reading_hidden'], 'the no-home-district row follows the same rule');
 
         $shown = collect($insights->districtScorecard($billing->describe($batch), $routes, $stats, now(), false, 3)['rows'])->keyBy(fn ($r) => $r['key'] !== '' ? $r['key'] : $r['district']);
         $this->assertSame(777, $shown['SOWUTUOM']['visits']);
         $this->assertFalse($shown['SOWUTUOM']['reading_hidden']);
-        $this->assertSame(10, $shown['No home district (reader not in the directory)']['visits']);
+        $this->assertSame(10, $shown['No home district (CCA not in the directory)']['visits']);
     }
 
     // ---------------------------------------------------------------- the page and the file agree
@@ -124,33 +124,33 @@ class SmallGroupProtectionTest extends CommercialTestCase
 
         Livewire::actingAs($user)->test(Summary::class)
             ->assertSee('District scorecard')
-            ->assertSee('Fewer than 3 readers')
+            ->assertSee('Fewer than 3 CCAs')
             ->assertSee('600')                       // Odorkor: three readers
             ->assertDontSee('777')                   // Sowutuom: one reader
-            ->assertSee("A district's reading figures are left out when fewer than 3 readers had visits", false);
+            ->assertSee("A district's reading figures are left out when fewer than 3 CCAs had visits", false);
 
         $rows = $this->scorecardRows($user);
         $this->assertNull($rows['Sowutuom'][6]);
         $this->assertNull($rows['Sowutuom'][8]);
-        $this->assertSame('Fewer than 3 readers', $rows['Sowutuom'][11]);
+        $this->assertSame('Fewer than 3 CCAs', $rows['Sowutuom'][11]);
         $this->assertEquals(1000, $rows['Sowutuom'][1], 'billing is still there');
         $this->assertEquals(600, $rows['Odorkor'][6]);
         $this->assertNull($rows['Odorkor'][11]);
-        $this->assertSame('Fewer than 3 readers', $rows['Head Office'][11]);
-        $this->assertSame('Fewer than 3 readers', $rows['No home district (reader not in the directory)'][11]);
+        $this->assertSame('Fewer than 3 CCAs', $rows['Head Office'][11]);
+        $this->assertSame('Fewer than 3 CCAs', $rows['No home district (CCA not in the directory)'][11]);
     }
 
     public function test_a_user_with_reader_access_sees_everything_as_before(): void
     {
         $officer = $this->officer();   // holds view_reader_performance
 
-        Livewire::actingAs($officer)->test(Summary::class)->assertSee('777')->assertDontSee('Fewer than 3 readers');
+        Livewire::actingAs($officer)->test(Summary::class)->assertSee('777')->assertDontSee('Fewer than 3 CCAs');
 
         $rows = $this->scorecardRows($officer);
         $this->assertEquals(777, $rows['Sowutuom'][6]);
         $this->assertNull($rows['Sowutuom'][11]);
         $this->assertEquals(90, $rows['Head Office'][6]);
-        $this->assertEquals(10, $rows['No home district (reader not in the directory)'][6]);
+        $this->assertEquals(10, $rows['No home district (CCA not in the directory)'][6]);
     }
 
     public function test_the_threshold_follows_the_setting(): void
@@ -163,7 +163,7 @@ class SmallGroupProtectionTest extends CommercialTestCase
 
         $settings->save(['commercial_min_readers_for_district_figures' => 4], $this->superAdmin()->id);
         $rows = $this->scorecardRows($user);
-        $this->assertSame('Fewer than 4 readers', $rows['Odorkor'][11], 'three readers is now too few');
+        $this->assertSame('Fewer than 4 CCAs', $rows['Odorkor'][11], 'three readers is now too few');
         $this->assertNull($rows['Odorkor'][6]);
     }
 
@@ -175,19 +175,19 @@ class SmallGroupProtectionTest extends CommercialTestCase
 
         Livewire::actingAs($user)->test(Reading::class)
             ->set('district', (string) $this->sowutuom->id)
-            ->assertSee('Too few readers to show this district')
-            ->assertSee('fewer than 3 readers')
+            ->assertSee('Too few CCAs to show this district')
+            ->assertSee('fewer than 3 CCAs')
             ->assertDontSee('777')
             ->assertDontSee('Month by month');
 
         // Three readers is enough.
-        Livewire::actingAs($user)->test(Reading::class)->set('district', (string) $this->odorkor->id)->assertSee('Month by month')->assertSee('600')->assertDontSee('Too few readers');
+        Livewire::actingAs($user)->test(Reading::class)->set('district', (string) $this->odorkor->id)->assertSee('Month by month')->assertSee('600')->assertDontSee('Too few CCAs');
 
         // No district filter: the whole region, as ever.
-        Livewire::actingAs($user)->test(Reading::class)->assertSee('Month by month')->assertDontSee('Too few readers');
+        Livewire::actingAs($user)->test(Reading::class)->assertSee('Month by month')->assertDontSee('Too few CCAs');
 
         // With reader access the small district is shown.
-        Livewire::actingAs($this->officer())->test(Reading::class)->set('district', (string) $this->sowutuom->id)->assertSee('Month by month')->assertSee('777')->assertDontSee('Too few readers');
+        Livewire::actingAs($this->officer())->test(Reading::class)->set('district', (string) $this->sowutuom->id)->assertSee('Month by month')->assertSee('777')->assertDontSee('Too few CCAs');
     }
 
     public function test_the_reading_trend_export_for_a_small_district_holds_back_the_figures_too(): void
@@ -198,7 +198,7 @@ class SmallGroupProtectionTest extends CommercialTestCase
         $book = IOFactory::load($held->baseResponse->getFile()->getPathname());
 
         $this->assertCount(1, $book->getSheetByName('Month by month')->toArray(), 'a heading row and nothing else');
-        $this->assertStringContainsString('fewer than 3 readers', json_encode($book->getSheetByName('Notes')->toArray()));
+        $this->assertStringContainsString('fewer than 3 CCAs', json_encode($book->getSheetByName('Notes')->toArray()));
         $this->assertStringNotContainsString('777', json_encode($book->getSheetByName('Month by month')->toArray()));
 
         $open = $this->actingAs($this->officer())->get(route('commercial.export', $query))->assertOk();
