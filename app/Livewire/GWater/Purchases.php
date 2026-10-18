@@ -15,6 +15,7 @@ use App\Services\GWater\Money;
 use App\Services\Transport\TransportScope;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 /**
@@ -27,6 +28,7 @@ class Purchases extends Component
 {
     use EnforcesModuleAccess;
     use ScopesGwaterByActor;
+    use WithFileUploads;
     use WithPagination;
 
     public bool $showForm = false;
@@ -37,9 +39,15 @@ class Purchases extends Component
     /** @var array<int|string, string> packs per product id */
     public array $packs = [];
 
+    /** The paper waybill, optional: a picture (JPG, PNG or WebP) or a PDF. */
+    public $waybillPhoto = null;
+
     public string $from = '';
 
     public string $to = '';
+
+    /** The trip whose waybill is open in the preview window. */
+    public ?int $previewingId = null;
 
     public ?int $voidingId = null;
 
@@ -78,6 +86,26 @@ class Purchases extends Component
         }
     }
 
+    public function updatedWaybillPhoto(): void
+    {
+        $this->validatePhoto();
+    }
+
+    protected function validatePhoto(): void
+    {
+        $this->validate(
+            ['waybillPhoto' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:'.(max(1, (int) config('gwl.gwater_waybill_photo_max_mb')) * 1024)]],
+            [],
+            ['waybillPhoto' => 'waybill file']
+        );
+    }
+
+    public function removePhoto(): void
+    {
+        $this->waybillPhoto = null;
+        $this->resetErrorBag('waybillPhoto');
+    }
+
     public function openForm(): void
     {
         $this->guard('gwater.record');
@@ -109,12 +137,26 @@ class Purchases extends Component
 
         $data['lines'] = collect($this->packs)->map(fn ($count, $productId) => ['product_id' => (int) $productId, 'packs' => $count])->values()->all();
 
-        $this->run(fn () => $workflow->recordPurchase($this->actor(), $data));
+        $this->validatePhoto();
+        $this->run(fn () => $workflow->recordPurchase($this->actor(), $data, $this->waybillPhoto ?: null));
 
         $this->showForm = false;
         $this->resetForm();
         $this->resetPage();
         $this->dispatch('toast', type: 'success', message: 'Trip recorded and the packs added to stock.');
+    }
+
+    public function openPreview(int $purchaseId): void
+    {
+        // Resolved inside the user's own books: a trip outside them is a 404, like everywhere else.
+        abort_unless($this->books(GwPurchase::query())->findOrFail($purchaseId)->hasWaybillPhoto(), 404);
+
+        $this->previewingId = $purchaseId;
+    }
+
+    public function closePreview(): void
+    {
+        $this->previewingId = null;
     }
 
     public function openVoid(int $purchaseId): void
@@ -163,6 +205,7 @@ class Purchases extends Component
             'receipt_ref' => '',
         ];
         $this->packs = [];
+        $this->waybillPhoto = null;
     }
 
     public function render(GwaterSummaryService $summary, GwaterPricingService $pricing, TransportScope $transport)
@@ -205,7 +248,10 @@ class Purchases extends Component
             ];
         }
 
+        $previewing = $this->previewingId && $location ? $this->books(GwPurchase::query())->find($this->previewingId) : null;
+
         return view('livewire.gwater.purchases', [
+            'previewing' => $previewing?->hasWaybillPhoto() ? $previewing : null,
             'products' => $products,
             'purchases' => $purchases,
             'summary' => $summary,

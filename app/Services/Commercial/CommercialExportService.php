@@ -233,7 +233,7 @@ class CommercialExportService
         $labels = array_map(fn (array $m) => $m['label'].' '.$m['year'], $months);
         $short = array_map(fn (array $m) => $m['short'], $months);
         $notes = [
-            'Sales is the volume billed (thousand litres, which is 1 m3 per thousand); billing is "billing for the period"; collection is total payments. Efficiency = actual ÷ target × 100, left blank where there is no target.',
+            'Sales is the volume billed (thousand litres, which is 1 m3 per thousand); billing is "billing for the period"; collection is total payments. Targets are yearly: a month\'s target is the annual target ÷ 12, and efficiency = actual ÷ that target × 100, left blank where the year has no target. Year to date compares the months uploaded so far this year with the annual target × those months ÷ 12.',
             $d['arrears_note'],
             $d['age_note'],
             'Each month comes from the single-month billing snapshot of that month (the newest non-voided upload); snapshots are never added together.',
@@ -244,11 +244,12 @@ class CommercialExportService
         foreach (array_filter([$d['total'], ...$d['districts']]) as $block) {
             $tables[] = [
                 'title' => 'KPIs: '.($block['id'] === null && $block['name'] === 'All districts' ? 'all districts' : $block['name']),
-                'headings' => ['KPI', 'Target', ...$labels, ...array_map(fn ($s) => 'Efficiency '.$s.' (%)', $short)],
+'headings' => ['KPI', 'Annual target', 'Monthly target (annual ÷ 12)', ...$labels, ...array_map(fn ($s) => 'Efficiency '.$s.' (%)', $short), 'Year to date', 'Year-to-date efficiency (%)', 'Of the annual target (%)'],
                 'rows' => array_map(fn (array $row) => [
-                    $row['label'].' ('.$row['unit'].')', $this->n($row['target']),
+                    $row['label'].' ('.$row['unit'].')', $this->n($row['annual']), $this->n($row['target']),
                     ...array_map(fn (array $m) => $this->n($row['actuals'][$m['key']] ?? null), $months),
                     ...array_map(fn (array $m) => $this->n($row['efficiency'][$m['key']] ?? null), $months),
+                    $this->n($row['ytd']['actual']), $this->n($row['ytd']['efficiency']), $this->n($row['ytd']['progress']),
                 ], $block['rows']),
             ];
             $tables[] = [

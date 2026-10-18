@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 /** Who may use the SMS feature: the flag, the region lock (Accra West only), Head Office, and the four permissions. */
 class SmsAccessTest extends SmsTestCase
 {
-    public function test_the_four_permissions_are_seeded_and_only_the_officer_and_super_admin_hold_them(): void
+    public function test_the_four_permissions_are_seeded_and_only_the_officer_manager_and_super_admin_hold_them(): void
     {
         $slugs = ['commercial.send_sms', 'commercial.view_sms_balance', 'commercial.view_sms_reports', 'commercial.manage_sms_settings'];
         $this->assertSame(4, Permission::query()->where('module', 'commercial')->whereIn('name', $slugs)->count());
@@ -26,8 +26,9 @@ class SmsAccessTest extends SmsTestCase
 
         $this->assertSame($slugs, $holds('super_admin'));
         $this->assertSame(['commercial.send_sms', 'commercial.view_sms_balance', 'commercial.view_sms_reports'], $holds('commercial_officer'));
+        $this->assertSame(['commercial.send_sms', 'commercial.view_sms_balance', 'commercial.view_sms_reports'], $holds('commercial_manager'), 'everything but the provider settings');
 
-        foreach (['commercial_manager', 'admin', 'chief_manager', 'regional_chief_manager', 'district_manager', 'employee', 'hr_headoffice'] as $role) {
+        foreach (['admin', 'chief_manager', 'regional_chief_manager', 'district_manager', 'employee', 'hr_headoffice'] as $role) {
             $this->assertSame([], $holds($role), "{$role} must hold no SMS permission");
         }
     }

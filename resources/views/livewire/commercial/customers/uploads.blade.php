@@ -12,6 +12,8 @@
         </x-slot:actions>
     </x-ui.page-header>
 
+    @include('livewire.commercial.partials.uploads-switch', ['current' => 'customers'])
+
     @if (session('status'))<x-ui.alert tone="success" class="dash-row">{{ session('status') }}</x-ui.alert>@endif
     @if (session('error'))<x-ui.alert tone="danger" class="dash-row">{{ session('error') }}</x-ui.alert>@endif
 

@@ -50,10 +50,14 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
         $this->month('2026-10-01', [$this->route('MAMPROBI', 143043, 1663315, 1507830, 10252278)]);
     }
 
+    /**
+     * Targets are YEARLY: stored on 1 January of the year of $from. The figures given are the MONTHLY equivalents the team quotes, so the
+     * annual target stored is twelve times each (and a month's target, annual / 12, is exactly the figure given).
+     */
     protected function targets(District $district, float $sales, float $billing, float $collection, string $from = '2026-08-01'): void
     {
         foreach (['sales' => $sales, 'billing' => $billing, 'collection' => $collection] as $metric => $value) {
-            CommercialDistrictTarget::query()->create(['district_id' => $district->id, 'metric' => $metric, 'effective_from' => $from, 'value' => $value]);
+            CommercialDistrictTarget::query()->create(['district_id' => $district->id, 'metric' => $metric, 'effective_from' => substr($from, 0, 4).'-01-01', 'value' => $value * 12]);
         }
     }
 
@@ -126,29 +130,86 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
         $this->assertSame([null, null, null], array_values($this->row($this->block($this->card(), 'Mamprobi'), 'billing')['efficiency']));
     }
 
-    public function test_a_target_applies_from_its_month_and_old_months_keep_the_target_they_were_judged_against(): void
+    public function test_a_target_is_for_its_own_year_and_each_month_is_judged_against_its_own_years_target(): void
     {
-        $this->sample();
-        $this->targets($this->mamprobi, 100000, 1000000, 1000000, '2026-08-01');
-        $this->targets($this->mamprobi, 200000, 2000000, 2000000, '2026-10-01');
+        $this->month('2026-09-01', [$this->route('MAMPROBI', 130072, 1515645, 1427607, 10171763)]);
+        $this->month('2026-10-01', [$this->route('MAMPROBI', 126219, 1474693, 1542128, 10099467)]);
+        $this->month('2027-01-01', [$this->route('MAMPROBI', 143043, 1663315, 1507830, 10252278)]);
+        $this->targets($this->mamprobi, 100000, 1000000, 1000000, '2026-01-01');
+        $this->targets($this->mamprobi, 200000, 2000000, 2000000, '2027-01-01');
 
-        $sales = $this->row($this->block($this->card(), 'Mamprobi'), 'sales');
+        $sales = $this->row($this->block($this->card(null, null, 3), 'Mamprobi'), 'sales');
 
-        $this->assertSame([100000.0, 100000.0, 200000.0], array_values($sales['targets']));
-        $this->assertSame(200000.0, $sales['target'], 'the column shows the latest target');
+        $this->assertSame([100000.0, 100000.0, 200000.0], array_values($sales['targets']), 'annual / 12 of the month\'s own year');
+        $this->assertSame(200000.0, $sales['target'], 'the column shows the latest month\'s target');
+        $this->assertSame(2400000.0, $sales['annual']);
+        $this->assertSame(2027, $sales['annual_year']);
         $this->assertTrue($sales['target_changes']);
-        $this->assertSame([130.1, 126.2, 71.5], array_values($sales['efficiency']), 'each month against its own target');
+        $this->assertSame([130.1, 126.2, 71.5], array_values($sales['efficiency']), 'each month against its own year\'s target');
     }
 
-    public function test_a_target_that_starts_after_a_month_does_not_apply_to_it(): void
+    public function test_a_year_without_a_target_has_none_and_nothing_carries_over_from_another_year(): void
     {
         $this->sample();
-        $this->targets($this->mamprobi, 100000, 1000000, 1000000, '2026-09-01');
+        $this->targets($this->mamprobi, 100000, 1000000, 1000000, '2025-01-01');   // last year's target only
 
         $sales = $this->row($this->block($this->card(), 'Mamprobi'), 'sales');
 
-        $this->assertSame([null, 100000.0, 100000.0], array_values($sales['targets']));
+        $this->assertSame([null, null, null], array_values($sales['targets']));
+        $this->assertNull($sales['annual']);
         $this->assertNull($sales['efficiency']['2026-08']);
+        $this->assertNull($sales['ytd']['efficiency']);
+
+        $this->targets($this->mamprobi, 100000, 1000000, 1000000, '2027-01-01');   // next year's does not apply either
+        $this->assertNull($this->row($this->block($this->card(), 'Mamprobi'), 'sales')['annual']);
+    }
+
+    public function test_the_year_to_date_compares_the_months_uploaded_with_their_share_of_the_annual_target(): void
+    {
+        $this->sample();   // August, September, October 2026
+        $this->targets($this->mamprobi, 125976, 1425674, 1425674);
+
+        $sales = $this->row($this->block($this->card(), 'Mamprobi'), 'sales');
+
+        $this->assertSame(1511712.0, $sales['annual']);
+        $this->assertSame(2026, $sales['annual_year']);
+        $this->assertSame(3, $sales['ytd']['months']);
+        $this->assertSame(399334.0, $sales['ytd']['actual'], '130,072 + 126,219 + 143,043');
+        $this->assertSame(377928.0, $sales['ytd']['target'], 'annual x 3 / 12');
+        $this->assertSame(105.7, $sales['ytd']['efficiency'], '399,334 / 377,928');
+        $this->assertSame(26.4, $sales['ytd']['progress'], 'of the whole year\'s target: 399,334 / 1,511,712');
+
+        $this->assertNull($this->row($this->block($this->card(), 'Mamprobi'), 'arrears')['ytd']['efficiency'], 'arrears have no target');
+    }
+
+    public function test_a_month_that_was_never_uploaded_does_not_count_against_the_year_to_date(): void
+    {
+        $this->month('2026-03-01', [$this->route('MAMPROBI', 1000, 10000, 9000, 500)]);
+        $this->month('2026-09-01', [$this->route('MAMPROBI', 1000, 10000, 9000, 500)]);   // April to August were never uploaded
+        $this->targets($this->mamprobi, 1000, 10000, 10000);
+
+        $sales = $this->row($this->block($this->card(null, null, 12), 'Mamprobi'), 'sales');
+
+        $this->assertSame(2, $sales['ytd']['months']);
+        $this->assertSame(2000.0, $sales['ytd']['target'], 'two months of an annual 12,000');
+        $this->assertSame(100.0, $sales['ytd']['efficiency']);
+    }
+
+    public function test_the_charts_use_the_same_figures_as_the_table(): void
+    {
+        $this->sample();
+        $this->targets($this->mamprobi, 125976, 1425674, 1425674);
+
+        $card = $this->card();
+        $charts = app(CommercialKpiService::class)->charts($card);
+
+        $this->assertSame(['AUG 26', 'SEP 26', 'OCT 26'], $charts['labels']);
+        $this->assertSame([130072.0, 126219.0, 143043.0], $charts['trend']['sales']['series'][0]['data']);
+        $this->assertSame([125976.0, 125976.0, 125976.0], $charts['trend']['sales']['series'][1]['data'], 'the monthly target: annual / 12');
+        $this->assertSame(['Mamprobi'], $charts['districts']);
+        $this->assertSame([105.7], $charts['ytd_efficiency']['sales']);
+        $this->assertSame([10171763.0, 10099467.0, 10252278.0], $charts['arrears_owed']);
+        $this->assertSame('All districts', $charts['scope']);
     }
 
     // ---------------------------------------------------------------- the region total
@@ -307,11 +368,27 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
         $this->targets($this->mamprobi, 125976, 1425674, 1425674);
 
         Livewire::actingAs($this->officer())->test(Kpis::class)
-            ->assertSee('District: Mamprobi')->assertSee('KPI')->assertSee('Target')->assertSee('Actuals')->assertSee('Efficiency')
-            ->assertSee('125,976')->assertSee('130,072')->assertSee('1,425,674.00')->assertSee('1,515,645.00')->assertSee('10,171,763.00')
+            ->assertSee('District: Mamprobi')->assertSee('KPI')->assertSee('Annual target')->assertSee('Actuals')->assertSee('Efficiency')->assertSee('Year to date')
+            ->assertSee('1,511,712')->assertSee('130,072')->assertSee('17,108,088.00')->assertSee('1,515,645.00')->assertSee('10,171,763.00')
             ->assertSee('103.3')->assertSee('116.7')->assertSee('105.8')
             ->assertSee('Arrears')->assertSee('Age of arrears')->assertSee('AUG')->assertSee('OCT')
             ->assertSee('A negative balance is a customer credit')->assertDontSee('to be confirmed');
+    }
+
+    public function test_the_screen_draws_the_charts_and_says_when_a_year_has_no_targets(): void
+    {
+        $this->sample();
+        $this->targets($this->mamprobi, 125976, 1425674, 1425674);
+
+        Livewire::actingAs($this->officer())->test(Kpis::class)
+            ->assertSee('Sales: actual against target')->assertSee('Billing: actual against target')->assertSee('Collection: actual against target')
+            ->assertSee('Year-to-date efficiency by district')->assertSee('Share of the annual target reached')
+            ->assertSee('Arrears and customer credits')->assertSee('Age of arrears');
+
+        CommercialDistrictTarget::query()->delete();
+
+        Livewire::actingAs($this->officer())->test(Kpis::class)
+            ->assertSee('No annual target is set for 2026 yet')->assertDontSee('Year-to-date efficiency by district')->assertSee('Sales: actual against target');
     }
 
     public function test_the_screen_needs_the_billing_permission_and_says_so_when_there_is_no_data(): void
@@ -344,26 +421,26 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
         Livewire::actingAs($this->officer())->test(KpiTargets::class)->assertForbidden();
     }
 
-    public function test_targets_are_typed_per_district_from_a_month_and_audited(): void
+    public function test_targets_are_typed_per_district_for_a_year_and_audited(): void
     {
         $admin = $this->superAdmin();
 
-        $page = Livewire::actingAs($admin)->test(KpiTargets::class)->set('from', '2026-08')
+        $page = Livewire::actingAs($admin)->test(KpiTargets::class)->set('year', '2026')
             ->set('grid.'.$this->mamprobi->id.'.sales', '125,976')->set('grid.'.$this->mamprobi->id.'.billing', '1425674.00')->set('grid.'.$this->mamprobi->id.'.collection', '1425674')
             ->call('save')->assertHasNoErrors();
 
         $rows = CommercialDistrictTarget::query()->where('district_id', $this->mamprobi->id)->orderBy('metric')->get();
         $this->assertSame(['billing' => 1425674.0, 'collection' => 1425674.0, 'sales' => 125976.0], $rows->pluck('value', 'metric')->all());
-        $this->assertSame(['2026-08-01'], $rows->pluck('effective_from')->map->toDateString()->unique()->values()->all());
+        $this->assertSame(['2026-01-01'], $rows->pluck('effective_from')->map->toDateString()->unique()->values()->all());
         $this->assertSame(3, AuditLog::query()->where('action', 'commercial.kpi_target_saved')->count());
 
-        // the boxes show what is in force; an unchanged box saves nothing; a new month adds a row
+        // the boxes show the year's targets; an unchanged box saves nothing; another year adds a row
         $page->assertSet('grid.'.$this->mamprobi->id.'.sales', '125976')->call('save');
         $this->assertSame(3, CommercialDistrictTarget::query()->count());
 
-        $page->set('from', '2026-10')->set('grid.'.$this->mamprobi->id.'.sales', '140000')->call('save');
+        $page->set('year', '2027')->set('grid.'.$this->mamprobi->id.'.sales', '140000')->call('save');
         $this->assertSame(4, CommercialDistrictTarget::query()->count());
-        $this->assertSame(125976.0, CommercialDistrictTarget::query()->where('metric', 'sales')->whereDate('effective_from', '2026-08-01')->value('value'), 'the old month keeps its target');
+        $this->assertSame(125976.0, CommercialDistrictTarget::query()->where('metric', 'sales')->whereDate('effective_from', '2026-01-01')->value('value'), 'the old year keeps its target');
 
         $audit = AuditLog::query()->where('action', 'commercial.kpi_target_saved')->latest('id')->first();
         $this->assertEquals(['old' => null, 'new' => 140000.0], ['old' => $audit->metadata['old'], 'new' => $audit->metadata['new']]);
@@ -371,23 +448,23 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
 
     public function test_a_bad_target_is_refused_and_nothing_of_that_save_is_kept_silently(): void
     {
-        $page = Livewire::actingAs($this->superAdmin())->test(KpiTargets::class)->set('from', '2026-08')
+        $page = Livewire::actingAs($this->superAdmin())->test(KpiTargets::class)->set('year', '2026')
             ->set('grid.'.$this->mamprobi->id.'.sales', '-5')->set('grid.'.$this->mamprobi->id.'.billing', 'plenty')->call('save');
 
         $page->assertHasErrors(['grid.'.$this->mamprobi->id.'.sales', 'grid.'.$this->mamprobi->id.'.billing']);
         $this->assertSame(0, CommercialDistrictTarget::query()->count());
 
-        Livewire::actingAs($this->superAdmin())->test(KpiTargets::class)->set('from', '')->call('save')->assertHasErrors('from');
+        Livewire::actingAs($this->superAdmin())->test(KpiTargets::class)->set('year', '')->call('save')->assertHasErrors('year');
     }
 
     public function test_the_history_shows_every_row_and_a_row_can_be_removed(): void
     {
         $admin = $this->superAdmin();
-        $this->targets($this->mamprobi, 100, 200, 300, '2026-08-01');
-        $this->targets($this->mamprobi, 110, 210, 310, '2026-10-01');
+        $this->targets($this->mamprobi, 100, 200, 300, '2025-01-01');
+        $this->targets($this->mamprobi, 110, 210, 310, '2026-01-01');
 
-        $page = Livewire::actingAs($admin)->test(KpiTargets::class)->set('historyDistrict', (string) $this->mamprobi->id)->assertSee('October 2026')->assertSee('August 2026');
-        $row = CommercialDistrictTarget::query()->where('metric', 'sales')->whereDate('effective_from', '2026-10-01')->first();
+        $page = Livewire::actingAs($admin)->test(KpiTargets::class)->set('historyDistrict', (string) $this->mamprobi->id)->assertSee('1,320.00')->assertSee('1,200.00');
+        $row = CommercialDistrictTarget::query()->where('metric', 'sales')->whereDate('effective_from', '2026-01-01')->first();
 
         $page->call('delete', $row->id);
 

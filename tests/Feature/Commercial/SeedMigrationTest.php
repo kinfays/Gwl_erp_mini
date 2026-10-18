@@ -62,7 +62,10 @@ class SeedMigrationTest extends CommercialTestCase
 
         $this->assertSame($fromMigration, $this->grants());
         $this->assertContains('commercial.upload_reports', $fromMigration['commercial_officer']);
-        $this->assertNotContains('commercial.upload_reports', $fromMigration['commercial_manager']);
+        $this->assertContains('commercial.upload_reports', $fromMigration['commercial_manager'], 'the manager also runs the uploads');
+        $this->assertContains('commercial.manage_settings', $fromMigration['commercial_manager']);
+        $this->assertContains('commercial.send_sms', $fromMigration['commercial_manager']);
+        $this->assertNotContains('commercial.manage_sms_settings', $fromMigration['commercial_manager'], 'the SMS provider settings stay with super_admin');
         $this->assertContains('commercial.view_reader_performance', $fromMigration['commercial_manager']);
         $this->assertNotContains('commercial.view_reader_performance', $fromMigration['regional_chief_manager']);
         $this->assertCount(15, $fromMigration['super_admin']);

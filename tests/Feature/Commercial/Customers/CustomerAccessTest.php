@@ -65,14 +65,15 @@ class CustomerAccessTest extends CustomerTestCase
         $labels = fn ($user) => collect($navigation->build($user, 'commercial')['sidebar'])->pluck('label')->all();
 
         $this->assertContains('Customer List', $labels($this->analyst()));
-        $this->assertNotContains('Customer uploads', $labels($this->analyst()));
-        $this->assertContains('Customer uploads', $labels($this->officer()));
+        $this->assertNotContains('Uploads', $labels($this->analyst()));
+        $this->assertContains('Uploads', $labels($this->officer()), 'one Uploads entry covers both kinds of upload');
+        $this->assertNotContains('Customer uploads', $labels($this->officer()));
         $this->assertNotContains('Customer List', $labels($this->userWith('900031', ['commercial.view_dashboard'])));
 
         config(['gwl.commercial_customer_list_enabled' => false]);
 
         $this->assertNotContains('Customer List', $labels($this->analyst('900032')));
-        $this->assertNotContains('Customer uploads', $labels($this->officer('900033')));
+        $this->assertContains('Uploads', $labels($this->officer('900033')), 'the report uploads stay');
     }
 
     public function test_with_the_customer_flag_off_the_routes_do_not_exist(): void

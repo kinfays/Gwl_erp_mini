@@ -84,6 +84,7 @@ G-Water (`docs/17-module-g-water.md`; the module is off until `GWL_GWATER_MODULE
 - `GWL_GWATER_MODULE_ENABLED` (default off): routes, navigation, screens and the `gwater:remind` schedule.
 - `GWL_GWATER_EXPORT_MAX_ROWS` (5000) and `GWL_GWATER_EXPORT_PDF_MAX_ROWS` (1500): the longest Excel / PDF export.
 - `GWL_GWATER_LOW_STOCK_PACKS` (50) and `GWL_GWATER_DAMAGE_RATE_FLAG_PCT` (5): the Overview flags.
+- `GWL_GWATER_WAYBILL_PHOTO_MAX_MB` (5): biggest waybill picture accepted on a trip (keep at or below PHP `upload_max_filesize` / `post_max_size`).
 - `GWL_GWATER_REMINDER_REPEAT_DAYS` (7): how often the same low-stock reminder is repeated (the old `GWL_GWATER_PAYMENT_OVERDUE_DAYS` is gone: payments are recorded when paid).
 - `GWL_GWATER_IMPORT_MAX_ROWS` (2000): most rows in one past-ledger import file.
 

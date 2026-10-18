@@ -29,7 +29,11 @@ use Illuminate\Validation\ValidationException;
  *                 is worked out from the billing report's routes, where a route's closing balance has already netted its customers'
  *                 credits, so it can be lower than the true arrears (the table says which source each month used).
  *   age         = arrears / billing of the same month, in months (a working definition: see AGE_NOTE).
- * Efficiency is null when a district has no target (or a zero one) for that month: it is never guessed.
+ * TARGETS ARE YEARLY. A district's target for a KPI is ONE figure for a calendar year (stored on 1 January of that year), spread evenly
+ * over the twelve months, so a month's target is annual / 12. A year with no target row has no target: nothing carries over from an
+ * earlier year, and efficiency is null (it is never guessed). Beside each month, the YEAR TO DATE compares what the months uploaded so
+ * far this year add up to with the part of the annual target those months stand for (annual x months uploaded / 12), so a month that
+ * was never uploaded does not count against the district; "of the annual target" is the same actual over the whole year's figure.
  */
 class CommercialKpiService
 {
@@ -91,7 +95,11 @@ class CommercialKpiService
         $districts = [];
 
         foreach ($perDistrict as $key => $d) {
-            $districts[] = $this->block((string) $d['name'], $d['id'], $d['months'], $labels, fn (string $metric, string $month) => $d['id'] ? $this->targetAt($targets, $d['id'], $metric, $month) : null);
+            $districts[] = $this->block(
+                (string) $d['name'], $d['id'], $d['months'], $labels,
+                fn (string $metric, string $month) => $d['id'] ? $this->targetAt($targets, $d['id'], $metric, $month) : null,
+                fn (string $metric, int $year) => $d['id'] ? $this->annualAt($targets, $d['id'], $metric, $year) : null,
+            );
         }
 
         usort($districts, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
@@ -129,12 +137,15 @@ class CommercialKpiService
      *
      * @param  array<string, array<string, float|int>>  $monthly  month key => sums
      * @param  list<array<string, mixed>>  $labels
-     * @param  \Closure(string, string): (float|null)  $targetOf  (metric, month Y-m-01) => target
+     * @param  \Closure(string, string): (float|null)  $targetOf  (metric, month Y-m-01) => that month's target (annual / 12)
+     * @param  \Closure(string, int): (float|null)  $annualOf  (metric, year) => the annual target
      * @return array<string, mixed>
      */
-    protected function block(string $name, ?int $id, array $monthly, array $labels, \Closure $targetOf): array
+    protected function block(string $name, ?int $id, array $monthly, array $labels, \Closure $targetOf, \Closure $annualOf): array
     {
         $rows = [];
+        $year = $labels === [] ? null : (int) $labels[count($labels) - 1]['year'];
+        $yearKeys = array_values(array_filter(array_column($labels, 'key'), fn (string $key) => (int) substr($key, 0, 4) === $year && isset($monthly[$key])));
 
         foreach (self::METRICS as $metric => $meta) {
             $actuals = [];
@@ -159,10 +170,20 @@ class CommercialKpiService
                 }
             }
 
+            $annual = $year === null ? null : $annualOf($metric, $year);
+            $ytdActual = round(array_sum(array_map(fn (string $key) => (float) $monthly[$key][$metric], $yearKeys)), 2);
+            $ytdTarget = $annual !== null && $annual > 0 && $yearKeys !== [] ? round($annual * count($yearKeys) / 12, 2) : null;
+
             $rows[] = [
                 'metric' => $metric, 'label' => $meta['label'], 'unit' => $meta['unit'], 'money' => $meta['money'],
                 'target' => $latest, 'targets' => $targets, 'target_changes' => count(array_unique(array_filter($targets, fn ($t) => $t !== null))) > 1,
                 'actuals' => $actuals, 'efficiency' => $efficiency,
+                'annual' => $annual, 'annual_year' => $year,
+                'ytd' => [
+                    'months' => count($yearKeys), 'actual' => $yearKeys === [] ? null : $ytdActual, 'target' => $ytdTarget,
+                    'efficiency' => $ytdTarget !== null ? round($ytdActual / $ytdTarget * 100, 1) : null,
+                    'progress' => $annual !== null && $annual > 0 && $yearKeys !== [] ? round($ytdActual / $annual * 100, 1) : null,
+                ],
             ];
         }
 
@@ -191,6 +212,7 @@ class CommercialKpiService
         // The arrears row of the KPI table (actuals only: arrears have no target).
         $rows[] = [
             'metric' => 'arrears', 'label' => 'Arrears', 'unit' => 'GH¢', 'money' => true, 'target' => null, 'targets' => [], 'target_changes' => false,
+            'annual' => null, 'annual_year' => $year, 'ytd' => ['months' => count($yearKeys), 'actual' => null, 'target' => null, 'efficiency' => null, 'progress' => null],
             'actuals' => array_combine(array_column($labels, 'key'), array_map(fn ($l) => isset($monthly[$l['key']]) ? (float) $monthly[$l['key']]['arrears'] : null, $labels)), 'efficiency' => [],
         ];
 
@@ -250,7 +272,29 @@ class CommercialKpiService
             return $sum > 0 ? round($sum, 2) : null;
         };
 
-        $block = $this->block('All districts', null, $monthly, $labels, $targetOf);
+        $annualOf = function (string $metric, int $year) use ($perDistrict, $targets): ?float {
+            $sum = 0.0;
+            $any = false;
+
+            foreach ($perDistrict as $d) {
+                if (! array_filter(array_keys($d['months']), fn (string $key) => (int) substr($key, 0, 4) === $year)) {
+                    continue;   // no figures this year: it needs no target
+                }
+
+                $any = true;
+                $target = $d['id'] ? $this->annualAt($targets, $d['id'], $metric, $year) : null;
+
+                if ($target === null) {
+                    return null;
+                }
+
+                $sum += $target;
+            }
+
+            return $any && $sum > 0 ? round($sum, 2) : null;
+        };
+
+        $block = $this->block('All districts', null, $monthly, $labels, $targetOf, $annualOf);
         $block['complete'] = collect($block['rows'])->where('metric', '!=', 'arrears')->every(fn (array $row) => ! in_array(null, $row['targets'], true) || $row['targets'] === []);
 
         return $block;
@@ -308,51 +352,112 @@ class CommercialKpiService
         return $perDistrict;
     }
 
+    // ---------------------------------------------------------------- charts
+
+    /**
+     * The numbers behind the KPI charts, taken from a scorecard (so a chart can never disagree with the table). $districtId narrows
+     * the trend and arrears charts to one district; the district comparisons always list every district of the scorecard.
+     *
+     * @param  array<string, mixed>  $card  scorecard() output (months, districts, total)
+     * @return array<string, mixed>
+     */
+    public function charts(array $card, ?int $districtId = null): array
+    {
+        $months = $card['months'];
+        $labels = array_map(fn (array $m) => $m['short'].' '.substr($m['year'], 2), $months);
+        $keys = array_column($months, 'key');
+        $block = $districtId !== null ? (collect($card['districts'])->firstWhere('id', $districtId) ?? $card['total']) : $card['total'];
+        $rows = collect($block['rows'])->keyBy('metric');
+        $districts = $card['districts'];
+
+        $trend = [];
+
+        foreach (self::METRICS as $metric => $meta) {
+            $row = $rows[$metric];
+            $actual = array_map(fn (string $key) => $row['actuals'][$key] ?? null, $keys);
+            $target = array_map(fn (string $key) => $row['targets'][$key] ?? null, $keys);
+            $series = [['label' => 'Actual', 'data' => array_map(fn ($v) => $v ?? 0, $actual), 'color' => 'series-1']];
+
+            if (array_filter($target, fn ($t) => $t !== null) !== []) {
+                $series[] = ['label' => 'Target (annual ÷ 12)', 'data' => array_map(fn ($v) => $v ?? 0, $target), 'color' => 'series-3'];
+            }
+
+            $trend[$metric] = ['label' => $meta['label'], 'unit' => $meta['unit'], 'series' => $series];
+        }
+
+        $efficiency = [];
+
+        foreach (self::METRICS as $metric => $meta) {
+            $efficiency[$metric] = array_map(fn (array $d) => collect($d['rows'])->firstWhere('metric', $metric)['ytd']['efficiency'] ?? null, $districts);
+        }
+
+        $arrears = $block['arrears'];
+
+        return [
+            'labels' => $labels,
+            'trend' => $trend,
+            'districts' => array_column($districts, 'name'),
+            // year to date efficiency of each district, by KPI (null = no target set)
+            'ytd_efficiency' => $efficiency,
+            'ytd_months' => $rows['billing']['ytd']['months'] ?? 0,
+            'ytd_year' => $rows['billing']['annual_year'] ?? null,
+            // share of the annual target reached so far
+            'ytd_progress' => array_map(fn (string $metric) => array_map(fn (array $d) => collect($d['rows'])->firstWhere('metric', $metric)['ytd']['progress'] ?? null, $districts), array_keys(self::METRICS)),
+            'arrears_labels' => array_column($arrears, 'label'),
+            'arrears_owed' => array_column($arrears, 'arrears'),
+            'arrears_credit' => array_column($arrears, 'credit'),
+            'arrears_age' => array_map(fn ($a) => $a ?? 0, array_column($arrears, 'age')),
+            'latest_arrears' => array_map(fn (array $d) => (float) (collect($d['arrears'])->last()['arrears'] ?? 0), $districts),
+            'latest_billing' => array_map(fn (array $d) => (float) (collect($d['rows'])->firstWhere('metric', 'billing')['actuals'][end($keys) ?: ''] ?? 0), $districts),
+            'scope' => $block['name'],
+        ];
+    }
+
     // ---------------------------------------------------------------- targets
 
-    /** @param  list<int>  $districtIds @return array<int, array<string, list<array{0: string, 1: float}>>> district => metric => [[from, value], ...] oldest first */
+    /** @param  list<int>  $districtIds @return array<int, array<string, array<int, float>>> district => metric => year => the ANNUAL target */
     protected function targetIndex(array $districtIds): array
     {
         $index = [];
 
         foreach (CommercialDistrictTarget::query()->whereIn('district_id', $districtIds ?: [0])->orderBy('effective_from')->get() as $target) {
-            $index[(int) $target->district_id][$target->metric][] = [$target->effective_from->toDateString(), (float) $target->value];
+            $index[(int) $target->district_id][$target->metric][(int) $target->effective_from->format('Y')] = (float) $target->value;
         }
 
         return $index;
     }
 
-    /** The target in force in a month: the latest one that starts on or before it. */
+    /** The annual target of a year; null when that year has none (nothing carries over from another year). */
+    protected function annualAt(array $index, int $districtId, string $metric, int $year): ?float
+    {
+        $value = $index[$districtId][$metric][$year] ?? null;
+
+        return $value !== null && $value > 0 ? $value : null;
+    }
+
+    /** The target of one month: the annual target of its year spread evenly over twelve months. */
     protected function targetAt(array $index, int $districtId, string $metric, string $month): ?float
     {
-        $found = null;
+        $annual = $this->annualAt($index, $districtId, $metric, (int) substr($month, 0, 4));
 
-        foreach ($index[$districtId][$metric] ?? [] as [$from, $value]) {
-            if ($from <= $month) {
-                $found = $value;
-            }
-        }
-
-        return $found;
+        return $annual === null ? null : round($annual / 12, 2);
     }
 
     /**
-     * The targets in force on a date, for the editor: district id => metric => [value, effective_from].
+     * The annual targets of a year, for the editor: district id => metric => [value, year].
      *
      * @param  list<int>  $districtIds
-     * @return array<int, array<string, array{0: float, 1: string}>>
+     * @return array<int, array<string, array{0: float, 1: int}>>
      */
-    public function current(array $districtIds, ?string $asOf = null): array
+    public function current(array $districtIds, ?int $year = null): array
     {
-        $month = Carbon::parse($asOf ?? now())->startOfMonth()->toDateString();
+        $year ??= (int) now()->format('Y');
         $out = [];
 
         foreach ($this->targetIndex($districtIds) as $districtId => $byMetric) {
-            foreach ($byMetric as $metric => $rows) {
-                foreach ($rows as [$from, $value]) {
-                    if ($from <= $month) {
-                        $out[$districtId][$metric] = [$value, $from];
-                    }
+            foreach ($byMetric as $metric => $years) {
+                if (isset($years[$year])) {
+                    $out[$districtId][$metric] = [$years[$year], $year];
                 }
             }
         }
@@ -367,31 +472,31 @@ class CommercialKpiService
     }
 
     /**
-     * Sets a district's target for a KPI from a month on (replacing the row of that month if there is one). Audited with the old and
+     * Sets a district's ANNUAL target of a KPI for a calendar year (replacing that year's row if there is one). Audited with the old and
      * new value. The caller has already checked the person may manage settings and may touch this district.
      *
      * @throws ValidationException
      */
-    public function save(User $actor, int $districtId, string $metric, string $from, mixed $value): CommercialDistrictTarget
+    public function save(User $actor, int $districtId, string $metric, int|string $year, mixed $value): CommercialDistrictTarget
     {
         if (! isset(self::METRICS[$metric]) || ! District::query()->whereKey($districtId)->exists()) {
             throw ValidationException::withMessages(['metric' => 'Choose a district and one of the three KPIs.']);
         }
 
-        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])/', $from)) {
-            throw ValidationException::withMessages(['from' => 'Choose the month the target starts.']);
+        if (! preg_match('/^\d{4}$/', (string) $year) || (int) $year < 2000 || (int) $year > 2100) {
+            throw ValidationException::withMessages(['year' => 'Choose the year the target is for.']);
         }
 
         if (! is_numeric($value) || (float) $value < 0 || (float) $value > 1000000000000) {
             throw ValidationException::withMessages(['value' => 'The target must be a number of zero or more.']);
         }
 
-        $start = Carbon::parse(substr($from, 0, 7).'-01')->toDateString();
+        $start = Carbon::create((int) $year, 1, 1)->toDateString();   // the year's key: 1 January
         $existing = CommercialDistrictTarget::query()->where(['district_id' => $districtId, 'metric' => $metric, 'effective_from' => $start])->first();
         $target = CommercialDistrictTarget::query()->updateOrCreate(['district_id' => $districtId, 'metric' => $metric, 'effective_from' => $start], ['value' => round((float) $value, 2), 'updated_by' => $actor->id]);
 
         Audit::log('commercial.kpi_target_saved', Permission::MODULE_COMMERCIAL, CommercialDistrictTarget::class, $target->id, [
-            'district_id' => $districtId, 'metric' => $metric, 'from' => $start, 'old' => $existing?->value, 'new' => (float) $target->value,
+            'district_id' => $districtId, 'metric' => $metric, 'year' => (int) $year, 'old' => $existing?->value, 'new' => (float) $target->value,
         ]);
 
         return $target;
@@ -400,7 +505,7 @@ class CommercialKpiService
     public function delete(User $actor, int $targetId): void
     {
         $target = CommercialDistrictTarget::query()->findOrFail($targetId);
-        $meta = ['district_id' => $target->district_id, 'metric' => $target->metric, 'from' => $target->effective_from->toDateString(), 'old' => (float) $target->value];
+        $meta = ['district_id' => $target->district_id, 'metric' => $target->metric, 'year' => (int) $target->effective_from->format('Y'), 'old' => (float) $target->value];
         $target->delete();
 
         Audit::log('commercial.kpi_target_deleted', Permission::MODULE_COMMERCIAL, CommercialDistrictTarget::class, $targetId, $meta);

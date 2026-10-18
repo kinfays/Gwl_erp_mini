@@ -84,6 +84,7 @@ class ReadingScreensTest extends CommercialTestCase
         Livewire::actingAs($this->officer())->test(Reading::class, ['tab' => 'readers'])
             ->set('tab', 'readers')
             ->assertSee('League table')
+            ->assertSee('Busiest 10 CCAs')->assertSee('Skip rate of the busiest 10 CCAs')
             ->assertSee('ADWOA BOATENG')
             ->assertSee('KWESI PAINTSIL')
             ->assertSee('Not in staff directory')
@@ -118,7 +119,7 @@ class ReadingScreensTest extends CommercialTestCase
             ->assertSee('Workload balance')
             ->assertSee('Skip-rate outliers')
             ->set('tab', 'scorecard')
-            ->assertSee('indicative')
+            ->assertSee('indicative')->assertSee('Highest scores')
             ->assertSee('Indicative weights: volume 40%');
     }
 
@@ -152,6 +153,16 @@ class ReadingScreensTest extends CommercialTestCase
         $this->actingAs($officer)->get(route('commercial.reading.reader', '00000'))->assertNotFound();
 
         Livewire::actingAs($this->superAdmin())->test(ReaderDetail::class, ['staffId' => '2002'])->assertOk();
+    }
+
+    public function test_the_month_filters_are_plain_lists_of_the_months_that_have_data(): void
+    {
+        $this->seedReading(['1001' => ['2026-07-01' => [700, 100], '2026-08-01' => [500, 50], '2026-09-01' => [400, 40]]]);
+
+        Livewire::actingAs($this->officer())->test(Reading::class)->set('tab', 'readers')
+            ->assertSee('From Jul 2026')->assertSee('To Sep 2026')->assertSee('From: first month')
+            ->set('from', '2026-08')->set('to', '2026-08')
+            ->assertSee('550')->assertDontSee('800');
     }
 
     // ---------------------------------------------------------------- scoping

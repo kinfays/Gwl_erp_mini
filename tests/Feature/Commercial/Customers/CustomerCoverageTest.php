@@ -171,7 +171,7 @@ class CustomerCoverageTest extends CustomerTestCase
         $analyst = $this->analyst('910601', $this->accraWest, $this->sowutuom);
 
         Livewire::actingAs($analyst)->test(Dashboard::class)->set('tab', 'coverage')
-            ->assertSee('Billing coverage')->assertSee('50.0%')->assertSee('66.7%')->assertSee('25.0%')
+            ->assertSee('Coverage by district')->assertSee('What is owed, by time since the last payment')->assertSee('Billing coverage')->assertSee('50.0%')->assertSee('66.7%')->assertSee('25.0%')
             ->assertSee('Arrears by time since the last payment')->assertSee('Last paid 90 to 180 days ago')->assertSee('1,050.00')
             ->assertSee('does not say whether it was accepted')->assertSee('true ageing needs an aged-debtors report');
 

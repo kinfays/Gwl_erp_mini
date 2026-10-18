@@ -46,7 +46,7 @@ class CommercialSettingsTest extends CommercialTestCase
 
         $this->actingAs($superAdmin)->get(route('commercial.settings'))->assertOk()->assertSee('Commercial settings')->assertSee('placeholders');
 
-        foreach (['commercial_officer', 'commercial_manager', 'regional_chief_manager', 'district_manager'] as $i => $role) {
+        foreach (['commercial_officer', 'regional_chief_manager', 'district_manager'] as $i => $role) {
             $user = $this->userWithRoles('90080'.$i, [$role]);
 
             $this->assertFalse($user->hasPermission('commercial.manage_settings'));
@@ -62,7 +62,8 @@ class CommercialSettingsTest extends CommercialTestCase
 
         $this->assertContains('Settings', $labels($this->superAdmin()));
         $this->assertNotContains('Settings', $labels($this->officer()));
-        $this->assertNotContains('Settings', $labels($this->userWithRoles('900810', ['commercial_manager'])));
+        $this->assertContains('Settings', $labels($this->userWithRoles('900810', ['commercial_manager'])), 'the Commercial Manager holds manage_settings');
+        $this->assertNotContains('Settings', $labels($this->userWithRoles('900811', ['district_manager'])));
     }
 
     // ---------------------------------------------------------------- saving

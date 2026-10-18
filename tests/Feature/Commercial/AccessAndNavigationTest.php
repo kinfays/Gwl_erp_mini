@@ -109,13 +109,25 @@ class AccessAndNavigationTest extends CommercialTestCase
         $this->assertSame(0, CommercialImportBatch::query()->count());
     }
 
-    public function test_the_manager_role_can_view_but_not_reach_the_upload_screens(): void
+    public function test_the_manager_role_reaches_the_upload_screens_as_well_as_the_views(): void
     {
         $manager = $this->userWithRoles('900021', ['commercial_manager']);
 
         $this->actingAs($manager)->get(route('commercial.home'))->assertOk();
-        $this->actingAs($manager)->get(route('commercial.batches'))->assertForbidden();
-        Livewire::actingAs($manager)->test(Batches::class)->assertForbidden();
+        $this->actingAs($manager)->get(route('commercial.batches'))->assertOk();
+        Livewire::actingAs($manager)->test(Batches::class)->assertOk();
+    }
+
+    public function test_the_manager_reaches_settings_sms_and_both_kinds_of_upload_but_not_the_sms_provider_settings(): void
+    {
+        $manager = $this->userWithRoles('900024', ['commercial_manager'], $this->accraWest, $this->sowutuom);
+
+        $this->actingAs($manager)->get(route('commercial.settings'))->assertOk();
+        $this->actingAs($manager)->get(route('commercial.batches'))->assertOk()->assertSee('Reading &amp; billing reports', false)->assertSee('Customer list');
+        $this->actingAs($manager)->get(route('commercial.customers.uploads'))->assertOk()->assertSee('Reading &amp; billing reports', false);
+        $this->actingAs($manager)->get(route('commercial.sms'))->assertOk();
+        $this->actingAs($manager)->get(route('commercial.sms.send'))->assertOk();
+        $this->actingAs($manager)->get(route('commercial.sms.settings'))->assertForbidden();
     }
 
     public function test_management_roles_get_the_overview_only_and_employees_nothing(): void
@@ -160,10 +172,12 @@ class AccessAndNavigationTest extends CommercialTestCase
 
         $labels = collect($navigation->build($officer, 'commercial')['sidebar'])->pluck('label')->all();
         // the officer works in Accra West, where SMS to customers is switched on (it is locked to that region)
-        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List', 'Customer uploads', 'SMS', 'Uploads'], $labels);
+        // one Uploads entry covers the report uploads and the customer-list uploads
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List', 'SMS', 'Uploads'], $labels);
 
         $managerLabels = collect($navigation->build($this->userWithRoles('900031', ['commercial_manager']), 'commercial')['sidebar'])->pluck('label')->all();
-        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List'], $managerLabels);
+        // the manager also runs the settings and the uploads; the manager is based in Accra West, where SMS is on
+        $this->assertSame(['Overview', 'Summary', 'Reading', 'Billing', 'KPIs', 'Customer List', 'SMS', 'Settings', 'Uploads'], $managerLabels);
 
         config(['gwl.commercial_module_enabled' => false]);
 

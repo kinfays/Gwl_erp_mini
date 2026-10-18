@@ -49,8 +49,18 @@
                     <option value="{{ $d->id }}">{{ $d->district_name }}</option>
                 @endforeach
             </select>
-            <input type="month" wire:model.live="from" class="form-input" aria-label="From month">
-            <input type="month" wire:model.live="to" class="form-input" aria-label="To month">
+            <select wire:model.live="from" class="form-input" aria-label="From month">
+                <option value="">From: first month</option>
+                @foreach ($monthOptions as $value => $label)
+                    <option value="{{ $value }}">From {{ $label }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="to" class="form-input" aria-label="To month">
+                <option value="">To: last month</option>
+                @foreach ($monthOptions as $value => $label)
+                    <option value="{{ $value }}">To {{ $label }}</option>
+                @endforeach
+            </select>
             @if ($filtered)
                 <button type="button" wire:click="clearFilters" class="btn btn-ghost btn-sm">Clear filters</button>
             @endif
@@ -195,6 +205,18 @@
             @if (empty($readers))
                 <x-ui.card><x-ui.empty-state icon="users" title="No CCAs for these filters." description="Widen the months or clear the district filter." /></x-ui.card>
             @else
+                @php $top = array_slice($readers, 0, 10); @endphp
+                <div class="ui-grid ui-grid-2 dash-row">
+                    <x-ui.card title="Busiest 10 CCAs" description="Visits over the months shown, split into read and skipped.">
+                        <x-ui.chart type="hbar" label="Read and skipped visits of the busiest CCAs" :stacked="true" :labels="array_column($top, 'name')"
+                            :series="[['label' => 'Read', 'data' => array_column($top, 'read'), 'color' => 'series-1'], ['label' => 'Skipped', 'data' => array_column($top, 'skipped'), 'color' => 'warning']]" height="300" />
+                    </x-ui.card>
+                    <x-ui.card title="Skip rate of the busiest 10 CCAs" description="Skipped ÷ visited. Lower is better.">
+                        <x-ui.chart type="hbar" label="Skip rate of the busiest CCAs" unit="%" :labels="array_column($top, 'name')"
+                            :series="[['label' => 'Skip rate', 'data' => array_map(fn ($v) => $v ?? 0, array_column($top, 'skip_rate')), 'color' => 'danger']]" height="300" />
+                    </x-ui.card>
+                </div>
+
                 <x-ui.card title="League table" description="Visits per CCA over the months shown, busiest first. The system account is never listed." :padded="false" class="dash-row">
                     <x-ui.table label="CCAs ranked by visits" :sticky="false">
                         <x-slot:head>
@@ -377,6 +399,13 @@
                 @endif
             </x-ui.card>
         @elseif ($activeTab === 'scorecard')
+            @if ($scorecard['enough_months'] && ! empty($scorecard['rows']))
+                @php $best = array_slice($scorecard['rows'], 0, 10); @endphp
+                <x-ui.card title="Highest scores" description="The ten best indicative scores (0-100)." class="dash-row">
+                    <x-ui.chart type="hbar" label="Indicative score of the top CCAs" :max="100" :labels="array_column($best, 'name')"
+                        :series="[['label' => 'Score', 'data' => array_column($best, 'score'), 'color' => 'series-1']]" height="300" />
+                </x-ui.card>
+            @endif
             <x-ui.card title="CCA scorecard" description="An indicative 0-100 score from percentile ranks over the complete months. It is a first guess to start conversations, not a verdict." :padded="false" class="dash-row">
                 @if (! $scorecard['enough_months'])
                     <x-ui.empty-state icon="calendar-days" title="No complete month in this range" description="Widen the months to include a finished month." />

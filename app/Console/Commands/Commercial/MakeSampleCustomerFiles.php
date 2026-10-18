@@ -9,6 +9,7 @@ use App\Services\Commercial\Customers\CustomerImportException;
 use App\Services\Commercial\Customers\CustomerImportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Writer\XLSX\Writer;
 use Throwable;
@@ -28,6 +29,11 @@ class MakeSampleCustomerFiles extends Command
         {--region=Accra West : Region whose districts get a file}
         {--customers=2500 : Customers per district in the first week}
         {--weeks=3 : Weekly uploads to make (the last is the newest)}
+        {--monthly : Make month-end uploads instead of weekly ones, starting at --start}
+        {--start=2026-03-31 : With --monthly, the date of the first month-end upload}
+        {--steps=7 : With --monthly, how many month-end uploads to make}
+        {--fresh : First delete the customer-list data (customers, uploads, rollups, history) so older files can be loaded in date order; development only}
+        {--force : With --fresh, do not ask first}
         {--import : Also load the files through the import pipeline}';
 
     protected $description = 'Make synthetic (not real) customer-list workbooks for a region, and optionally import them';
@@ -61,14 +67,20 @@ class MakeSampleCustomerFiles extends Command
             return self::FAILURE;
         }
 
+        if ($this->option('fresh') && ! $this->wipe()) {
+            return self::FAILURE;
+        }
+
         $customers = max(50, (int) $this->option('customers'));
-        $weeks = max(1, min(8, (int) $this->option('weeks')));
-        $newest = CarbonImmutable::now()->startOfWeek()->subDay();   // last Sunday
+        $monthly = (bool) $this->option('monthly');
+        $weeks = $monthly ? max(1, min(24, (int) $this->option('steps'))) : max(1, min(8, (int) $this->option('weeks')));
+        $first = CarbonImmutable::parse((string) $this->option('start'))->endOfMonth()->startOfDay();
+        $newest = $monthly ? $first->addMonthsNoOverflow($weeks - 1)->endOfMonth()->startOfDay() : CarbonImmutable::now()->startOfWeek()->subDay();   // last Sunday
         $directory = storage_path('app/sample-customer-files');
         is_dir($directory) || mkdir($directory, 0775, true);
 
         for ($week = 0; $week < $weeks; $week++) {
-            $asOf = $newest->subWeeks($weeks - 1 - $week);
+            $asOf = $monthly ? $first->addMonthsNoOverflow($week)->endOfMonth()->startOfDay() : $newest->subWeeks($weeks - 1 - $week);
 
             foreach ($districts as $district) {
                 $path = $directory.'/rptCustomerDetails-SAMPLE-'.str_replace(' ', '', $district->district_name).'-'.$asOf->format('Y-m-d').'.xlsx';
@@ -80,7 +92,7 @@ class MakeSampleCustomerFiles extends Command
                 }
 
                 try {
-                    ['batch' => $batch, 'duplicate' => $duplicate] = $imports->register($path, basename($path), CommercialCustomerBatch::PERIOD_WEEKLY, \Illuminate\Support\Carbon::instance($asOf), null, 'Synthetic sample data');
+                    ['batch' => $batch, 'duplicate' => $duplicate] = $imports->register($path, basename($path), $monthly ? CommercialCustomerBatch::PERIOD_MONTHLY : CommercialCustomerBatch::PERIOD_WEEKLY, \Illuminate\Support\Carbon::instance($asOf), null, 'Synthetic sample data');
                     $batch = $duplicate ? $batch : $imports->process($batch);
                     $this->line('    -> '.$batch->status.($duplicate ? ' (already uploaded)' : '').($batch->error_message ? ': '.$batch->error_message : ''));
                 } catch (CustomerImportException $e) {
@@ -96,6 +108,30 @@ class MakeSampleCustomerFiles extends Command
             : 'Files are in '.$directory.'. Upload them (oldest first) on Commercial > Customer uploads, as weekly.');
 
         return self::SUCCESS;
+    }
+
+    /** Deletes the customer-list data of the whole database (not the lookups). Refuses when SMS campaigns point at customers. */
+    protected function wipe(): bool
+    {
+        if (\Illuminate\Support\Facades\Schema::hasTable('commercial_sms_campaigns') && DB::table('commercial_sms_campaigns')->exists()) {
+            $this->error('SMS campaigns exist and point at customers: refusing to delete the customer list.');
+
+            return false;
+        }
+
+        if (! $this->option('force') && ! $this->confirm('Delete ALL customer-list uploads, customers, contacts, rollups and history from this database?')) {
+            return false;
+        }
+
+        foreach (['commercial_customer_issue_accounts', 'commercial_customer_consumption_history', 'commercial_customer_changes', 'commercial_customer_undo', 'commercial_customer_diff', 'commercial_customer_staging',
+            'commercial_customer_connections', 'commercial_customer_consumption', 'commercial_customer_quality', 'commercial_customer_debt_stats', 'commercial_customer_rollups_district', 'commercial_customer_rollups',
+            'commercial_customer_contacts', 'commercial_customers', 'commercial_customer_batches'] as $table) {
+            DB::table($table)->delete();
+        }
+
+        $this->line('Customer-list data deleted.');
+
+        return true;
     }
 
     /** Writes one district's file for one week and returns its number of customers. */
@@ -208,9 +244,26 @@ class MakeSampleCustomerFiles extends Command
             'last_paid_amount' => round(max(5, $bill * (0.5 + ($n % 4) / 4)), 2),
             'connect_date' => $anchor->subDays(30 + ($n * 13) % 5000)->toDateTimeImmutable(),
             'estimated_consume' => $n % 9 === 0 ? 8 : 0,
-            'average_consume' => 4 + ($n * 3) % 40,
+            'average_consume' => $this->average($n, $week),
             'meter_factor' => 1,
         ];
+    }
+
+    /**
+     * A customer's average consumption: steady, with a few planted changes in the later uploads so the own-history comparison has
+     * something to find (a spike, a drop, and a customer who stops using water).
+     */
+    protected function average(int $n, int $week): float
+    {
+        $base = 4 + ($n * 3) % 40;
+        $drift = 1 + (($n + $week * 7) % 11 - 5) / 100;   // a few percent up or down from one upload to the next
+
+        return match (true) {
+            $week >= 4 && $n % 53 === 0 => round($base * 3.2, 1),
+            $week >= 4 && $n % 61 === 0 => round($base * 0.3, 1),
+            $week >= 5 && $n % 97 === 0 => 0.0,
+            default => round($base * $drift, 1),
+        };
     }
 
     /**

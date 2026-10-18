@@ -106,6 +106,21 @@ class Reading extends Component
         return $this->filteredStrengths($this->regionId(), $this->from, $this->to);
     }
 
+    /** @return array<string, string> "2026-09" => "Sep 2026" for each month the user's uploads cover, oldest first, plus any month already chosen */
+    protected function monthOptions(): array
+    {
+        $months = $this->filteredReadingStats($this->regionId(), null)->distinct()->orderBy('month')->pluck('month')
+            ->map(fn ($month) => Carbon::parse($month)->format('Y-m'))->unique()->values();
+
+        foreach ([$this->from, $this->to] as $chosen) {
+            if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $chosen) && ! $months->contains($chosen)) {
+                $months->push($chosen);
+            }
+        }
+
+        return $months->sort()->mapWithKeys(fn (string $month) => [$month => Carbon::parse($month.'-01')->format('M Y')])->all();
+    }
+
     public function render(ReadingAnalyticsService $analytics, CommercialReportData $reportData)
     {
         $tab = $this->activeTab();
@@ -163,6 +178,8 @@ class Reading extends Component
             'canExport' => $this->actorCan('commercial.export_reports'),
             'canExportTrend' => $this->actorCan('commercial.export_reports') && $this->actorCan('commercial.view_reading'),
             'canResolve' => $this->actorCan('commercial.resolve_matches') || $this->actorCan('commercial.upload_reports'),
+            // A plain list of the months that have data (a native month picker does not open in every browser).
+            'monthOptions' => $this->monthOptions(),
             'regions' => $this->actorSeesAllRegions() ? Region::query()->orderBy('region_name')->get() : collect(),
             'districts' => $districts,
             'targets' => [

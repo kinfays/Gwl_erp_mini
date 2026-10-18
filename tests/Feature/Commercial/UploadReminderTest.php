@@ -115,7 +115,7 @@ class UploadReminderTest extends CommercialTestCase
         $mine = $this->officer('900901');                                // Accra West officer
         $other = $this->officer('900902', $this->ashanti);               // Ashanti officer
         $headOffice = $this->officer('900903', $this->accraWest, $this->headOffice);
-        $manager = $this->userWithRoles('900904', ['commercial_manager']);   // views, does not upload
+        $manager = $this->userWithRoles('900904', ['chief_manager']);   // views, does not upload
         $inactive = $this->officer('900905');
         $inactive->forceFill(['is_active' => false])->save();
         $this->superAdmin();

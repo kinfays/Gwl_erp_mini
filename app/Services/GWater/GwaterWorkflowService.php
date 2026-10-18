@@ -20,8 +20,11 @@ use App\Models\Vehicle;
 use App\Models\VehicleExpense;
 use App\Services\Transport\TransportScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -39,6 +42,9 @@ use Illuminate\Validation\ValidationException;
 class GwaterWorkflowService
 {
     public const MODULE = 'gwater';
+
+    /** The private disk the waybill pictures live on: never given a URL, served only by gwater.purchases.waybill. */
+    public const WAYBILL_DISK = 'local';
 
     public function __construct(
         protected GwaterVisibility $visibility,
@@ -221,8 +227,10 @@ class GwaterWorkflowService
      * @param  array<string, mixed>  $data  purchase_date, waybill_no, supplier_ref, note, lines [[product_id, packs]], vehicle_id,
      *                                       driver_id, mileage_log_id, vehicle_expense_id, fuel_paid_by_user_id, fuel_amount,
      *                                       loading_offloading_amount (pesewas, one payment), payee, receipt_ref, location_district_id
+     * @param  UploadedFile|null  $waybillPhoto  the paper waybill: a picture (JPG, PNG or WebP) or a PDF, checked by content, kept on the
+     *                                           private disk; optional
      */
-    public function recordPurchase(User $actor, array $data): GwPurchase
+    public function recordPurchase(User $actor, array $data, ?UploadedFile $waybillPhoto = null): GwPurchase
     {
         $this->authorise($actor, 'gwater.record');
 
@@ -232,8 +240,56 @@ class GwaterWorkflowService
         $lines = $this->purchaseLines($data['lines'] ?? []);
         $fuel = $this->amount($data['fuel_amount'] ?? 0, 'fuel_amount');
         $loading = $this->amount($data['loading_offloading_amount'] ?? 0, 'loading_offloading_amount');
+        $photoType = $waybillPhoto ? $this->waybillPhotoType($waybillPhoto) : null;
+        $storedPhoto = null;
 
-        return DB::transaction(function () use ($actor, $location, $date, $waybill, $lines, $fuel, $loading, $data) {
+        try {
+            return $this->recordPurchaseRows($actor, $location, $date, $waybill, $lines, $fuel, $loading, $data, $waybillPhoto, $photoType, $storedPhoto);
+        } catch (\Throwable $exception) {
+            // The rows rolled back: do not leave the picture behind.
+            if ($storedPhoto !== null) {
+                Storage::disk(self::WAYBILL_DISK)->delete($storedPhoto);
+            }
+
+            throw $exception;
+        }
+    }
+
+    /** The file is checked by what it is, not by what the browser says: only JPG, PNG, WebP and PDF, within the size limit. @return array{0: string, 1: string} mime, extension */
+    protected function waybillPhotoType(UploadedFile $photo): array
+    {
+        $limitKb = max(1, (int) config('gwl.gwater_waybill_photo_max_mb')) * 1024;
+
+        if (! $photo->isValid() || ($photo->getSize() ?: 0) > $limitKb * 1024) {
+            throw ValidationException::withMessages(['waybill_photo' => 'The waybill file must be at most '.round($limitKb / 1024).' MB.']);
+        }
+
+        // A PDF is recognised by its first bytes (the file's own signature), a picture by decoding its header.
+        $handle = @fopen($photo->getRealPath(), 'rb');
+        $head = $handle ? (string) fread($handle, 8) : '';
+
+        if ($handle) {
+            fclose($handle);
+        }
+
+        if (str_starts_with($head, '%PDF-')) {
+            return ['application/pdf', 'pdf'];
+        }
+
+        $info = @getimagesize($photo->getRealPath());
+        $types = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+
+        if (! $info || ! isset($types[$info['mime'] ?? ''])) {
+            throw ValidationException::withMessages(['waybill_photo' => 'The waybill must be a JPG, PNG or WebP picture, or a PDF.']);
+        }
+
+        return [$info['mime'], $types[$info['mime']]];
+    }
+
+    /** @param  array<string, mixed>  $data */
+    protected function recordPurchaseRows(User $actor, array $location, Carbon $date, string $waybill, array $lines, int $fuel, int $loading, array $data, ?UploadedFile $waybillPhoto, ?array $photoType, ?string &$storedPhoto): GwPurchase
+    {
+        return DB::transaction(function () use ($actor, $location, $date, $waybill, $lines, $fuel, $loading, $data, $waybillPhoto, $photoType, &$storedPhoto) {
             $this->stock->lock();
 
             $this->assertWaybillFree($location, $waybill);
@@ -268,6 +324,17 @@ class GwaterWorkflowService
                 'fuel_reimbursement_status' => $transport['vehicle_expense_id'] !== null && $payer ? GwPurchase::PENDING : GwPurchase::NOT_APPLICABLE,
                 'created_by' => $actor->id,
             ]);
+
+            if ($waybillPhoto && $photoType) {
+                $path = Storage::disk(self::WAYBILL_DISK)->putFileAs('gwater/waybills/'.$purchase->id, $waybillPhoto, Str::random(40).'.'.$photoType[1]);
+
+                if (! $path) {
+                    throw ValidationException::withMessages(['waybill_photo' => 'The waybill file could not be saved. Try again.']);
+                }
+
+                $storedPhoto = $path;
+                $purchase->forceFill(['waybill_photo_path' => $path, 'waybill_photo_mime' => $photoType[0]])->save();
+            }
 
             foreach ($lines as $productId => $packs) {
                 $purchase->lines()->create(['product_id' => $productId, 'packs' => $packs, 'unit_cost' => $costs[$productId]]);
@@ -313,6 +380,7 @@ class GwaterWorkflowService
                 'mileage_log_id' => $transport['mileage_log_id'],
                 'loading_offloading' => $loading,
                 'fuel_amount' => $fuel,
+                'waybill_photo' => $storedPhoto !== null,
             ]);
 
             return $purchase->load('lines');

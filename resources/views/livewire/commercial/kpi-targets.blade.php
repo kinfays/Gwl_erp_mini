@@ -1,13 +1,13 @@
 <div>
-    <x-ui.page-header title="KPI targets" description="The monthly target of each district for sales (m³), billing and collection (GH¢). A target applies from the month you choose until a later one replaces it, so old months keep the target they were judged against.">
+    <x-ui.page-header title="KPI targets" description="The yearly target of each district for sales (m³), billing and collection (GH¢). The KPI page spreads a year's target evenly over its twelve months, and a year with no target has none: nothing carries over from the year before.">
         <x-slot:actions><a href="{{ route('commercial.kpis') }}" class="btn btn-secondary">Back to the KPIs</a></x-slot:actions>
     </x-ui.page-header>
 
-    <x-ui.card title="Set targets" description="Type a target in each box you want to set or change; leave a box empty to leave it alone. The boxes show the target in force in the month chosen." class="dash-row">
+    <x-ui.card title="Set targets" description="Type the annual target in each box you want to set or change; leave a box empty to leave it alone. The boxes show the targets already set for the year chosen." class="dash-row">
         <div class="ui-toolbar">
-            <label for="from"><strong>Starting from</strong></label>
-            <input id="from" type="month" wire:model.live="from" class="form-input">
-            @error('from')<span class="form-error">{{ $message }}</span>@enderror
+            <label for="year"><strong>Year</strong></label>
+            <select id="year" wire:model.live="year" class="form-input">@foreach ($yearOptions as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select>
+            @error('year')<span class="form-error">{{ $message }}</span>@enderror
         </div>
 
         <x-ui.table label="District targets" :sticky="false">
@@ -38,13 +38,13 @@
 
         @if ($historyDistrict !== '')
             <x-ui.table label="Target history" :sticky="false">
-                <x-slot:head><tr><th>KPI</th><th>From</th><th class="num">Target</th><th></th></tr></x-slot:head>
+                <x-slot:head><tr><th>KPI</th><th>Year</th><th class="num">Annual target</th><th></th></tr></x-slot:head>
                 @forelse ($history as $row)
                     <tr wire:key="h-{{ $row->id }}">
                         <td>{{ $metrics[$row->metric]['label'] ?? $row->metric }}</td>
-                        <td>{{ $row->effective_from->format('F Y') }}</td>
+                        <td>{{ $row->effective_from->format('Y') }}</td>
                         <td class="num">{{ number_format($row->value, 2) }}</td>
-                        <td><button type="button" class="btn btn-ghost btn-sm" wire:click="delete({{ $row->id }})" wire:confirm="Remove this target row? Months it applied to will then use the one before it, or have none.">Remove</button></td>
+                        <td><button type="button" class="btn btn-ghost btn-sm" wire:click="delete({{ $row->id }})" wire:confirm="Remove this annual target? That year will then have no target for this KPI.">Remove</button></td>
                     </tr>
                 @empty
                     <x-ui.empty-row :colspan="4" icon="target" title="No targets set for this district yet." />

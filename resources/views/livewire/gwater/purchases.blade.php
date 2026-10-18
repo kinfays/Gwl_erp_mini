@@ -28,7 +28,12 @@
                 @forelse ($purchases as $trip)
                     <tr wire:key="trip-{{ $trip->id }}" @class(['is-voided' => $trip->isVoided()])>
                         <td class="nowrap">{{ $trip->purchase_date->format('d M Y') }}</td>
-                        <td class="mono">{{ $trip->waybill_no }}</td>
+                        <td class="mono">
+                            {{ $trip->waybill_no }}
+                            @if ($trip->hasWaybillPhoto())
+                                <div><x-ui.button size="sm" variant="ghost" icon="file-text" wire:click="openPreview({{ $trip->id }})">Preview waybill</x-ui.button></div>
+                            @endif
+                        </td>
                         <td>
                             @foreach ($trip->lines as $line)
                                 <div>{{ number_format($line->packs) }} × {{ $line->product->name }} <span class="cell-muted">@ {{ \App\Services\GWater\Money::format($line->unit_cost) }}</span></div>
@@ -144,6 +149,21 @@
                     <x-ui.textarea label="Note (optional)" wire:model.defer="form.note" rows="2" />
                 </div>
             </div>
+            <h3 class="ui-panel-title" style="margin-top:16px">Waybill (optional)</h3>
+            <div class="ui-form-grid">
+                <div class="span-2">
+                    <x-ui.input type="file" label="Photo, scan or PDF of the paper waybill" wire:model="waybillPhoto" accept="image/jpeg,image/png,image/webp,application/pdf"
+                        :hint="'A picture (JPG, PNG, WebP) or a PDF, up to '.(int) config('gwl.gwater_waybill_photo_max_mb').' MB. It is kept private and shown only to people who can see this trip.'" />
+                    <div wire:loading wire:target="waybillPhoto" class="cell-muted">Uploading...</div>
+                    @if ($waybillPhoto && ! $errors->has('waybillPhoto'))
+                        <div class="cell-muted" style="margin-top:4px">Ready: {{ $waybillPhoto->getClientOriginalName() }} <x-ui.button size="sm" variant="ghost" wire:click="removePhoto">Remove</x-ui.button></div>
+                        @if (method_exists($waybillPhoto, 'isPreviewable') && $waybillPhoto->isPreviewable())
+                            <img src="{{ $waybillPhoto->temporaryUrl() }}" alt="Selected waybill" style="margin-top:8px;max-width:100%;max-height:220px;border:1px solid var(--line, #d7dde5);border-radius:6px">
+                        @endif
+                    @endif
+                    @error('form.waybill_photo') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
+                </div>
+            </div>
             @error('form.location') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
             @error('form.packs') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
 
@@ -162,6 +182,21 @@
             <x-slot:footer>
                 <x-ui.button wire:click="cancelVoid">Cancel</x-ui.button>
                 <x-ui.button variant="danger-solid" wire:click="confirmVoid">Void trip</x-ui.button>
+            </x-slot:footer>
+        </x-ui.modal>
+    @endif
+
+    @if ($previewing)
+        <x-ui.modal title="Waybill {{ $previewing->waybill_no }}" description="Kept privately; only people who can see this trip can open it." size="lg" close="closePreview" icon="file-text">
+            @php($waybillUrl = route('gwater.purchases.waybill', $previewing->id))
+            @if ($previewing->waybill_photo_mime === 'application/pdf')
+                <iframe src="{{ $waybillUrl }}" title="Waybill {{ $previewing->waybill_no }} (PDF)" style="width:100%;height:70vh;border:1px solid var(--line, #d7dde5);border-radius:6px"></iframe>
+            @else
+                <img src="{{ $waybillUrl }}" alt="Waybill {{ $previewing->waybill_no }}" style="max-width:100%;max-height:70vh;display:block;margin:0 auto">
+            @endif
+            <x-slot:footer>
+                <x-ui.button :href="$waybillUrl" target="_blank" rel="noopener" icon="external-link">Open in a new tab</x-ui.button>
+                <x-ui.button wire:click="closePreview">Close</x-ui.button>
             </x-slot:footer>
         </x-ui.modal>
     @endif

@@ -1021,14 +1021,6 @@ class ErpNavigation
                     && ($currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_customer_analytics')),
             ],
             [
-                'label' => 'Customer uploads',
-                'route' => 'commercial.customers.uploads',
-                'active' => ['commercial.customers.uploads', 'commercial.customers.batch', 'commercial.customers.lookups'],
-                'icon' => $this->icon('stack'),
-                'icon_name' => 'file-up',
-                'can' => fn (User $currentUser) => (bool) config('gwl.commercial_customer_list_enabled') && $canUpload($currentUser),
-            ],
-            [
                 'label' => 'SMS',
                 'route' => 'commercial.sms',
                 'active' => ['commercial.sms'],
@@ -1049,7 +1041,8 @@ class ErpNavigation
             [
                 'label' => 'Uploads',
                 'route' => 'commercial.batches',
-                'active' => ['commercial.batches', 'commercial.batches.show'],
+                // Reading / billing reports and the customer list share this one entry (a switch at the top of each page).
+                'active' => ['commercial.batches', 'commercial.batches.show', 'commercial.customers.uploads', 'commercial.customers.batch', 'commercial.customers.lookups'],
                 'icon' => $this->icon('stack'),
                 'icon_name' => 'file-spreadsheet',
                 'can' => $canUpload,

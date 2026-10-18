@@ -697,6 +697,7 @@ if (config('gwl.gwater_module_enabled')) {
             Route::get('/', [GwaterController::class, 'home'])->middleware('permission:gwater.view')->name('home');
             Route::get('/sales', [GwaterController::class, 'sales'])->middleware('permission:gwater.view')->name('sales');
             Route::get('/purchases', [GwaterController::class, 'purchases'])->middleware('permission:gwater.view')->name('purchases');
+            Route::get('/purchases/{purchase}/waybill', [GwaterController::class, 'waybill'])->whereNumber('purchase')->middleware('permission:gwater.view')->name('purchases.waybill');
             Route::get('/profit-and-loss', [GwaterController::class, 'pnl'])->middleware('permission:gwater.view_reports')->name('pnl');
             Route::get('/export/{report}/{format}', [GwaterExportController::class, 'download'])
                 ->where('report', '[a-z-]+')

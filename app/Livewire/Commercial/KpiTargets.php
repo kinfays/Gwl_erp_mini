@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 /**
- * Where the monthly district targets (sales, billing, collection) are set, by holders of commercial.manage_settings. A target applies
+ * Where the yearly district targets (sales, billing, collection) are set, by holders of commercial.manage_settings. A target applies
  * from a month until a later one replaces it, so setting a new year's targets never changes an old month's efficiency. Only the
  * districts of regions the person may see are offered, and every save is re-checked against that.
  */
@@ -23,8 +23,8 @@ class KpiTargets extends Component
     use EnforcesModuleAccess;
     use ScopesCommercialByActor;
 
-    /** The month the values typed below start to apply (Y-m). */
-    public string $from = '';
+    /** The year the annual targets typed below are for. */
+    public string $year = '';
 
     /** @var array<int, array<string, string>> district id => metric => typed value */
     public array $grid = [];
@@ -36,13 +36,13 @@ class KpiTargets extends Component
     {
         $this->enforceLivewireModule(Permission::MODULE_COMMERCIAL);
         $this->guardCommercialPermission('commercial.manage_settings');
-        $this->from = now()->format('Y-m');
+        $this->year = now()->format('Y');
         $this->loadGrid($kpis);
     }
 
-    public function updatedFrom(): void
+    public function updatedYear(): void
     {
-        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $this->from)) {
+        if (preg_match('/^\d{4}$/', $this->year)) {
             $this->loadGrid(app(CommercialKpiService::class));
         }
     }
@@ -54,11 +54,11 @@ class KpiTargets extends Component
             ->where('district_name', 'not like', '%Head Office%')->where('district_name', 'not like', '%Regional Office%')->orderBy('district_name')->get(['id', 'district_name', 'region_id']);
     }
 
-    /** Fills the grid with the targets in force in the chosen month. */
+    /** Fills the grid with the annual targets of the chosen year. */
     protected function loadGrid(CommercialKpiService $kpis): void
     {
         $districts = $this->districts();
-        $current = $kpis->current($districts->pluck('id')->all(), $this->from.'-01');
+        $current = $kpis->current($districts->pluck('id')->all(), (int) $this->year);
         $this->grid = [];
 
         foreach ($districts as $district) {
@@ -73,14 +73,14 @@ class KpiTargets extends Component
         $this->guardCommercialPermission('commercial.manage_settings');
         $this->resetErrorBag();
 
-        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $this->from)) {
-            $this->addError('from', 'Choose the month the targets start.');
+        if (! preg_match('/^\d{4}$/', $this->year)) {
+            $this->addError('year', 'Choose the year the targets are for.');
 
             return;
         }
 
         $districts = $this->districts()->keyBy('id');
-        $current = $kpis->current($districts->keys()->all(), $this->from.'-01');
+        $current = $kpis->current($districts->keys()->all(), (int) $this->year);
         $saved = 0;
         $failed = false;
 
@@ -101,7 +101,7 @@ class KpiTargets extends Component
                 }
 
                 try {
-                    $kpis->save(Auth::user(), (int) $districtId, $metric, $this->from, $value);
+                    $kpis->save(Auth::user(), (int) $districtId, $metric, $this->year, $value);
                     $saved++;
                 } catch (ValidationException $e) {
                     $failed = true;
@@ -117,7 +117,7 @@ class KpiTargets extends Component
         if ($failed) {
             $this->dispatch('toast', type: 'error', message: 'Some targets were not saved: check the highlighted boxes.');
         } elseif ($saved > 0) {
-            $this->dispatch('toast', type: 'success', message: $saved.' target'.($saved === 1 ? '' : 's').' saved from '.Carbon::parse($this->from.'-01')->format('F Y').'.');
+            $this->dispatch('toast', type: 'success', message: $saved.' target'.($saved === 1 ? '' : 's').' saved for '.$this->year.'.');
         } else {
             $this->dispatch('toast', type: 'info', message: 'Nothing changed.');
         }
@@ -142,6 +142,11 @@ class KpiTargets extends Component
         $districts = $this->districts();
         $history = ctype_digit($this->historyDistrict) && $districts->contains('id', (int) $this->historyDistrict) ? $kpis->history((int) $this->historyDistrict) : collect();
 
-        return view('livewire.commercial.kpi-targets', ['districts' => $districts, 'metrics' => CommercialKpiService::METRICS, 'history' => $history]);
+        // Targets are yearly: the years from three back to next year (and the one chosen, if it is outside that).
+        $years = collect(range((int) now()->format('Y') - 3, (int) now()->format('Y') + 1));
+        $years = $years->contains((int) $this->year) || ! preg_match('/^\d{4}$/', $this->year) ? $years : $years->push((int) $this->year)->sort()->values();
+        $yearOptions = $years->mapWithKeys(fn (int $year) => [(string) $year => (string) $year])->all();
+
+        return view('livewire.commercial.kpi-targets', ['districts' => $districts, 'metrics' => CommercialKpiService::METRICS, 'history' => $history, 'yearOptions' => $yearOptions]);
     }
 }

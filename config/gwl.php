@@ -91,6 +91,8 @@ return [
     // Reminders (php artisan gwater:remind, daily, needs the scheduler): low stock is reminded about at most once per repeat
     // interval. Each location may set its own.
     'gwater_reminder_repeat_days' => (int) env('GWL_GWATER_REMINDER_REPEAT_DAYS', 7),
+    // Biggest waybill picture accepted when a trip is recorded (MB). Keep at or below PHP upload_max_filesize / post_max_size.
+    'gwater_waybill_photo_max_mb' => (int) env('GWL_GWATER_WAYBILL_PHOTO_MAX_MB', 5),
     // Most rows (all sheets together) one past-ledger import file may hold; the file is read into memory.
     'gwater_import_max_rows' => (int) env('GWL_GWATER_IMPORT_MAX_ROWS', 2000),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** A monthly target of one KPI for one district, in force from `effective_from` until a later row replaces it. */
+/** The ANNUAL target of one KPI for one district: `effective_from` is 1 January of the year it is for, and it applies to that year only. */
 class CommercialDistrictTarget extends Model
 {
     protected $fillable = ['district_id', 'metric', 'effective_from', 'value', 'updated_by'];

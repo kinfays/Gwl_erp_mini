@@ -91,7 +91,7 @@ class SmsBalanceTest extends SmsTestCase
         $this->assertSame(0, $this->sms->balanceCalls, 'the provider was not even asked for someone who cannot see it');
     }
 
-    public function test_a_low_balance_tells_the_officers_and_super_admin_of_accra_west_once_per_repeat_interval(): void
+    public function test_a_low_balance_tells_the_officers_managers_and_super_admin_of_accra_west_once_per_repeat_interval(): void
     {
         $officer = $this->westOfficer();
         $superAdmin = $this->superAdmin();
@@ -103,17 +103,17 @@ class SmsBalanceTest extends SmsTestCase
 
         $first = $this->service()->checkLowBalance();
         $this->assertSame('low', $first['status']);
-        $this->assertSame(2, $first['notified']);
+        $this->assertSame(3, $first['notified'], 'the officer, the Accra West manager and the super admin');
         Notification::assertSentTo($officer, GeneralDatabaseNotification::class);
         Notification::assertSentTo($superAdmin, GeneralDatabaseNotification::class);
         Notification::assertNotSentTo($other, GeneralDatabaseNotification::class);
-        Notification::assertNotSentTo($manager, GeneralDatabaseNotification::class);
+        Notification::assertSentTo($manager, GeneralDatabaseNotification::class);
 
         $again = $this->service()->checkLowBalance();
         $this->assertSame(['already_told', 0], [$again['status'], $again['notified']]);
 
         CommercialReminderState::query()->where('report_type', 'sms_balance')->update(['last_reminded_at' => now()->subDays(8)]);
-        $this->assertSame(2, $this->service()->checkLowBalance()['notified'], 'after the repeat interval it tells them again');
+        $this->assertSame(3, $this->service()->checkLowBalance()['notified'], 'after the repeat interval it tells them again');
     }
 
     public function test_a_healthy_unreadable_or_disabled_balance_notifies_nobody_and_the_message_never_holds_the_key(): void

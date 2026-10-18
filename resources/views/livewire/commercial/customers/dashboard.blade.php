@@ -403,6 +403,21 @@
                     <x-ui.stat-tile label="Estimated-reading rate" :value="$pct($cv['total']['estimated_rate'])" icon="triangle-alert" tone="warning" :meta="$n($cv['total']['estimated']).' eligible accounts billed on an estimate'" />
                 </div>
 
+                <div class="ui-grid ui-grid-2 dash-row">
+                    <x-ui.card title="Coverage by district">
+                        <x-ui.chart type="bar" label="Billing coverage, reading coverage and estimated rate by district" unit="%" :labels="array_column($cv['districts'], 'label')"
+                            :series="[
+                                ['label' => 'Billing coverage', 'data' => array_map(fn ($v) => $v ?? 0, array_column($cv['districts'], 'billing_coverage')), 'color' => 'series-1'],
+                                ['label' => 'Reading coverage', 'data' => array_map(fn ($v) => $v ?? 0, array_column($cv['districts'], 'reading_coverage')), 'color' => 'series-2'],
+                                ['label' => 'Estimated rate', 'data' => array_map(fn ($v) => $v ?? 0, array_column($cv['districts'], 'estimated_rate')), 'color' => 'warning'],
+                            ]" height="260" />
+                    </x-ui.card>
+                    <x-ui.card title="What is owed, by time since the last payment" description="GH¢, credits are never netted off.">
+                        <x-ui.chart type="bar" label="Arrears by time since the last payment" unit="GH¢" :labels="array_column($cv['arrears_ageing'], 'label')"
+                            :series="[['label' => 'Owed', 'data' => array_column($cv['arrears_ageing'], 'amount'), 'color' => 'danger']]" height="260" />
+                    </x-ui.card>
+                </div>
+
                 <x-ui.card title="By district" description="Eligible = billing accounts (ACTB). A valid bill is dated in the last {{ $cv['days'] }} days and is for more than zero. A read counts if the last read date is in the last {{ $cv['days'] }} days (the file does not say whether it was accepted). Metered = working or faulty meter." :padded="false" class="dash-row">
                     <x-ui.table label="Coverage by district" :sticky="true">
                         <x-slot:head><tr><th>District</th><th class="num">Active accounts</th><th class="num">Eligible</th><th class="num">Billing coverage</th><th class="num">Metered</th><th class="num">Reading coverage</th><th class="num">Estimated rate</th></tr></x-slot:head>

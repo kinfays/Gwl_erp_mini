@@ -216,3 +216,11 @@ The first design had a **request** (status `requested`, a "Mark paid" action, a 
 4. **Past records:** the Payments sheet of the import has `paid_on`, `reference`, `amount`, the packs columns and `note` (`request_date` and the second date column are gone; re-download the template).
 5. **Old data (migration `2026_10_22_000001_remove_gwater_payment_requests`):** a payment that was only requested never reduced what was owed, so it is marked voided ("Payment requests were removed: record a payment when it is paid."), which leaves the owed balance exactly as it was; the old overdue setting and its reminder rows are deleted. Paid payments are untouched.
 
+## 18. Waybill picture
+
+A trip can carry the paper waybill as a picture or a PDF, attached when it is recorded (optional). Migration `2026_10_23_000001_add_waybill_photo_to_gwater_purchases` (`gw_purchases.waybill_photo_path`, `waybill_photo_mime`).
+
+1. `GwaterWorkflowService::recordPurchase($actor, $data, ?UploadedFile $waybillPhoto)` checks the file **by content** (a JPG, PNG or WebP picture, or a PDF recognised by its `%PDF-` signature; nothing else, so no SVG or HTML; at most `GWL_GWATER_WAYBILL_PHOTO_MAX_MB`, default 5), stores it on the private `local` disk under `gwater/waybills/{trip id}/{random}.{ext}` (the uploaded name is not kept) and writes the path with the trip in the same transaction; if anything fails afterwards the file is deleted. The audit row records only `waybill_photo: true/false`.
+2. It is never given a URL: `GET /gwater/purchases/{id}/waybill` (`gwater.purchases.waybill`, `gwater.view`) finds the trip through `GwaterVisibility` (a trip outside the user's location answers 404, like a missing one) and streams the file inline with `nosniff`. The trips list shows a "Preview waybill" button under the waybill number: it opens a window with the picture (`<img>`) or the PDF (inline frame, the browser's own viewer) and an "Open in a new tab" button. `Purchases::openPreview()` resolves the trip inside the user's books (404 outside them). The form shows a thumbnail of a chosen picture and the name of a chosen PDF.
+3. A voided trip keeps its picture (nothing is deleted). There is no screen yet to add or replace a picture on a trip already recorded.
+
