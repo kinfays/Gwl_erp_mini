@@ -20,7 +20,7 @@
                 <x-ui.button :href="route('staff.reports')" icon="chart-column">Staff Reports</x-ui.button>
             @endif
             @if ($canExport)
-                <x-ui.button :href="route('leave.export.approved.excel')" icon="download">Export Excel</x-ui.button>
+                <x-ui.button :href="route('leave.export.approved.excel')" file="excel">Export Excel</x-ui.button>
             @endif
             <x-ui.button :href="route('leave.apply')" variant="primary" icon="plus">New Request</x-ui.button>
         </x-slot:actions>

@@ -3,8 +3,8 @@
 namespace App\Livewire\Assets\Concerns;
 
 use App\Services\Assets\AssetDashboardService;
+use App\Services\Assets\AssetListQuery;
 use App\Services\Assets\AssetReplacementService;
-use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Url;
 
 /**
@@ -44,35 +44,23 @@ trait FiltersByAnalytics
         return ['ageMin', 'ageMax', 'ageMode', 'warranty', 'replacementBucket', 'assigned'];
     }
 
-    protected function applyAnalyticsFilters(Builder $query): Builder
+    /** The filters as AssetListQuery (and the export links) name them. */
+    protected function analyticsFilterValues(): array
     {
-        $service = app(AssetDashboardService::class);
-
-        if ($this->ageMode === 'unknown') {
-            $service->applyAgeRange($query, null, null, true);
-        } elseif ($this->ageBound($this->ageMin) !== null || $this->ageBound($this->ageMax) !== null) {
-            $service->applyAgeRange($query, $this->ageBound($this->ageMin), $this->ageBound($this->ageMax));
-        }
-
-        if (array_key_exists($this->warranty, AssetDashboardService::WARRANTY_BUCKETS)) {
-            $service->applyWarranty($query, $this->warranty);
-        }
-
-        if (array_key_exists($this->replacementBucket, AssetReplacementService::BUCKETS)) {
-            app(AssetReplacementService::class)->apply($query, $this->replacementBucket);
-        }
-
-        if ($this->assigned === 'none') {
-            $service->applyUnassigned($query);
-        }
-
-        return $query;
+        return [
+            'age_min' => $this->ageMin,
+            'age_max' => $this->ageMax,
+            'age' => $this->ageMode,
+            'warranty' => $this->warranty,
+            'replacement_bucket' => $this->replacementBucket,
+            'assigned' => $this->assigned,
+        ];
     }
 
     /** A hand-edited URL with junk in it is ignored rather than erroring. */
     protected function ageBound(string $value): ?int
     {
-        return ctype_digit($value) ? (int) $value : null;
+        return AssetListQuery::ageBound($value);
     }
 
     /** @return array<string, string> property => chip label, for the filters currently in force */

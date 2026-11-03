@@ -1,7 +1,7 @@
 <div @if ($campaign->isOpen()) wire:poll.10s @endif>
     <x-ui.page-header title="SMS campaign #{{ $campaign->id }}{{ $campaign->name ? ' · '.$campaign->name : '' }}" description="{{ $audienceText }}">
         <x-slot:actions>
-            @if ($canExport && ! $summary['purged'])<a href="{{ route('commercial.sms.campaigns.export', $campaign->id) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Export to Excel</a>@endif
+            @if ($canExport && ! $summary['purged'])<a href="{{ route('commercial.sms.campaigns.export', $campaign->id) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Export to Excel</a>@endif
             @if ($canSend && $campaign->isOpen() && $campaign->status !== 'cancelling')<button type="button" class="btn btn-ghost" wire:click="cancel" wire:confirm="Cancel this campaign? Messages already sent cannot be taken back.">Cancel</button>@endif
             <a href="{{ route('commercial.sms.campaigns') }}" class="btn btn-secondary">All campaigns</a>
         </x-slot:actions>

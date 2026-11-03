@@ -2,11 +2,11 @@
     <x-ui.page-header title="Historical Visitor Log" description="Read-only visitor activity by date.">
         <x-slot:actions>
             <a href="{{ route('visitors.export.excel', ['start_date' => $exportStartDate, 'end_date' => $exportEndDate]) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-spreadsheet" />
+                <x-ui.file-icon type="excel" />
                 Export Excel
             </a>
             <a href="{{ route('visitors.export.pdf', ['start_date' => $exportStartDate, 'end_date' => $exportEndDate]) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-down" />
+                <x-ui.file-icon type="pdf" />
                 Export PDF
             </a>
         </x-slot:actions>

@@ -9,7 +9,7 @@
         <x-slot:actions>
             <a href="{{ route('commercial.customers') }}" class="btn btn-secondary"><x-ui.icon name="chart-column" /> Back to the analysis</a>
             @if ($canExport && $districtId && ! $searching)
-                <a href="{{ route('commercial.customers.export', ['report' => 'list', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Export this list</a>
+                <a href="{{ route('commercial.customers.export', ['report' => 'list', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Export this list</a>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

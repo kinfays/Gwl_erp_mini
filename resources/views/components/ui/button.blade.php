@@ -9,6 +9,7 @@
     'size' => 'md',
     'href' => null,
     'icon' => null,
+    'file' => null,
     'iconTrailing' => null,
     'type' => 'button',
     'loading' => null,
@@ -20,13 +21,15 @@
         'btn-'.$variant => $variant !== 'secondary',
         'btn-sm' => $size === 'sm',
         'btn-lg' => $size === 'lg',
-        'btn-icon' => $icon && $slot->isEmpty(),
+        'btn-icon' => ($icon || $file) && $slot->isEmpty(),
     ];
 @endphp
 
 @if ($href)
     <a href="{{ $href }}" {{ $attributes->class($classes) }}>
-        @if ($icon)
+        @if ($file)
+            <x-ui.file-icon :type="$file" />
+        @elseif ($icon)
             <x-ui.icon :name="$icon" />
         @endif
         {{ $slot }}
@@ -43,7 +46,11 @@
         @if ($loading)
             <x-ui.icon name="loader-circle" class="btn-spinner" wire:loading wire:target="{{ $loading }}" />
         @endif
-        @if ($icon && $loading)
+        @if ($file && $loading)
+            <x-ui.file-icon :type="$file" wire:loading.remove wire:target="{{ $loading }}" />
+        @elseif ($file)
+            <x-ui.file-icon :type="$file" />
+        @elseif ($icon && $loading)
             <x-ui.icon :name="$icon" wire:loading.remove wire:target="{{ $loading }}" />
         @elseif ($icon)
             <x-ui.icon :name="$icon" />

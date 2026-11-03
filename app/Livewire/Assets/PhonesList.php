@@ -2,15 +2,21 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
+use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
+use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
 use App\Models\MdmDevice;
 use App\Models\MdmDeviceCommand;
+use App\Services\Assets\AssetListColumns;
+use App\Services\Assets\AssetListQuery;
 use App\Services\Assets\AssetRecordService;
 use App\Services\Assets\Mdm\CommandService;
 use App\Services\Assets\Mdm\MdmAccessGuard;
@@ -25,7 +31,11 @@ use Livewire\WithPagination;
 class PhonesList extends Component
 {
     use EnforcesModuleAccess;
+    use ExportsAssetLists;
     use FiltersByAnalytics;
+    use FiltersByAssetTypes;
+    use HasSelectableColumns;
+    use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
     use WithPagination;
 
@@ -36,8 +46,6 @@ class PhonesList extends Component
     public string $search = '';
 
     public string $status = '';
-
-    public string $assetType = '';
 
     public int $perPage = 15;
 
@@ -319,26 +327,28 @@ class PhonesList extends Component
         ];
     }
 
+    protected function columnManifest(): array
+    {
+        return AssetListColumns::manifest(AssetListColumns::PHONES);
+    }
+
+    /** The list's filters, named as AssetListQuery (and the export links) name them. */
+    protected function listFilters(): array
+    {
+        return [
+            'search' => $this->search,
+            'status' => $this->status,
+            'type' => $this->assetType,
+            ...$this->analyticsFilterValues(),
+        ];
+    }
+
     public function render()
     {
         $assets = $this->scopeAssetsForViewing(
             IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region', 'mdmDevice'])
         )
-            ->where('device_category', self::CATEGORY)
-            ->when($this->search, function ($query) {
-                $term = '%'.$this->search.'%';
-                $query->where(function ($inner) use ($term) {
-                    $inner
-                        ->where('asset_name', 'like', $term)
-                        ->orWhere('serial_number', 'like', $term)
-                        ->orWhere('imei', 'like', $term)
-                        ->orWhere('device_phone_number', 'like', $term)
-                        ->orWhereHas('assignedTo', fn ($employee) => $employee->where('full_name', 'like', $term));
-                });
-            })
-            ->when($this->status, fn ($query) => $query->where('status', $this->status))
-            ->when($this->assetType, fn ($query) => $query->where('asset_type', $this->assetType))
-            ->tap(fn ($query) => $this->applyAnalyticsFilters($query))
+            ->tap(fn ($query) => app(AssetListQuery::class)->assets($query, self::CATEGORY, $this->listFilters()))
             ->latest()
             ->paginate($this->perPage);
 
@@ -359,6 +369,8 @@ class PhonesList extends Component
 
         return view('livewire.assets.phones-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
+            ...$this->columnViewData(),
+            ...$this->exportViewData('assets.export_inventory'),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
             'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
             'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
@@ -366,6 +378,7 @@ class PhonesList extends Component
                 : null,
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
+            'selectedTypes' => $this->selectedAssetTypes(),
             'statusOptions' => IctAsset::STATUSES,
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),

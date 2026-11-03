@@ -28,16 +28,17 @@
                     <option value="{{ $option }}">{{ $option }}</option>
                 @endforeach
             </select>
-            <select wire:model.live="assetType" class="form-input" aria-label="Asset type">
-                <option value="">All types</option>
-                @foreach ($assetTypes as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
-            </select>
+            <x-ui.multi-select label="Asset type" all-label="All types" :options="$assetTypes" :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
             <select wire:model.live="districtId" class="form-input" aria-label="District">
                 <option value="">All districts</option>
                 @foreach ($districts as $district)
                     <option value="{{ $district->id }}">{{ $district->district_name.($seesAllRegions && $district->region ? ' ('.$district->region->region_name.')' : '') }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="ups" class="form-input" aria-label="UPS">
+                <option value="">All UPS states</option>
+                @foreach ($upsFilters as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
             </select>
             <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
@@ -45,6 +46,18 @@
                 <option value="30">30 per page</option>
                 <option value="50">50 per page</option>
             </select>
+            @if ($canExport)
+                <a href="{{ route('assets.assets.export.excel', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export Excel" aria-label="Export Excel">
+                    <x-ui.file-icon type="excel" />
+                </a>
+                <a href="{{ route('assets.assets.export.pdf', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export PDF" aria-label="Export PDF">
+                    <x-ui.file-icon type="pdf" />
+                </a>
+            @endif
+            <p class="pager-total" role="status">
+                <b>{{ number_format($assets->total()) }}</b> {{ $assets->total() === 1 ? 'asset' : 'assets' }}
+                {{ $filtersActive ? 'match your filters' : 'in total' }}
+            </p>
         </div>
 
         <x-assets.filter-chips :chips="$analyticsChips" />
@@ -54,11 +67,30 @@
                 <x-slot:head>
                     <tr>
                         <th>Asset</th>
-                        <th>Type / Model</th>
-                        <th>Location</th>
-                        <th>Assigned To</th>
-                        <th>Status</th>
-                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                        @if (in_array('type_model', $visibleColumns))
+                            <th>Type / Model</th>
+                        @endif
+                        @if (in_array('processor', $visibleColumns))
+                            <th>Processor</th>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <th>Location</th>
+                        @endif
+                        @if (in_array('assigned_to', $visibleColumns))
+                            <th>Assigned To</th>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <th>Status</th>
+                        @endif
+                        @if (in_array('ups', $visibleColumns))
+                            <th>UPS</th>
+                        @endif
+                        <th class="actions">
+                            <div class="ui-th-actions">
+                                <span>Action</span>
+                                <x-ui.column-picker :columns="$columnManifest" :visible="$visibleColumns" :mode="$columnMode" />
+                            </div>
+                        </th>
                     </tr>
                 </x-slot:head>
 
@@ -70,20 +102,46 @@
                                 <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @if (in_array('type_model', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
                                 <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @endif
+                        @if (in_array('processor', $visibleColumns))
+                            <td>
+                            @if (App\Models\IctAsset::supportsProcessor($asset->device_category, $asset->asset_type))
+                                <span class="mono">{{ $asset->cpu_name ?: '—' }}</span>
+                            @endif
+                        </td>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $asset->district?->district_name ?: 'No district' }}</span>
                                 <span class="ui-person-sub">{{ $asset->region?->region_name ?: 'No region' }}</span>
                             </span>
                         </td>
-                        <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        @endif
+                        @if (in_array('assigned_to', $visibleColumns))
+                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        @endif
+                        @if (in_array('ups', $visibleColumns))
+                            <td>
+                            @if (App\Models\IctAsset::supportsUps($asset->device_category, $asset->asset_type))
+                                @if ($asset->has_ups)
+                                    <x-ui.status-pill :tone="$asset->ups_status === 'Spoiled' ? 'danger' : 'success'" :label="'UPS: '.($asset->ups_status ?: 'Unknown')" />
+                                @else
+                                    <span class="cell-muted">No UPS</span>
+                                @endif
+                            @endif
+                        </td>
+                        @endif
                         <td class="actions">
                             @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
@@ -95,7 +153,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="6" icon="laptop" title="No assets found for your filters." description="Try a different search or clear the filters." />
+                    <x-ui.empty-row :colspan="count($visibleColumns)" icon="laptop" title="No assets found for your filters." description="Try a different search or clear the filters." />
                 @endforelse
 
                 <x-slot:footer>
@@ -117,7 +175,7 @@
     @if ($showForm)
         <x-ui.modal :title="$editingAssetId ? 'Edit Asset' : 'Add Asset'" close="closeForm()" size="lg" icon="laptop">
             <div class="ui-form-grid">
-                <x-ui.select label="Asset Type" wire:model.defer="form.asset_type">
+                <x-ui.select label="Asset Type" wire:model.live="form.asset_type">
                     <option value="">Select type</option>
                     @foreach ($assetTypes as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
@@ -157,6 +215,27 @@
                 <x-ui.input label="Date" type="date" wire:model.defer="form.purchased_at" />
 
                 <x-assets.actor-region :region="$actorRegion" />
+
+                @if ($formSupportsProcessor)
+                    <div class="span-2">
+                        <x-ui.input label="Processor" wire:model.defer="form.cpu_name" placeholder="e.g. i7 13th Gen @ 1.6GHz, Ultra 7 155U" />
+                    </div>
+                @endif
+
+                @if ($formSupportsUps)
+                    <div class="span-2">
+                        <x-ui.checkbox label="On a UPS" description="Tick if this device is connected to a UPS." wire:model.live="form.has_ups" id="f-has-ups" />
+                    </div>
+                    @if ($form['has_ups'])
+                        <x-ui.select label="UPS condition" wire:model.defer="form.ups_status" required>
+                            <option value="">Select condition</option>
+                            @foreach ($upsStatuses as $option)
+                                <option value="{{ $option }}">{{ $option }}</option>
+                            @endforeach
+                        </x-ui.select>
+                        <x-ui.input label="UPS notes" wire:model.defer="form.ups_notes" placeholder="Optional" />
+                    @endif
+                @endif
 
                 <div class="span-2">
                     <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />

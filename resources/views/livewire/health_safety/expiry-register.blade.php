@@ -2,8 +2,8 @@
     <x-ui.page-header title="Expiry register" description="Every dated item you may see, most urgent first: extinguisher expiry, service and hydrostatic test dates, first aid kit items and PPE replacements. Checks are not listed here (see the extinguisher and kit lists).">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'expiry-register'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
-                <x-ui.button :href="route('health_safety.export', ['report' => 'expiry-register-pdf'] + $exportFilters)" icon="file-text">Site walk-round PDF</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'expiry-register'] + $exportFilters)" file="excel">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'expiry-register-pdf'] + $exportFilters)" file="pdf">Site walk-round PDF</x-ui.button>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

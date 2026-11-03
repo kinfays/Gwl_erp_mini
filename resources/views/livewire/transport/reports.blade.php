@@ -32,8 +32,8 @@
 <div>
     <x-ui.page-header title="Transport Reports" :description="$fromLabel.' to '.$toLabel">
         <x-slot:actions>
-            <x-ui.button :href="route('transport.reports.export.pdf', $exportQuery)" icon="file-down">Export PDF</x-ui.button>
-            <x-ui.button :href="route('transport.reports.export.excel', $exportQuery)" variant="primary" icon="download">Export Excel</x-ui.button>
+            <x-ui.button :href="route('transport.reports.export.pdf', $exportQuery)" file="pdf">Export PDF</x-ui.button>
+            <x-ui.button :href="route('transport.reports.export.excel', $exportQuery)" file="excel">Export Excel</x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
 

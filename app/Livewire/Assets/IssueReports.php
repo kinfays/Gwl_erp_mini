@@ -2,13 +2,17 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\District;
 use App\Models\IctAsset;
 use App\Models\IctAssetIssueReport;
 use App\Models\IctIssueCategory;
 use App\Models\Region;
+use App\Services\Assets\AssetListColumns;
+use App\Services\Assets\AssetListQuery;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
@@ -20,6 +24,8 @@ use Livewire\WithPagination;
 class IssueReports extends Component
 {
     use EnforcesModuleAccess;
+    use ExportsAssetLists;
+    use HasSelectableColumns;
     use ScopesAssetsByActor;
     use WithPagination;
 
@@ -346,24 +352,23 @@ class IssueReports extends Component
         ];
     }
 
+    protected function columnManifest(): array
+    {
+        return AssetListColumns::manifest(AssetListColumns::REPORTS);
+    }
+
+    /** The list's filters, named as AssetListQuery (and the export links) name them. */
+    protected function listFilters(): array
+    {
+        return ['search' => $this->search, 'status' => $this->status, 'type' => $this->type];
+    }
+
     public function render()
     {
         $reports = $this->scopeReportsForViewing(
             IctAssetIssueReport::query()->with(['asset', 'region', 'district', 'reporter'])
         )
-            ->when($this->search, function ($query) {
-                $term = '%'.$this->search.'%';
-                $query->where(function ($inner) use ($term) {
-                    $inner
-                        ->where('title', 'like', $term)
-                        ->orWhere('issue_type', 'like', $term)
-                        ->orWhere('issue_subtype', 'like', $term)
-                        ->orWhere('reason', 'like', $term)
-                        ->orWhereHas('asset', fn ($assetQuery) => $assetQuery->where('asset_name', 'like', $term));
-                });
-            })
-            ->when($this->status, fn ($query) => $query->where('status', $this->status))
-            ->when($this->type, fn ($query) => $query->where('issue_type', $this->type))
+            ->tap(fn ($query) => app(AssetListQuery::class)->reports($query, $this->listFilters()))
             ->latest()
             ->paginate($this->perPage);
 
@@ -392,6 +397,8 @@ class IssueReports extends Component
 
         return view('livewire.assets.issue-reports', [
             'reports' => $reports,
+            ...$this->columnViewData(),
+            ...$this->exportViewData('assets.export_reports'),
             'typeOptions' => $typeOptions,
             'categoryOptions' => $this->showForm ? IctIssueCategory::activeLabels() : [],
             'subtypeOptions' => $this->showForm ? $this->subtypeOptions() : [],

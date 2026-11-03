@@ -27,6 +27,23 @@ class IctAsset extends Model
         self::STATUS_LOST,
     ];
 
+    public const UPS_STATUS_WORKING = 'Working';
+    public const UPS_STATUS_SPOILED = 'Spoiled';
+
+    public const UPS_STATUSES = [
+        self::UPS_STATUS_WORKING,
+        self::UPS_STATUS_SPOILED,
+    ];
+
+    /**
+     * The only asset types whose UPS is tracked. Laptops run on their own battery, and phones and network devices
+     * are not on the building UPS, so none of them carry these fields.
+     */
+    public const UPS_ASSET_TYPES = ['PC', 'AIO', 'Server', 'PRT', 'PTC'];
+
+    /** Computers with a processor to record (printers and photocopiers have none worth tracking here). */
+    public const PROCESSOR_ASSET_TYPES = ['PC', 'AIO', 'Laptop', 'Server'];
+
     public const DEVICE_CATEGORY_ASSET = 'asset';
     public const DEVICE_CATEGORY_PHONE = 'phone';
     public const DEVICE_CATEGORY_NETWORK = 'network';
@@ -76,6 +93,9 @@ class IctAsset extends Model
         'ict_asset_model_id',
         'status',
         'status_reason',
+        'has_ups',
+        'ups_status',
+        'ups_notes',
         'assigned_to_employee_id',
         'previous_assigned_to_employee_id',
         'department_id',
@@ -114,6 +134,7 @@ class IctAsset extends Model
         'department_id' => 'integer',
         'region_id' => 'integer',
         'district_id' => 'integer',
+        'has_ups' => 'boolean',
         'ram_gb' => 'decimal:2',
         'last_boot_at' => 'datetime',
         'purchased_at' => 'date',
@@ -125,6 +146,18 @@ class IctAsset extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /** Whether a device of this category and type is one whose UPS is tracked. */
+    public static function supportsUps(?string $category, ?string $assetType): bool
+    {
+        return $category === self::DEVICE_CATEGORY_ASSET && in_array($assetType, self::UPS_ASSET_TYPES, true);
+    }
+
+    /** Whether a device of this category and type is one whose processor is recorded. */
+    public static function supportsProcessor(?string $category, ?string $assetType): bool
+    {
+        return $category === self::DEVICE_CATEGORY_ASSET && in_array($assetType, self::PROCESSOR_ASSET_TYPES, true);
+    }
 
     public function assetModel(): BelongsTo
     {

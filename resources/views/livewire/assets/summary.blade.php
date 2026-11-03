@@ -7,18 +7,18 @@
         <x-slot:actions>
             @php $exportQuery = array_filter(['district' => $district, 'from' => $from, 'to' => $to], fn ($v) => $v !== ''); @endphp
             <a href="{{ route('assets.summary.export.excel', $exportQuery) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-spreadsheet" />
+                <x-ui.file-icon type="excel" />
                 Excel
             </a>
             <a href="{{ route('assets.summary.export.pdf', $exportQuery) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-text" />
+                <x-ui.file-icon type="pdf" />
                 PDF
             </a>
         </x-slot:actions>
     </x-ui.page-header>
 
     @if ($needsAttention->isNotEmpty())
-        <x-ui.card title="Needs Attention" description="Damaged, or with an unresolved issue report. Newest activity first." :padded="false" class="dash-row">
+        <x-ui.card title="Needs Attention" description="Damaged, on a spoiled UPS, or with an unresolved issue report. Newest activity first." :padded="false" class="dash-row">
             <x-ui.table label="Assets needing attention" :sticky="false">
                 <x-slot:head>
                     <tr>
@@ -87,6 +87,14 @@
                 @endif
             </x-slot:actions>
             <x-assets.bucket-table label="Assets by replacement due date" first-column="Replacement" :rows="$replacementBuckets" />
+        </x-ui.card>
+
+        <x-ui.card title="UPS Coverage" :description="'Computers, all-in-ones, servers, printers and photocopiers ('.$upsCoverage['tracked'].' devices). Spoiled UPS units are counted in On UPS too.'" class="dash-row">
+            <div class="ui-stat-grid">
+                <x-ui.stat-tile label="On UPS" :value="$upsCoverage['on_ups']" icon="server" tone="success" :href="route('assets.assets', ['ups' => 'has_ups'])" />
+                <x-ui.stat-tile label="No UPS" :value="$upsCoverage['no_ups']" icon="server" tone="muted" :href="route('assets.assets', ['ups' => 'no_ups'])" />
+                <x-ui.stat-tile label="Spoiled UPS" :value="$upsCoverage['spoiled']" icon="triangle-alert" tone="danger" :href="route('assets.assets', ['ups' => 'spoiled'])" />
+            </div>
         </x-ui.card>
     @elseif ($activeTab === 'assignment')
         <div class="ui-grid ui-grid-2 dash-row">

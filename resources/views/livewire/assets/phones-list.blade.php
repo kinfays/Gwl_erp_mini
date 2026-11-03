@@ -28,17 +28,24 @@
                     <option value="{{ $option }}">{{ $option }}</option>
                 @endforeach
             </select>
-            <select wire:model.live="assetType" class="form-input" aria-label="Device type">
-                <option value="">All types</option>
-                @foreach ($assetTypes as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
-            </select>
+            <x-ui.multi-select label="Device type" all-label="All types" :options="$assetTypes" :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
             <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
                 <option value="15">15 per page</option>
                 <option value="30">30 per page</option>
                 <option value="50">50 per page</option>
             </select>
+            @if ($canExport)
+                <a href="{{ route('assets.phones.export.excel', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export Excel" aria-label="Export Excel">
+                    <x-ui.file-icon type="excel" />
+                </a>
+                <a href="{{ route('assets.phones.export.pdf', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export PDF" aria-label="Export PDF">
+                    <x-ui.file-icon type="pdf" />
+                </a>
+            @endif
+            <p class="pager-total" role="status">
+                <b>{{ number_format($assets->total()) }}</b> {{ $assets->total() === 1 ? 'device' : 'devices' }}
+                {{ $filtersActive ? 'match your filters' : 'in total' }}
+            </p>
         </div>
 
         <x-assets.filter-chips :chips="$analyticsChips" />
@@ -48,11 +55,24 @@
                 <x-slot:head>
                     <tr>
                         <th>Device</th>
-                        <th>Type / Model</th>
-                        <th>Numbers</th>
-                        <th>Assigned To</th>
-                        <th>Status</th>
-                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                        @if (in_array('type_model', $visibleColumns))
+                            <th>Type / Model</th>
+                        @endif
+                        @if (in_array('numbers', $visibleColumns))
+                            <th>Numbers</th>
+                        @endif
+                        @if (in_array('assigned_to', $visibleColumns))
+                            <th>Assigned To</th>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <th>Status</th>
+                        @endif
+                        <th class="actions">
+                            <div class="ui-th-actions">
+                                <span>Action</span>
+                                <x-ui.column-picker :columns="$columnManifest" :visible="$visibleColumns" :mode="$columnMode" />
+                            </div>
+                        </th>
                     </tr>
                 </x-slot:head>
 
@@ -69,20 +89,27 @@
                                 </span>
                             </span>
                         </td>
-                        <td>
+                        @if (in_array('type_model', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
                                 <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @endif
+                        @if (in_array('numbers', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span class="mono">{{ $asset->device_phone_number ?: 'No device number' }}</span>
                                 <span class="ui-person-sub">User: {{ $asset->user_phone_number ?: 'n/a' }}</span>
                             </span>
                         </td>
-                        <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
-                        <td>
+                        @endif
+                        @if (in_array('assigned_to', $visibleColumns))
+                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <x-ui.status-pill domain="asset" :status="$asset->status" />
                                 @if ($mdmLinks && $asset->mdmDevice && ! $asset->mdmDevice->isDeleted() && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
@@ -92,6 +119,7 @@
                                 @endif
                             </span>
                         </td>
+                        @endif
                         <td class="actions">
                             @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
@@ -103,7 +131,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="6" icon="smartphone" title="No phone devices found for your filters." description="Try a different search or clear the filters." />
+                    <x-ui.empty-row :colspan="count($visibleColumns)" icon="smartphone" title="No phone devices found for your filters." description="Try a different search or clear the filters." />
                 @endforelse
 
                 <x-slot:footer>
@@ -126,7 +154,7 @@
         <x-ui.modal :title="$editingAssetId ? 'Edit Phone Device' : 'Add Phone Device'" close="closeForm()" size="lg" icon="smartphone">
             <div class="ui-form-grid">
                 <x-ui.input label="Asset Name" wire:model.defer="form.asset_name" />
-                <x-ui.select label="Type" wire:model.defer="form.asset_type">
+                <x-ui.select label="Type" wire:model.live="form.asset_type">
                     <option value="">Select type</option>
                     @foreach ($assetTypes as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>

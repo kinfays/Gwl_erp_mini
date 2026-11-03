@@ -8,7 +8,7 @@
                 <option value="csv">CSV</option>
             </x-ui.select>
 
-            <x-ui.button variant="primary" icon="download" wire:click="export" loading="export">Export Report</x-ui.button>
+            <x-ui.button file="excel" wire:click="export" loading="export">Export Report</x-ui.button>
         </div>
     </x-ui.card>
 </div>

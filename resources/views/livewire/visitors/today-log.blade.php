@@ -2,11 +2,11 @@
     <x-ui.page-header title="Today's Visitor Log" :description="now()->format('l, d F Y')">
         <x-slot:actions>
             <a href="{{ route('visitors.export.excel', ['date' => today()->toDateString()]) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-spreadsheet" />
+                <x-ui.file-icon type="excel" />
                 Export Excel
             </a>
             <a href="{{ route('visitors.export.pdf', ['date' => today()->toDateString()]) }}" class="btn btn-secondary">
-                <x-ui.icon name="file-down" />
+                <x-ui.file-icon type="pdf" />
                 Export PDF
             </a>
             <a href="{{ route('visitors.kiosk') }}" target="_blank" rel="noopener" class="btn btn-primary">

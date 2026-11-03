@@ -18,7 +18,7 @@
                 {{ $includePast36Months ? 'Show Current Year' : 'Show Past 36 Months' }}
             </x-ui.button>
             @if ($canExport)
-                <x-ui.button :href="route('leave.export.approved.excel')" icon="download">Export Excel</x-ui.button>
+                <x-ui.button :href="route('leave.export.approved.excel')" file="excel">Export Excel</x-ui.button>
             @endif
             <x-ui.button :href="route('leave.apply')" variant="primary" icon="plus">Apply</x-ui.button>
         </x-slot:actions>

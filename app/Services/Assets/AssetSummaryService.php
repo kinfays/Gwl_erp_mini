@@ -343,7 +343,7 @@ class AssetSummaryService
     }
 
     /**
-     * Assets that need someone's eye: status Damaged, or an unresolved issue report linked to them.
+     * Assets that need someone's eye: status Damaged, a spoiled UPS, or an unresolved issue report linked to them.
      * Newest-touched first; each row says why it is listed.
      *
      * @param Builder $assets region-scoped IctAsset query
@@ -356,6 +356,7 @@ class AssetSummaryService
         return (clone $assets)
             ->where(function (Builder $q) use ($unresolved) {
                 $q->where('status', IctAsset::STATUS_DAMAGED)
+                    ->orWhere(fn (Builder $ups) => $ups->where('has_ups', true)->where('ups_status', IctAsset::UPS_STATUS_SPOILED))
                     ->orWhereHas('issueReports', $unresolved);
             })
             ->withCount(['issueReports as open_issues_count' => $unresolved])
@@ -368,6 +369,9 @@ class AssetSummaryService
                 $reasons = [];
                 if ($asset->status === IctAsset::STATUS_DAMAGED) {
                     $reasons[] = 'Damaged';
+                }
+                if ($asset->has_ups && $asset->ups_status === IctAsset::UPS_STATUS_SPOILED) {
+                    $reasons[] = 'UPS spoiled';
                 }
                 if ($asset->open_issues_count > 0) {
                     $reasons[] = $asset->open_issues_count.' open '.($asset->open_issues_count === 1 ? 'issue' : 'issues');

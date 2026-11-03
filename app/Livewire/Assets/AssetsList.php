@@ -2,14 +2,21 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
+use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
+use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
+use App\Services\Assets\AssetDashboardService;
+use App\Services\Assets\AssetListColumns;
+use App\Services\Assets\AssetListQuery;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
@@ -19,7 +26,11 @@ use Livewire\WithPagination;
 class AssetsList extends Component
 {
     use EnforcesModuleAccess;
+    use ExportsAssetLists;
     use FiltersByAnalytics;
+    use FiltersByAssetTypes;
+    use HasSelectableColumns;
+    use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
     use WithPagination;
 
@@ -31,9 +42,11 @@ class AssetsList extends Component
 
     public string $status = '';
 
-    public string $assetType = '';
-
     public string $districtId = '';
+
+    /** ?ups= has_ups | no_ups | spoiled (AssetDashboardService::UPS_FILTERS); anything else means all. */
+    #[Url(as: 'ups', except: '')]
+    public string $ups = '';
 
     public int $perPage = 15;
 
@@ -54,6 +67,10 @@ class AssetsList extends Component
         'ict_asset_model_id' => null,
         'status' => 'Active',
         'status_reason' => '',
+        'has_ups' => false,
+        'ups_status' => '',
+        'ups_notes' => '',
+        'cpu_name' => '',
         'assigned_to_employee_id' => null,
         'department_id' => null,
         'region_id' => null,
@@ -71,7 +88,7 @@ class AssetsList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'districtId', 'perPage', ...$this->analyticsFilterProperties()], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'districtId', 'ups', 'perPage', ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
     }
@@ -104,6 +121,10 @@ class AssetsList extends Component
             'ict_asset_model_id' => $asset->ict_asset_model_id,
             'status' => (string) $asset->status,
             'status_reason' => (string) $asset->status_reason,
+            'has_ups' => (bool) $asset->has_ups,
+            'ups_status' => (string) $asset->ups_status,
+            'ups_notes' => (string) $asset->ups_notes,
+            'cpu_name' => (string) $asset->cpu_name,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'department_id' => $asset->department_id,
             'region_id' => $this->actorRegionId(),
@@ -166,6 +187,14 @@ class AssetsList extends Component
             'form.ict_asset_model_id' => ['required', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
+            'form.has_ups' => ['boolean'],
+            'form.ups_status' => [
+                Rule::requiredIf(fn () => $this->formSupportsUps() && (bool) ($this->form['has_ups'] ?? false)),
+                'nullable',
+                Rule::in(IctAsset::UPS_STATUSES),
+            ],
+            'form.ups_notes' => ['nullable', 'string', 'max:1000'],
+            'form.cpu_name' => ['nullable', 'string', 'max:255'],
             'form.assigned_to_employee_id' => ['required', 'integer', 'exists:employees,id'],
             'form.department_id' => ['required', 'integer', 'exists:departments,id'],
             'form.district_id' => ['required', 'integer', $this->actorRegionDistrictRule()],
@@ -178,6 +207,7 @@ class AssetsList extends Component
     {
         return [
             'form.district_id.exists' => 'The selected location is not in your region.',
+            'form.ups_status.required' => 'Say whether the UPS is working or spoiled.',
         ];
     }
 
@@ -190,10 +220,61 @@ class AssetsList extends Component
             'form.ict_asset_model_id' => 'model',
             'form.status' => 'status',
             'form.status_reason' => 'reason',
+            'form.ups_status' => 'UPS condition',
+            'form.ups_notes' => 'UPS notes',
+            'form.cpu_name' => 'processor',
             'form.assigned_to_employee_id' => 'assigned to',
             'form.department_id' => 'department',
             'form.district_id' => 'location',
             'form.purchased_at' => 'date',
+        ];
+    }
+
+    /** The UPS section applies only to the types in IctAsset::UPS_ASSET_TYPES (not laptops). */
+    protected function formSupportsUps(): bool
+    {
+        return IctAsset::supportsUps(self::CATEGORY, (string) ($this->form['asset_type'] ?? ''));
+    }
+
+    /** The processor field applies only to the types in IctAsset::PROCESSOR_ASSET_TYPES. */
+    protected function formSupportsProcessor(): bool
+    {
+        return IctAsset::supportsProcessor(self::CATEGORY, (string) ($this->form['asset_type'] ?? ''));
+    }
+
+    /** Picking a type that carries no UPS (or no processor) drops whatever was entered for one. */
+    public function updatedForm($value, $key): void
+    {
+        if ($key !== 'asset_type') {
+            return;
+        }
+
+        if (! $this->formSupportsUps()) {
+            $this->form['has_ups'] = false;
+            $this->form['ups_status'] = '';
+            $this->form['ups_notes'] = '';
+        }
+
+        if (! $this->formSupportsProcessor()) {
+            $this->form['cpu_name'] = '';
+        }
+    }
+
+    protected function columnManifest(): array
+    {
+        return AssetListColumns::manifest(AssetListColumns::ASSETS);
+    }
+
+    /** The list's filters, named as AssetListQuery (and the export links) name them. */
+    protected function listFilters(): array
+    {
+        return [
+            'search' => $this->search,
+            'status' => $this->status,
+            'type' => $this->assetType,
+            'district' => $this->districtId,
+            'ups' => $this->ups,
+            ...$this->analyticsFilterValues(),
         ];
     }
 
@@ -216,6 +297,10 @@ class AssetsList extends Component
             'ict_asset_model_id' => null,
             'status' => 'Active',
             'status_reason' => '',
+            'has_ups' => false,
+            'ups_status' => '',
+            'ups_notes' => '',
+            'cpu_name' => '',
             'assigned_to_employee_id' => null,
             'department_id' => null,
             'region_id' => $this->actorRegionId(),
@@ -230,20 +315,7 @@ class AssetsList extends Component
         $assets = $this->scopeAssetsForViewing(
             IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region'])
         )
-            ->where('device_category', self::CATEGORY)
-            ->when($this->search, function ($query) {
-                $term = '%'.$this->search.'%';
-                $query->where(function ($inner) use ($term) {
-                    $inner
-                        ->where('asset_name', 'like', $term)
-                        ->orWhere('serial_number', 'like', $term)
-                        ->orWhereHas('assignedTo', fn ($employee) => $employee->where('full_name', 'like', $term));
-                });
-            })
-            ->when($this->status, fn ($query) => $query->where('status', $this->status))
-            ->when($this->assetType, fn ($query) => $query->where('asset_type', $this->assetType))
-            ->tap(fn ($query) => $this->applyAnalyticsFilters($query))
-            ->when($this->districtId !== '', fn ($query) => $query->where('district_id', (int) $this->districtId))
+            ->tap(fn ($query) => app(AssetListQuery::class)->assets($query, self::CATEGORY, $this->listFilters()))
             ->latest()
             ->paginate($this->perPage);
 
@@ -272,7 +344,14 @@ class AssetsList extends Component
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
+            'selectedTypes' => $this->selectedAssetTypes(),
             'statusOptions' => IctAsset::STATUSES,
+            'upsFilters' => AssetDashboardService::UPS_FILTERS,
+            'upsStatuses' => IctAsset::UPS_STATUSES,
+            'formSupportsUps' => $this->formSupportsUps(),
+            'formSupportsProcessor' => $this->formSupportsProcessor(),
+            ...$this->columnViewData(),
+            ...$this->exportViewData('assets.export_inventory'),
             'districts' => $districts,
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),

@@ -18,9 +18,13 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
+{{-- Background: config('gwl.auth_background') = 'video' (bgwater.mp4, the original) or 'gif' (Running_Water_2.gif).
+     Switch with GWL_AUTH_BACKGROUND in .env; nothing is removed, both files stay in public/images. --}}
+@php($authGif = config('gwl.auth_background', 'video') === 'gif')
 <body class="auth-body">
     <div
         class="auth-scene"
+        @unless ($authGif)
         x-data="{
             paused: true,
             init() {
@@ -47,10 +51,15 @@
                 this.sync();
             },
         }"
+        @endunless
     >
+        @if ($authGif)
+            <img class="auth-video auth-gif" src="{{ asset('images/Running_Water_2.gif') }}" alt="" aria-hidden="true">
+        @else
         <video x-ref="video" class="auth-video" muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1">
             <source src="{{ asset('images/bgwater.mp4') }}" type="video/mp4">
         </video>
+        @endif
 
         <main class="auth-wrapper">
             <div class="auth-card">
@@ -77,11 +86,13 @@
             </div>
         </main>
 
+        @unless ($authGif)
         <button type="button" class="auth-video-toggle" x-on:click="toggle()">
             <x-ui.icon name="pause" class="icon-sm" x-show="! paused" x-cloak />
             <x-ui.icon name="play" class="icon-sm" x-show="paused" />
             <span x-text="paused ? '{{ __('Play background') }}' : '{{ __('Pause background') }}'">{{ __('Play background') }}</span>
         </button>
+        @endunless
     </div>
 </body>
 </html>

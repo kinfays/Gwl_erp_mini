@@ -11,7 +11,7 @@
     <x-ui.page-header title="My Team — Leave Overview" :description="now()->format('F Y')">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('leave.export.team.excel')" icon="download">Export Team Leave</x-ui.button>
+                <x-ui.button :href="route('leave.export.team.excel')" file="excel">Export Team Leave</x-ui.button>
             @endif
             <x-ui.button :href="route('leave.approvals')" variant="primary" icon="square-check-big">
                 Pending Approvals ({{ $stats['pending_approvals'] }})

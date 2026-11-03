@@ -2,7 +2,7 @@
     <x-ui.page-header title="Incidents" description="Every report you may see, newest first.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'incidents'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'incidents'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
             <x-ui.button :href="route('health_safety.report')" variant="primary" icon="circle-plus">Report an incident</x-ui.button>
         </x-slot:actions>

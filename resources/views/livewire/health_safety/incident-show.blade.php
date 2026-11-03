@@ -2,7 +2,7 @@
     <x-ui.page-header :title="$incident->reference" :description="$incident->typeLabel().' at '.($incident->placeLabel() ?: 'an unspecified place').', '.$incident->occurred_on->format('d M Y')">
         <x-slot:actions>
             <x-ui.button :href="route('health_safety.incidents.print', $incident)" target="_blank" icon="printer">Print</x-ui.button>
-            <x-ui.button :href="route('health_safety.incidents.pdf', $incident)" icon="file-down">PDF</x-ui.button>
+            <x-ui.button :href="route('health_safety.incidents.pdf', $incident)" file="pdf">PDF</x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
 

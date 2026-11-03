@@ -2,7 +2,7 @@
     <x-ui.page-header title="PPE issues" description="What staff hold, and when it is due for replacement.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-issues'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-issues'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
             @if ($canManage)
                 <x-ui.button :href="route('health_safety.ppe.import')" icon="upload">Import what staff already hold</x-ui.button>

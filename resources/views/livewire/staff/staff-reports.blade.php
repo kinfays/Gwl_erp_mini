@@ -26,7 +26,7 @@
             <x-ui.button :href="route('leave.hr-dashboard')" icon="layout-dashboard">HR Dashboard</x-ui.button>
             <x-ui.button :href="route('leave.hr-analytics')" icon="chart-column">HR Analytics</x-ui.button>
             <a href="{{ $exportUrl }}" class="btn btn-secondary">
-                <x-ui.icon name="download" />
+                <x-ui.file-icon type="excel" />
                 Export Excel
             </a>
         </x-slot:actions>

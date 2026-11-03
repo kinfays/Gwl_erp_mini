@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
+use App\Models\IctAssetModel;
 use App\Models\JobTitle;
 use App\Models\Region;
 use App\Models\Role;
@@ -167,6 +168,25 @@ class PhonesFormTest extends TestCase
         $this->assertArrayHasKey('POS', $assetTypes);
         $this->assertArrayHasKey('SIM', $assetTypes);
         $this->assertArrayNotHasKey('PC', $assetTypes);
+    }
+
+    public function test_selecting_a_phone_type_filters_the_models_and_clears_a_mismatched_one(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+        $pos = IctAssetModel::query()->create(['name' => 'Verifone VX520', 'category' => 'POS', 'is_active' => true]);
+        IctAssetModel::query()->create(['name' => 'Galaxy A15', 'category' => 'Ph', 'is_active' => true]);
+
+        $component = Livewire::test(PhonesList::class)
+            ->call('openCreate')
+            ->assertSeeHtml('wire:model.live="form.asset_type"')
+            ->set('form.asset_type', 'POS')
+            ->set('form.ict_asset_model_id', $pos->id);
+
+        $this->assertSame(['Verifone VX520'], $component->viewData('models')->pluck('name')->all());
+
+        $component->set('form.asset_type', 'Ph')->assertSet('form.ict_asset_model_id', null);
+        $this->assertSame(['Galaxy A15'], $component->viewData('models')->pluck('name')->all());
     }
 
     public function test_editing_a_network_device_via_the_phones_screen_is_rejected(): void

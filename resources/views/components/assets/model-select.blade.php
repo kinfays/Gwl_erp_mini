@@ -22,6 +22,8 @@
             },
         }"
         x-init="$nextTick(() => sync())"
+        {{-- The type select re-filters these options and can clear the chosen model server-side, which fires no change event here. --}}
+        x-effect="$wire.{{ $model }}; $nextTick(() => sync())"
     >
         <img
             x-show="src"

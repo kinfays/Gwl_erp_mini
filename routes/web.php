@@ -9,6 +9,10 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
 use App\Http\Controllers\Assets\AssetAuditExportController;
 use App\Http\Controllers\Assets\AssetModuleController;
+use App\Http\Controllers\Assets\AssetsListExportController;
+use App\Http\Controllers\Assets\IssueReportsExportController;
+use App\Http\Controllers\Assets\NetworkListExportController;
+use App\Http\Controllers\Assets\PhonesListExportController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
@@ -261,13 +265,37 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.view_dashboard')
             ->name('summary');
 
+        Route::get('/assets/export/excel', [AssetsListExportController::class, 'excel'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('assets.export.excel');
+
+        Route::get('/assets/export/pdf', [AssetsListExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('assets.export.pdf');
+
         Route::get('/assets', [AssetModuleController::class, 'assets'])
             ->middleware('permission:assets.view_inventory')
             ->name('assets');
 
+        Route::get('/phones/export/excel', [PhonesListExportController::class, 'excel'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('phones.export.excel');
+
+        Route::get('/phones/export/pdf', [PhonesListExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('phones.export.pdf');
+
         Route::get('/phones', [AssetModuleController::class, 'phones'])
             ->middleware('permission:assets.view_inventory')
             ->name('phones');
+
+        Route::get('/network/export/excel', [NetworkListExportController::class, 'excel'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('network.export.excel');
+
+        Route::get('/network/export/pdf', [NetworkListExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('network.export.pdf');
 
         Route::get('/network', [AssetModuleController::class, 'network'])
             ->middleware('permission:assets.view_inventory')
@@ -298,6 +326,14 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
             ->middleware('permission:assets.manage_maintenance')
             ->name('maintenance');
+
+        Route::get('/reports/export/excel', [IssueReportsExportController::class, 'excel'])
+            ->middleware('permission:assets.export_reports')
+            ->name('reports.export.excel');
+
+        Route::get('/reports/export/pdf', [IssueReportsExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_reports')
+            ->name('reports.export.pdf');
 
         Route::get('/reports', [AssetModuleController::class, 'reports'])
             ->middleware('permission:assets.manage_reports')

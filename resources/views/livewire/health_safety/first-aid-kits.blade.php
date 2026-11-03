@@ -2,7 +2,7 @@
     <x-ui.page-header title="First aid kits" description="Every kit you may see, with the state its contents and last check put it in.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'kits'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'kits'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
             @if ($canManage)
                 <x-ui.button :href="route('health_safety.equipment-import')" icon="upload">Import</x-ui.button>

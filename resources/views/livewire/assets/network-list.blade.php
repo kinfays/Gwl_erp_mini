@@ -28,17 +28,24 @@
                     <option value="{{ $option }}">{{ $option }}</option>
                 @endforeach
             </select>
-            <select wire:model.live="assetType" class="form-input" aria-label="Device type">
-                <option value="">All types</option>
-                @foreach ($assetTypes as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
-            </select>
+            <x-ui.multi-select label="Device type" all-label="All types" :options="$assetTypes" :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
             <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
                 <option value="15">15 per page</option>
                 <option value="30">30 per page</option>
                 <option value="50">50 per page</option>
             </select>
+            @if ($canExport)
+                <a href="{{ route('assets.network.export.excel', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export Excel" aria-label="Export Excel">
+                    <x-ui.file-icon type="excel" />
+                </a>
+                <a href="{{ route('assets.network.export.pdf', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export PDF" aria-label="Export PDF">
+                    <x-ui.file-icon type="pdf" />
+                </a>
+            @endif
+            <p class="pager-total" role="status">
+                <b>{{ number_format($assets->total()) }}</b> {{ $assets->total() === 1 ? 'device' : 'devices' }}
+                {{ $filtersActive ? 'match your filters' : 'in total' }}
+            </p>
         </div>
 
         <x-assets.filter-chips :chips="$analyticsChips" />
@@ -48,12 +55,27 @@
                 <x-slot:head>
                     <tr>
                         <th>Device</th>
-                        <th>Type / Model</th>
-                        <th>Network</th>
-                        <th>Credentials</th>
-                        <th>Location</th>
-                        <th>Status</th>
-                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                        @if (in_array('type_model', $visibleColumns))
+                            <th>Type / Model</th>
+                        @endif
+                        @if (in_array('network', $visibleColumns))
+                            <th>Network</th>
+                        @endif
+                        @if (in_array('credentials', $visibleColumns))
+                            <th>Credentials</th>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <th>Location</th>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <th>Status</th>
+                        @endif
+                        <th class="actions">
+                            <div class="ui-th-actions">
+                                <span>Action</span>
+                                <x-ui.column-picker :columns="$columnManifest" :visible="$visibleColumns" :mode="$columnMode" />
+                            </div>
+                        </th>
                     </tr>
                 </x-slot:head>
 
@@ -66,19 +88,24 @@
                                 <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @if (in_array('type_model', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
                                 <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @endif
+                        @if (in_array('network', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span class="mono">{{ $asset->device_ip ?: 'No IP' }}</span>
                                 <span class="ui-person-sub">SSID: {{ $asset->ssid ?: 'n/a' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @endif
+                        @if (in_array('credentials', $visibleColumns))
+                            <td>
                             @if ($canViewSecrets)
                                 <div class="secret-cell">
                                     <span class="ui-cell-stack mono">
@@ -93,13 +120,18 @@
                                 <span class="ui-hint">Restricted</span>
                             @endif
                         </td>
-                        <td>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $asset->district?->district_name ?: 'No district' }}</span>
                                 <span class="ui-person-sub">{{ $asset->actual_location ?: 'No location note' }}</span>
                             </span>
                         </td>
-                        <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
+                        @endif
                         <td class="actions">
                             @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
@@ -111,7 +143,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="7" icon="network" title="No network devices found for your filters." description="Try a different search or clear the filters." />
+                    <x-ui.empty-row :colspan="count($visibleColumns)" icon="network" title="No network devices found for your filters." description="Try a different search or clear the filters." />
                 @endforelse
 
                 <x-slot:footer>
@@ -133,7 +165,7 @@
     @if ($showForm)
         <x-ui.modal :title="$editingAssetId ? 'Edit Network Device' : 'Add Network Device'" close="closeForm()" size="lg" icon="network">
             <div class="ui-form-grid">
-                <x-ui.select label="Device Type" wire:model.defer="form.asset_type">
+                <x-ui.select label="Device Type" wire:model.live="form.asset_type">
                     <option value="">Select type</option>
                     @foreach ($assetTypes as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>

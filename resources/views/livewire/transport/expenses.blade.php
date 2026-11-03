@@ -5,7 +5,7 @@
                 class="btn btn-secondary"
                 href="{{ route('transport.expenses.export', ['vehicle_id' => $vehicleFilter ?: null, 'expense_type' => $typeFilter ?: null, 'date_from' => $dateFrom ?: null, 'date_to' => $dateTo ?: null]) }}"
             >
-                <x-ui.icon name="file-spreadsheet" />
+                <x-ui.file-icon type="excel" />
                 Export Excel
             </a>
         </x-slot:actions>

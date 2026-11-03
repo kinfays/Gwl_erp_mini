@@ -95,6 +95,7 @@ class Summary extends Component
             'lifecycle' => [
                 'ageBuckets' => $dashboard->ageBuckets($assets),
                 'warrantyBuckets' => $dashboard->warrantyBuckets($assets),
+                'upsCoverage' => $dashboard->upsCoverage($assets),
                 'replacementBuckets' => app(\App\Services\Assets\AssetReplacementService::class)->buckets($assets),
             ],
             'assignment' => [

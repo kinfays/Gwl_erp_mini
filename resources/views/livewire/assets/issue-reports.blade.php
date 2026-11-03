@@ -26,6 +26,18 @@
                     <option value="{{ $option }}">{{ $option }}</option>
                 @endforeach
             </select>
+            @if ($canExport)
+                <a href="{{ route('assets.reports.export.excel', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export Excel" aria-label="Export Excel">
+                    <x-ui.file-icon type="excel" />
+                </a>
+                <a href="{{ route('assets.reports.export.pdf', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export PDF" aria-label="Export PDF">
+                    <x-ui.file-icon type="pdf" />
+                </a>
+            @endif
+            <p class="pager-total" role="status">
+            <b>{{ number_format($reports->total()) }}</b> {{ $reports->total() === 1 ? 'report' : 'reports' }}
+            {{ $filtersActive ? 'match your filters' : 'in total' }}
+            </p>
         </div>
 
         <div class="ui-loading-host">
@@ -33,12 +45,27 @@
                 <x-slot:head>
                     <tr>
                         <th>Title</th>
-                        <th>Type</th>
-                        <th>Asset</th>
-                        <th>Location</th>
-                        <th>Status</th>
-                        <th>Date Solved</th>
-                        <th class="actions"><span class="sr-only-text">Action</span></th>
+                        @if (in_array('type', $visibleColumns))
+                            <th>Type</th>
+                        @endif
+                        @if (in_array('asset', $visibleColumns))
+                            <th>Asset</th>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <th>Location</th>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <th>Status</th>
+                        @endif
+                        @if (in_array('date_solved', $visibleColumns))
+                            <th>Date Solved</th>
+                        @endif
+                        <th class="actions">
+                            <div class="ui-th-actions">
+                                <span>Action</span>
+                                <x-ui.column-picker :columns="$columnManifest" :visible="$visibleColumns" :mode="$columnMode" />
+                            </div>
+                        </th>
                     </tr>
                 </x-slot:head>
 
@@ -50,7 +77,8 @@
                                 <span class="ui-person-sub">{{ \Illuminate\Support\Str::limit($report->reason, 70) ?: '-' }}</span>
                             </span>
                         </td>
-                        <td>
+                        @if (in_array('type', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $report->issue_type }}</span>
                                 @if ($report->issue_subtype)
@@ -58,15 +86,24 @@
                                 @endif
                             </span>
                         </td>
-                        <td @class(['cell-muted' => ! $report->asset])>{{ $report->asset?->asset_name ?: 'Unlinked' }}</td>
-                        <td>
+                        @endif
+                        @if (in_array('asset', $visibleColumns))
+                            <td @class(['cell-muted' => ! $report->asset])>{{ $report->asset?->asset_name ?: 'Unlinked' }}</td>
+                        @endif
+                        @if (in_array('location', $visibleColumns))
+                            <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $report->district?->district_name ?: '-' }}</span>
                                 <span class="ui-person-sub">{{ $report->region?->region_name ?: '-' }}</span>
                             </span>
                         </td>
-                        <td><x-ui.status-pill domain="issue" :status="$report->status" /></td>
-                        <td @class(['nowrap', 'cell-muted' => ! $report->date_solved])>{{ $report->date_solved?->format('d M Y') ?: '-' }}</td>
+                        @endif
+                        @if (in_array('status', $visibleColumns))
+                            <td><x-ui.status-pill domain="issue" :status="$report->status" /></td>
+                        @endif
+                        @if (in_array('date_solved', $visibleColumns))
+                            <td @class(['nowrap', 'cell-muted' => ! $report->date_solved])>{{ $report->date_solved?->format('d M Y') ?: '-' }}</td>
+                        @endif
                         <td class="actions">
                             @if ((! $regionLimited || (int) $report->reporting_region_id === (int) $ownRegionId))
                                 <button type="button" wire:click="openEdit({{ $report->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $report->title }}">
@@ -78,7 +115,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="7" icon="triangle-alert" title="No issue reports found." description="Raise one with New Report." />
+                    <x-ui.empty-row :colspan="count($visibleColumns)" icon="triangle-alert" title="No issue reports found." description="Raise one with New Report." />
                 @endforelse
 
                 @if ($reports->hasPages())

@@ -8,7 +8,7 @@
                 </a>
             @endif
             <a href="{{ $exportUrl }}" class="btn btn-secondary">
-                <x-ui.icon name="download" />
+                <x-ui.file-icon type="excel" />
                 Export
             </a>
             @if ($canManage)

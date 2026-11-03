@@ -3,11 +3,11 @@
         @unless ($missingEmployee || $error)
             <x-slot:actions>
                 <a href="{{ route('letters.register.excel', $query) }}" class="btn btn-secondary">
-                    <x-ui.icon name="file-spreadsheet" />
+                    <x-ui.file-icon type="excel" />
                     Export Excel
                 </a>
                 <a href="{{ route('letters.register.pdf', $query) }}" class="btn btn-secondary">
-                    <x-ui.icon name="file-down" />
+                    <x-ui.file-icon type="pdf" />
                     Export PDF
                 </a>
             </x-slot:actions>

@@ -46,6 +46,9 @@ class AssetRecordService
             }
         }
 
+        $data = $this->normaliseUps($data, $category, $existing);
+        $data = $this->normaliseProcessor($data, $category, $existing);
+
         if (! empty($data['device_ip'])) {
             $error = $this->ipRanges->validateIpForLocation(
                 $data['device_ip'],
@@ -101,6 +104,66 @@ class AssetRecordService
 
             return $asset;
         });
+    }
+
+    /**
+     * UPS fields only mean something for PC / AIO / Server / printer / photocopier. For any other device they are
+     * forced to false/null/null (so a type changed to Laptop, or a phone, never keeps stale values), and without a UPS
+     * the status and notes are cleared. A save that carries none of the UPS keys (an audit correction, the issue
+     * popup) leaves them alone.
+     */
+    protected function normaliseUps(array $data, string $category, ?IctAsset $existing): array
+    {
+        $touchesUps = array_key_exists('has_ups', $data) || array_key_exists('ups_status', $data) || array_key_exists('ups_notes', $data);
+        $typeChanged = array_key_exists('asset_type', $data) && $existing && $data['asset_type'] !== $existing->asset_type;
+
+        if (! $touchesUps && ! $typeChanged) {
+            return $data;
+        }
+
+        $type = $data['asset_type'] ?? $existing?->asset_type;
+
+        if (! IctAsset::supportsUps($category, $type)) {
+            return [...$data, 'has_ups' => false, 'ups_status' => null, 'ups_notes' => null];
+        }
+
+        if (array_key_exists('has_ups', $data) && ! $data['has_ups']) {
+            return [...$data, 'has_ups' => false, 'ups_status' => null, 'ups_notes' => null];
+        }
+
+        foreach (['ups_status', 'ups_notes'] as $key) {
+            if (($data[$key] ?? null) === '') {
+                $data[$key] = null;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * The processor is recorded only for PC / AIO / Laptop / Server. A save that names a cpu_name for any other device,
+     * or changes a device to such a type, drops it; a blank one is stored as NULL. A save that says nothing about it
+     * (the agent pipeline does not come through here) leaves it alone.
+     */
+    protected function normaliseProcessor(array $data, string $category, ?IctAsset $existing): array
+    {
+        $typeChanged = array_key_exists('asset_type', $data) && $existing && $data['asset_type'] !== $existing->asset_type;
+
+        if (! array_key_exists('cpu_name', $data) && ! $typeChanged) {
+            return $data;
+        }
+
+        $type = $data['asset_type'] ?? $existing?->asset_type;
+
+        if (! IctAsset::supportsProcessor($category, $type)) {
+            return [...$data, 'cpu_name' => null];
+        }
+
+        if (array_key_exists('cpu_name', $data)) {
+            $data['cpu_name'] = filled($data['cpu_name']) ? trim($data['cpu_name']) : null;
+        }
+
+        return $data;
     }
 
     /**

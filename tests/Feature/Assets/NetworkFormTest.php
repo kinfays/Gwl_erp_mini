@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
+use App\Models\IctAssetModel;
 use App\Models\IctIpRange;
 use App\Models\JobTitle;
 use App\Models\Region;
@@ -208,6 +209,25 @@ class NetworkFormTest extends TestCase
             ->set('form.status', IctAsset::STATUS_ACTIVE)
             ->call('save')
             ->assertHasErrors(['form.device_ip']);
+    }
+
+    public function test_selecting_a_device_type_filters_the_models_and_clears_a_mismatched_one(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+        $router = IctAssetModel::query()->create(['name' => 'MikroTik hEX', 'category' => 'RT', 'is_active' => true]);
+        IctAssetModel::query()->create(['name' => 'UniFi U6 Lite', 'category' => 'AP', 'is_active' => true]);
+
+        $component = Livewire::test(NetworkList::class)
+            ->call('openCreate')
+            ->assertSeeHtml('wire:model.live="form.asset_type"')
+            ->set('form.asset_type', 'RT')
+            ->set('form.ict_asset_model_id', $router->id);
+
+        $this->assertSame(['MikroTik hEX'], $component->viewData('models')->pluck('name')->all());
+
+        $component->set('form.asset_type', 'AP')->assertSet('form.ict_asset_model_id', null);
+        $this->assertSame(['UniFi U6 Lite'], $component->viewData('models')->pluck('name')->all());
     }
 
     protected function seedCoreAssetsAccess(): void

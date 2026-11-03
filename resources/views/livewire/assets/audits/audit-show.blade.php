@@ -4,11 +4,11 @@
             <a href="{{ route('assets.audits') }}" class="btn btn-secondary">All audits</a>
             @if ($audit->isCompleted() && $canExport)
                 <a href="{{ route('assets.audits.export.excel', $audit) }}" class="btn btn-secondary">
-                    <x-ui.icon name="file-spreadsheet" />
+                    <x-ui.file-icon type="excel" />
                     Excel
                 </a>
                 <a href="{{ route('assets.audits.export.pdf', $audit) }}" class="btn btn-secondary">
-                    <x-ui.icon name="file-text" />
+                    <x-ui.file-icon type="pdf" />
                     PDF
                 </a>
             @endif

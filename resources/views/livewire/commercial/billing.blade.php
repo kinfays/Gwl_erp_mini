@@ -17,8 +17,8 @@
         <x-slot:actions>
             @if ($chosen && ($canExport ?? false))
                 @php $billingExport = array_filter(['snapshot' => $chosen['id'], 'district' => $districtKey ?? '']); @endphp
-                <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'excel', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
-                <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'pdf', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.icon name="file-text" /> PDF</a>
+                <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'excel', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
+                <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'pdf', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.file-icon type="pdf" /> PDF</a>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

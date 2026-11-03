@@ -2,7 +2,7 @@
     <x-ui.page-header title="Safety actions" description="Corrective and preventive actions raised on incidents.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'actions'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'actions'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

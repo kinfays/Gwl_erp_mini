@@ -16,7 +16,7 @@
     <x-ui.page-header title="Customer List" description="Who the customers are and how they behave: from the weekly or monthly customer-list uploads. Every figure is read from pre-calculated totals, so it stays fast however many customers there are.">
         <x-slot:actions>
             @if (! ($empty ?? true) && $actorCanExport)
-                <a href="{{ route('commercial.customers.export', ['report' => 'summary', 'format' => 'excel', 'district' => $districtId ?? '', 'period' => $periodKey ?? '']) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
+                <a href="{{ route('commercial.customers.export', ['report' => 'summary', 'format' => 'excel', 'district' => $districtId ?? '', 'period' => $periodKey ?? '']) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
             @endif
             <a href="{{ route('commercial.customers.list') }}" class="btn btn-secondary"><x-ui.icon name="users" /> Find customers</a>
         </x-slot:actions>

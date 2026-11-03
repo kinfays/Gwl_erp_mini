@@ -5704,6 +5704,14 @@ textarea.form-input {
     filter: brightness(0.45) saturate(0.85);
 }
 
+/* Animated GIF background (GWL_AUTH_BACKGROUND=gif). A GIF cannot be paused, so it is hidden for people who
+   ask for less motion and the brand gradient shows instead (WCAG 2.2.2). */
+@media (prefers-reduced-motion: reduce) {
+    .auth-gif {
+        display: none;
+    }
+}
+
 .auth-wrapper {
     display: flex;
     align-items: center;
@@ -7005,4 +7013,124 @@ textarea.form-input {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+}
+
+/* Column picker: the three-dot menu in a list's Action header. The panel is fixed (positioned from the button in
+   JS) so the scrolling table cannot clip it, and it stays open while several columns are ticked. */
+.ui-th-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.ui-column-picker {
+    display: inline-flex;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+}
+
+.ui-column-panel {
+    position: fixed;
+    z-index: 60;
+    min-width: 250px;
+    max-height: 75vh;
+    overflow: auto;
+    padding: 10px;
+    text-align: start;
+    color: var(--color-ink);
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-overlay);
+}
+
+.ui-column-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.ui-column-option:hover {
+    background: var(--color-muted-soft);
+}
+
+.ui-column-mode {
+    font-size: 15px;
+}
+
+.ui-column-option.is-locked,
+.ui-column-option.is-inactive {
+    color: var(--color-ink-3);
+    cursor: default;
+}
+
+.ui-column-divider {
+    margin: 8px 0;
+    border: 0;
+    border-top: 1px solid var(--color-line);
+}
+
+/* Multi-select filter: looks like a select, opens a checklist that stays open while several are ticked. */
+.ui-multiselect {
+    position: relative;
+}
+
+.ui-multiselect-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 150px;
+    cursor: pointer;
+    text-align: start;
+}
+
+.ui-multiselect-panel {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 4px);
+    inset-inline-start: 0;
+    min-width: 100%;
+    padding: 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    box-shadow: var(--shadow-overlay);
+}
+
+/* The total number of (filtered) items, at the far right of the list toolbar (on the export icons' row when it wraps). */
+.ui-toolbar .pager-total {
+    margin-inline-start: auto;
+    align-self: center;
+}
+
+.pager-total {
+    margin: 0;
+    color: var(--color-ink-3);
+    font-size: 0.8125rem;
+}
+
+.pager-total b {
+    color: var(--color-ink);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Full-colour Excel / PDF icons on export buttons. */
+.ui-file-icon {
+    width: 22px;
+    height: 22px;
+    flex: none;
+}
+
+.btn-sm .ui-file-icon {
+    width: 18px;
+    height: 18px;
 }

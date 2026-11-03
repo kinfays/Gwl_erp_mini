@@ -2,7 +2,7 @@
     <x-ui.page-header title="PPE stock" description="What each store holds, per type and size. Every change is a new line in the ledger below; nothing is edited or deleted.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-stock'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-stock'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
             @if ($canManage)
                 <x-ui.button :href="route('health_safety.ppe.issues', ['issue' => 1])" icon="user-plus">Issue to staff</x-ui.button>

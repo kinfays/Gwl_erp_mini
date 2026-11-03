@@ -160,6 +160,10 @@ return [
     'commercial_export_max_rows' => (int) env('GWL_COMMERCIAL_EXPORT_MAX_ROWS', 5000),
     // PDFs are far heavier to build than spreadsheets (Dompdf is slow and memory-hungry), so they have their own, lower cap.
     'commercial_export_pdf_max_rows' => (int) env('GWL_COMMERCIAL_EXPORT_PDF_MAX_ROWS', 1500),
+    // Rows allowed in one Assets list export (Assets, Phones, Network, Issue Reports). Over the cap the user is asked to
+    // narrow the filters; the PDF is far heavier to build, so it has its own, lower cap.
+    'assets_list_export_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_MAX_ROWS', 5000),
+    'assets_list_export_pdf_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_PDF_MAX_ROWS', 1500),
     // Billing route exceptions (B11), all PLACEHOLDERS to confirm. A route needs at least this many customers behind a
     // percentage before it can be flagged on it (so one-customer routes do not flood the list); then the unbilled rate
     // and the estimated-bill share are flagged above these percentages, and a closing balance at or below minus the
@@ -304,6 +308,9 @@ return [
     'letters_scan_max_files' => (int) env('GWL_LETTERS_SCAN_MAX_FILES', 10),
     // true: a recipient may read a scan while the hardcopy is still in transit (remarks still wait for the confirmation).
     'letters_scan_preview_before_confirm' => (bool) env('GWL_LETTERS_SCAN_PREVIEW_BEFORE_CONFIRM', false),
+
+    // Sign-in page background: 'video' (public/images/bgwater.mp4, the original) or 'gif' (public/images/Running_Water_2.gif).
+    'auth_background' => env('GWL_AUTH_BACKGROUND', 'video'),
 
     // Android Enterprise / MDM (Assets module). Off by default; when off the MDM routes (including the
     // Google webhook) don't register and the MDM sidebar entries are hidden. See docs/assets/mdm.md.

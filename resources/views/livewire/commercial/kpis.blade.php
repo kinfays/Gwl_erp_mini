@@ -12,8 +12,8 @@
         <x-slot:actions>
             @if ($canSetTargets)<a href="{{ route('commercial.kpis.targets') }}" class="btn btn-secondary">Set targets</a>@endif
             @if ($canExport && ! $kpis['empty'])
-                <a href="{{ route('commercial.export', ['report' => 'kpis', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
-                <a href="{{ route('commercial.export', ['report' => 'kpis', 'format' => 'pdf', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-text" /> PDF</a>
+                <a href="{{ route('commercial.export', ['report' => 'kpis', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
+                <a href="{{ route('commercial.export', ['report' => 'kpis', 'format' => 'pdf', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="pdf" /> PDF</a>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

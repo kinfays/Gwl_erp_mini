@@ -2,7 +2,7 @@
     <x-ui.page-header title="PPE gaps" description="Staff against the PPE their job title is entitled to. Only job titles with entitlements are checked.">
         <x-slot:actions>
             @if ($canExport)
-                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-gaps'] + $exportFilters)" icon="file-spreadsheet">Excel</x-ui.button>
+                <x-ui.button :href="route('health_safety.export', ['report' => 'ppe-gaps'] + $exportFilters)" file="excel">Excel</x-ui.button>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

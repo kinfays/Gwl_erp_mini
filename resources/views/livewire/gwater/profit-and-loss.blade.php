@@ -9,8 +9,8 @@
     <x-ui.page-header title="Profit and loss" description="Revenue less the cost of the water sold, damages, fuel, loading / offloading and other costs, for your location. Amounts are in GH¢.">
         @if ($report && $canExport)
             <x-slot:actions>
-                <x-ui.button :href="route('gwater.export', ['report' => 'pnl', 'format' => 'excel'] + $exportQuery)" icon="file-spreadsheet">Excel</x-ui.button>
-                <x-ui.button :href="route('gwater.export', ['report' => 'pnl', 'format' => 'pdf'] + $exportQuery)" icon="file-text">PDF</x-ui.button>
+                <x-ui.button :href="route('gwater.export', ['report' => 'pnl', 'format' => 'excel'] + $exportQuery)" file="excel">Excel</x-ui.button>
+                <x-ui.button :href="route('gwater.export', ['report' => 'pnl', 'format' => 'pdf'] + $exportQuery)" file="pdf">PDF</x-ui.button>
             </x-slot:actions>
         @endif
     </x-ui.page-header>

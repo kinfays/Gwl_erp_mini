@@ -19,6 +19,9 @@
                 <div><dt>Model</dt><dd>{{ $asset->assetModel ? trim(($asset->assetModel->manufacturer?->name ?? '').' '.$asset->assetModel->name) : '—' }}</dd></div>
                 <div><dt>Serial number</dt><dd class="mono">{{ $dash($asset->serial_number) }}</dd></div>
                 <div><dt>Status</dt><dd>{{ $asset->status }}@if ($asset->status_reason) &mdash; {{ $asset->status_reason }}@endif</dd></div>
+                @if (App\Models\IctAsset::supportsUps($asset->device_category, $asset->asset_type))
+                    <div><dt>UPS</dt><dd>{{ $asset->has_ups ? ($asset->ups_status ?: 'Yes') : 'No UPS' }}@if ($asset->has_ups && $asset->ups_notes) <span class="ui-person-sub">{{ $asset->ups_notes }}</span>@endif</dd></div>
+                @endif
                 <div><dt>Location</dt><dd>{{ $asset->district?->district_name ?: 'No district' }}@if ($asset->region) <span class="ui-person-sub">{{ $asset->region->region_name }}</span>@endif</dd></div>
                 <div><dt>Department</dt><dd>{{ $dash($asset->department?->department_name) }}</dd></div>
                 <div>

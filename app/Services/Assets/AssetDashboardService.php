@@ -140,6 +140,50 @@ class AssetDashboardService
         };
     }
 
+    /** The ?ups= values the Assets list accepts. */
+    public const UPS_FILTERS = [
+        'has_ups' => 'On a UPS',
+        'no_ups' => 'No UPS',
+        'spoiled' => 'Spoiled UPS',
+    ];
+
+    /**
+     * Narrow to UPS state. Only the five UPS-tracked asset types are ever "no UPS"; has_ups and spoiled include the
+     * spoiled ones. Unknown values leave the query untouched.
+     */
+    public function applyUps(Builder $query, string $filter): Builder
+    {
+        $model = $query->getModel();
+        $type = $model->qualifyColumn('asset_type');
+        $has = $model->qualifyColumn('has_ups');
+
+        return match ($filter) {
+            'has_ups' => $query->where($has, true),
+            'spoiled' => $query->where($has, true)->where($model->qualifyColumn('ups_status'), IctAsset::UPS_STATUS_SPOILED),
+            'no_ups' => $query->where($model->qualifyColumn('device_category'), IctAsset::DEVICE_CATEGORY_ASSET)
+                ->whereIn($type, IctAsset::UPS_ASSET_TYPES)
+                ->where(fn (Builder $q) => $q->where($has, false)->orWhereNull($has)),
+            default => $query,
+        };
+    }
+
+    /** @return array{on_ups: int, no_ups: int, spoiled: int, tracked: int} counts over the UPS-tracked asset types */
+    public function upsCoverage(Builder $scopedAssets): array
+    {
+        $tracked = fn () => (clone $scopedAssets)
+            ->where('ict_assets.device_category', IctAsset::DEVICE_CATEGORY_ASSET)
+            ->whereIn('ict_assets.asset_type', IctAsset::UPS_ASSET_TYPES);
+
+        $onUps = $this->applyUps($tracked(), 'has_ups')->count();
+
+        return [
+            'on_ups' => $onUps,
+            'no_ups' => $this->applyUps($tracked(), 'no_ups')->count(),
+            'spoiled' => $this->applyUps($tracked(), 'spoiled')->count(),
+            'tracked' => $tracked()->count(),
+        ];
+    }
+
     /** "In store" and "no current holder" both land here; see the Tier B Available status. */
     public function applyUnassigned(Builder $query): Builder
     {

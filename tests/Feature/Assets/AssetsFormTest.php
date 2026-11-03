@@ -237,6 +237,53 @@ class AssetsFormTest extends TestCase
         $this->assertArrayNotHasKey('POS', $assetTypes);
     }
 
+    public function test_model_dropdown_only_lists_models_of_the_selected_asset_type(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+        $this->assetModel();
+        IctAssetModel::query()->create(['name' => 'ThinkPad X1', 'category' => 'Laptop', 'is_active' => true]);
+        IctAssetModel::query()->create(['name' => 'LaserJet Pro', 'category' => 'PRT', 'is_active' => true]);
+
+        $component = Livewire::test(AssetsList::class)->call('openCreate');
+
+        // Deferred binding would never tell the server the type changed, so the list would not re-filter.
+        $component->assertSeeHtml('wire:model.live="form.asset_type"');
+
+        $component->set('form.asset_type', 'Laptop');
+        $this->assertSame(['ThinkPad X1'], $component->viewData('models')->pluck('name')->all());
+
+        $component->set('form.asset_type', 'PC');
+        $this->assertSame(['HP EliteDesk 800 G6'], $component->viewData('models')->pluck('name')->all());
+    }
+
+    public function test_changing_the_asset_type_clears_a_model_that_belongs_to_another_type(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+        $pcModel = $this->assetModel();
+
+        Livewire::test(AssetsList::class)
+            ->call('openCreate')
+            ->set('form.asset_type', 'PC')
+            ->set('form.ict_asset_model_id', $pcModel->id)
+            ->set('form.asset_type', 'Laptop')
+            ->assertSet('form.ict_asset_model_id', null);
+    }
+
+    public function test_changing_the_asset_type_keeps_a_model_that_still_matches(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin());
+        $pcModel = $this->assetModel();
+
+        Livewire::test(AssetsList::class)
+            ->call('openCreate')
+            ->set('form.ict_asset_model_id', $pcModel->id)
+            ->set('form.asset_type', 'PC')
+            ->assertSet('form.ict_asset_model_id', $pcModel->id);
+    }
+
     protected function fillValidAssetForm($component, District $district)
     {
         $assignee = Employee::query()->where('staff_id', '100001')->first()

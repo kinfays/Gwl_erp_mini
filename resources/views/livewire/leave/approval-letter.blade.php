@@ -3,7 +3,7 @@
         <x-slot:actions>
             @if ($letter)
                 <x-ui.button :href="route('leave.letters.pdf', $request)" target="_blank" rel="noopener" variant="primary" icon="printer">Print Letter</x-ui.button>
-                <x-ui.button :href="route('leave.letters.pdf', ['leaveRequest' => $request, 'download' => 1])" icon="download">Download PDF</x-ui.button>
+                <x-ui.button :href="route('leave.letters.pdf', ['leaveRequest' => $request, 'download' => 1])" file="pdf">Download PDF</x-ui.button>
             @endif
         </x-slot:actions>
     </x-ui.page-header>

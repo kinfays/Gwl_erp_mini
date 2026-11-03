@@ -14,10 +14,10 @@
     <x-ui.page-header title="Meter Reading" description="Visits, skips and coverage from the reading reports. Rates are worked out from the counts, never taken from the report.">
         <x-slot:actions>
             @if ($hasData && $activeTab === 'trend' && $canExportTrend)
-                <a href="{{ route('commercial.export', ['report' => 'reading-trend', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
+                <a href="{{ route('commercial.export', ['report' => 'reading-trend', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
             @elseif ($hasData && $activeTab !== 'trend' && $canReaders && $canExport)
-                <a href="{{ route('commercial.export', ['report' => 'readers', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-spreadsheet" /> Excel</a>
-                <a href="{{ route('commercial.export', ['report' => 'readers', 'format' => 'pdf', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.icon name="file-text" /> PDF</a>
+                <a href="{{ route('commercial.export', ['report' => 'readers', 'format' => 'excel', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
+                <a href="{{ route('commercial.export', ['report' => 'readers', 'format' => 'pdf', ...$exportQuery]) }}" class="btn btn-secondary"><x-ui.file-icon type="pdf" /> PDF</a>
             @endif
         </x-slot:actions>
     </x-ui.page-header>
