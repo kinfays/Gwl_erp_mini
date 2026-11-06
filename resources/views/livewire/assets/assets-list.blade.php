@@ -126,7 +126,7 @@
                         </td>
                         @endif
                         @if (in_array('assigned_to', $visibleColumns))
-                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo && ! $asset->is_general_use])><x-assets.assignee :asset="$asset" /></td>
                         @endif
                         @if (in_array('status', $visibleColumns))
                             <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
@@ -184,14 +184,25 @@
                 <x-ui.input label="Asset Name" wire:model.defer="form.asset_name" />
 
                 <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" />
-                <x-assets.model-select :models="$models" />
+                <div>
+                    <x-assets.model-select :models="$models" />
+                    <x-assets.add-model-button :can="$canAddModel" :open="$showNewModel" />
+                </div>
+                <x-assets.add-model-panel :can="$canAddModel" :open="$showNewModel" :asset-type="$form['asset_type']" :types="$assetTypes" :manufacturers="$newModelManufacturers" />
 
-                <x-ui.select label="Assigned To" wire:model.defer="form.assigned_to_employee_id">
-                    <option value="">Select employee</option>
-                    @foreach ($employees as $employee)
-                        <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
-                    @endforeach
-                </x-ui.select>
+                <div class="field-check">
+                    <x-ui.checkbox label="General use (not assigned to a person)" description="Shared by several people, for example a printer or a shared PC" wire:model.live="form.is_general_use" id="f-form-is-general-use" />
+                </div>
+                @unless ($form['is_general_use'])
+                    <x-form.searchable-select
+                        label="Assigned To"
+                        model="form.assigned_to_employee_id"
+                        search="searchEmployees"
+                        :initial-label="$assignedToLabel"
+                        placeholder="Search by name or staff ID"
+                        required
+                    />
+                @endunless
                 <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
 
                 <x-ui.select label="Status" wire:model.defer="form.status">
@@ -218,7 +229,7 @@
 
                 @if ($formSupportsProcessor)
                     <div class="span-2">
-                        <x-ui.input label="Processor" wire:model.defer="form.cpu_name" placeholder="e.g. i7 13th Gen @ 1.6GHz, Ultra 7 155U" />
+                        <x-ui.input label="Processor" wire:model.defer="form.cpu_name" placeholder="e.g. Intel core i7-1255U CPU@2.40GHz, Ultra 7-115U" />
                     </div>
                 @endif
 

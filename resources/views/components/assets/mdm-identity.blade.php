@@ -26,6 +26,6 @@
     </div>
     <div>
         <dt>Assigned to</dt>
-        <dd>{{ $asset?->assignedTo?->full_name ?? 'Unassigned' }}</dd>
+        <dd>{{ $asset?->assigneeLabel() ?? 'Unassigned' }}</dd>
     </div>
 </dl>

@@ -175,7 +175,7 @@ class AssetListColumns
             'district' => (string) $row->district?->district_name,
             'region' => (string) $row->region?->region_name,
             'location_note' => (string) $row->actual_location,
-            'assigned_to' => $row->assignedTo?->full_name ?: 'Unassigned',
+            'assigned_to' => $row->assigneeLabel(),
             'status' => (string) $row->status,
             'has_ups' => $supportsUps ? ($row->has_ups ? 'Yes' : 'No') : '',
             'ups_status' => $supportsUps && $row->has_ups ? (string) $row->ups_status : '',

@@ -4,6 +4,7 @@ namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
+use App\Livewire\Assets\Concerns\SearchesAssetPicker;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\District;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -27,6 +29,7 @@ class IssueReports extends Component
     use ExportsAssetLists;
     use HasSelectableColumns;
     use ScopesAssetsByActor;
+    use SearchesAssetPicker;
     use WithPagination;
 
     /** What the "still active?" popup can do to the asset. 'none' is the default and changes nothing. */
@@ -97,6 +100,20 @@ class IssueReports extends Component
         if ($assetId && ! $this->assetPickerQuery()->whereKey($assetId)->exists()) {
             $this->form['linked_asset_id'] = null;
         }
+    }
+
+    /**
+     * Options for the "Linked Asset" picker: only devices that fit the chosen issue type, within the actor's own scope
+     * (assetPickerQuery), matched on name or serial number, 20 at most. Renderless: no page re-render per keystroke.
+     *
+     * @return array<int, array{value: int, label: string, description: string}>
+     */
+    #[Renderless]
+    public function searchLinkedAssets(string $term = ''): array
+    {
+        $this->authorizeAction();
+
+        return $this->assetSearchOptions($this->assetPickerQuery(), $term);
     }
 
     public function openCreate(): void
@@ -381,9 +398,10 @@ class IssueReports extends Component
 
         $category = $this->showForm ? $this->selectedCategory() : null;
 
-        $assets = $this->showForm
-            ? $this->assetPickerQuery()->orderBy('asset_name')->get(['id', 'asset_name', 'serial_number'])
-            : collect();
+        // The picked device's label, looked up through the same scoped query the picker uses.
+        $linkedAsset = $this->showForm && ($this->form['linked_asset_id'] ?? null)
+            ? $this->assetPickerQuery()->find((int) $this->form['linked_asset_id'], ['id', 'asset_name'])
+            : null;
 
         $regions = Region::query()
             ->when($this->regionLocked, fn ($query) => $query->whereKey($this->actorRegionId()))
@@ -405,7 +423,7 @@ class IssueReports extends Component
             'requiresAsset' => (bool) $category?->requires_linked_asset,
             'statusOptions' => $statusOptions,
             'formStatuses' => IctAssetIssueReport::STATUSES,
-            'assets' => $assets,
+            'linkedAssetLabel' => $linkedAsset?->asset_name ?? '',
             'promptAsset' => $this->statusPromptAssetId
                 ? $this->scopeAssetsForActor(IctAsset::query())->find($this->statusPromptAssetId, ['id', 'asset_name', 'serial_number', 'status'])
                 : null,

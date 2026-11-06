@@ -29,6 +29,8 @@
                     <dd>
                         @if ($asset->assignedTo)
                             <a href="{{ route('assets.employee', $asset->assignedTo) }}">{{ $asset->assignedTo->full_name }}</a>
+                        @elseif ($asset->is_general_use)
+                            <x-ui.badge tone="lagoon">General use</x-ui.badge>
                         @else
                             Unassigned
                         @endif
@@ -111,7 +113,7 @@
                     <tr wire:key="audit-line-{{ $line->id }}">
                         <td>{{ $line->audit?->title }}</td>
                         <td>
-                            <x-ui.status-pill :tone="['matched' => 'success', 'mismatch' => 'warning', 'not_found' => 'danger'][$line->result] ?? 'muted'" :label="\Illuminate\Support\Str::headline($line->result)" />
+                            <x-ui.status-pill :tone="\App\Models\IctAssetAuditLine::toneFor($line->result)" :label="\App\Models\IctAssetAuditLine::labelFor($line->result)" />
                             @if ($line->mismatch_reason)<span class="ui-person-sub">{{ $line->mismatch_reason }}</span>@endif
                         </td>
                         <td class="nowrap">{{ $fmt($line->verified_at) }}</td>

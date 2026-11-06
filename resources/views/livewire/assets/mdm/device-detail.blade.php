@@ -84,7 +84,7 @@
                 <div><dt>Asset tag</dt><dd>{{ $asset?->asset_name ?? '—' }}</dd></div>
                 <div><dt>Serial number</dt><dd class="mono">{{ $asset?->serial_number ?: '—' }}</dd></div>
                 <div><dt>IMEI</dt><dd class="mono">{{ $asset?->imei ?: '—' }}</dd></div>
-                <div><dt>Assigned to</dt><dd>{{ $asset?->assignedTo?->full_name ?? 'Unassigned' }}</dd></div>
+                <div><dt>Assigned to</dt><dd>{{ $asset?->assigneeLabel() ?? 'Unassigned' }}</dd></div>
                 <div><dt>Region</dt><dd>{{ $asset?->region?->region_name ?? '—' }}</dd></div>
                 <div><dt>Location</dt><dd>{{ $asset?->district?->district_name ?? '—' }}</dd></div>
                 <div><dt>Phone number</dt><dd class="mono">{{ $asset?->device_phone_number ?: '—' }}</dd></div>

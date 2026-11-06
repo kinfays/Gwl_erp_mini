@@ -98,7 +98,7 @@
         </x-ui.card>
     @elseif ($activeTab === 'assignment')
         <div class="ui-grid ui-grid-2 dash-row">
-            <x-ui.card title="Unassigned" description="Devices with no employee recorded as the holder.">
+            <x-ui.card title="Unassigned" description="Laptops, desktops, printers, photocopiers, phones and SIM cards with no holder recorded. Network devices, servers, POS terminals and general-use assets are not counted.">
                 <x-ui.stat-tile label="Unassigned" :value="$unassigned['total']" icon="laptop" tone="warning" />
             </x-ui.card>
 

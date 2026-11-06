@@ -8,6 +8,7 @@ use App\Models\IctAsset;
 use App\Models\IctAssetManufacturer;
 use App\Models\IctAssetModel;
 use App\Models\Permission;
+use App\Services\Assets\AssetModelService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
@@ -65,24 +66,15 @@ class ModelsManager extends Component
 
     public function save(): void
     {
+        $service = app(AssetModelService::class);
+
         $validated = $this->validate([
-            'name' => ['required', 'string', 'max:255', 'unique:ict_asset_models,name'],
-            'category' => ['required', Rule::in($this->categoryOptions())],
-            'manufacturer_id' => ['nullable', 'integer', $this->selectableManufacturerRule()],
+            ...$service->createRules(),
             'notes' => ['nullable', 'string'],
             'image' => $this->imageRules(),
         ]);
 
-        $model = IctAssetModel::create([
-            'name' => $validated['name'],
-            'category' => $validated['category'],
-            'ict_asset_manufacturer_id' => $validated['manufacturer_id'] ?: null,
-            'notes' => $validated['notes'],
-            'image_path' => $this->image?->store(IctAssetModel::IMAGE_DIRECTORY, 'public') ?: null,
-            'is_active' => true,
-        ]);
-
-        AuditLog::record('create_asset_model', Permission::MODULE_ASSETS, 'ict_asset_models', $model->id, null, $model->toArray());
+        $service->create($validated, $this->image?->store(IctAssetModel::IMAGE_DIRECTORY, 'public') ?: null);
 
         $this->reset('name', 'category', 'manufacturer_id', 'notes', 'image');
         $this->dispatch('toast', type: 'success', message: 'Model created successfully.');
@@ -195,7 +187,7 @@ class ModelsManager extends Component
 
     protected function categoryOptions(): array
     {
-        return collect(IctAsset::ASSET_TYPES)->flatMap(fn ($types) => array_keys($types))->all();
+        return AssetModelService::categoryOptions();
     }
 
     protected function imageRules(): array
@@ -210,11 +202,7 @@ class ModelsManager extends Component
      */
     protected function selectableManufacturerRule(?int $currentManufacturerId = null): Exists
     {
-        return Rule::exists('ict_asset_manufacturers', 'id')->where(
-            fn ($query) => $query
-                ->where('is_active', true)
-                ->when($currentManufacturerId, fn ($inner, $id) => $inner->orWhere('id', $id))
-        );
+        return app(AssetModelService::class)->selectableManufacturerRule($currentManufacturerId);
     }
 
     protected function deleteImageFile(?string $path): void
@@ -226,9 +214,7 @@ class ModelsManager extends Component
 
     protected function canManageModels(): bool
     {
-        $user = auth()->user();
-
-        return $user && ($user->hasRoles('super_admin') || $user->hasPermission('assets.manage_models'));
+        return AssetModelService::canManage(auth()->user());
     }
 
     public function render()

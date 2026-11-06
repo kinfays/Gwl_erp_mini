@@ -21,6 +21,7 @@
             <x-ui.stat-tile label="Matched" :value="$summary['matched']" icon="circle-check" tone="success" />
             <x-ui.stat-tile label="Mismatch" :value="$summary['mismatch']" icon="triangle-alert" tone="warning" />
             <x-ui.stat-tile label="Not found" :value="$summary['not_found']" icon="triangle-alert" tone="danger" />
+            <x-ui.stat-tile label="Damaged" :value="$summary['damaged']" icon="wrench" tone="danger" />
         </div>
 
         <x-ui.card title="Audit Result" :description="'Completed '.$audit->completed_at?->format('d M Y, H:i').'. Read only.'" :padded="false">
@@ -49,7 +50,7 @@
             <div class="ui-toolbar" role="search" aria-label="Filter audit lines">
                 <p class="toolbar-grow" role="status">
                     <strong>{{ $summary['verified'] }} of {{ $summary['total'] }}</strong> lines verified
-                    &middot; {{ $summary['matched'] }} matched, {{ $summary['mismatch'] }} mismatch, {{ $summary['not_found'] }} not found
+                    &middot; {{ $summary['matched'] }} matched, {{ $summary['mismatch'] }} mismatch, {{ $summary['not_found'] }} not found, {{ $summary['damaged'] }} damaged
                 </p>
                 <select wire:model.live="category" class="form-input" aria-label="Device category">
                     <option value="">All categories</option>
@@ -63,6 +64,7 @@
                     <option value="matched">Matched</option>
                     <option value="mismatch">Mismatch</option>
                     <option value="not_found">Not found</option>
+                    <option value="damaged">Damaged</option>
                 </select>
                 <span @if ($summary['pending'] > 0) title="{{ $summary['pending'] }} line(s) are still pending. Verify every asset before completing." @endif>
                     <button type="button" wire:click="completeAudit" class="btn btn-primary" @disabled($summary['pending'] > 0) wire:loading.attr="disabled" wire:target="completeAudit">
@@ -94,7 +96,7 @@
                         </td>
                         <td>
                             <span class="ui-cell-stack">
-                                <span>{{ $line->expected_status ?: 'No status' }} &middot; {{ $line->expectedEmployee?->full_name ?: 'Unassigned' }}</span>
+                                <span>{{ $line->expected_status ?: 'No status' }} &middot; {{ $line->expectedEmployee?->full_name ?: ($line->asset?->is_general_use ? 'General use' : 'Unassigned') }}</span>
                                 <span class="ui-person-sub">{{ $line->expectedDistrict?->district_name ?: 'No district' }}</span>
                             </span>
                         </td>
@@ -115,6 +117,14 @@
                                     <x-ui.status-pill tone="danger" label="Not found" />
                                     <span class="ui-person-sub">{{ $line->mismatch_reason }}{{ $line->actual_location ? ' · last seen: '.$line->actual_location : '' }}</span>
                                 </span>
+                            @elseif ($line->result === 'damaged')
+                                <span class="ui-cell-stack">
+                                    <x-ui.status-pill :tone="\App\Models\IctAssetAuditLine::toneFor('damaged')" :label="\App\Models\IctAssetAuditLine::labelFor('damaged')" />
+                                    <span class="ui-person-sub">{{ $line->mismatch_reason }}{{ $line->actual_location ? ' · found at: '.$line->actual_location : '' }}</span>
+                                    @if ($line->correction_applied)
+                                        <span class="ui-person-sub">Asset status set to Damaged</span>
+                                    @endif
+                                </span>
                             @else
                                 <x-ui.status-pill tone="muted" label="Pending" />
                             @endif
@@ -125,6 +135,7 @@
                                     <button type="button" wire:click="markMatched({{ $line->id }})" class="btn btn-ghost btn-sm">Matched</button>
                                     <button type="button" wire:click="openRecord({{ $line->id }}, 'mismatch')" class="btn btn-ghost btn-sm">Mismatch</button>
                                     <button type="button" wire:click="openRecord({{ $line->id }}, 'not_found')" class="btn btn-ghost btn-sm">Not found</button>
+                                    <button type="button" wire:click="openRecord({{ $line->id }}, 'damaged')" class="btn btn-ghost btn-sm">Damaged</button>
                                 @endunless
                                 @if ($line->result === 'mismatch' && ! $line->correction_applied)
                                     <button type="button" wire:click="applyCorrection({{ $line->id }})" class="btn btn-secondary btn-sm"
@@ -146,7 +157,7 @@
     @endif
 
     @if ($recordingLineId)
-        <x-ui.modal :title="$recordingResult === 'not_found' ? 'Asset not found' : 'Record mismatch'" close="cancelRecord()" size="lg" icon="triangle-alert" tone="warning">
+        <x-ui.modal :title="match ($recordingResult) { 'not_found' => 'Asset not found', 'damaged' => 'Asset damaged', default => 'Record mismatch' }" close="cancelRecord()" size="lg" icon="triangle-alert" tone="warning">
             <div class="ui-form-grid">
                 @if ($recordingResult === 'mismatch')
                     <x-ui.select label="Actual status" wire:model="actualStatus">
@@ -155,12 +166,13 @@
                             <option value="{{ $option }}">{{ $option }}</option>
                         @endforeach
                     </x-ui.select>
-                    <x-ui.select label="Actual holder" wire:model="actualEmployeeId">
-                        <option value="">No one (unassigned)</option>
-                        @foreach ($employees as $employee)
-                            <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
-                        @endforeach
-                    </x-ui.select>
+                    <x-form.searchable-select
+                        label="Actual holder"
+                        model="actualEmployeeId"
+                        search="searchEmployees"
+                        :initial-label="$actualHolderLabel"
+                        placeholder="No one (unassigned): search by name or staff ID"
+                    />
                     <x-ui.select label="Actual district" wire:model="actualDistrictId">
                         <option value="">No district</option>
                         @foreach ($districts as $district)
@@ -170,7 +182,7 @@
                 @endif
                 <x-ui.input label="{{ $recordingResult === 'not_found' ? 'Last known location' : 'Location found' }}" wire:model="actualLocation" placeholder="e.g. Server room, 2nd floor" />
                 <div class="span-2">
-                    <x-ui.textarea label="Reason" wire:model="reason" rows="2" hint="Required: say what was found." />
+                    <x-ui.textarea label="Reason" wire:model="reason" rows="2" :hint="$recordingResult === 'damaged' ? 'Required: describe the damage. The asset\'s status will be set to Damaged and this becomes its status reason.' : 'Required: say what was found.'" />
                 </div>
             </div>
 

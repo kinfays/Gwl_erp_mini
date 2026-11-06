@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\CreatesModelInline;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
@@ -10,6 +11,7 @@ use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\IctAsset;
+use App\Rules\UniqueAssetName;
 use App\Models\IctAssetModel;
 use App\Services\Assets\AssetListColumns;
 use App\Services\Assets\AssetListQuery;
@@ -21,6 +23,7 @@ use Livewire\WithPagination;
 
 class NetworkList extends Component
 {
+    use CreatesModelInline;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
@@ -152,6 +155,7 @@ class NetworkList extends Component
     {
         $this->showForm = false;
         $this->editingAssetId = null;
+        $this->closeNewModel();
         $this->resetForm();
     }
 
@@ -188,7 +192,7 @@ class NetworkList extends Component
     protected function rules(): array
     {
         return [
-            'form.asset_name' => ['required', 'string', 'max:255'],
+            'form.asset_name' => ['required', 'string', 'max:255', new UniqueAssetName($this->editingAssetId)],
             'form.asset_type' => ['required', Rule::in(array_keys(IctAsset::ASSET_TYPES[self::CATEGORY]))],
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.device_username' => ['nullable', 'string', 'max:255'],
@@ -293,6 +297,7 @@ class NetworkList extends Component
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),
             'models' => $models,
+            ...$this->addModelViewData(),
             'canViewSecrets' => $canViewSecrets,
         ]);
     }

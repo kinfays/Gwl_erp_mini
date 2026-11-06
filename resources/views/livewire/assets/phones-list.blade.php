@@ -106,7 +106,7 @@
                         </td>
                         @endif
                         @if (in_array('assigned_to', $visibleColumns))
-                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                            <td @class(['nowrap', 'cell-muted' => ! $asset->assignedTo && ! $asset->is_general_use])><x-assets.assignee :asset="$asset" /></td>
                         @endif
                         @if (in_array('status', $visibleColumns))
                             <td>
@@ -162,15 +162,25 @@
                 </x-ui.select>
 
                 <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" />
-                <x-assets.model-select :models="$models" />
+                <div>
+                    <x-assets.model-select :models="$models" />
+                    <x-assets.add-model-button :can="$canAddModel" :open="$showNewModel" />
+                </div>
+                <x-assets.add-model-panel :can="$canAddModel" :open="$showNewModel" :asset-type="$form['asset_type']" :types="$assetTypes" :manufacturers="$newModelManufacturers" />
 
                 <x-ui.input label="IMEI" wire:model.defer="form.imei" class="mono" inputmode="numeric" />
-                <x-ui.select label="Assigned To" wire:model.defer="form.assigned_to_employee_id">
-                    <option value="">Unassigned</option>
-                    @foreach ($employees as $employee)
-                        <option value="{{ $employee->id }}">{{ $employee->full_name }}</option>
-                    @endforeach
-                </x-ui.select>
+                <div class="field-check">
+                    <x-ui.checkbox label="General use (not assigned to a person)" description="Shared by several people, for example a shared POS terminal" wire:model.live="form.is_general_use" id="f-form-is-general-use" />
+                </div>
+                @unless ($form['is_general_use'])
+                    <x-form.searchable-select
+                        label="Assigned To"
+                        model="form.assigned_to_employee_id"
+                        search="searchEmployees"
+                        :initial-label="$assignedToLabel"
+                        placeholder="Unassigned: search by name or staff ID"
+                    />
+                @endunless
 
                 <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
                 <x-ui.select label="Status" wire:model.defer="form.status">

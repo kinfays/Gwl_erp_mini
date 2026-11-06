@@ -155,7 +155,8 @@ class UpsTrackingTest extends TestCase
         $base = ['asset_name' => 'X', 'status' => 'Active', 'has_ups' => true, 'ups_status' => 'Spoiled', 'ups_notes' => 'x'];
 
         $phone = $service->save([...$base, 'asset_type' => 'Ph', 'serial_number' => 'PH-U'], 'phone');
-        $router = $service->save([...$base, 'asset_type' => 'RT', 'serial_number' => 'RT-U'], 'network');
+        // Asset names are unique across every category, so the router needs a name of its own.
+        $router = $service->save([...$base, 'asset_name' => 'Y', 'asset_type' => 'RT', 'serial_number' => 'RT-U'], 'network');
 
         foreach ([$phone, $router] as $device) {
             $device = $device->fresh();

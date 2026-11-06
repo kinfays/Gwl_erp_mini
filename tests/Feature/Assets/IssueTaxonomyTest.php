@@ -182,8 +182,9 @@ class IssueTaxonomyTest extends TestCase
         $phone = $this->asset(['asset_name' => 'A Phone', 'asset_type' => 'Ph', 'device_category' => 'phone']);
         $router = $this->asset(['asset_name' => 'A Router', 'asset_type' => 'RT', 'device_category' => 'network']);
 
-        $ids = fn (string $category) => Livewire::test(IssueReports::class)->call('openCreate')
-            ->set('form.issue_type', $category)->viewData('assets')->pluck('id')->sort()->values()->all();
+        // The picker now searches on the server (searchLinkedAssets); an empty term lists what the type allows.
+        $pickerIds = fn ($component) => collect($component->instance()->searchLinkedAssets(''))->pluck('value')->sort()->values()->all();
+        $ids = fn (string $category) => $pickerIds(Livewire::test(IssueReports::class)->call('openCreate')->set('form.issue_type', $category));
         $sorted = fn (array $assets) => collect($assets)->pluck('id')->sort()->values()->all();
 
         $this->assertSame($sorted([$pc, $laptop, $server]), $ids('Computer'));
@@ -191,7 +192,7 @@ class IssueTaxonomyTest extends TestCase
         $this->assertSame($sorted([$phone]), $ids('Phone'));
         $this->assertSame($sorted([$router]), $ids('Network/Internet'));
         $this->assertSame($sorted([$pc, $laptop, $server, $printer, $copier, $phone, $router]), $ids('Password Reset'));
-        $this->assertSame($sorted([$pc, $laptop, $server, $printer, $copier, $phone, $router]), Livewire::test(IssueReports::class)->call('openCreate')->viewData('assets')->pluck('id')->sort()->values()->all());
+        $this->assertSame($sorted([$pc, $laptop, $server, $printer, $copier, $phone, $router]), $pickerIds(Livewire::test(IssueReports::class)->call('openCreate')));
 
         // The server side holds the same line: a printer cannot be linked to a Phone issue.
         Livewire::test(IssueReports::class)->call('openCreate')

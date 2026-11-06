@@ -35,7 +35,7 @@
                 <td class="k">Reconciliation</td>
                 <td>{{ $audit->reconciliation_rate !== null ? $audit->reconciliation_rate.'%' : '-' }}</td>
                 <td class="k">Result counts</td>
-                <td>{{ $summary['matched'] }} matched &middot; {{ $summary['mismatch'] }} mismatch &middot; {{ $summary['not_found'] }} not found (of {{ $summary['total'] }})</td>
+                <td>{{ $summary['matched'] }} matched &middot; {{ $summary['mismatch'] }} mismatch &middot; {{ $summary['not_found'] }} not found &middot; {{ $summary['damaged'] }} damaged (of {{ $summary['total'] }})</td>
             </tr>
             <tr>
                 <td class="k">Generated</td>

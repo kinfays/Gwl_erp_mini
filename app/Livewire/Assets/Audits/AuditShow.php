@@ -3,15 +3,16 @@
 namespace App\Livewire\Assets\Audits;
 
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
+use App\Livewire\Assets\Concerns\SearchesEmployeePicker;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\District;
-use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetAudit;
 use App\Models\IctAssetAuditLine;
 use App\Services\Assets\AssetAuditService;
 use App\Services\Assets\AuditVisibility;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -19,6 +20,7 @@ class AuditShow extends Component
 {
     use EnforcesModuleAccess;
     use ScopesAssetsByActor;
+    use SearchesEmployeePicker;
     use WithPagination;
 
     #[Locked]
@@ -62,6 +64,20 @@ class AuditShow extends Component
         }
     }
 
+    /**
+     * Options for the "Actual holder" picker, 20 at most, matched on name or staff ID. Renderless: no page re-render per
+     * keystroke.
+     *
+     * @return array<int, array{value: int, label: string, description: string}>
+     */
+    #[Renderless]
+    public function searchEmployees(string $term = ''): array
+    {
+        $this->authorizeManage();
+
+        return $this->employeeSearchOptions($term);
+    }
+
     public function markMatched(int $lineId, AssetAuditService $service): void
     {
         $this->authorizeManage();
@@ -74,7 +90,7 @@ class AuditShow extends Component
     public function openRecord(int $lineId, string $result): void
     {
         $this->authorizeManage();
-        abort_unless(in_array($result, [IctAssetAuditLine::RESULT_MISMATCH, IctAssetAuditLine::RESULT_NOT_FOUND], true), 422);
+        abort_unless(in_array($result, [IctAssetAuditLine::RESULT_MISMATCH, IctAssetAuditLine::RESULT_NOT_FOUND, IctAssetAuditLine::RESULT_DAMAGED], true), 422);
 
         $line = $this->line($lineId);
 
@@ -100,16 +116,24 @@ class AuditShow extends Component
         $this->authorizeManage();
         abort_unless($this->recordingLineId && $this->recordingResult, 422);
 
-        $notFound = $this->recordingResult === IctAssetAuditLine::RESULT_NOT_FOUND;
+        // Only a mismatch reports an actual status / holder / district. A missing asset has none (only where it was last
+        // known) and a damaged one is found where expected (the service records it as Damaged).
+        $mismatch = $this->recordingResult === IctAssetAuditLine::RESULT_MISMATCH;
+        $line = $this->line($this->recordingLineId);
+
+        // A Damaged result sets the asset's status, so it follows the same write rule as editing the asset: a user may
+        // only change records in their own region (reading every region, as Head Office ICT may, is not enough).
+        if ($this->recordingResult === IctAssetAuditLine::RESULT_DAMAGED && ! $this->actorCanModifyInRegion($line->asset?->region_id)) {
+            abort(403, 'You can only mark assets in your own region as damaged.');
+        }
 
         $service->recordResult(
-            $this->line($this->recordingLineId),
+            $line,
             $this->recordingResult,
             [
-                // A missing asset has no status/holder/district to report, only where it was last known.
-                'status' => $notFound ? null : $this->actualStatus,
-                'assigned_to_employee_id' => $notFound ? null : $this->actualEmployeeId,
-                'district_id' => $notFound ? null : $this->actualDistrictId,
+                'status' => $mismatch ? $this->actualStatus : null,
+                'assigned_to_employee_id' => $mismatch ? $this->actualEmployeeId : null,
+                'district_id' => $mismatch ? $this->actualDistrictId : null,
                 'location' => $this->actualLocation,
             ],
             $this->reason,
@@ -184,11 +208,7 @@ class AuditShow extends Component
             'lines' => $lines,
             'categories' => ['asset' => 'Assets', 'phone' => 'Phones', 'network' => 'Network'],
             'statusOptions' => IctAsset::STATUSES,
-            'employees' => $recording
-                ? Employee::query()
-                    ->when($this->actorIsRegionScopedIct(), fn ($q) => $q->where('region_id', $this->actorRegionId()))
-                    ->orderBy('full_name')->limit(500)->get()
-                : collect(),
+            'actualHolderLabel' => $recording ? $this->employeeLabel($this->actualEmployeeId ?: null) : '',
             'districts' => $recording ? District::query()->orderBy('district_name')->get() : collect(),
             'canExport' => $this->actor()->hasRoles('super_admin') || $this->actor()->hasPermission('assets.export_audits'),
             'preview' => $audit->isCompleted() ? $service->exportRows($audit)->take(200) : collect(),

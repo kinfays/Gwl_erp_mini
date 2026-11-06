@@ -170,6 +170,185 @@ document.addEventListener('alpine:init', () => {
             }
         },
     }));
+
+    // <x-form.searchable-select>: a type-to-search picker bound to a Livewire property (`selected`, passed in as an
+    // entangle). With `options` it filters them in the browser; with `method` it asks that Livewire method for
+    // matches (debounced; the server scopes and limits them). Labels are only ever written with x-text, so nothing
+    // from the server is treated as HTML, and the server re-checks the chosen id on save.
+    alpine.data('searchableSelect', (config = {}) => ({
+        open: false,
+        query: '',
+        activeIndex: -1,
+        selected: config.selected,
+        options: config.options || [],
+        method: config.method || null,
+        initialLabel: config.initialLabel || '',
+        debounce: config.debounce ?? 250,
+        listId: config.listId,
+        results: [],
+        current: null,
+        loading: false,
+        timer: null,
+        requestId: 0,
+
+        init() {
+            this.syncFromSelected();
+
+            this.$watch('selected', () => {
+                if (! this.open) {
+                    this.syncFromSelected();
+                }
+            });
+        },
+
+        hasValue() {
+            return this.selected !== null && this.selected !== undefined && this.selected !== '';
+        },
+
+        syncFromSelected() {
+            if (! this.hasValue()) {
+                this.current = null;
+                this.query = '';
+
+                return;
+            }
+
+            const same = (option) => option && String(option.value) === String(this.selected);
+            const found = this.options.find(same) || (same(this.current) ? this.current : null);
+
+            if (found) {
+                this.current = found;
+                this.query = found.label;
+            } else if (this.initialLabel) {
+                this.current = { value: this.selected, label: this.initialLabel };
+                this.query = this.initialLabel;
+                this.initialLabel = ''; // one-shot: later values must come from a real option
+            } else {
+                this.current = null;
+                this.query = '';
+            }
+        },
+
+        get visible() {
+            if (this.method) {
+                return this.results;
+            }
+
+            const needle = this.query.trim().toLowerCase();
+            const matches = needle && ! (this.current && this.query === this.current.label)
+                ? this.options.filter((option) => `${option.label} ${option.description || ''}`.toLowerCase().includes(needle))
+                : this.options;
+
+            return matches.slice(0, 50);
+        },
+
+        openMenu() {
+            this.open = true;
+            this.activeIndex = this.visible.length ? 0 : -1;
+
+            if (this.method && this.results.length === 0) {
+                this.fetchNow();
+            }
+        },
+
+        inputChanged() {
+            this.open = true;
+
+            // Typing over a chosen value un-chooses it, so a half-typed label can never be saved.
+            if (this.current && this.query !== this.current.label) {
+                this.selected = '';
+                this.current = null;
+            }
+
+            if (this.method) {
+                clearTimeout(this.timer);
+                this.timer = setTimeout(() => this.fetchNow(), this.debounce);
+            } else {
+                this.activeIndex = this.visible.length ? 0 : -1;
+            }
+        },
+
+        async fetchNow() {
+            const id = ++this.requestId;
+            const term = this.current && this.query === this.current.label ? '' : this.query.trim();
+
+            this.loading = true;
+
+            try {
+                const rows = await this.$wire[this.method](term);
+
+                if (id === this.requestId) {
+                    this.results = Array.isArray(rows) ? rows : [];
+                    this.activeIndex = this.results.length ? 0 : -1;
+                }
+            } catch (error) {
+                if (id === this.requestId) {
+                    this.results = [];
+                }
+            } finally {
+                if (id === this.requestId) {
+                    this.loading = false;
+                }
+            }
+        },
+
+        choose(option) {
+            this.selected = option.value;
+            this.current = option;
+            this.query = option.label;
+            this.open = false;
+            this.activeIndex = -1;
+        },
+
+        clear() {
+            this.selected = '';
+            this.current = null;
+            this.query = '';
+            this.open = false;
+            this.activeIndex = -1;
+            this.results = [];
+            this.$refs.input.focus();
+        },
+
+        move(step) {
+            const count = this.visible.length;
+
+            if (! count) {
+                this.activeIndex = -1;
+
+                return;
+            }
+
+            if (! this.open) {
+                this.openMenu();
+
+                return;
+            }
+
+            this.activeIndex = (this.activeIndex + step + count) % count;
+            this.$nextTick(() => document.getElementById(`${this.listId}-${this.activeIndex}`)?.scrollIntoView({ block: 'nearest' }));
+        },
+
+        chooseActive() {
+            if (! this.open) {
+                this.openMenu();
+
+                return;
+            }
+
+            const option = this.visible[this.activeIndex];
+
+            if (option) {
+                this.choose(option);
+            }
+        },
+
+        close() {
+            this.open = false;
+            // Leave the box showing the chosen label (or empty), never a half-typed search.
+            this.syncFromSelected();
+        },
+    }));
 });
 
 const livewirePresent = window.Livewire

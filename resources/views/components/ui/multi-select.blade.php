@@ -1,7 +1,7 @@
 {{--
     A filter that takes several values: looks like a <select>, opens a checklist that stays open while you tick.
     The Livewire component supplies two actions, one that toggles a value and one that clears the choice.
-        <x-ui.multi-select label="Asset type" all-label="All types" :options="['PC' => 'Computer (PC)', ...]"
+        <x-ui.multi-select label="Asset type" all-label="All types" :options="['PC' => 'Desktop', ...]"
             :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
     Nothing selected means "all".
 --}}

@@ -144,14 +144,15 @@ class AssetAnalyticsTest extends TestCase
         $this->actingAs($this->superAdmin());
 
         Livewire::test(Dashboard::class)
-            ->assertViewHas('unassigned', fn ($u) => $u['total'] === 3 && $u['by_category'] === ['asset' => 1, 'phone' => 1, 'network' => 1])
+            // A network device is never assigned to a person, so the router is not "unassigned" any more.
+            ->assertViewHas('unassigned', fn ($u) => $u['total'] === 2 && $u['by_category'] === ['asset' => 1, 'phone' => 1, 'network' => 0])
             ->assertSee(route('assets.assets', ['assigned' => 'none']), false)
             ->assertSee(route('assets.phones', ['assigned' => 'none']), false)
-            ->assertSee(route('assets.network', ['assigned' => 'none']), false);
+            ->assertDontSee(route('assets.network', ['assigned' => 'none']), false);
 
         $this->assertListNames(AssetsList::class, ['assigned' => 'none'], ['Spare PC']);
         $this->assertListNames(PhonesList::class, ['assigned' => 'none'], ['Spare phone']);
-        $this->assertListNames(NetworkList::class, ['assigned' => 'none'], ['Spare router']);
+        $this->assertListNames(NetworkList::class, ['assigned' => 'none'], []);
     }
 
     public function test_top_assignees_ranks_by_count_across_categories_and_caps_at_ten(): void

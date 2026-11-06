@@ -2,16 +2,19 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\CreatesModelInline;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
+use App\Livewire\Assets\Concerns\SearchesEmployeePicker;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
+use App\Rules\UniqueAssetName;
 use App\Models\IctAssetModel;
 use App\Models\MdmDevice;
 use App\Models\MdmDeviceCommand;
@@ -24,12 +27,14 @@ use App\Services\Assets\Mdm\MdmSettings;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class PhonesList extends Component
 {
+    use CreatesModelInline;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
@@ -37,6 +42,7 @@ class PhonesList extends Component
     use HasSelectableColumns;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
+    use SearchesEmployeePicker;
     use WithPagination;
 
     public const CATEGORY = IctAsset::DEVICE_CATEGORY_PHONE;
@@ -83,6 +89,7 @@ class PhonesList extends Component
         'status' => 'Active',
         'status_reason' => '',
         'assigned_to_employee_id' => null,
+        'is_general_use' => false,
         'region_id' => null,
         'district_id' => null,
         'user_phone_number' => '',
@@ -133,6 +140,7 @@ class PhonesList extends Component
             'status' => (string) $asset->status,
             'status_reason' => (string) $asset->status_reason,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
+            'is_general_use' => (bool) $asset->is_general_use,
             'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
             'user_phone_number' => (string) $asset->user_phone_number,
@@ -152,11 +160,42 @@ class PhonesList extends Component
             : collect();
     }
 
+    /** POS terminals are general use: choosing that type on a new device with no holder ticks the box (it can be unticked). */
+    public function updatedForm($value, $key): void
+    {
+        if ($key === 'asset_type' && $value === 'POS' && ! $this->editingAssetId && blank($this->form['assigned_to_employee_id'] ?? null)) {
+            $this->form['is_general_use'] = true;
+        }
+    }
+
+    /** Ticking "General use" drops the holder, like the pool-car checkbox on vehicles. */
+    public function updatedFormIsGeneralUse($value): void
+    {
+        if ($value) {
+            $this->form['assigned_to_employee_id'] = null;
+        }
+    }
+
     public function closeForm(): void
     {
         $this->showForm = false;
         $this->editingAssetId = null;
+        $this->closeNewModel();
         $this->resetForm();
+    }
+
+    /**
+     * Options for the "Assigned To" picker, 20 at most, matched on name or staff ID. Renderless: no page re-render per
+     * keystroke. The save still validates the posted id as it always did.
+     *
+     * @return array<int, array{value: int, label: string, description: string}>
+     */
+    #[Renderless]
+    public function searchEmployees(string $term = ''): array
+    {
+        $this->authorizeAction($this->editingAssetId ? 'assets.edit' : 'assets.create');
+
+        return $this->employeeSearchOptions($term);
     }
 
     public function save(): void
@@ -168,6 +207,11 @@ class PhonesList extends Component
 
         $validated = $this->validate($this->rules())['form'];
         $validated['region_id'] = $regionId;
+
+        // Ignore any assignee sent for a general-use phone before anything is derived from it.
+        if ($validated['is_general_use'] ?? false) {
+            $validated['assigned_to_employee_id'] = null;
+        }
 
         if (empty($validated['district_id']) && ! empty($validated['assigned_to_employee_id'])) {
             $validated['district_id'] = $this->assigneeDistrictWithinRegion((int) $validated['assigned_to_employee_id'], $regionId);
@@ -273,7 +317,7 @@ class PhonesList extends Component
     protected function rules(): array
     {
         return [
-            'form.asset_name' => ['required', 'string', 'max:255'],
+            'form.asset_name' => ['required', 'string', 'max:255', new UniqueAssetName($this->editingAssetId)],
             'form.serial_number' => [
                 'nullable',
                 'string',
@@ -285,7 +329,11 @@ class PhonesList extends Component
             'form.ict_asset_model_id' => ['nullable', 'integer', 'exists:ict_asset_models,id'],
             'form.status' => ['required', 'string', 'max:120'],
             'form.status_reason' => [Rule::requiredIf(fn () => ($this->form['status'] ?? null) === IctAsset::STATUS_DAMAGED), 'nullable', 'string', 'max:1000'],
-            'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'form.is_general_use' => ['boolean'],
+            // A general-use phone (a shared POS terminal, say) has no holder: any assignee sent is ignored.
+            'form.assigned_to_employee_id' => ($this->form['is_general_use'] ?? false)
+                ? ['nullable']
+                : ['nullable', 'integer', 'exists:employees,id'],
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.user_phone_number' => ['nullable', 'string', 'max:30'],
             'form.device_phone_number' => ['nullable', 'string', 'max:30'],
@@ -320,6 +368,7 @@ class PhonesList extends Component
             'status' => 'Active',
             'status_reason' => '',
             'assigned_to_employee_id' => null,
+            'is_general_use' => false,
             'region_id' => $this->actorRegionId(),
             'district_id' => null,
             'user_phone_number' => '',
@@ -359,12 +408,6 @@ class PhonesList extends Component
             ->orderBy('name')
             ->get();
 
-        $employees = Employee::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
-            ->orderBy('full_name')
-            ->limit(500)
-            ->get();
-
         $mdmEnabled = (bool) config('gwl.mdm_enabled');
 
         return view('livewire.assets.phones-list', [
@@ -384,7 +427,8 @@ class PhonesList extends Component
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),
             'models' => $models,
-            'employees' => $employees,
+            'assignedToLabel' => $this->showForm ? $this->employeeLabel($this->form['assigned_to_employee_id'] ?? null) : '',
+            ...$this->addModelViewData(),
         ]);
     }
 }

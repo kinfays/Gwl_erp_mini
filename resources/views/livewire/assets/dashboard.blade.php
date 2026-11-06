@@ -91,7 +91,7 @@
     </div>
 
     <div class="dash-row">
-        <x-ui.card title="Unassigned Assets" description="Devices with no employee recorded as the holder.">
+        <x-ui.card title="Unassigned Assets" description="Laptops, desktops, printers, photocopiers, phones and SIM cards with no holder recorded. Network devices, servers, POS terminals and general-use assets are not counted.">
             <x-ui.stat-tile label="Unassigned" :value="$unassigned['total']" icon="laptop" tone="warning">
                 <span class="ui-tags stat-breakdown">
                     @foreach (['asset' => 'Assets', 'phone' => 'Phones', 'network' => 'Network'] as $category => $name)
@@ -134,7 +134,7 @@
                         </span>
                     </td>
                     <td @class(['cell-muted' => ! $asset->district])>{{ $asset->district?->district_name ?: 'Unassigned' }}</td>
-                    <td @class(['cell-muted' => ! $asset->assignedTo])>{{ $asset->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                    <td @class(['cell-muted' => ! $asset->assignedTo && ! $asset->is_general_use])><x-assets.assignee :asset="$asset" /></td>
                     <td><x-ui.status-pill domain="asset" :status="$asset->status ?: 'Unknown'" /></td>
                     <td class="nowrap cell-muted">{{ $asset->updated_at?->diffForHumans() }}</td>
                 </tr>

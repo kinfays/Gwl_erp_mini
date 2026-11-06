@@ -11,6 +11,7 @@ use App\Http\Controllers\Assets\AssetAuditExportController;
 use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Assets\AssetsListExportController;
 use App\Http\Controllers\Assets\IssueReportsExportController;
+use App\Http\Controllers\Assets\MaintenanceExportController;
 use App\Http\Controllers\Assets\NetworkListExportController;
 use App\Http\Controllers\Assets\PhonesListExportController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
@@ -322,6 +323,14 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
                 ->middleware('permission:assets.export_audits')
                 ->name('audits.export.pdf');
         });
+
+        Route::get('/maintenance/export/excel', [MaintenanceExportController::class, 'excel'])
+            ->middleware('permission:assets.export_maintenance')
+            ->name('maintenance.export.excel');
+
+        Route::get('/maintenance/export/pdf', [MaintenanceExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_maintenance')
+            ->name('maintenance.export.pdf');
 
         Route::get('/maintenance', [AssetModuleController::class, 'maintenance'])
             ->middleware('permission:assets.manage_maintenance')

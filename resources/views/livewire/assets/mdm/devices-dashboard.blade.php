@@ -39,7 +39,7 @@
                         <td>
                             <a href="{{ route('assets.mdm.devices.show', $enrolled->id) }}" class="ui-person-name">{{ $enrolled->asset?->asset_name ?? 'Unlinked device' }}</a>
                         </td>
-                        <td @class(['nowrap', 'cell-muted' => ! $enrolled->asset?->assignedTo])>{{ $enrolled->asset?->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        <td @class(['nowrap', 'cell-muted' => ! $enrolled->asset?->assignedTo])>{{ $enrolled->asset?->assigneeLabel() ?? 'Unassigned' }}</td>
                         <td class="nowrap">{{ $enrolled->enrolled_at?->diffForHumans() }}</td>
                     </tr>
                 @empty
@@ -162,7 +162,7 @@
                                 </span>
                             </span>
                         </td>
-                        <td @class(['nowrap', 'cell-muted' => ! $device->asset?->assignedTo])>{{ $device->asset?->assignedTo?->full_name ?: 'Unassigned' }}</td>
+                        <td @class(['nowrap', 'cell-muted' => ! $device->asset?->assignedTo])>{{ $device->asset?->assigneeLabel() ?? 'Unassigned' }}</td>
                         <td class="nowrap">{{ $device->policy?->name ?? '—' }}</td>
                         <td>
                             <span class="ui-tags">

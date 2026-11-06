@@ -184,10 +184,14 @@ class AssetDashboardService
         ];
     }
 
-    /** "In store" and "no current holder" both land here; see the Tier B Available status. */
+    /**
+     * "In store" and "no current holder" both land here (see the Tier B Available status). Only assets that NEED a
+     * holder count (IctAsset::scopeNeedsAssignee): not network devices, servers or printers, and not general-use assets.
+     * The dashboard card, the Summary page, the drill-down lists (?assigned=none) and their exports all call this.
+     */
     public function applyUnassigned(Builder $query): Builder
     {
-        return $query->whereNull($query->getModel()->qualifyColumn('assigned_to_employee_id'));
+        return $query->needsAssignee();
     }
 
     /**

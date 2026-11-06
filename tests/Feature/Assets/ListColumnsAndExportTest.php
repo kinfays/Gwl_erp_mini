@@ -84,11 +84,11 @@ class ListColumnsAndExportTest extends TestCase
     {
         Livewire::test(AssetsList::class)->call('openCreate')
             ->set('form.asset_type', 'Laptop')
-            ->assertViewHas('formSupportsProcessor', true)->assertSee('Ultra 7 155U')
+            ->assertViewHas('formSupportsProcessor', true)->assertSee('Ultra 7-115U')
             ->set('form.cpu_name', 'Ultra 7 155U')
             ->set('form.asset_type', 'PRT')
             ->assertSet('form.cpu_name', '')
-            ->assertViewHas('formSupportsProcessor', false)->assertDontSee('Ultra 7 155U');
+            ->assertViewHas('formSupportsProcessor', false)->assertDontSee('Ultra 7-115U');
 
         // The service holds the same line for a stored asset whose type is changed.
         $pc = $this->asset(['asset_type' => 'PC', 'cpu_name' => 'i5']);

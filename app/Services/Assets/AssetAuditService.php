@@ -89,7 +89,7 @@ class AssetAuditService
     public function recordResult(IctAssetAuditLine $line, string $result, array $actual, ?string $reason, int $verifiedByUserId): void
     {
         if (! in_array($result, IctAssetAuditLine::RESULTS, true)) {
-            throw ValidationException::withMessages(['result' => 'Result must be matched, mismatch or not found.']);
+            throw ValidationException::withMessages(['result' => 'Result must be matched, mismatch, not found or damaged.']);
         }
 
         // Re-read: the caller's copy may be stale (a double submit, or the audit completed in another tab).
@@ -106,7 +106,7 @@ class AssetAuditService
         $reason = filled($reason) ? trim($reason) : null;
 
         if ($result !== IctAssetAuditLine::RESULT_MATCHED && $reason === null) {
-            throw ValidationException::withMessages(['reason' => 'Say what was found: a reason is required for a mismatch or a missing asset.']);
+            throw ValidationException::withMessages(['reason' => 'Say what was found: a reason is required for a mismatch, a missing asset or a damaged asset.']);
         }
 
         $status = filled($actual['status'] ?? null) ? (string) $actual['status'] : null;
@@ -116,18 +116,56 @@ class AssetAuditService
         }
 
         $matched = $result === IctAssetAuditLine::RESULT_MATCHED;
+        $damaged = $result === IctAssetAuditLine::RESULT_DAMAGED;
 
-        $line->forceFill([
-            'result' => $result,
-            // Matched means actual = expected by definition, so any actual input is discarded.
-            'actual_status' => $matched ? null : $status,
-            'actual_assigned_to_employee_id' => $matched ? null : (($actual['assigned_to_employee_id'] ?? null) ?: null),
-            'actual_district_id' => $matched ? null : (($actual['district_id'] ?? null) ?: null),
-            'actual_location' => $matched ? null : (filled($actual['location'] ?? null) ? trim($actual['location']) : null),
-            'mismatch_reason' => $matched ? null : $reason,
-            'verified_by_user_id' => $verifiedByUserId,
-            'verified_at' => now(),
-        ])->save();
+        if ($damaged) {
+            // Damaged means "found, but damaged": the line records that as what was found. Holder and district are not
+            // asked (the asset was found where it was expected).
+            $status = IctAsset::STATUS_DAMAGED;
+            $actual['assigned_to_employee_id'] = null;
+            $actual['district_id'] = null;
+        }
+
+        DB::transaction(function () use ($line, $result, $status, $actual, $reason, $matched, $damaged, $verifiedByUserId) {
+            $line->forceFill([
+                'result' => $result,
+                // Matched means actual = expected by definition, so any actual input is discarded.
+                'actual_status' => $matched ? null : $status,
+                'actual_assigned_to_employee_id' => $matched ? null : (($actual['assigned_to_employee_id'] ?? null) ?: null),
+                'actual_district_id' => $matched ? null : (($actual['district_id'] ?? null) ?: null),
+                'actual_location' => $matched ? null : (filled($actual['location'] ?? null) ? trim($actual['location']) : null),
+                'mismatch_reason' => $matched ? null : $reason,
+                'verified_by_user_id' => $verifiedByUserId,
+                'verified_at' => now(),
+            ])->save();
+
+            if ($damaged) {
+                $this->markAssetDamaged($line, $reason);
+            }
+        });
+    }
+
+    /**
+     * A Damaged result is linked to the asset's own status: the asset becomes Damaged (reason = what the auditor wrote).
+     * It goes through AssetRecordService::save(), so the status change is written to ict_asset_transfers and audit_logs
+     * like any other edit. When the status really changed, the line is locked (correction_applied), exactly like an
+     * applied mismatch correction, so the asset cannot be left Damaged by a result that was later changed. An asset that
+     * is already Damaged is left alone and the line stays editable. Callers check the actor may change this asset's region.
+     */
+    protected function markAssetDamaged(IctAssetAuditLine $line, ?string $reason): void
+    {
+        $asset = IctAsset::query()->lockForUpdate()->findOrFail($line->ict_asset_id);
+
+        if ($asset->status === IctAsset::STATUS_DAMAGED) {
+            return;
+        }
+
+        $this->assetRecords->save([
+            'status' => IctAsset::STATUS_DAMAGED,
+            'status_reason' => $reason,
+        ], $asset->device_category, $asset);
+
+        $line->forceFill(['correction_applied' => true])->save();
     }
 
     /**
@@ -193,6 +231,7 @@ class AssetAuditService
             AuditLog::record('complete_asset_audit', Permission::MODULE_ASSETS, 'ict_asset_audits', $audit->id, null, [
                 'lines' => $total,
                 'matched' => $matched,
+                'damaged' => $audit->lines()->where('result', IctAssetAuditLine::RESULT_DAMAGED)->count(),
                 'reconciliation_rate' => $audit->reconciliation_rate,
             ]);
         });
@@ -200,7 +239,11 @@ class AssetAuditService
         $audit->refresh();
     }
 
-    /** @return array{total: int, verified: int, pending: int, matched: int, mismatch: int, not_found: int} */
+    /**
+     * Every line is in exactly one of pending / matched / mismatch / not_found / damaged, so those five add up to total.
+     *
+     * @return array{total: int, verified: int, pending: int, matched: int, mismatch: int, not_found: int, damaged: int}
+     */
     public function summary(IctAssetAudit $audit): array
     {
         $counts = $audit->lines()->select('result', DB::raw('COUNT(*) as total'))->groupBy('result')->pluck('total', 'result');
@@ -214,6 +257,7 @@ class AssetAuditService
             'matched' => (int) ($counts[IctAssetAuditLine::RESULT_MATCHED] ?? 0),
             'mismatch' => (int) ($counts[IctAssetAuditLine::RESULT_MISMATCH] ?? 0),
             'not_found' => (int) ($counts[IctAssetAuditLine::RESULT_NOT_FOUND] ?? 0),
+            'damaged' => (int) ($counts[IctAssetAuditLine::RESULT_DAMAGED] ?? 0),
         ];
     }
 
@@ -248,12 +292,6 @@ class AssetAuditService
      */
     public function exportRows(IctAssetAudit $audit): Collection
     {
-        $resultLabels = [
-            IctAssetAuditLine::RESULT_MATCHED => 'Matched',
-            IctAssetAuditLine::RESULT_MISMATCH => 'Mismatch',
-            IctAssetAuditLine::RESULT_NOT_FOUND => 'Not found',
-        ];
-
         return $audit->lines()
             ->with(['asset', 'expectedEmployee', 'expectedDistrict', 'actualEmployee', 'actualDistrict', 'verifiedBy'])
             ->orderBy('id')
@@ -266,9 +304,9 @@ class AssetAuditService
                 'category' => (string) $line->asset?->device_category,
                 'type' => (string) $line->asset?->asset_type,
                 'expected_status' => (string) $line->expected_status,
-                'expected_holder' => (string) $line->expectedEmployee?->full_name,
+                'expected_holder' => (string) ($line->expectedEmployee?->full_name ?: ($line->asset?->is_general_use ? 'General use' : '')),
                 'expected_district' => (string) $line->expectedDistrict?->district_name,
-                'result' => $resultLabels[$line->result] ?? 'Pending',
+                'result' => IctAssetAuditLine::labelFor($line->result),
                 'actual_status' => (string) $line->actual_status,
                 'actual_holder' => (string) $line->actualEmployee?->full_name,
                 'actual_district' => (string) $line->actualDistrict?->district_name,

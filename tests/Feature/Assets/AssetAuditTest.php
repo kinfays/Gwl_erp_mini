@@ -202,7 +202,7 @@ class AssetAuditTest extends TestCase
         $this->assertSame('completed', $audit->status);
         $this->assertNotNull($audit->completed_at);
         $this->assertSame('33.33', (string) $audit->reconciliation_rate);
-        $this->assertSame(['total' => 3, 'verified' => 3, 'pending' => 0, 'matched' => 1, 'mismatch' => 1, 'not_found' => 1], $service->summary($audit));
+        $this->assertSame(['total' => 3, 'verified' => 3, 'pending' => 0, 'matched' => 1, 'mismatch' => 1, 'not_found' => 1, 'damaged' => 0], $service->summary($audit));
         $this->assertTrue(AuditLog::query()->where('action', 'complete_asset_audit')->exists());
 
         // Completed audits are frozen.

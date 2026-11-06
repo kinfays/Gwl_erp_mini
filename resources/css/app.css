@@ -1709,6 +1709,54 @@ textarea.form-input {
     color: var(--color-ink-3);
 }
 
+/* Inline panel inside a form (e.g. "Add new model" on the asset form) */
+.ui-subpanel {
+    padding: 12px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-control);
+    background: var(--color-surface-2);
+}
+
+.ui-subpanel-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* <x-form.searchable-select>: reuses the combobox look; adds the optional thumbnail, a disabled state and a menu that
+   never outgrows a phone screen. Inputs stay 16px on touch so iOS does not zoom the page on focus. */
+.searchable-select-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.searchable-select-row > .erp-combobox-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.searchable-select .erp-combobox-menu {
+    max-height: min(16rem, 50vh);
+    overscroll-behavior: contain;
+}
+
+.searchable-select .erp-combobox-option span {
+    overflow-wrap: anywhere;
+}
+
+.searchable-select .erp-combobox-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+@media (pointer: coarse) {
+    .searchable-select .erp-combobox-input {
+        font-size: 1rem;
+    }
+}
+
 /* =========================================================================
    Overlays: toasts, confirm dialog, notification menus
    ========================================================================= */
@@ -3486,6 +3534,14 @@ textarea.form-input {
     border-radius: 4px;
     background-color: var(--color-surface);
     color: var(--color-primary);
+}
+
+/* The base rule above paints the box with the surface colour, which beats the forms plugin's checked fill; the plugin's
+   tick is white, so on the white light-theme surface a ticked box looked empty. Fill it with the primary colour. */
+.ui-check input[type='checkbox']:checked,
+.ui-check input[type='checkbox']:indeterminate {
+    border-color: var(--color-primary);
+    background-color: var(--color-primary);
 }
 
 .ui-check input[type='checkbox']:focus {

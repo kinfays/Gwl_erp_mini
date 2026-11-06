@@ -5,16 +5,28 @@ namespace App\Services\Assets;
 use App\Models\AuditLog;
 use App\Models\IctAsset;
 use App\Models\Permission;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AssetRecordService
 {
+    public const DUPLICATE_NAME_MESSAGE = 'An asset with this name already exists.';
+
     public function __construct(
         protected IpRangeService $ipRanges,
         protected AssetTransferService $transfers,
     ) {}
+
+    /** Whether another asset already uses this name (case-insensitive, surrounding spaces ignored). */
+    public static function nameTaken(string $name, ?int $ignoreId = null): bool
+    {
+        return IctAsset::query()
+            ->where('asset_name_key', IctAsset::nameKey($name))
+            ->when($ignoreId, fn ($query, $id) => $query->whereKeyNot($id))
+            ->exists();
+    }
 
     /**
      * Shared create/update path for all three category forms (Assets,
@@ -38,6 +50,16 @@ class AssetRecordService
 
         $data['device_category'] = $category;
 
+        // The one choke point for every asset write (Assets, Phones and Network forms), so the rule holds even when a
+        // caller skipped the form validation. The database index backs it up against a simultaneous save.
+        if (array_key_exists('asset_name', $data)) {
+            $data['asset_name'] = trim((string) $data['asset_name']);
+
+            if (self::nameTaken($data['asset_name'], $existing?->id)) {
+                throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
+            }
+        }
+
         // A cleared <select>/date input arrives as '' — store NULL rather than
         // hand a strict-mode database an empty string for an integer/date column.
         foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'status_reason'] as $nullableKey) {
@@ -46,6 +68,7 @@ class AssetRecordService
             }
         }
 
+        $data = $this->normaliseGeneralUse($data, $category, $existing);
         $data = $this->normaliseUps($data, $category, $existing);
         $data = $this->normaliseProcessor($data, $category, $existing);
 
@@ -61,6 +84,16 @@ class AssetRecordService
             }
         }
 
+        try {
+            return $this->persist($data, $category, $existing);
+        } catch (UniqueConstraintViolationException $e) {
+            // Lost a race with another save of the same name (the index is the final word).
+            throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
+        }
+    }
+
+    protected function persist(array $data, string $category, ?IctAsset $existing): IctAsset
+    {
         return DB::transaction(function () use ($data, $category, $existing) {
             if (array_key_exists('assigned_to_employee_id', $data)) {
                 $currentAssigned = $existing?->assigned_to_employee_id;
@@ -104,6 +137,27 @@ class AssetRecordService
 
             return $asset;
         });
+    }
+
+    /**
+     * General use (like a pool car): the asset is shared, so it has no holder. Network devices are never assigned to a
+     * person, so the flag does not apply to them. When the asset is (or is being made) general use, any assignee sent is
+     * ignored and an existing one is cleared; going through save() means the clearing is logged like any unassign
+     * (ict_asset_transfers, previous holder, audit_logs). A save that mentions neither key leaves both alone.
+     */
+    protected function normaliseGeneralUse(array $data, string $category, ?IctAsset $existing): array
+    {
+        if (array_key_exists('is_general_use', $data)) {
+            $data['is_general_use'] = $category !== IctAsset::DEVICE_CATEGORY_NETWORK && (bool) $data['is_general_use'];
+        }
+
+        $general = array_key_exists('is_general_use', $data) ? $data['is_general_use'] : (bool) $existing?->is_general_use;
+
+        if ($general && (array_key_exists('is_general_use', $data) || array_key_exists('assigned_to_employee_id', $data))) {
+            $data['assigned_to_employee_id'] = null;
+        }
+
+        return $data;
     }
 
     /**

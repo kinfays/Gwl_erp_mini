@@ -164,6 +164,9 @@ return [
     // narrow the filters; the PDF is far heavier to build, so it has its own, lower cap.
     'assets_list_export_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_MAX_ROWS', 5000),
     'assets_list_export_pdf_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_PDF_MAX_ROWS', 1500),
+    // The same two caps for the Maintenance log export (Excel / PDF).
+    'assets_maintenance_export_max_rows' => (int) env('GWL_ASSETS_MAINTENANCE_EXPORT_MAX_ROWS', 5000),
+    'assets_maintenance_export_pdf_max_rows' => (int) env('GWL_ASSETS_MAINTENANCE_EXPORT_PDF_MAX_ROWS', 1500),
     // Billing route exceptions (B11), all PLACEHOLDERS to confirm. A route needs at least this many customers behind a
     // percentage before it can be flagged on it (so one-customer routes do not flood the list); then the unbilled rate
     // and the estimated-bill share are flagged above these percentages, and a closing balance at or below minus the

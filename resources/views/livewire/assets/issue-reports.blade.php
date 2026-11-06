@@ -173,13 +173,16 @@
                 @endif
 
                 <div class="span-2">
-                    <x-ui.select label="Linked Asset" wire:model.defer="form.linked_asset_id" :required="$requiresAsset"
-                        :hint="$requiresAsset ? 'Required for this type of issue.' : null">
-                        <option value="">{{ $requiresAsset ? 'Select the affected device' : 'Unlinked' }}</option>
-                        @foreach ($assets as $asset)
-                            <option value="{{ $asset->id }}">{{ $asset->asset_name }} ({{ $asset->serial_number ?: 'No serial' }})</option>
-                        @endforeach
-                    </x-ui.select>
+                    <x-form.searchable-select
+                        label="Linked Asset"
+                        model="form.linked_asset_id"
+                        search="searchLinkedAssets"
+                        :initial-label="$linkedAssetLabel"
+                        :reset-key="$form['issue_type'] ?? ''"
+                        :required="$requiresAsset"
+                        :placeholder="$requiresAsset ? 'Search by asset name or serial number (required)' : 'Unlinked: search by asset name or serial number'"
+                        :hint="$requiresAsset ? 'Required for this type of issue.' : null"
+                    />
                 </div>
 
                 <x-ui.select label="Region" wire:model.defer="form.reporting_region_id" :disabled="$regionLocked" :hint="$regionLocked ? 'Fixed to your own region.' : null">

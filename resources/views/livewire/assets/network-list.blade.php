@@ -171,7 +171,11 @@
                         <option value="{{ $value }}">{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
-                <x-assets.model-select :models="$models" />
+                <div>
+                    <x-assets.model-select :models="$models" />
+                    <x-assets.add-model-button :can="$canAddModel" :open="$showNewModel" />
+                </div>
+                <x-assets.add-model-panel :can="$canAddModel" :open="$showNewModel" :asset-type="$form['asset_type']" :types="$assetTypes" :manufacturers="$newModelManufacturers" />
 
                 <x-ui.input label="Asset Name" wire:model.defer="form.asset_name" />
                 <x-ui.input label="UserName" wire:model.defer="form.device_username" autocomplete="off" />

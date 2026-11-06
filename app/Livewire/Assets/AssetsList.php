@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\CreatesModelInline;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
+use App\Livewire\Assets\Concerns\SearchesEmployeePicker;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\Department;
@@ -14,17 +16,20 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
+use App\Rules\UniqueAssetName;
 use App\Services\Assets\AssetDashboardService;
 use App\Services\Assets\AssetListColumns;
 use App\Services\Assets\AssetListQuery;
 use App\Services\Assets\AssetRecordService;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class AssetsList extends Component
 {
+    use CreatesModelInline;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
@@ -32,6 +37,7 @@ class AssetsList extends Component
     use HasSelectableColumns;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
+    use SearchesEmployeePicker;
     use WithPagination;
 
     public const CATEGORY = IctAsset::DEVICE_CATEGORY_ASSET;
@@ -72,6 +78,7 @@ class AssetsList extends Component
         'ups_notes' => '',
         'cpu_name' => '',
         'assigned_to_employee_id' => null,
+        'is_general_use' => false,
         'department_id' => null,
         'region_id' => null,
         'district_id' => null,
@@ -91,6 +98,20 @@ class AssetsList extends Component
         if (in_array($name, ['search', 'status', 'assetType', 'districtId', 'ups', 'perPage', ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
+    }
+
+    /**
+     * Options for the "Assigned To" picker, 20 at most, matched on name or staff ID. Renderless: no page re-render per
+     * keystroke. The save still validates the posted id as it always did.
+     *
+     * @return array<int, array{value: int, label: string, description: string}>
+     */
+    #[Renderless]
+    public function searchEmployees(string $term = ''): array
+    {
+        $this->authorizeAction($this->editingAssetId ? 'assets.edit' : 'assets.create');
+
+        return $this->employeeSearchOptions($term);
     }
 
     public function openCreate(): void
@@ -126,6 +147,7 @@ class AssetsList extends Component
             'ups_notes' => (string) $asset->ups_notes,
             'cpu_name' => (string) $asset->cpu_name,
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
+            'is_general_use' => (bool) $asset->is_general_use,
             'department_id' => $asset->department_id,
             'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
@@ -150,6 +172,7 @@ class AssetsList extends Component
     {
         $this->showForm = false;
         $this->editingAssetId = null;
+        $this->closeNewModel();
         $this->resetForm();
     }
 
@@ -176,7 +199,7 @@ class AssetsList extends Component
     protected function rules(): array
     {
         return [
-            'form.asset_name' => ['required', 'string', 'max:255'],
+            'form.asset_name' => ['required', 'string', 'max:255', new UniqueAssetName($this->editingAssetId)],
             'form.serial_number' => [
                 'required',
                 'string',
@@ -195,7 +218,11 @@ class AssetsList extends Component
             ],
             'form.ups_notes' => ['nullable', 'string', 'max:1000'],
             'form.cpu_name' => ['nullable', 'string', 'max:255'],
-            'form.assigned_to_employee_id' => ['required', 'integer', 'exists:employees,id'],
+            'form.is_general_use' => ['boolean'],
+            // A general-use asset has no holder: any assignee sent is ignored (and cleared by AssetRecordService).
+            'form.assigned_to_employee_id' => ($this->form['is_general_use'] ?? false)
+                ? ['nullable']
+                : ['required', 'integer', 'exists:employees,id'],
             'form.department_id' => ['required', 'integer', 'exists:departments,id'],
             'form.district_id' => ['required', 'integer', $this->actorRegionDistrictRule()],
             'form.purchased_at' => ['nullable', 'date'],
@@ -224,6 +251,7 @@ class AssetsList extends Component
             'form.ups_notes' => 'UPS notes',
             'form.cpu_name' => 'processor',
             'form.assigned_to_employee_id' => 'assigned to',
+            'form.is_general_use' => 'general use',
             'form.department_id' => 'department',
             'form.district_id' => 'location',
             'form.purchased_at' => 'date',
@@ -245,6 +273,11 @@ class AssetsList extends Component
     /** Picking a type that carries no UPS (or no processor) drops whatever was entered for one. */
     public function updatedForm($value, $key): void
     {
+        // Ticking "General use" drops the holder, like the pool-car checkbox on vehicles.
+        if ($key === 'is_general_use' && $value) {
+            $this->form['assigned_to_employee_id'] = null;
+        }
+
         if ($key !== 'asset_type') {
             return;
         }
@@ -302,6 +335,7 @@ class AssetsList extends Component
             'ups_notes' => '',
             'cpu_name' => '',
             'assigned_to_employee_id' => null,
+            'is_general_use' => false,
             'department_id' => null,
             'region_id' => $this->actorRegionId(),
             'district_id' => null,
@@ -333,12 +367,6 @@ class AssetsList extends Component
             ->orderBy('name')
             ->get();
 
-        $employees = Employee::query()
-            ->when($this->actorIsRegionScopedIct(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
-            ->orderBy('full_name')
-            ->limit(500)
-            ->get();
-
         return view('livewire.assets.assets-list', [
             'analyticsChips' => $this->analyticsFilterChips(),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
@@ -357,8 +385,9 @@ class AssetsList extends Component
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),
             'models' => $models,
+            ...$this->addModelViewData(),
             'departments' => Department::query()->orderBy('department_name')->get(),
-            'employees' => $employees,
+            'assignedToLabel' => $this->showForm ? $this->employeeLabel($this->form['assigned_to_employee_id'] ?? null) : '',
         ]);
     }
 }

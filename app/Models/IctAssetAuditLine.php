@@ -10,12 +10,41 @@ class IctAssetAuditLine extends Model
     public const RESULT_MATCHED = 'matched';
     public const RESULT_MISMATCH = 'mismatch';
     public const RESULT_NOT_FOUND = 'not_found';
+    /** Found, but physically damaged. Its own category: never counted as matched, mismatch or not found. */
+    public const RESULT_DAMAGED = 'damaged';
 
     public const RESULTS = [
         self::RESULT_MATCHED,
         self::RESULT_MISMATCH,
         self::RESULT_NOT_FOUND,
+        self::RESULT_DAMAGED,
     ];
+
+    /** The one place a result is named for people (screens, exports, PDF). A NULL result is "Pending". */
+    public const RESULT_LABELS = [
+        self::RESULT_MATCHED => 'Matched',
+        self::RESULT_MISMATCH => 'Mismatch',
+        self::RESULT_NOT_FOUND => 'Not found',
+        self::RESULT_DAMAGED => 'Damaged',
+    ];
+
+    /** Badge tone per result (x-ui.status-pill), each with a dark-mode token; Pending is muted. Damaged shares Not found's alarm tone. */
+    public const RESULT_TONES = [
+        self::RESULT_MATCHED => 'success',
+        self::RESULT_MISMATCH => 'warning',
+        self::RESULT_NOT_FOUND => 'danger',
+        self::RESULT_DAMAGED => 'danger',
+    ];
+
+    public static function labelFor(?string $result): string
+    {
+        return self::RESULT_LABELS[$result] ?? 'Pending';
+    }
+
+    public static function toneFor(?string $result): string
+    {
+        return self::RESULT_TONES[$result] ?? 'muted';
+    }
 
     protected $table = 'ict_asset_audit_lines';
 

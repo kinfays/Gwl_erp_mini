@@ -39,6 +39,19 @@
                 <input type="checkbox" wire:model.live="dueOnly">
                 <span>Due only</span>
             </label>
+            @if ($canExport)
+                {{-- Same filters as the list on screen; the server rebuilds the (scoped) query from them. --}}
+                <a href="{{ route('assets.maintenance.export.excel', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export Excel" aria-label="Export Excel">
+                    <x-ui.file-icon type="excel" />
+                </a>
+                <a href="{{ route('assets.maintenance.export.pdf', $exportParams) }}" class="btn btn-secondary btn-icon" title="Export PDF" aria-label="Export PDF">
+                    <x-ui.file-icon type="pdf" />
+                </a>
+            @endif
+            <p class="pager-total" role="status">
+                <b>{{ number_format($maintenance->total()) }}</b> {{ $maintenance->total() === 1 ? 'record' : 'records' }}
+                {{ $filtersActive ? 'match your filters' : 'in total' }}
+            </p>
         </div>
 
         <div class="ui-loading-host">
@@ -50,6 +63,7 @@
                         <th>Technician</th>
                         <th>Location</th>
                         <th>Status</th>
+                        <th>Reported</th>
                         <th>Completed</th>
                         <th class="actions"><span class="sr-only-text">Action</span></th>
                     </tr>
@@ -65,8 +79,10 @@
                         </td>
                         <td>{{ $row->maintenance_type }}</td>
                         <td @class(['cell-muted' => ! $row->technician])>{{ $row->technician ?: '-' }}</td>
-                        <td @class(['cell-muted' => ! $row->location])>{{ $row->location ?: '-' }}</td>
+                        @php($rowLocation = \App\Services\Assets\MaintenanceListService::location($row->asset))
+                        <td @class(['cell-muted' => ! $rowLocation])>{{ $rowLocation ?: '-' }}</td>
                         <td><x-ui.status-pill domain="maintenance" :status="$row->status" /></td>
+                        <td @class(['nowrap', 'cell-muted' => ! $row->reported_date])>{{ $row->reported_date?->format('d M Y') ?: '-' }}</td>
                         <td @class(['nowrap', 'cell-muted' => ! $row->completion_date])>{{ $row->completion_date?->format('d M Y') ?: '-' }}</td>
                         <td class="actions">
                             @if ((! $regionLimited || (int) $row->asset?->region_id === (int) $ownRegionId))
@@ -79,7 +95,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="7" icon="wrench" title="No maintenance records found." description="Log a repair or upgrade with Add Maintenance." />
+                    <x-ui.empty-row :colspan="8" icon="wrench" title="No maintenance records found." description="Log a repair or upgrade with Add Maintenance." />
                 @endforelse
 
                 @if ($maintenance->hasPages())
@@ -100,27 +116,45 @@
     @if ($showForm)
         <x-ui.modal :title="$editingMaintenanceId ? 'Edit Maintenance' : 'New Maintenance'" close="closeForm()" size="lg" icon="wrench">
             <div class="ui-form-grid">
-                <div class="span-2">
-                    <x-ui.select label="Asset" wire:model.defer="form.ict_asset_id">
-                        <option value="">Select asset</option>
-                        @foreach ($assets as $asset)
-                            <option value="{{ $asset->id }}">{{ $asset->asset_name }} ({{ $asset->serial_number ?: 'No serial' }})</option>
-                        @endforeach
-                    </x-ui.select>
-                </div>
-
-                <x-ui.input label="Maintenance Type" wire:model.defer="form.maintenance_type" placeholder="Repair, Upgrade, Preventive" />
-                <x-ui.select label="Status" wire:model.defer="form.status">
-                    <option value="Open">Open</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
+                {{-- Type first: it decides which assets the picker offers, so it is applied at once (live), and the asset stays disabled until one is chosen. --}}
+                <x-ui.select label="Asset Type" wire:model.live="form.asset_type" required>
+                    <option value="">Select asset type</option>
+                    @foreach ($assetTypeGroups as $group => $types)
+                        <optgroup label="{{ ucfirst($group) }}">
+                            @foreach ($types as $code => $typeLabel)
+                                <option value="{{ $code }}">{{ $typeLabel }}</option>
+                            @endforeach
+                        </optgroup>
+                    @endforeach
                 </x-ui.select>
 
-                <x-ui.input label="Completion Date" type="date" wire:model.defer="form.completion_date" />
-                <x-ui.input label="Technician" wire:model.defer="form.technician" />
+                <x-form.searchable-select
+                    label="Asset"
+                    model="form.ict_asset_id"
+                    search="searchAssets"
+                    :initial-label="$selectedAssetLabel"
+                    :reset-key="$form['asset_type']"
+                    :disabled="blank($form['asset_type'])"
+                    placeholder="Search by asset name or serial number"
+                    empty-text="No results"
+                    :hint="blank($form['asset_type']) ? 'Choose the asset type first.' : null"
+                    required
+                />
 
-                <x-ui.input label="Location" wire:model.defer="form.location" />
+                <x-ui.input label="Maintenance Type" wire:model.defer="form.maintenance_type" placeholder="Repair, Upgrade, Preventive" />
+                <x-ui.select label="Status" wire:model.live="form.status">
+                    @foreach ($formStatuses as $statusOption)
+                        <option value="{{ $statusOption }}">{{ $statusOption }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.input label="Reported Date" type="date" wire:model.defer="form.reported_date" :max="today()->toDateString()" required />
+
+                @if (($form['status'] ?? '') === $completedStatus)
+                    <x-ui.input label="Completion Date" type="date" wire:model.defer="form.completion_date" :min="$form['reported_date']" :max="today()->toDateString()" required />
+                @endif
+
+                <x-ui.input label="Technician" wire:model.defer="form.technician" />
 
                 <div class="span-2">
                     <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />
