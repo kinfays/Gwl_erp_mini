@@ -86,6 +86,14 @@
                 </div>
             </div>
 
+            @if ($form['payee_kind'] === 'supplier' && $canManageSuppliers)
+                <details class="dash-row" @if ($errors->has('newSupplier.*') || $supplierMatches) open @endif>
+                    <summary>Supplier not on the list? Add it</summary>
+                    @include('livewire.finance.partials.supplier-fields', ['prefix' => 'newSupplier', 'matches' => $supplierMatches, 'ackModel' => 'differentSupplier'])
+                    <div class="ui-form-actions"><x-ui.button size="sm" icon="plus" wire:click="addSupplier" loading="addSupplier">Add and choose this supplier</x-ui.button></div>
+                </details>
+            @endif
+
             @if ($canManageCatalogue)
                 <details class="dash-row" @if ($errors->has('catalogue.*')) open @endif>
                     <summary>Add a category or type</summary>

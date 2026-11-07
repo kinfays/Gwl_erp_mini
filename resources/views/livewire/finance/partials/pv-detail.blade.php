@@ -1,5 +1,9 @@
 {{-- The voucher itself, its marks, what changed since the last query, the timeline by round and the documents.
      Needs $pv (events.actor, category, type, attachments loaded) and $attachmentRoute. Shared by the Finance and the Audit screens. --}}
+{{-- $payeeWarning (optional): PayeeStatusService's flag for an employee payee who has left service. --}}
+@if (! empty($payeeWarning))
+    <x-ui.alert tone="warning" title="Payee has left service" role="status" class="dash-row">{{ $payeeWarning['message'] }}</x-ui.alert>
+@endif
 @php($marks = $pv->marks())
 @php($resubmission = $pv->round > 1 ? $pv->events->last(fn ($event) => $event->action === \App\Models\FinPvEvent::RESUBMITTED) : null)
 

@@ -36,6 +36,13 @@ class AuditController extends Controller
         return view('audit.categories');
     }
 
+    public function suppliers(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.suppliers');
+    }
+
     public function attachment(Request $request, int $pv, int $attachment): StreamedResponse
     {
         $this->enforceModule($request, Permission::MODULE_AUDIT);

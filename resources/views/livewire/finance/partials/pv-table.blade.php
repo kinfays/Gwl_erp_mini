@@ -20,7 +20,12 @@
             <tr wire:key="pv-{{ $pv->id }}" @class(['is-voided' => $pv->isVoided()])>
                 <td class="nowrap">{{ $pv->pv_date->format('d M Y') }}</td>
                 <td class="mono">{{ $pv->pv_no }}@if ($pv->round > 1) <span class="cell-muted">(round {{ $pv->round }})</span>@endif</td>
-                <td>{{ $pv->payee_name }}<div class="cell-muted">{{ $pv->payeeKindLabel() }}</div></td>
+                <td>{{ $pv->payee_name }}<div class="cell-muted">{{ $pv->payeeKindLabel() }}</div>
+                    @if (isset($payeeFlags[$pv->id]))
+                        {{-- an icon AND words, with the full sentence as a tooltip --}}
+                        <div class="cell-muted" title="{{ $payeeFlags[$pv->id]['message'] }}"><x-ui.icon name="triangle-alert" /> Left service</div>
+                    @endif
+                </td>
                 <td>{{ $pv->category?->name }}<div class="cell-muted">{{ $pv->type?->name }}</div></td>
                 <td class="num">{{ $pv->amountFormatted() }}</td>
                 <td>{{ $pv->statusLabel() }}</td>

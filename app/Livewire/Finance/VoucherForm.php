@@ -12,6 +12,7 @@ use App\Models\FinSupplier;
 use App\Models\Permission;
 use App\Services\Finance\FinanceScope;
 use App\Services\Finance\PvCatalogService;
+use App\Services\Finance\SupplierService;
 use App\Services\GWater\Money;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -50,6 +51,11 @@ class VoucherForm extends Component
     public string $newType = '';
 
     public bool $showCatalogue = false;
+
+    /** The "add a supplier" panel (company-wide list, SupplierService): typed values and "this is a different supplier". */
+    public array $newSupplier = ['name' => '', 'code' => '', 'tin' => '', 'phone' => ''];
+
+    public bool $differentSupplier = false;
 
     public function mount(?int $pv = null): void
     {
@@ -184,13 +190,32 @@ class VoucherForm extends Component
         $this->dispatch('toast', type: 'success', message: 'Type added.');
     }
 
+    public function updatedNewSupplierName(): void
+    {
+        $this->differentSupplier = false;
+    }
+
+    /** Adds a supplier to the company-wide list and picks it for this voucher. */
+    public function addSupplier(SupplierService $suppliers): void
+    {
+        $this->guard('finance.manage_suppliers');
+        $this->resetErrorBag(['newSupplier.name', 'newSupplier.code', 'newSupplier.tin', 'newSupplier.phone']);
+        $supplier = $this->run(fn () => $suppliers->create($this->actor(), $this->newSupplier, $this->differentSupplier), 'newSupplier');
+
+        $this->newSupplier = ['name' => '', 'code' => '', 'tin' => '', 'phone' => ''];
+        $this->differentSupplier = false;
+        $this->payeeSearch = '';
+        $this->form['supplier_id'] = (string) $supplier->id;
+        $this->dispatch('toast', type: 'success', message: 'Supplier added and chosen.');
+    }
+
     public function removeUpload(int $index): void
     {
         unset($this->uploads[$index]);
         $this->uploads = array_values($this->uploads);
     }
 
-    public function render()
+    public function render(SupplierService $supplierService)
     {
         // Resolved inside the user's reach every time: the id is a public property the browser could change.
         $existing = $this->pvId ? $this->pvs(FinanceScope::AS_FINANCE)->find($this->pvId) : null;
@@ -248,6 +273,8 @@ class VoucherForm extends Component
             'payeeKinds' => Pv::PAYEE_KINDS,
             'attachments' => $existing ? $existing->attachments()->get() : collect(),
             'canManageCatalogue' => $this->can('finance.manage_categories'),
+            'canManageSuppliers' => $this->can('finance.manage_suppliers'),
+            'supplierMatches' => $kind === Pv::PAYEE_SUPPLIER && trim($this->newSupplier['name']) !== '' ? $supplierService->nearMatches($this->newSupplier['name']) : [],
             'isResubmission' => $existing?->status === Pv::QUERIED,
             'maxFiles' => (int) config('gwl.fin_attachment_max_per_pv'),
             'maxMb' => (int) config('gwl.fin_attachment_max_mb'),

@@ -101,6 +101,7 @@ class VoucherShow extends Component
             'submittedByMe' => $mine && $this->can('audit.review'),
             'reasons' => FinPaymentVoucher::QUERY_REASONS,
             'attachmentRoute' => 'audit.pvs.attachment',
+            'payeeWarning' => app(\App\Services\Finance\PayeeStatusService::class)->warningFor($pv),
         ]);
     }
 }

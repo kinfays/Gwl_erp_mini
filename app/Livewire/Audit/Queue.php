@@ -76,6 +76,7 @@ class Queue extends Component
             'categories' => FinPvCategory::query()->orderBy('sort_order')->orderBy('name')->get(),
             'showRoute' => 'audit.pvs.show',
             'party' => 'audit',
+            'payeeFlags' => app(\App\Services\Finance\PayeeStatusService::class)->warningsFor($rows->items()),
         ] + $this->locationView());
     }
 }

@@ -787,6 +787,9 @@ if (config('gwl.finance_audit_enabled')) {
             Route::get('/pvs/{pv}', [FinanceController::class, 'show'])->whereNumber('pv')->middleware('permission:finance.view')->name('pvs.show');
             Route::get('/pvs/{pv}/attachments/{attachment}', [FinanceController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:finance.view')->name('pvs.attachment');
             Route::get('/categories', [FinanceController::class, 'settings'])->middleware('permission:finance.view')->name('settings');
+            Route::get('/suppliers', [FinanceController::class, 'suppliers'])->middleware('permission:finance.view')->name('suppliers');
+            Route::get('/suppliers/import', [FinanceController::class, 'supplierImport'])->middleware('permission:finance.import_suppliers')->name('suppliers.import');
+            Route::get('/suppliers/import/template', [FinanceController::class, 'supplierImportTemplate'])->middleware('permission:finance.import_suppliers')->name('suppliers.import.template');
         });
 
     Route::middleware(['auth', 'active', 'module:audit'])
@@ -797,6 +800,7 @@ if (config('gwl.finance_audit_enabled')) {
             Route::get('/pvs/{pv}', [AuditController::class, 'show'])->whereNumber('pv')->middleware('permission:audit.view')->name('pvs.show');
             Route::get('/pvs/{pv}/attachments/{attachment}', [AuditController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:audit.view')->name('pvs.attachment');
             Route::get('/categories', [AuditController::class, 'categories'])->middleware('permission:audit.view')->name('categories');
+            Route::get('/suppliers', [AuditController::class, 'suppliers'])->middleware('permission:audit.view')->name('suppliers');
         });
 }
 

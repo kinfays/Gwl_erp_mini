@@ -98,6 +98,7 @@ class VoucherShow extends Component
             'canAcknowledge' => $pv->status === $pv::AUDIT_ACKNOWLEDGED && $this->can('finance.acknowledge'),
             'canVoid' => $pv->isVoidable() && $this->can('finance.void_pv'),
             'attachmentRoute' => 'finance.pvs.attachment',
+            'payeeWarning' => app(\App\Services\Finance\PayeeStatusService::class)->warningFor($pv),
         ]);
     }
 }

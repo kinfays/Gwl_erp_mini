@@ -7,9 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Permission;
 use App\Services\Finance\FinanceScope;
 use App\Services\Finance\PvAttachmentService;
+use App\Services\Finance\SupplierImportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -53,6 +55,28 @@ class FinanceController extends Controller
         $this->enforceModule($request, Permission::MODULE_FINANCE);
 
         return view('finance.settings');
+    }
+
+    public function suppliers(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.suppliers');
+    }
+
+    public function supplierImport(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.supplier-import');
+    }
+
+    public function supplierImportTemplate(Request $request, SupplierImportService $imports)
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+        abort_unless(app(FinanceScope::class)->can($request->user(), 'finance.import_suppliers'), 403);
+
+        return Excel::download($imports->templateExport(), 'supplier-import-template.xlsx');
     }
 
     /** A voucher's scan / supporting document. 404 for a voucher outside the location (same answer as a missing one). */

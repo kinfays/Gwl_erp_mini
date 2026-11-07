@@ -1293,6 +1293,22 @@ class ErpNavigation
                 'icon_name' => 'settings',
                 'can' => $can('finance.view'),
             ],
+            [
+                'label' => 'Suppliers',
+                'route' => 'finance.suppliers',
+                'active' => ['finance.suppliers'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'building-2',
+                'can' => $can('finance.view'),
+            ],
+            [
+                'label' => 'Import suppliers',
+                'route' => 'finance.suppliers.import',
+                'active' => ['finance.suppliers.import'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'upload',
+                'can' => $can('finance.import_suppliers'),
+            ],
         ];
     }
 
@@ -1316,6 +1332,14 @@ class ErpNavigation
                 'active' => ['audit.categories'],
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'settings',
+                'can' => $can('audit.view'),
+            ],
+            [
+                'label' => 'Suppliers',
+                'route' => 'audit.suppliers',
+                'active' => ['audit.suppliers'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'building-2',
                 'can' => $can('audit.view'),
             ],
         ];

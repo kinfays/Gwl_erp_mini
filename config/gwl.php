@@ -103,6 +103,8 @@ return [
     // Supporting documents on a voucher (PV scan, receipts): biggest file in MB and most files per voucher.
     'fin_attachment_max_mb' => (int) env('GWL_FIN_ATTACHMENT_MAX_MB', 5),
     'fin_attachment_max_per_pv' => (int) env('GWL_FIN_ATTACHMENT_MAX_PER_PV', 10),
+    // Most rows one supplier import file may hold (the file is read into memory).
+    'fin_supplier_import_max_rows' => (int) env('GWL_FIN_SUPPLIER_IMPORT_MAX_ROWS', 2000),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.
