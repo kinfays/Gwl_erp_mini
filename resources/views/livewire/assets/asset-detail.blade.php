@@ -36,7 +36,7 @@
                         @endif
                     </dd>
                 </div>
-                <div><dt>Previously assigned to</dt><dd>{{ $dash($asset->previousAssignedTo?->full_name) }}</dd></div>
+                <div><dt>Previously assigned to</dt><dd>{{ $dash($asset->previousHolder()?->full_name) }}</dd></div>
                 @if ($asset->notes)
                     <div><dt>Notes</dt><dd>{{ $asset->notes }}</dd></div>
                 @endif
@@ -85,10 +85,74 @@
                 <div><dt>MAC address</dt><dd class="mono">{{ $dash($asset->mac_address) }}</dd></div>
                 <div><dt>Operating system</dt><dd>{{ $dash(trim($asset->os_name.' '.$asset->os_version)) }}</dd></div>
                 <div><dt>Processor</dt><dd>{{ $dash($asset->cpu_name) }}</dd></div>
+                <div><dt>Physical location</dt><dd>{{ $dash($asset->actual_location) }}</dd></div>
                 <div><dt>Memory</dt><dd>{{ $asset->ram_gb ? rtrim(rtrim($asset->ram_gb, '0'), '.').' GB' : '—' }}</dd></div>
                 <div><dt>Last seen by agent</dt><dd>{{ $fmt($asset->agent_last_report_at) }}</dd></div>
             @endif
         </dl>
+    </x-ui.card>
+
+    <x-ui.card title="Assignment history" description="Everyone who has held this device, newest first. A correction is an entry that was picked by mistake; it is never shown as the previous holder." :padded="false" class="dash-row">
+        <x-ui.table label="Assignment history" :sticky="false">
+            <x-slot:head>
+                <tr>
+                    <th>Person</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Reason</th>
+                    <th>Recorded by</th>
+                    @if ($canCorrectAssignments)<th><span class="sr-only">Actions</span></th>@endif
+                </tr>
+            </x-slot:head>
+            @forelse ($assignments as $row)
+                <tr wire:key="assignment-{{ $row->id }}">
+                    <td>{{ $row->employee?->full_name ?: 'A former employee' }}</td>
+                    <td class="nowrap">{{ $row->assigned_at?->format('d M Y') ?: 'Not recorded' }}</td>
+                    <td class="nowrap">{{ $row->ended_at?->format('d M Y') ?: ($row->is_current ? 'Now' : 'Not recorded') }}</td>
+                    <td>
+                        @if ($row->is_current)
+                            <x-ui.badge tone="success">Current</x-ui.badge>
+                        @elseif ($row->isCorrected())
+                            <x-ui.badge tone="warning">Corrected</x-ui.badge>
+                            <span class="ui-person-sub">Picked by mistake{{ $row->correction_code ? ' · '.(\App\Models\IctAssetAssignment::CORRECTION_CODES[$row->correction_code] ?? '') : '' }}</span>
+                        @else
+                            {{ $row->reasonLabel() }}
+                        @endif
+                        @if ($row->is_backfilled)
+                            <span class="ui-person-sub">From earlier records</span>
+                        @endif
+                    </td>
+                    <td>{{ $row->recordedBy?->full_name ?: '—' }}</td>
+                    @if ($canCorrectAssignments)
+                        <td class="nowrap">
+                            @if (in_array($row->end_reason, \App\Models\IctAssetAssignment::PREVIOUS_REASONS, true))
+                                <button type="button" class="btn btn-ghost btn-sm" wire:click="startCorrecting({{ $row->id }})">Mark as correction</button>
+                            @endif
+                        </td>
+                    @endif
+                </tr>
+                @if ($canCorrectAssignments && $correctingId === $row->id)
+                    <tr wire:key="assignment-correct-{{ $row->id }}">
+                        <td colspan="6">
+                            <div class="ui-form-grid">
+                                <x-ui.select label="Why is this a correction?" wire:model="correctionCode" required>
+                                    <option value="">Select a reason</option>
+                                    @foreach ($correctionCodes as $code => $label)
+                                        <option value="{{ $code }}">{{ $label }}</option>
+                                    @endforeach
+                                </x-ui.select>
+                                <div class="ui-actions">
+                                    <button type="button" class="btn btn-primary btn-sm" wire:click="confirmCorrecting">Mark as correction</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" wire:click="cancelCorrecting">Cancel</button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                @endif
+            @empty
+                <x-ui.empty-row :colspan="$canCorrectAssignments ? 6 : 5" icon="history" title="No assignments recorded yet." />
+            @endforelse
+        </x-ui.table>
     </x-ui.card>
 
     <div class="ui-grid ui-grid-2 dash-row">

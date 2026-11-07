@@ -9,8 +9,11 @@ use App\Models\District;
 use App\Models\Region;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\VehicleBrand;
+use App\Models\VehicleModel;
 use App\Services\Transport\TransportScope;
 use App\Services\Transport\TransportService;
+use App\Services\Transport\VehicleCatalogService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -71,9 +74,134 @@ class Vehicles extends Component
         'status' => 'active',
     ];
 
+    /**
+     * The brand and model are picked from the catalogue (vehicle_brands / vehicle_models); on save their names are
+     * written into form.brand / form.model, which stay plain text on the vehicle. Kept outside $form so nothing extra
+     * reaches TransportService.
+     */
+    public int|string|null $brandId = null;
+
+    public int|string|null $modelId = null;
+
+    /** Inline "Add new brand / model" panels: separate from $form so adding one never touches what was typed there. */
+    public bool $showNewBrand = false;
+
+    public bool $showNewModel = false;
+
+    public array $newBrand = ['name' => ''];
+
+    public array $newModel = ['name' => ''];
+
     public function mount(): void
     {
         $this->enforceLivewireModule('transport');
+    }
+
+    /** A model belongs to one brand: drop the chosen one when the brand changes. */
+    public function updatedBrandId(): void
+    {
+        $this->modelId = null;
+        $this->closeNewModel();
+    }
+
+    public function openNewBrand(): void
+    {
+        $this->authorizeCatalog();
+
+        $this->resetValidation(['newBrand.name']);
+        $this->newBrand = ['name' => ''];
+        $this->showNewBrand = true;
+    }
+
+    public function closeNewBrand(): void
+    {
+        $this->showNewBrand = false;
+        $this->newBrand = ['name' => ''];
+        $this->resetValidation(['newBrand.name']);
+    }
+
+    public function saveNewBrand(VehicleCatalogService $catalog): void
+    {
+        $this->authorizeCatalog();
+
+        $this->validate(['newBrand.name' => $catalog->brandNameRules()], attributes: ['newBrand.name' => 'brand name']);
+
+        $brand = $catalog->createBrand($this->newBrand['name']);
+
+        $this->brandId = $brand->id;
+        $this->modelId = null;
+        $this->closeNewBrand();
+        $this->closeNewModel();
+        $this->dispatch('toast', type: 'success', message: 'Brand created and selected.');
+    }
+
+    public function openNewModel(): void
+    {
+        $this->authorizeCatalog();
+
+        $this->resetValidation(['newModel.name', 'brandId']);
+
+        if (! $this->selectedBrand()) {
+            $this->addError('brandId', 'Select a brand first.');
+
+            return;
+        }
+
+        $this->newModel = ['name' => ''];
+        $this->showNewModel = true;
+    }
+
+    public function closeNewModel(): void
+    {
+        $this->showNewModel = false;
+        $this->newModel = ['name' => ''];
+        $this->resetValidation(['newModel.name']);
+    }
+
+    public function saveNewModel(VehicleCatalogService $catalog): void
+    {
+        $this->authorizeCatalog();
+
+        $brand = $this->selectedBrand();
+        abort_unless($brand, 422, 'Select a brand first.');
+
+        $this->validate(['newModel.name' => $catalog->modelNameRules($brand->id)], attributes: ['newModel.name' => 'model name']);
+
+        $model = $catalog->createModel($brand, $this->newModel['name']);
+
+        $this->modelId = $model->id;
+        $this->closeNewModel();
+        $this->dispatch('toast', type: 'success', message: 'Model created and selected.');
+    }
+
+    /**
+     * Adding a brand or model changes the shared catalogue, so it needs transport.manage_vehicle_catalog on top of
+     * being able to use the vehicle form. Vehicle users without it still pick from the existing lists.
+     */
+    protected function authorizeCatalog(): void
+    {
+        $this->authorizeAction($this->editingVehicleId ? 'transport.edit_vehicles' : 'transport.create_vehicles');
+        $this->authorizeAction(VehicleCatalogService::PERMISSION);
+    }
+
+    protected function selectedBrand(): ?VehicleBrand
+    {
+        return $this->brandId ? VehicleBrand::query()->find((int) $this->brandId) : null;
+    }
+
+    /** The chosen model, only if it really belongs to the chosen brand (the browser can post any id). */
+    protected function selectedModel(): ?VehicleModel
+    {
+        $brand = $this->selectedBrand();
+
+        return $brand && $this->modelId
+            ? VehicleModel::query()->where('vehicle_brand_id', $brand->id)->find((int) $this->modelId)
+            : null;
+    }
+
+    protected function validationAttributes(): array
+    {
+        return ['brandId' => 'brand', 'modelId' => 'model'];
     }
 
     public function updating($name): void
@@ -127,6 +255,11 @@ class Vehicles extends Component
             'road_worthiness_expiry_date' => $vehicle->road_worthiness_expiry_date?->toDateString() ?? '',
             'status' => $vehicle->status,
         ];
+
+        $this->resetCatalogPanels();
+        [$brand, $model] = app(VehicleCatalogService::class)->ensure($vehicle->brand, $vehicle->model);
+        $this->brandId = $brand?->id;
+        $this->modelId = $model?->id;
     }
 
     public function viewVehicle(int $vehicleId): void
@@ -148,6 +281,10 @@ class Vehicles extends Component
     public function save(TransportService $transport): void
     {
         $this->authorizeAction($this->editingVehicleId ? 'transport.edit_vehicles' : 'transport.create_vehicles');
+
+        // The catalogue is the source: the vehicle keeps the chosen names as text.
+        $this->form['brand'] = $this->selectedBrand()?->name ?? '';
+        $this->form['model'] = $this->selectedModel()?->name ?? '';
 
         $validated = $this->validate($this->rules());
         $vehicle = $this->editingVehicleId ? $this->scope()->findVehicle($this->actor(), $this->editingVehicleId) : null;
@@ -196,7 +333,12 @@ class Vehicles extends Component
                     throw new \RuntimeException('This number plate is already registered.');
                 }
 
-                $saved = $transport->saveVehicle($this->normalizeImportPayload($mapped), $vehicle, null, $actor);
+                $payload = $this->normalizeImportPayload($mapped);
+
+                // Keep the brand / model catalogue in step with what is imported.
+                app(VehicleCatalogService::class)->ensure($payload['brand'], $payload['model']);
+
+                $saved = $transport->saveVehicle($payload, $vehicle, null, $actor);
                 $saved->wasRecentlyCreated ? $created++ : $updated++;
             } catch (\Throwable $exception) {
                 $this->importErrors[] = [
@@ -223,6 +365,13 @@ class Vehicles extends Component
         return [
             'photo' => ['nullable', 'image', 'max:4096'],
             'form.type' => ['required', Rule::in(Vehicle::TYPES)],
+            'brandId' => ['required', 'integer', 'exists:vehicle_brands,id'],
+            'modelId' => [
+                'required',
+                'integer',
+                // The model must belong to the chosen brand.
+                Rule::exists('vehicle_models', 'id')->where('vehicle_brand_id', (int) $this->brandId),
+            ],
             'form.brand' => ['required', 'string', 'max:255'],
             'form.model' => ['required', 'string', 'max:255'],
             'form.color' => ['nullable', 'string', 'max:255'],
@@ -276,8 +425,21 @@ class Vehicles extends Component
         }
     }
 
+    protected function resetCatalogPanels(): void
+    {
+        $this->showNewBrand = false;
+        $this->showNewModel = false;
+        $this->newBrand = ['name' => ''];
+        $this->newModel = ['name' => ''];
+        $this->resetValidation(['newBrand.name', 'newModel.name', 'brandId', 'modelId']);
+    }
+
     protected function resetForm(): void
     {
+        $this->brandId = null;
+        $this->modelId = null;
+        $this->resetCatalogPanels();
+
         // Prefilled with the actor's own place; only super_admin may change it.
         $own = $this->canPickLocation() ? null : $this->scope()->locationOf($this->actor());
 
@@ -464,7 +626,34 @@ class Vehicles extends Component
 
         $ownLocation = ! $canPickLocation ? $scope->locationOf($user) : null;
 
+        $brandOptions = [];
+        $modelOptions = [];
+
+        if ($this->showForm && $canManage) {
+            // Active entries, plus the one this vehicle already carries (deactivating one never strands a vehicle).
+            $brandOptions = VehicleBrand::query()
+                ->where(fn ($query) => $query->where('is_active', true)->when($this->brandId, fn ($inner) => $inner->orWhere('id', (int) $this->brandId)))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($brand) => ['value' => $brand->id, 'label' => $brand->name])
+                ->all();
+
+            if ($this->brandId) {
+                $modelOptions = VehicleModel::query()
+                    ->where('vehicle_brand_id', (int) $this->brandId)
+                    ->where(fn ($query) => $query->where('is_active', true)->when($this->modelId, fn ($inner) => $inner->orWhere('id', (int) $this->modelId)))
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn ($model) => ['value' => $model->id, 'label' => $model->name])
+                    ->all();
+            }
+        }
+
         return view('livewire.transport.vehicles', [
+            'canManageCatalog' => VehicleCatalogService::canManage(auth()->user()),
+            'brandOptions' => $brandOptions,
+            'modelOptions' => $modelOptions,
+            'selectedBrandName' => $this->showNewModel ? $this->selectedBrand()?->name : null,
             'vehicles' => $vehicles,
             'selectedVehicle' => $selectedVehicle,
             'types' => Vehicle::TYPES,

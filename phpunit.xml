@@ -51,5 +51,6 @@
         <env name="GWL_BLOG_MEDIA_MAX_MEGAPIXELS" value="8"/>
         <env name="GWL_BLOG_MEDIA_MAX_PER_ARTICLE" value="6"/>
         <env name="GWL_GWATER_MODULE_ENABLED" value="true"/>
+        <env name="GWL_FINANCE_AUDIT_ENABLED" value="true"/>
     </php>
 </phpunit>

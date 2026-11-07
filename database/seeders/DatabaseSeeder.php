@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
             HealthSafetyRolePermissionSeeder::class,
             RegionalBlogRolePermissionSeeder::class,
             GwaterRolePermissionSeeder::class,
+            FinanceAuditRolePermissionSeeder::class,
             MdmStarterPolicySeeder::class,
             TransportSeeder::class,
             HolidaySeeder::class,

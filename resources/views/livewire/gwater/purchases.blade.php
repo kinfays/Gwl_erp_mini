@@ -101,7 +101,6 @@
                         :hint="'Cost per pack: '.(($costs[$product->id] ?? null) !== null ? \App\Services\GWater\Money::format($costs[$product->id]) : 'none on the price list')"
                     />
                 @endforeach
-                <x-ui.input label="Supplier reference (optional)" wire:model.defer="form.supplier_ref" maxlength="60" />
             </div>
             @error('form.lines') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
 

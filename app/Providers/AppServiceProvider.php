@@ -68,6 +68,9 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(IncidentSeverityRaised::class, [NotifyIncidentStakeholders::class, 'onSeverityRaised']);
         Event::listen(IncidentStatusChanged::class, [NotifyIncidentStakeholders::class, 'onStatusChanged']);
 
+        // Finance and Audit: App\Listeners\Finance\NotifyPvParties handles PaymentVoucherActioned. Laravel's event discovery
+        // finds it, so it is NOT registered here (registering it too would send every notice twice).
+
         URL::forceScheme('https');
 
         // Commercial: targets and thresholds edited on the settings screen are laid over config('gwl.*'), so every

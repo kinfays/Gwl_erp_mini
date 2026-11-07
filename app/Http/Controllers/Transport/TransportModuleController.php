@@ -24,6 +24,16 @@ class TransportModuleController extends Controller
         return view('transport.vehicles');
     }
 
+    public function settingsBrands(): View
+    {
+        return view('transport.settings.brands');
+    }
+
+    public function settingsModels(): View
+    {
+        return view('transport.settings.models');
+    }
+
     public function mileage(): View
     {
         return view('transport.mileage');

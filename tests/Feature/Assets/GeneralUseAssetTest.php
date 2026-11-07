@@ -110,7 +110,7 @@ class GeneralUseAssetTest extends TestCase
         $asset->refresh();
         $this->assertTrue($asset->is_general_use);
         $this->assertNull($asset->assigned_to_employee_id);
-        $this->assertSame($holder->id, $asset->previous_assigned_to_employee_id);
+        $this->assertSame($holder->id, $asset->previousHolder()?->id);
 
         // The same trail as the normal unassign: a transfer row and an audit snapshot.
         $this->assertTrue(IctAssetTransfer::query()->where('ict_asset_id', $asset->id)->where('from_employee_id', $holder->id)->whereNull('to_employee_id')->exists());

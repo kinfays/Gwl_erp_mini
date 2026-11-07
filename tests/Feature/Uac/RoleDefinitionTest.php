@@ -159,12 +159,12 @@ class RoleDefinitionTest extends TestCase
     public function test_a_global_admin_can_create_a_role_and_it_starts_global_admin_only(): void
     {
         $this->roles($this->globalAdmin)
-            ->set('newRoleSlug', 'finance_officer')
+            ->set('newRoleSlug', 'records_officer')
             ->set('newRoleDisplayName', 'Finance Officer')
             ->call('createRole')
             ->assertHasNoErrors();
 
-        $role = Role::query()->where('name', 'finance_officer')->firstOrFail();
+        $role = Role::query()->where('name', 'records_officer')->firstOrFail();
         $this->assertFalse($role->is_system);
         $this->assertFalse($role->ict_assignable);
         $this->assertFalse($role->is_protected);
@@ -172,18 +172,18 @@ class RoleDefinitionTest extends TestCase
 
         $row = AuditLog::query()->where('action', 'create_role')->sole();
         $this->assertNull($row->old_values);
-        $this->assertSame('finance_officer', $row->new_values['name']);
+        $this->assertSame('records_officer', $row->new_values['name']);
         $this->assertSame($this->globalAdmin->id, $row->user_id);
 
         // ICT can't hand it out until a Global Admin flags it.
         $target = $this->person('EMP001', $this->headOffice);
-        $this->patchRoles($this->ict, $target, ['finance_officer'])->assertSessionHasErrors('roles.0');
+        $this->patchRoles($this->ict, $target, ['records_officer'])->assertSessionHasErrors('roles.0');
 
         $this->roles($this->globalAdmin)->call('selectRole', $role->id)->call('toggleIctAssignable')->assertSet('ictAssignable', true)->call('save');
         $this->assertTrue($role->fresh()->ict_assignable);
 
-        $this->patchRoles($this->ict, $target, ['finance_officer'])->assertSessionHasNoErrors();
-        $this->assertTrue($target->fresh()->hasRoles('finance_officer'));
+        $this->patchRoles($this->ict, $target, ['records_officer'])->assertSessionHasNoErrors();
+        $this->assertTrue($target->fresh()->hasRoles('records_officer'));
     }
 
     public function test_the_ict_assignable_flag_is_audited_and_never_settable_on_tiered_roles(): void

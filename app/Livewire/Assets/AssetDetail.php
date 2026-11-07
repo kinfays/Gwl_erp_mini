@@ -5,9 +5,12 @@ namespace App\Livewire\Assets;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\IctAsset;
+use App\Models\IctAssetAssignment;
 use App\Models\IctAssetAuditLine;
 use App\Models\IctAssetReplacementPolicy;
+use App\Services\Assets\AssetAssignmentService;
 use App\Services\Assets\AssetDashboardService;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -33,10 +36,57 @@ class AssetDetail extends Component
         $this->assetId = $asset->id;
     }
 
+    /** The history row the admin "mark as correction" panel is open for (null = closed). */
+    public ?int $correctingId = null;
+
+    public string $correctionCode = '';
+
+    protected function canCorrectAssignments(): bool
+    {
+        $user = $this->actor();
+
+        return $user->hasRoles('super_admin') || $user->hasPermission('assets.correct_assignments');
+    }
+
+    public function startCorrecting(int $assignmentId): void
+    {
+        abort_unless($this->canCorrectAssignments(), 403);
+
+        // Resolved inside THIS asset's own history: a row id from the browser is never trusted on its own.
+        $row = IctAssetAssignment::query()->where('ict_asset_id', $this->assetId)->findOrFail($assignmentId);
+
+        $this->correctingId = $row->id;
+        $this->correctionCode = '';
+        $this->resetErrorBag();
+    }
+
+    public function cancelCorrecting(): void
+    {
+        $this->correctingId = null;
+        $this->correctionCode = '';
+        $this->resetErrorBag();
+    }
+
+    public function confirmCorrecting(AssetAssignmentService $assignments): void
+    {
+        abort_unless($this->canCorrectAssignments(), 403);
+        abort_unless($this->correctingId, 404);
+
+        $this->validate(['correctionCode' => ['required', Rule::in(array_keys(IctAssetAssignment::CORRECTION_CODES))]], [
+            'correctionCode.required' => 'Choose why this entry is a correction.',
+        ]);
+
+        $row = IctAssetAssignment::query()->where('ict_asset_id', $this->assetId)->findOrFail($this->correctingId);
+        $assignments->markRowCorrected($row, $this->correctionCode);
+
+        $this->cancelCorrecting();
+        $this->dispatch('toast', type: 'success', message: 'Marked as a correction. It no longer counts as the previous holder.');
+    }
+
     public function render()
     {
         $asset = IctAsset::query()
-            ->with(['assetModel.manufacturer', 'assignedTo', 'previousAssignedTo', 'department', 'district', 'region'])
+            ->with(['assetModel.manufacturer', 'assignedTo', 'previousAssignment.employee', 'department', 'district', 'region'])
             ->findOrFail($this->assetId);
 
         $category = $asset->device_category;
@@ -58,6 +108,10 @@ class AssetDetail extends Component
                 $asset->warranty_expires_at->lt($today) => 'Expired',
                 default => 'Active',
             },
+            // Same viewing rule as the asset itself (mount() already refused anyone who may not see this device).
+            'assignments' => $asset->assignments()->with(['employee', 'recordedBy'])->limit(100)->get(),
+            'canCorrectAssignments' => $this->canCorrectAssignments(),
+            'correctionCodes' => IctAssetAssignment::CORRECTION_CODES,
             'maintenance' => $asset->maintenanceLogs()->latest()->limit(25)->get(),
             'maintenanceTotal' => $asset->maintenanceLogs()->count(),
             'issues' => $asset->issueReports()->latest()->limit(25)->get(),

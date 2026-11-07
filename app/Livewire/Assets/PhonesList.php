@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\AsksAssignmentChangeReason;
 use App\Livewire\Assets\Concerns\CreatesModelInline;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
@@ -34,6 +35,7 @@ use Livewire\WithPagination;
 
 class PhonesList extends Component
 {
+    use AsksAssignmentChangeReason;
     use CreatesModelInline;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
@@ -125,12 +127,14 @@ class PhonesList extends Component
 
         $asset = $this->scopeAssetsForActor(IctAsset::query())
             ->where('device_category', self::CATEGORY)
-            ->with('previousAssignedTo')
+            ->with('previousAssignment.employee')
             ->findOrFail($assetId);
 
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
-        $this->previousAssignedLabel = $asset->previousAssignedTo?->full_name;
+        // Read-only: derived from the assignment history, never typed in or stored on the asset.
+        $this->previousAssignedLabel = $asset->previousHolder()?->full_name;
+        $this->rememberOriginalAssignee($asset->assigned_to_employee_id);
         $this->form = [
             'asset_name' => (string) $asset->asset_name,
             'serial_number' => (string) $asset->serial_number,
@@ -223,7 +227,7 @@ class PhonesList extends Component
 
         $previousStatus = $existing?->status;
 
-        $asset = app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing);
+        $asset = app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing, $this->assignmentChangeAnswer());
 
         $this->dispatch('toast', type: 'success', message: $existing ? 'Phone device updated successfully.' : 'Phone device created successfully.');
         $this->closeForm();
@@ -337,6 +341,7 @@ class PhonesList extends Component
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.user_phone_number' => ['nullable', 'string', 'max:30'],
             'form.device_phone_number' => ['nullable', 'string', 'max:30'],
+            ...$this->assignmentChangeRules(),
         ];
     }
 
@@ -344,6 +349,7 @@ class PhonesList extends Component
     {
         return [
             'form.district_id.exists' => 'The selected location is not in your region.',
+            ...$this->assignmentChangeMessages(),
         ];
     }
 
@@ -359,6 +365,7 @@ class PhonesList extends Component
     protected function resetForm(): void
     {
         $this->previousAssignedLabel = null;
+        $this->forgetOriginalAssignee();
         $this->form = [
             'asset_name' => '',
             'serial_number' => '',
@@ -429,6 +436,7 @@ class PhonesList extends Component
             'models' => $models,
             'assignedToLabel' => $this->showForm ? $this->employeeLabel($this->form['assigned_to_employee_id'] ?? null) : '',
             ...$this->addModelViewData(),
+            ...$this->assignmentChangeViewData(),
         ]);
     }
 }

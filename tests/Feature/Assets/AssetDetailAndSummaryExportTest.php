@@ -68,7 +68,7 @@ class AssetDetailAndSummaryExportTest extends TestCase
 
         $asset = $this->asset([
             'asset_name' => 'Finance laptop', 'serial_number' => 'LT-100', 'asset_type' => 'Laptop',
-            'ict_asset_model_id' => $model->id, 'assigned_to_employee_id' => $kwame->id, 'previous_assigned_to_employee_id' => $ama->id,
+            'ict_asset_model_id' => $model->id, 'assigned_to_employee_id' => $kwame->id,
             'district_id' => $this->accra->id, 'region_id' => $this->accra->region_id,
             'status' => IctAsset::STATUS_DAMAGED, 'status_reason' => 'Faulty power button',
             'purchased_at' => '2021-03-01', 'warranty_expires_at' => '2024-03-01', 'hostname' => 'FIN-LT-01',
@@ -76,6 +76,8 @@ class AssetDetailAndSummaryExportTest extends TestCase
         IctAssetMaintenance::query()->create(['ict_asset_id' => $asset->id, 'maintenance_type' => 'Screen repair', 'status' => 'Completed', 'technician' => 'Yaw']);
         IctAssetIssueReport::query()->create(['title' => 'Will not boot', 'issue_type' => 'Hardware Fault', 'status' => 'Open', 'linked_asset_id' => $asset->id]);
         app(AssetTransferService::class)->log($asset, IctAssetTransfer::TYPE_ASSIGNMENT_CHANGE, ['from_employee_id' => $ama->id, 'to_employee_id' => $kwame->id], null);
+        \App\Models\IctAssetAssignment::query()->create(['ict_asset_id' => $asset->id, 'employee_id' => $ama->id, 'end_reason' => 'reassigned', 'ended_at' => now()->subDay()]);
+        \App\Models\IctAssetAssignment::query()->create(['ict_asset_id' => $asset->id, 'employee_id' => $kwame->id, 'assigned_at' => now()->subDay(), 'is_current' => true]);
 
         $service = app(AssetAuditService::class);
         $audit = $service->start([], 'Q4 check', $this->admin->id);

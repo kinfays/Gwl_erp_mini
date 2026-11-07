@@ -30,7 +30,8 @@ class AssetTransferService
     }
 
     /**
-     * Compare an asset before and after an update and log one transfer per dimension that changed.
+     * Compare an asset before and after an update and log one transfer per dimension that changed (status and
+     * district; the holder is logged by AssetAssignmentService).
      *
      * @param array<string, mixed> $before attributes snapshot taken before the update
      */
@@ -38,13 +39,8 @@ class AssetTransferService
     {
         $id = fn ($value) => $value ? (int) $value : null;
 
-        if ($id($before['assigned_to_employee_id'] ?? null) !== $id($asset->assigned_to_employee_id)) {
-            $this->log($asset, IctAssetTransfer::TYPE_ASSIGNMENT_CHANGE, [
-                'from_employee_id' => $id($before['assigned_to_employee_id'] ?? null),
-                'to_employee_id' => $id($asset->assigned_to_employee_id),
-            ], $actorUserId);
-        }
-
+        // Holder changes are logged by AssetAssignmentService (it is the only writer of the holder), so they are not
+        // diffed here: that would write every one twice.
         if (($before['status'] ?? null) !== $asset->status) {
             $this->log($asset, IctAssetTransfer::TYPE_STATUS_CHANGE, [
                 'from_status' => $before['status'] ?? null,

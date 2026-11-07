@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Http\Controllers\Finance;
+
+use App\Http\Controllers\Concerns\EnforcesModuleAccess;
+use App\Http\Controllers\Controller;
+use App\Models\Permission;
+use App\Services\Finance\FinanceScope;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/** The Audit module's pages. Thin, like FinanceController; reach is FinanceScope's (as Audit: never a draft). */
+class AuditController extends Controller
+{
+    use EnforcesModuleAccess;
+
+    public function home(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.home');
+    }
+
+    public function show(Request $request, int $pv): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.show', ['pv' => $pv]);
+    }
+
+    public function categories(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.categories');
+    }
+
+    public function attachment(Request $request, int $pv, int $attachment): StreamedResponse
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return app(FinanceController::class)->serve($request, $pv, $attachment, FinanceScope::AS_AUDIT);
+    }
+}

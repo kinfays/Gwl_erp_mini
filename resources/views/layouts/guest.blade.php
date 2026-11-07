@@ -79,7 +79,7 @@
                 {{-- Branding --}}
                 <div class="auth-brand">
                     <img src="{{ asset('images/gwlnew.png') }}" alt="{{ __('GWL logo') }}">
-                    <h1>{{ __('GWL Staff Portal') }}</h1>
+                    <h1>{{ __('GWL Mini APP') }}</h1>
                 </div>
 
                 {{ $slot }}

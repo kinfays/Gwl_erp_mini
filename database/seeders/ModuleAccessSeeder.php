@@ -20,6 +20,8 @@ class ModuleAccessSeeder extends Seeder
                 Permission::MODULE_CREDIT_UNION,
                 Permission::MODULE_COMMERCIAL,
                 Permission::MODULE_GWATER,
+                Permission::MODULE_FINANCE,
+                Permission::MODULE_AUDIT,
             ], true)
         ));
 
@@ -38,6 +40,8 @@ class ModuleAccessSeeder extends Seeder
             'hs_manager' => [],
             'pr_officer' => [],
             'g_water' => [Permission::MODULE_GWATER],
+            'finance_officer' => [Permission::MODULE_FINANCE],
+            'audit_officer' => [Permission::MODULE_AUDIT],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],

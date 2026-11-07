@@ -23,7 +23,7 @@ class GwPurchase extends Model
     public const REIMBURSED = 'reimbursed';
 
     protected $fillable = [
-        'region_id', 'district_id', 'purchase_date', 'waybill_no', 'supplier_ref', 'note', 'status',
+        'region_id', 'district_id', 'purchase_date', 'waybill_no', 'note', 'status',
         'vehicle_id', 'driver_id', 'mileage_log_id', 'vehicle_expense_id', 'waybill_photo_path', 'waybill_photo_mime',
         'fuel_paid_by_user_id', 'fuel_reimbursement_status', 'fuel_reimbursed_on', 'fuel_reimbursement_ref', 'fuel_reimbursed_by_user_id',
         'voided_at', 'voided_by', 'void_reason', 'created_by',

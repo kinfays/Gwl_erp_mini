@@ -105,6 +105,7 @@ class PermissionSeeder extends Seeder
                 'transport.export_expenses',
                 'transport.view_reports',
                 'transport.renew_documents',
+                'transport.manage_vehicle_catalog',
             ],
             'credit_union' => [
                 'credit_union.view_dashboard',
@@ -169,6 +170,24 @@ class PermissionSeeder extends Seeder
                 'gwater.void',
                 'gwater.reimburse',
                 'gwater.export',
+            ],
+            'finance' => [
+                'finance.view',
+                'finance.create_pv',
+                'finance.void_pv',
+                'finance.acknowledge',
+                'finance.manage_categories',
+                'finance.manage_suppliers',
+                'finance.deactivate_suppliers',
+                'finance.import_suppliers',
+                'finance.view_reports',
+                'finance.export',
+            ],
+            'audit' => [
+                'audit.view',
+                'audit.review',
+                'audit.view_reports',
+                'audit.export',
             ],
         ];
 

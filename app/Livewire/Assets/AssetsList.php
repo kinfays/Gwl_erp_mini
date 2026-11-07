@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Assets;
 
+use App\Livewire\Assets\Concerns\AsksAssignmentChangeReason;
 use App\Livewire\Assets\Concerns\CreatesModelInline;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
@@ -29,6 +30,7 @@ use Livewire\WithPagination;
 
 class AssetsList extends Component
 {
+    use AsksAssignmentChangeReason;
     use CreatesModelInline;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
@@ -82,6 +84,7 @@ class AssetsList extends Component
         'department_id' => null,
         'region_id' => null,
         'district_id' => null,
+        'actual_location' => '',
         'purchased_at' => null,
         'notes' => '',
     ];
@@ -129,12 +132,14 @@ class AssetsList extends Component
 
         $asset = $this->scopeAssetsForActor(IctAsset::query())
             ->where('device_category', self::CATEGORY)
-            ->with('previousAssignedTo')
+            ->with('previousAssignment.employee')
             ->findOrFail($assetId);
 
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
-        $this->previousAssignedLabel = $asset->previousAssignedTo?->full_name;
+        // Read-only: derived from the assignment history, never typed in or stored on the asset.
+        $this->previousAssignedLabel = $asset->previousHolder()?->full_name;
+        $this->rememberOriginalAssignee($asset->assigned_to_employee_id);
         $this->form = [
             'asset_name' => (string) $asset->asset_name,
             'serial_number' => (string) $asset->serial_number,
@@ -151,6 +156,7 @@ class AssetsList extends Component
             'department_id' => $asset->department_id,
             'region_id' => $this->actorRegionId(),
             'district_id' => $asset->district_id,
+            'actual_location' => (string) $asset->actual_location,
             'purchased_at' => $asset->purchased_at?->toDateString(),
             'notes' => (string) $asset->notes,
         ];
@@ -190,7 +196,7 @@ class AssetsList extends Component
             ? $this->scopeAssetsForActor(IctAsset::query())->where('device_category', self::CATEGORY)->findOrFail($this->editingAssetId)
             : null;
 
-        app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing);
+        app(AssetRecordService::class)->save($validated, self::CATEGORY, $existing, $this->assignmentChangeAnswer());
 
         $this->dispatch('toast', type: 'success', message: $existing ? 'Asset updated successfully.' : 'Asset created successfully.');
         $this->closeForm();
@@ -225,8 +231,10 @@ class AssetsList extends Component
                 : ['required', 'integer', 'exists:employees,id'],
             'form.department_id' => ['required', 'integer', 'exists:departments,id'],
             'form.district_id' => ['required', 'integer', $this->actorRegionDistrictRule()],
+            'form.actual_location' => ['nullable', 'string', 'max:255'],
             'form.purchased_at' => ['nullable', 'date'],
             'form.notes' => ['nullable', 'string'],
+            ...$this->assignmentChangeRules(),
         ];
     }
 
@@ -235,6 +243,7 @@ class AssetsList extends Component
         return [
             'form.district_id.exists' => 'The selected location is not in your region.',
             'form.ups_status.required' => 'Say whether the UPS is working or spoiled.',
+            ...$this->assignmentChangeMessages(),
         ];
     }
 
@@ -254,6 +263,7 @@ class AssetsList extends Component
             'form.is_general_use' => 'general use',
             'form.department_id' => 'department',
             'form.district_id' => 'location',
+            'form.actual_location' => 'actual location',
             'form.purchased_at' => 'date',
         ];
     }
@@ -323,6 +333,7 @@ class AssetsList extends Component
     protected function resetForm(): void
     {
         $this->previousAssignedLabel = null;
+        $this->forgetOriginalAssignee();
         $this->form = [
             'asset_name' => '',
             'serial_number' => '',
@@ -339,6 +350,7 @@ class AssetsList extends Component
             'department_id' => null,
             'region_id' => $this->actorRegionId(),
             'district_id' => null,
+            'actual_location' => '',
             'purchased_at' => null,
             'notes' => '',
         ];
@@ -378,6 +390,7 @@ class AssetsList extends Component
             'upsStatuses' => IctAsset::UPS_STATUSES,
             'formSupportsUps' => $this->formSupportsUps(),
             'formSupportsProcessor' => $this->formSupportsProcessor(),
+            ...$this->assignmentChangeViewData(),
             ...$this->columnViewData(),
             ...$this->exportViewData('assets.export_inventory'),
             'districts' => $districts,

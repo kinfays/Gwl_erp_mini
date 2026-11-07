@@ -15,6 +15,7 @@ use App\Models\Vehicle;
 use App\Models\VehicleExpense;
 use App\Models\VehicleIssue;
 use App\Services\ReportsService;
+use App\Services\Transport\VehicleCatalogService;
 use Illuminate\Http\UploadedFile;
 use Livewire\Livewire;
 
@@ -52,9 +53,10 @@ class TransportScopedScreensTest extends TransportTestCase
         Livewire::actingAs($manager)->test(Vehicles::class)->call('viewVehicle', $kum->id)->assertNotFound();
 
         // An edit started on an allowed vehicle cannot be redirected to a foreign one by changing the id.
+        [$brand, $model] = app(VehicleCatalogService::class)->ensure('Hijacked', 'X');
         Livewire::actingAs($manager)->test(Vehicles::class)
             ->set('editingVehicleId', $kum->id)
-            ->set('form.brand', 'Hijacked')->set('form.model', 'X')->set('form.number_plate', 'KUM-1')
+            ->set('brandId', $brand->id)->set('modelId', $model->id)->set('form.number_plate', 'KUM-1')
             ->call('save')
             ->assertNotFound();
 
@@ -87,12 +89,13 @@ class TransportScopedScreensTest extends TransportTestCase
     public function test_saving_through_the_form_places_the_vehicle_where_the_actor_works_whatever_was_posted(): void
     {
         $manager = $this->manager('M1', $this->sowutuom);
+        [$brand, $model] = app(VehicleCatalogService::class)->ensure('Toyota', 'Hilux');
 
         Livewire::actingAs($manager)->test(Vehicles::class)
             ->call('openCreate')
             ->set('form.region_id', $this->ashanti->id)
             ->set('form.district_id', $this->kumasi->id)
-            ->set('form.brand', 'Toyota')->set('form.model', 'Hilux')->set('form.number_plate', 'LW-1')
+            ->set('brandId', $brand->id)->set('modelId', $model->id)->set('form.number_plate', 'LW-1')
             ->call('save')
             ->assertHasNoErrors();
 
@@ -103,11 +106,12 @@ class TransportScopedScreensTest extends TransportTestCase
     public function test_only_super_admin_gets_location_pickers_and_must_choose_one(): void
     {
         $super = $this->superAdmin();
+        [$brand, $model] = app(VehicleCatalogService::class)->ensure('Toyota', 'Hilux');
 
         Livewire::actingAs($super)->test(Vehicles::class)
             ->call('openCreate')
             ->assertSee('Select region')
-            ->set('form.brand', 'Toyota')->set('form.model', 'Hilux')->set('form.number_plate', 'SA-LW-1')
+            ->set('brandId', $brand->id)->set('modelId', $model->id)->set('form.number_plate', 'SA-LW-1')
             ->call('save')
             ->assertHasErrors(['form.region_id'])
             ->set('form.region_id', $this->ashanti->id)

@@ -179,10 +179,12 @@
                         search="searchEmployees"
                         :initial-label="$assignedToLabel"
                         placeholder="Unassigned: search by name or staff ID"
+                        :live="(bool) $editingAssetId"
                     />
                 @endunless
 
                 <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
+                <x-assets.assignment-change :show="$askAssignmentChange" />
                 <x-ui.select label="Status" wire:model.defer="form.status">
                     @foreach ($statusOptions as $option)
                         <option value="{{ $option }}">{{ $option }}</option>

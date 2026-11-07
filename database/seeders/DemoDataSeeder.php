@@ -315,7 +315,7 @@ class DemoDataSeeder extends Seeder
         ['HWAW6901', 'network', '4GRT', 'Huawei B535 4G Router', '4G Router – Odorkor Office', null, 'odorkor', 'Active', '2023-04-03', ['ip_host' => 1, 'actual_location' => 'Accounts office']],
     ];
 
-    /** Handed over after the original holder left (AssetRecordService records previous_assigned_to). */
+    /** Handed over after the original holder left (AssetAssignmentService records the handover as the previous holder). */
     protected const ASSET_REASSIGNMENTS = ['5CD2AW0106' => 'AW1014'];
 
     /** serial, type, status, opened days ago, completed days ago, location, notes */
@@ -1920,7 +1920,7 @@ class DemoDataSeeder extends Seeder
                     'district_id' => $newHolder->district_id,
                     'region_id' => $this->region->id,
                     'notes' => "Handed over from {$previous->full_name} (".Str::lower((string) $previous->deactivation_reason_label).').',
-                ], $asset->device_category, $asset)
+                ], $asset->device_category, $asset, \App\Services\Assets\AssetAssignmentService::KIND_REASSIGNED)
             );
             $this->bump('assets_reassigned');
         }

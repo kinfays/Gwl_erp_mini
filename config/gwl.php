@@ -95,6 +95,14 @@ return [
     'gwater_waybill_photo_max_mb' => (int) env('GWL_GWATER_WAYBILL_PHOTO_MAX_MB', 5),
     // Most rows (all sheets together) one past-ledger import file may hold; the file is read into memory.
     'gwater_import_max_rows' => (int) env('GWL_GWATER_IMPORT_MAX_ROWS', 2000),
+    // Finance and Audit (payment vouchers prepared by Finance, acknowledged by Audit; docs/20-module-finance-audit.md): ONE flag
+    // for both modules. Off by default; when off the routes don't register and both modules are hidden from navigation.
+    'finance_audit_enabled' => (bool) env('GWL_FINANCE_AUDIT_ENABLED', false),
+    // Sanity ceiling for one payment voucher, in GH¢ (a typing mistake such as an extra zero is refused, not paid).
+    'fin_amount_max_cedis' => (int) env('GWL_FIN_AMOUNT_MAX_CEDIS', 50000000),
+    // Supporting documents on a voucher (PV scan, receipts): biggest file in MB and most files per voucher.
+    'fin_attachment_max_mb' => (int) env('GWL_FIN_ATTACHMENT_MAX_MB', 5),
+    'fin_attachment_max_per_pv' => (int) env('GWL_FIN_ATTACHMENT_MAX_PER_PV', 10),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.

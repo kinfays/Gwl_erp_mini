@@ -149,8 +149,68 @@
                 </x-ui.select>
                 <x-ui.input label="Number Plate" wire:model.defer="form.number_plate" class="mono" />
 
-                <x-ui.input label="Brand" wire:model.defer="form.brand" />
-                <x-ui.input label="Model" wire:model.defer="form.model" />
+                <div>
+                    <x-form.searchable-select
+                        label="Brand"
+                        model="brandId"
+                        :options="$brandOptions"
+                        placeholder="Search brands…"
+                        empty-text="No brands found"
+                        required
+                        :live="true"
+                    />
+                    @if ($canManageCatalog && ! $showNewBrand)
+                        <button type="button" wire:click="openNewBrand" class="btn btn-ghost btn-sm" style="margin-top: 4px">
+                            <x-ui.icon name="plus" />
+                            Add new brand
+                        </button>
+                    @endif
+                </div>
+                <div>
+                    {{-- Only the chosen brand's models are listed; changing the brand clears the model. --}}
+                    <x-form.searchable-select
+                        label="Model"
+                        model="modelId"
+                        :options="$modelOptions"
+                        :placeholder="$brandId ? 'Search models…' : 'Select a brand first'"
+                        empty-text="No models for this brand yet"
+                        :reset-key="$brandId.'|'.collect($modelOptions)->pluck('value')->implode(',')"
+                        :disabled="! $brandId"
+                        required
+                    />
+                    @if ($canManageCatalog && $brandId && ! $showNewModel)
+                        <button type="button" wire:click="openNewModel" class="btn btn-ghost btn-sm" style="margin-top: 4px">
+                            <x-ui.icon name="plus" />
+                            Add new model
+                        </button>
+                    @endif
+                </div>
+
+                @if ($canManageCatalog && $showNewBrand)
+                    <div class="span-2 ui-subpanel" role="group" aria-label="Add new brand">
+                        <p class="ui-hint"><strong>Add new brand</strong>: it joins the vehicle brand list and is selected for this vehicle.</p>
+                        <div class="ui-form-grid">
+                            <x-ui.input label="Brand Name" wire:model.defer="newBrand.name" required />
+                        </div>
+                        <div class="ui-subpanel-actions">
+                            <button type="button" wire:click="closeNewBrand" class="btn btn-secondary btn-sm">Cancel</button>
+                            <button type="button" wire:click="saveNewBrand" class="btn btn-primary btn-sm" wire:loading.attr="disabled" wire:target="saveNewBrand">Save brand</button>
+                        </div>
+                    </div>
+                @endif
+
+                @if ($canManageCatalog && $showNewModel)
+                    <div class="span-2 ui-subpanel" role="group" aria-label="Add new model">
+                        <p class="ui-hint"><strong>Add new model</strong> for <strong>{{ $selectedBrandName }}</strong>: it is added to that brand and selected for this vehicle.</p>
+                        <div class="ui-form-grid">
+                            <x-ui.input label="Model Name" wire:model.defer="newModel.name" required />
+                        </div>
+                        <div class="ui-subpanel-actions">
+                            <button type="button" wire:click="closeNewModel" class="btn btn-secondary btn-sm">Cancel</button>
+                            <button type="button" wire:click="saveNewModel" class="btn btn-primary btn-sm" wire:loading.attr="disabled" wire:target="saveNewModel">Save model</button>
+                        </div>
+                    </div>
+                @endif
 
                 <x-ui.input label="Color" wire:model.defer="form.color" />
                 <x-ui.input label="Year Purchased" type="number" wire:model.defer="form.year_purchased" inputmode="numeric" />

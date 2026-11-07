@@ -17,6 +17,7 @@ class AssetRecordService
     public function __construct(
         protected IpRangeService $ipRanges,
         protected AssetTransferService $transfers,
+        protected AssetAssignmentService $assignments,
     ) {}
 
     /** Whether another asset already uses this name (case-insensitive, surrounding spaces ignored). */
@@ -33,8 +34,12 @@ class AssetRecordService
      * Phones, Network). device_category is immutable once set — Maintenance
      * /Issue/Agent reports all key off ict_assets.id and assume a stable
      * identity, so a device can't change category after creation.
+     *
+     * The holder (assigned_to_employee_id) is never written here: it is handed to AssetAssignmentService, which keeps
+     * the assignment history. Swapping one holder for another needs $assignmentChange ('reassigned' | 'correction');
+     * a save without it is refused. Assigning an empty device, clearing the holder and creating a device need none.
      */
-    public function save(array $data, string $category, ?IctAsset $existing = null): IctAsset
+    public function save(array $data, string $category, ?IctAsset $existing = null, ?string $assignmentChange = null): IctAsset
     {
         if (! in_array($category, IctAsset::DEVICE_CATEGORIES, true)) {
             throw ValidationException::withMessages([
@@ -62,7 +67,7 @@ class AssetRecordService
 
         // A cleared <select>/date input arrives as '' — store NULL rather than
         // hand a strict-mode database an empty string for an integer/date column.
-        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'status_reason'] as $nullableKey) {
+        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'status_reason', 'actual_location'] as $nullableKey) {
             if (($data[$nullableKey] ?? null) === '') {
                 $data[$nullableKey] = null;
             }
@@ -84,29 +89,30 @@ class AssetRecordService
             }
         }
 
+        // Taken out of the row data: the assignment service is the only writer of the holder (and of the history).
+        $changesHolder = array_key_exists('assigned_to_employee_id', $data);
+        $newHolder = $changesHolder ? ($data['assigned_to_employee_id'] ?: null) : null;
+        unset($data['assigned_to_employee_id'], $data['previous_assigned_to_employee_id']);
+
         try {
-            return $this->persist($data, $category, $existing);
+            return $this->persist($data, $category, $existing, $changesHolder, $newHolder ? (int) $newHolder : null, $assignmentChange);
         } catch (UniqueConstraintViolationException $e) {
             // Lost a race with another save of the same name (the index is the final word).
             throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
         }
     }
 
-    protected function persist(array $data, string $category, ?IctAsset $existing): IctAsset
+    protected function persist(array $data, string $category, ?IctAsset $existing, bool $changesHolder, ?int $newHolder, ?string $assignmentChange): IctAsset
     {
-        return DB::transaction(function () use ($data, $category, $existing) {
-            if (array_key_exists('assigned_to_employee_id', $data)) {
-                $currentAssigned = $existing?->assigned_to_employee_id;
-                $newAssigned = $data['assigned_to_employee_id'] ?: null;
-
-                if ($currentAssigned && $currentAssigned !== $newAssigned) {
-                    $data['previous_assigned_to_employee_id'] = $currentAssigned;
-                }
-            }
-
+        return DB::transaction(function () use ($data, $category, $existing, $changesHolder, $newHolder, $assignmentChange) {
             if ($existing) {
                 $old = $existing->toArray();
                 $existing->update($data);
+
+                if ($changesHolder) {
+                    $this->assignments->change($existing, $newHolder, $assignmentChange);
+                }
+
                 $asset = $existing->refresh();
 
                 // The transfers table is the detailed trail for these three fields; audit_logs keeps the snapshot below.
@@ -125,6 +131,11 @@ class AssetRecordService
             }
 
             $asset = IctAsset::query()->create($data);
+
+            if ($newHolder) {
+                $this->assignments->assign($asset, $newHolder, null, true);
+                $asset->refresh();
+            }
 
             AuditLog::record(
                 action: "create_{$category}",

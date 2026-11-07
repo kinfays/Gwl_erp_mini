@@ -62,7 +62,7 @@ class GwaterImportService
 
         return match ($sheet) {
             'opening' => ['as_of_date', ...$packs, ...array_map(fn (string $code) => $code.'_outstanding_packs', $codes), 'owed_amount', 'note'],
-            'purchases' => ['purchase_date', 'waybill_no', ...$packs, ...array_map(fn (string $code) => $code.'_unit_cost', $codes), 'supplier_ref', 'fuel_amount', 'loading_offloading_amount', 'payee', 'receipt_ref', 'note'],
+            'purchases' => ['purchase_date', 'waybill_no', ...$packs, ...array_map(fn (string $code) => $code.'_unit_cost', $codes), 'fuel_amount', 'loading_offloading_amount', 'payee', 'receipt_ref', 'note'],
             'sales' => ['sale_date', 'product', 'packs', 'on_credit', 'customer_name', 'customer_phone', 'note'],
             'damages' => ['damage_date', 'product', 'packs', 'stage', 'reason', 'waybill_no'],
             'expenses' => ['expense_date', 'category', 'amount', 'waybill_no', 'payee', 'receipt_ref', 'paid_by_staff_id', 'note'],
@@ -279,7 +279,6 @@ class GwaterImportService
         $this->workflow->recordPurchase($actor, $base + [
             'purchase_date' => $date,
             'waybill_no' => $this->text($row['waybill_no'] ?? null),
-            'supplier_ref' => $this->text($row['supplier_ref'] ?? null),
             'note' => $this->text($row['note'] ?? null),
             'lines' => $products->map(fn (GwProduct $product) => ['product_id' => $product->id, 'packs' => $this->text($row[$product->code.'_packs'] ?? null)])->all(),
             'fuel_amount' => $this->money($row['fuel_amount'] ?? null, 'fuel_amount', zeroIfBlank: true),

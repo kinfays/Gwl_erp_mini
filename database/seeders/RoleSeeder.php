@@ -27,6 +27,8 @@ class RoleSeeder extends Seeder
         'transport_manager',
         'driver',
         'g_water',
+        'finance_officer',
+        'audit_officer',
     ];
 
     /** Roles whose definition only a super_admin may change and that can never be deleted (Role::$is_protected). */
@@ -57,6 +59,8 @@ class RoleSeeder extends Seeder
             'hs_manager',
             'pr_officer',
             'g_water',
+            'finance_officer',
+            'audit_officer',
             'secretary',
             'receptionist',
         ];
@@ -74,6 +78,8 @@ class RoleSeeder extends Seeder
                 'hs_manager' => 'Health & Safety Manager',
                 'pr_officer' => 'Public Relations Officer',
                 'g_water' => 'G-Water',
+                'finance_officer' => 'Finance Officer',
+                'audit_officer' => 'Audit Officer',
                 default => Str::of($role)->replace('_', ' ')->title()->toString(),
             };
 
@@ -83,7 +89,7 @@ class RoleSeeder extends Seeder
                     'display_name' => $displayName,
                     'description' => $displayName.' system role',
                     // G-Water is a role the roles screen may edit (design section 6); the rest are system roles.
-                    'is_system' => $role !== 'g_water',
+                    'is_system' => ! in_array($role, ['g_water', 'finance_officer', 'audit_officer'], true),
                     'ict_assignable' => in_array($role, self::ICT_ASSIGNABLE, true),
                     'is_protected' => in_array($role, self::PROTECTED, true),
                 ]

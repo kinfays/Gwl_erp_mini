@@ -23,6 +23,7 @@ This folder contains split documentation pages for easier maintenance.
 - Commercial — SMS to customers (Arkesel, locked to Accra West: audiences, sending safety, delivery reports): [16-module-commercial-sms.md](16-module-commercial-sms.md)
 - Transport — region scoping (a vehicle belongs to a region or Head Office; who sees what, the backfill): [18-transport-region-scoping.md](18-transport-region-scoping.md)
 - G-Water — bottled and sachet water: prices, trips, daily sales, stock ledger, fuel reimbursement (Phase 1 built): [17-module-g-water.md](17-module-g-water.md)
+- Finance and Audit — one payment-voucher workflow (Finance prepares, Audit ticks or queries) shown through two modules, per-location books (Phase 1 built): [20-module-finance-audit.md](20-module-finance-audit.md)
 
 ## Reference Pages
 

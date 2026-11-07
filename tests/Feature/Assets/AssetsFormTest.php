@@ -191,7 +191,7 @@ class AssetsFormTest extends TestCase
         $this->assertSame(0, IctAsset::query()->count());
     }
 
-    public function test_reassigning_an_asset_auto_tracks_the_previous_employee(): void
+    public function test_a_handover_makes_the_old_holder_the_previous_employee(): void
     {
         $this->seedCoreAssetsAccess();
         $district = $this->district('Accra Central District', 'Greater Accra');
@@ -217,12 +217,13 @@ class AssetsFormTest extends TestCase
         Livewire::test(AssetsList::class)
             ->call('openEdit', $asset->id)
             ->set('form.assigned_to_employee_id', $employeeTwo->id)
+            ->set('assignmentChange', 'reassigned')
             ->call('save')
             ->assertHasNoErrors();
 
         $asset->refresh();
         $this->assertSame($employeeTwo->id, $asset->assigned_to_employee_id);
-        $this->assertSame($employeeOne->id, $asset->previous_assigned_to_employee_id);
+        $this->assertSame($employeeOne->id, $asset->previousHolder()?->id);
     }
 
     public function test_asset_type_dropdown_is_scoped_to_the_asset_category_vocabulary(): void

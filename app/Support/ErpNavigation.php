@@ -9,6 +9,7 @@ use App\Services\Leave\LeaveLetterSettingsService;
 use App\Services\Leave\SignatureService;
 use App\Services\Commercial\Sms\SmsAccess;
 use App\Services\Letters\LetterWorkflowService;
+use App\Services\Transport\TransportScope;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
@@ -177,6 +178,20 @@ class ErpNavigation
                 'route' => $this->safeRoute('gwater.home'),
             ],
             [
+                'slug' => Permission::MODULE_FINANCE,
+                'title' => 'Finance',
+                'short' => 'Finance',
+                'icon_name' => 'banknote',
+                'route' => $this->safeRoute('finance.home'),
+            ],
+            [
+                'slug' => Permission::MODULE_AUDIT,
+                'title' => 'Audit',
+                'short' => 'Audit',
+                'icon_name' => 'circle-check',
+                'route' => $this->safeRoute('audit.home'),
+            ],
+            [
                 'slug' => Permission::MODULE_UAC,
                 'title' => 'Access Control',
                 'short' => 'Access',
@@ -192,6 +207,7 @@ class ErpNavigation
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
                 Permission::MODULE_GWATER => (bool) config('gwl.gwater_module_enabled'),
+                Permission::MODULE_FINANCE, Permission::MODULE_AUDIT => (bool) config('gwl.finance_audit_enabled'),
                 default => true,
             }
         ));
@@ -211,6 +227,8 @@ class ErpNavigation
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
             Permission::MODULE_GWATER => $this->gwaterSidebar($user),
+            Permission::MODULE_FINANCE => $this->financeSidebar($user),
+            Permission::MODULE_AUDIT => $this->auditSidebar($user),
             default => [],
         };
 
@@ -780,6 +798,7 @@ class ErpNavigation
             || $currentUser->hasPermission('transport.manage_expenses');
         $canViewReports = fn (User $currentUser) => $currentUser->hasRoles('super_admin', 'transport_manager')
             || $currentUser->hasPermission('transport.view_reports');
+        $canManageCatalog = fn (User $currentUser) => app(TransportScope::class)->can($currentUser, 'transport.manage_vehicle_catalog');
 
         return [
             [
@@ -840,6 +859,27 @@ class ErpNavigation
                 'icon' => $this->icon('report'),
                 'icon_name' => 'chart-column',
                 'can' => $canViewReports,
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Settings',
+                'can' => $canManageCatalog,
+            ],
+            [
+                'label' => 'Vehicle Brands',
+                'route' => 'transport.settings.brands',
+                'active' => ['transport.settings.brands'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'factory',
+                'can' => $canManageCatalog,
+            ],
+            [
+                'label' => 'Vehicle Models',
+                'route' => 'transport.settings.models',
+                'active' => ['transport.settings.models'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'car',
+                'can' => $canManageCatalog,
             ],
         ];
     }
@@ -1219,6 +1259,64 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'settings',
                 'can' => $can('health_safety.manage_settings'),
+            ],
+        ];
+    }
+
+    /** Finance (docs/20-module-finance-audit.md): each entry needs its own permission; the screens re-check them. */
+    protected function financeSidebar(User $user): array
+    {
+        $can = fn (string $slug) => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission($slug);
+
+        return [
+            [
+                'label' => 'Payment vouchers',
+                'route' => 'finance.home',
+                'active' => ['finance.home', 'finance.pvs.show', 'finance.pvs.edit'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'receipt',
+                'can' => $can('finance.view'),
+            ],
+            [
+                'label' => 'New voucher',
+                'route' => 'finance.pvs.create',
+                'active' => ['finance.pvs.create'],
+                'icon' => $this->icon('plus-circle'),
+                'icon_name' => 'circle-plus',
+                'can' => $can('finance.create_pv'),
+            ],
+            [
+                'label' => 'Categories and types',
+                'route' => 'finance.settings',
+                'active' => ['finance.settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'settings',
+                'can' => $can('finance.view'),
+            ],
+        ];
+    }
+
+    /** Audit (docs/20-module-finance-audit.md): the review queue and the (read-only) catalogue. */
+    protected function auditSidebar(User $user): array
+    {
+        $can = fn (string $slug) => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission($slug);
+
+        return [
+            [
+                'label' => 'Review queue',
+                'route' => 'audit.home',
+                'active' => ['audit.home', 'audit.pvs.show'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'circle-check',
+                'can' => $can('audit.view'),
+            ],
+            [
+                'label' => 'Categories and types',
+                'route' => 'audit.categories',
+                'active' => ['audit.categories'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'settings',
+                'can' => $can('audit.view'),
             ],
         ];
     }

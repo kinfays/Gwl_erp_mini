@@ -30,6 +30,7 @@ class TransportRolePermissionSeeder extends Seeder
             'transport.export_expenses',
             'transport.view_reports',
             'transport.renew_documents',
+            'transport.manage_vehicle_catalog',
         ];
 
         $map = [

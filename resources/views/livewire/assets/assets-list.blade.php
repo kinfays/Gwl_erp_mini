@@ -121,7 +121,7 @@
                             <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $asset->district?->district_name ?: 'No district' }}</span>
-                                <span class="ui-person-sub">{{ $asset->region?->region_name ?: 'No region' }}</span>
+                                <span class="ui-person-sub">{{ $asset->actual_location ?: ($asset->region?->region_name ?: 'No region') }}</span>
                             </span>
                         </td>
                         @endif
@@ -201,9 +201,11 @@
                         :initial-label="$assignedToLabel"
                         placeholder="Search by name or staff ID"
                         required
+                        :live="(bool) $editingAssetId"
                     />
                 @endunless
                 <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
+                <x-assets.assignment-change :show="$askAssignmentChange" />
 
                 <x-ui.select label="Status" wire:model.defer="form.status">
                     @foreach ($statusOptions as $option)
@@ -216,6 +218,7 @@
                         <option value="{{ $district->id }}">{{ $district->district_name }}</option>
                     @endforeach
                 </x-ui.select>
+                <x-ui.input label="Actual Location" wire:model.defer="form.actual_location" placeholder="e.g. Server Room, 2nd Floor" />
 
                 <x-ui.select label="Department" wire:model.defer="form.department_id">
                     <option value="">Select department</option>

@@ -535,7 +535,6 @@ class GwaterDemoSeeder extends Seeder
         $data = [
             'purchase_date' => $day->toDateString(),
             'waybill_no' => self::WAYBILL_PREFIX.(2900 + $number),
-            'supplier_ref' => 'DN-'.(7100 + $number * 3),
             'lines' => [['product_id' => $bottle->id, 'packs' => $packs[$bottle->id]], ['product_id' => $sachet->id, 'packs' => $packs[$sachet->id]]],
             'loading_offloading_amount' => $this->rng->getInt(8, 15) * 500,
             'driver_id' => $driver->id,

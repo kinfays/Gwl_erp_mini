@@ -41,6 +41,8 @@ use App\Http\Controllers\Letters\LetterScanController;
 use App\Http\Controllers\Letters\TransmittalSheetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
+use App\Http\Controllers\Finance\AuditController;
+use App\Http\Controllers\Finance\FinanceController;
 use App\Http\Controllers\GWater\GwaterController;
 use App\Http\Controllers\GWater\GwaterExportController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
@@ -455,6 +457,15 @@ Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager
             ->middleware('permission:transport.export_expenses')
             ->name('expenses.export');
 
+        // Vehicle brand / model catalogue (shared, not region-scoped; changed only through VehicleCatalogService).
+        Route::get('/settings/brands', [TransportModuleController::class, 'settingsBrands'])
+            ->middleware('permission:transport.manage_vehicle_catalog')
+            ->name('settings.brands');
+
+        Route::get('/settings/models', [TransportModuleController::class, 'settingsModels'])
+            ->middleware('permission:transport.manage_vehicle_catalog')
+            ->name('settings.models');
+
         Route::get('/reports', [TransportModuleController::class, 'reports'])
             ->middleware('permission:transport.view_reports')
             ->name('reports');
@@ -759,6 +770,33 @@ if (config('gwl.gwater_module_enabled')) {
             Route::get('/prices', [GwaterController::class, 'prices'])->middleware('permission:gwater.view')->name('prices');
             Route::get('/opening-balances', [GwaterController::class, 'opening'])->middleware('permission:gwater.record')->name('opening');
             Route::get('/reimbursements', [GwaterController::class, 'reimbursements'])->middleware('permission:gwater.view')->name('reimbursements');
+        });
+}
+
+if (config('gwl.finance_audit_enabled')) {
+    // Finance and Audit (docs/20-module-finance-audit.md): ONE payment-voucher workflow shown through two modules. Which
+    // vouchers a user reaches is FinanceScope's (Head Office, or a region without it; super_admin all; a draft is Finance's
+    // alone); every component and the workflow service re-check it, and another location's voucher answers 404.
+    Route::middleware(['auth', 'active', 'module:finance'])
+        ->prefix('finance')
+        ->name('finance.')
+        ->group(function () {
+            Route::get('/', [FinanceController::class, 'home'])->middleware('permission:finance.view')->name('home');
+            Route::get('/pvs/create', [FinanceController::class, 'create'])->middleware('permission:finance.create_pv')->name('pvs.create');
+            Route::get('/pvs/{pv}/edit', [FinanceController::class, 'edit'])->whereNumber('pv')->middleware('permission:finance.create_pv')->name('pvs.edit');
+            Route::get('/pvs/{pv}', [FinanceController::class, 'show'])->whereNumber('pv')->middleware('permission:finance.view')->name('pvs.show');
+            Route::get('/pvs/{pv}/attachments/{attachment}', [FinanceController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:finance.view')->name('pvs.attachment');
+            Route::get('/categories', [FinanceController::class, 'settings'])->middleware('permission:finance.view')->name('settings');
+        });
+
+    Route::middleware(['auth', 'active', 'module:audit'])
+        ->prefix('audit')
+        ->name('audit.')
+        ->group(function () {
+            Route::get('/', [AuditController::class, 'home'])->middleware('permission:audit.view')->name('home');
+            Route::get('/pvs/{pv}', [AuditController::class, 'show'])->whereNumber('pv')->middleware('permission:audit.view')->name('pvs.show');
+            Route::get('/pvs/{pv}/attachments/{attachment}', [AuditController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:audit.view')->name('pvs.attachment');
+            Route::get('/categories', [AuditController::class, 'categories'])->middleware('permission:audit.view')->name('categories');
         });
 }
 

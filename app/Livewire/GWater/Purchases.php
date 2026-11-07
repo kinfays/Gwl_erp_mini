@@ -192,7 +192,6 @@ class Purchases extends Component
         $this->form = [
             'purchase_date' => today()->toDateString(),
             'waybill_no' => '',
-            'supplier_ref' => '',
             'note' => '',
             'vehicle_id' => '',
             'driver_id' => '',

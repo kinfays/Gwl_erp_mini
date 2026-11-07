@@ -198,7 +198,9 @@ class AssetAuditService
                 $data['status_reason'] = $line->mismatch_reason;
             }
 
-            $this->assetRecords->save($data, $asset->device_category, $asset);
+            // The audit found a different holder than the record: a handover that was never entered, so it is a
+            // reassignment (the previous holder stays the "previous assigned to"), never a silent overwrite.
+            $this->assetRecords->save($data, $asset->device_category, $asset, AssetAssignmentService::KIND_REASSIGNED);
 
             $line->forceFill(['correction_applied' => true])->save();
         });

@@ -224,7 +224,7 @@ class GwaterWorkflowService
      * A collection trip: the waybill, the packs bought (at the cost price in force on the day, frozen on each line), the
      * Transport references and the trip's cash costs, all in one go.
      *
-     * @param  array<string, mixed>  $data  purchase_date, waybill_no, supplier_ref, note, lines [[product_id, packs]], vehicle_id,
+     * @param  array<string, mixed>  $data  purchase_date, waybill_no, note, lines [[product_id, packs]], vehicle_id,
      *                                       driver_id, mileage_log_id, vehicle_expense_id, fuel_paid_by_user_id, fuel_amount,
      *                                       loading_offloading_amount (pesewas, one payment), payee, receipt_ref, location_district_id
      * @param  UploadedFile|null  $waybillPhoto  the paper waybill: a picture (JPG, PNG or WebP) or a PDF, checked by content, kept on the
@@ -316,7 +316,6 @@ class GwaterWorkflowService
                 ...$location,
                 'purchase_date' => $date->toDateString(),
                 'waybill_no' => $waybill,
-                'supplier_ref' => $this->text($data['supplier_ref'] ?? null, 60),
                 'note' => $this->text($data['note'] ?? null, 2000),
                 'status' => GwPurchase::POSTED,
                 ...$transport,

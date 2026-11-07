@@ -166,6 +166,7 @@ class AssetTransferHistoryTest extends TestCase
 
         Livewire::test(AssetsList::class)->call('openEdit', $asset->id)
             ->set('form.assigned_to_employee_id', $ama->id)
+            ->set('assignmentChange', 'reassigned')
             ->set('form.status', IctAsset::STATUS_DAMAGED)
             ->set('form.status_reason', 'faulty power button')
             ->set('form.district_id', $tema->id)

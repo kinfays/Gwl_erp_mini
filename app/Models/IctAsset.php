@@ -108,7 +108,6 @@ class IctAsset extends Model
         'ups_notes',
         'is_general_use',
         'assigned_to_employee_id',
-        'previous_assigned_to_employee_id',
         'department_id',
         'region_id',
         'district_id',
@@ -141,7 +140,6 @@ class IctAsset extends Model
     protected $casts = [
         'ict_asset_model_id' => 'integer',
         'assigned_to_employee_id' => 'integer',
-        'previous_assigned_to_employee_id' => 'integer',
         'department_id' => 'integer',
         'region_id' => 'integer',
         'district_id' => 'integer',
@@ -241,9 +239,29 @@ class IctAsset extends Model
         return $this->belongsTo(Employee::class, 'assigned_to_employee_id');
     }
 
-    public function previousAssignedTo(): BelongsTo
+    /** Every spell anyone held this device, newest first (open row, handovers, unassigns and corrections). */
+    public function assignments(): HasMany
     {
-        return $this->belongsTo(Employee::class, 'previous_assigned_to_employee_id');
+        return $this->hasMany(IctAssetAssignment::class, 'ict_asset_id')->orderByDesc('id');
+    }
+
+    /**
+     * The most recent closed row that ended in a handover or an unassign (never a correction). "Previous assigned to"
+     * is DERIVED from this: ict_assets.previous_assigned_to_employee_id is no longer written or read. Eager-load it as
+     * 'previousAssignment.employee'.
+     */
+    public function previousAssignment(): HasOne
+    {
+        return $this->hasOne(IctAssetAssignment::class, 'ict_asset_id')->ofMany(
+            ['id' => 'max'],
+            fn (Builder $query) => $query->whereIn('end_reason', IctAssetAssignment::PREVIOUS_REASONS),
+        );
+    }
+
+    /** The person who held this device before the current holder, from the assignment history. */
+    public function previousHolder(): ?Employee
+    {
+        return $this->previousAssignment?->employee;
     }
 
     public function department(): BelongsTo

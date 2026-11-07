@@ -7190,3 +7190,89 @@ textarea.form-input {
     width: 18px;
     height: 18px;
 }
+
+/* Finance and Audit: the tick / X / clock marks of a payment voucher. The popover is fixed-positioned (set from the button's
+   rectangle in Alpine) so a scrolling table never clips it. */
+.fin-mark {
+    display: inline-block;
+}
+
+.fin-mark-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+}
+
+.fin-mark-btn .ui-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.fin-mark-btn .ui-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.fin-mark-btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: 999px;
+}
+
+.fin-mark-pop {
+    position: fixed;
+    z-index: 60;
+    width: min(20rem, calc(100vw - 1.5rem));
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+    background: var(--surface, #fff);
+    color: inherit;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    text-align: left;
+    white-space: normal;
+}
+
+.fin-mark-pop dl {
+    margin: 0.4rem 0 0;
+}
+
+.fin-mark-pop dt {
+    font-weight: 600;
+    margin-top: 0.35rem;
+}
+
+.fin-mark-pop dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fin-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.fin-timeline li {
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+}
+
+.fin-timeline li:first-child {
+    border-top: 0;
+}
+
+.fin-diff td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.fin-diff del {
+    opacity: 0.75;
+}
