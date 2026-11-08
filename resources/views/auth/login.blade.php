@@ -7,7 +7,7 @@
     <!-- Session Status -->
     <x-auth-session-status :status="session('status')" />
 
-    <form method="POST" action="{{ route('login') }}" class="auth-form" x-data="{ clearErrors() { this.$root.querySelectorAll('[data-login-error]').forEach((el) => el.remove()) } }">
+    <form method="POST" action="{{ route('login') }}" class="auth-form" x-data="{ busy: false, clearErrors() { this.$root.querySelectorAll('[data-login-error]').forEach((el) => el.remove()) } }" x-on:submit="busy = true" x-on:pageshow.window="busy = false">
         @csrf
 
         @if ($errors->has('staff_id'))
@@ -58,9 +58,12 @@
             @endif
         </div>
 
-        <x-primary-button class="btn-block">
+        <x-primary-button class="btn-block" x-bind:disabled="busy">
             <x-ui.icon name="log-in" />
             {{ __('Log in') }}
         </x-primary-button>
+
+        {{-- Page-level wait while the browser signs in (plain form post, no Livewire) --}}
+        <x-loading.drop-fill overlay x-show="busy" x-cloak label="{{ __('Signing in') }}" />
     </form>
 </x-guest-layout>

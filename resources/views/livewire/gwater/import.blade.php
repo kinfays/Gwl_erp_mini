@@ -75,4 +75,6 @@
             @endforeach
         </x-ui.card>
     @endif
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="previewFile,runImport,runImportValidOnly" label="Checking the file…" />
 </div>

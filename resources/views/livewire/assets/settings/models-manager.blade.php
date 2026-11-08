@@ -125,7 +125,7 @@
                             aria-describedby="f-model-image-hint"
                         >
                     </div>
-                    <span wire:loading wire:target="{{ $imageField }}" class="ui-hint">Uploading…</span>
+                    <span wire:loading.inline-flex wire:target="{{ $imageField }}" class="ui-hint wl-inline"><x-loading.drops size="sm" decorative />Uploading…</span>
                     @if ($editingModel?->image_path)
                         <div>
                             <button type="button" wire:click="removeImage({{ $editingModel->id }})" class="btn btn-sm btn-danger">

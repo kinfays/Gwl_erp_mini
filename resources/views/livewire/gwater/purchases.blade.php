@@ -153,7 +153,7 @@
                 <div class="span-2">
                     <x-ui.input type="file" label="Photo, scan or PDF of the paper waybill" wire:model="waybillPhoto" accept="image/jpeg,image/png,image/webp,application/pdf"
                         :hint="'A picture (JPG, PNG, WebP) or a PDF, up to '.(int) config('gwl.gwater_waybill_photo_max_mb').' MB. It is kept private and shown only to people who can see this trip.'" />
-                    <div wire:loading wire:target="waybillPhoto" class="cell-muted">Uploading...</div>
+                    <div wire:loading.inline-flex wire:target="waybillPhoto" class="cell-muted wl-inline"><x-loading.drops size="sm" decorative />Uploading...</div>
                     @if ($waybillPhoto && ! $errors->has('waybillPhoto'))
                         <div class="cell-muted" style="margin-top:4px">Ready: {{ $waybillPhoto->getClientOriginalName() }} <x-ui.button size="sm" variant="ghost" wire:click="removePhoto">Remove</x-ui.button></div>
                         @if (method_exists($waybillPhoto, 'isPreviewable') && $waybillPhoto->isPreviewable())

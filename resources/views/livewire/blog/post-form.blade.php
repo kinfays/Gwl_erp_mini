@@ -214,7 +214,7 @@
                     <input id="blog-cover" type="file" class="b-input" wire:model="cover" accept="image/jpeg,image/png,image/webp">
                     <span class="be-hint">{{ __('JPG, PNG or WebP, up to :mb MB. It is re-saved without location data.', ['mb' => $maxMb]) }}</span>
                 </label>
-                <div wire:loading wire:target="cover" class="be-hint">{{ __('Uploading…') }}</div>
+                <div wire:loading.inline-flex wire:target="cover" class="be-hint wl-inline"><x-loading.drops size="sm" decorative />{{ __('Uploading…') }}</div>
 
                 @if ($cover || ($existingCoverUrl && ! $removeCover))
                     <button type="button" class="b-btn" wire:click="clearCover">{{ __('Remove the photo') }}</button>

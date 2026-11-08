@@ -65,7 +65,7 @@
                             <span class="ui-hint">PDF, JPG or PNG, up to {{ round(config('gwl.letters_scan_max_kb') / 1024, 1) }} MB each. A scan never replaces the hardcopy.</span>
                             <button type="button" class="btn btn-sm btn-ghost" x-show="camera" x-cloak x-on:click="camera = false">Pick files instead of using the camera</button>
                         </div>
-                        <div wire:loading wire:target="scans" class="ui-hint">Uploading…</div>
+                        <div wire:loading.inline-flex wire:target="scans" class="ui-hint wl-inline"><x-loading.drops size="sm" decorative />Uploading…</div>
                         @error('scans') <x-ui.alert tone="danger">{{ $message }}</x-ui.alert> @enderror
                         @foreach ($errors->get('scans.*') as $messages)
                             <x-ui.alert tone="danger">{{ $messages[0] }}</x-ui.alert>

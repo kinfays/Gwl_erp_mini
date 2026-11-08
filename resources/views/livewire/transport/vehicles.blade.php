@@ -135,6 +135,7 @@
                 <span class="skeleton-line"></span>
                 <span class="skeleton-line"></span>
                 <span class="skeleton-line short"></span>
+                <x-loading.drop-fill class="wl-veil-drop" label="Loading" />
             </div>
         </div>
     </x-ui.card>
@@ -358,4 +359,6 @@
             </div>
         </x-ui.drawer>
     @endif
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="importVehicles" label="Importing vehicles…" />
 </div>

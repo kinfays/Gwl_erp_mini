@@ -111,8 +111,26 @@ Always say what is missing and what to do next.
 ### button
 `<x-ui.button variant="primary" icon="plus" wire:click="create" loading="create">New Role</x-ui.button>`
 Variants `primary · secondary (default) · ghost · danger · danger-solid · warn`; sizes `sm · md · lg`;
-`href` renders a link. One primary button per area. `loading="method"` disables the button and shows a
-spinner while that Livewire action runs.
+`href` renders a link. One primary button per area. `loading="method"` disables the button and shows the
+small bouncing drops centred over it while that Livewire action runs (the label is hidden, not removed, so
+the button keeps its width).
+
+### loaders
+Two water-themed loaders replace the old rotating icon (`.btn-spinner` / `ui-spin` are gone). Colours are the
+tokens only (`--color-primary`, `--color-series-1`, `--color-lagoon`), so dark mode needs nothing extra.
+Both take `size` (`sm | md | lg`) and `label` (default "Loading", visually hidden, read by screen readers) and
+render `role="status" aria-live="polite"` with the drawing itself `aria-hidden`. Styles: `app.css`, "Water loaders".
+- **`<x-loading.drop-fill>`** (B, filling drop): page or panel level. Add `overlay` for a fixed full-screen
+  veil with the label as a visible caption: `<x-loading.drop-fill overlay wire:loading.flex wire:target="runImport" label="Importing…" />`
+  (used on the import screens and the leave report export). It also sits in the middle of every table loading
+  veil (`.ui-loading-host > .table-skeleton`, class `wl-veil-drop`); the skeleton and the top bar are unchanged.
+  Every instance builds its own `clipPath` id, so several can share a page.
+- **`<x-loading.drops>`** (D, bouncing drops): small and inline. `wire:loading.inline-flex` keeps its layout
+  (Livewire's plain `wire:loading` would force `inline-block`). Inside a button it is positioned by `x-ui.button`;
+  on a solid blue or red button the drops turn white. Next to a visible message ("Uploading…") pass `decorative`
+  so it is hidden from assistive tech instead of announcing twice.
+- `prefers-reduced-motion: reduce` shows a still drop (half full) and three still drops of different weight.
+- The login form shows the overlay through Alpine (`busy` on submit), since it is a plain form post.
 
 ### Form controls
 `<x-ui.input>`, `<x-ui.select>`, `<x-ui.textarea>` render a label, hint and the validation message for

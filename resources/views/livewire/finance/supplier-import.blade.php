@@ -87,4 +87,6 @@
     <x-ui.card title="Columns" description="Do not rename the sheet or the headings. Only the name is required; leave the others empty if you do not have them." class="dash-row">
         <p><strong>Suppliers</strong>: <span class="mono">{{ implode(', ', $headings) }}</span></p>
     </x-ui.card>
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="previewFile,runImport,runImportValidOnly" label="Checking the file…" />
 </div>

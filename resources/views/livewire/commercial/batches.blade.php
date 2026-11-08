@@ -196,4 +196,6 @@
         </table>
         <div style="padding:12px">{{ $batches->links() }}</div>
     </div>
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="previewFile,file,runImport" label="Working on the file…" />
 </div>

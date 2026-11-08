@@ -99,7 +99,7 @@
 
             <div class="dash-row">
                 <button type="button" class="btn btn-secondary" wire:click="countAudience" wire:loading.attr="disabled">Count the audience</button>
-                <span wire:loading wire:target="countAudience" class="ui-hint">Counting ...</span>
+                <span wire:loading.inline-flex wire:target="countAudience" class="ui-hint wl-inline"><x-loading.drops size="sm" decorative />Counting ...</span>
             </div>
 
             @if ($counts)
@@ -196,7 +196,7 @@
 
             <div class="dash-row">
                 <button type="button" class="btn btn-primary" wire:click="send" wire:loading.attr="disabled" wire:target="send">{{ $scheduleAt !== '' ? 'Schedule the campaign' : 'Send now' }}</button>
-                <span wire:loading wire:target="send" class="ui-hint">Filing the campaign ...</span>
+                <span wire:loading.inline-flex wire:target="send" class="ui-hint wl-inline"><x-loading.drops size="sm" decorative />Filing the campaign ...</span>
             </div>
         </x-ui.card>
     @endif

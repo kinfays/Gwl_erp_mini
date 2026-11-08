@@ -108,7 +108,7 @@
             @endforeach
 
             <input type="file" multiple wire:model="uploads" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" aria-label="Add supporting documents">
-            <div wire:loading wire:target="uploads" class="cell-muted">Uploading...</div>
+            <div wire:loading.inline-flex wire:target="uploads" class="cell-muted wl-inline"><x-loading.drops size="sm" decorative />Uploading...</div>
             @error('form.attachments') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
             @error('uploads.*') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
         </x-ui.card>

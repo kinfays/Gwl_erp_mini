@@ -1,7 +1,8 @@
 {{--
     Button / link button. Variants: primary · secondary (default) · ghost · danger · danger-solid · warn.
-    Sizes: sm · md · lg. `href` renders an <a>. `loading="method"` disables the button and shows a
-    spinner while that Livewire action runs. All other attributes (wire:click, x-on:…) pass through.
+    Sizes: sm · md · lg. `href` renders an <a>. `loading="method"` disables the button and shows the small
+    bouncing drops (<x-loading.drops>) centred over it while that Livewire action runs; the label and icon
+    are hidden meanwhile (not removed), so the button keeps its width. All other attributes (wire:click, x-on:…) pass through.
     Docs: docs/11-ui-components.md#button
 --}}
 @props([
@@ -41,17 +42,14 @@
     <button
         type="{{ $type }}"
         {{ $attributes->class($classes) }}
-        @if ($loading) wire:loading.attr="disabled" wire:target="{{ $loading }}" @endif
+        @if ($loading) wire:loading.attr="disabled" wire:loading.class="is-loading" wire:target="{{ $loading }}" @endif
     >
         @if ($loading)
-            <x-ui.icon name="loader-circle" class="btn-spinner" wire:loading wire:target="{{ $loading }}" />
+            <x-loading.drops size="sm" label="Working" class="wl-in-btn" wire:loading.inline-flex wire:target="{{ $loading }}" />
         @endif
-        @if ($file && $loading)
-            <x-ui.file-icon :type="$file" wire:loading.remove wire:target="{{ $loading }}" />
-        @elseif ($file)
+        {{-- Icons stay in the layout while loading (hidden by .is-loading in app.css), so the width never changes. --}}
+        @if ($file)
             <x-ui.file-icon :type="$file" />
-        @elseif ($icon && $loading)
-            <x-ui.icon :name="$icon" wire:loading.remove wire:target="{{ $loading }}" />
         @elseif ($icon)
             <x-ui.icon :name="$icon" />
         @endif

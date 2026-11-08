@@ -76,4 +76,6 @@
             @endif
         </x-ui.card>
     @endif
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="previewFile,file,runImport" label="Working on the file…" />
 </div>

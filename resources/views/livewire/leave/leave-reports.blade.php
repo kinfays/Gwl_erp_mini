@@ -11,4 +11,6 @@
             <x-ui.button file="excel" wire:click="export" loading="export">Export Report</x-ui.button>
         </div>
     </x-ui.card>
+
+    <x-loading.drop-fill overlay wire:loading.flex wire:target="export" label="Preparing the report…" />
 </div>

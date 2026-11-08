@@ -222,6 +222,7 @@
                 <span class="skeleton-line"></span>
                 <span class="skeleton-line"></span>
                 <span class="skeleton-line short"></span>
+                <x-loading.drop-fill class="wl-veil-drop" label="Loading" />
             </div>
         </div>
     </x-ui.card>

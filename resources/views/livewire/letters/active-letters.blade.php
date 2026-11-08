@@ -182,6 +182,7 @@
                     <span class="skeleton-line"></span>
                     <span class="skeleton-line"></span>
                     <span class="skeleton-line short"></span>
+                    <x-loading.drop-fill class="wl-veil-drop" label="Loading" />
                 </div>
             </div>
         </x-ui.card>
@@ -594,7 +595,7 @@
                                             <button type="button" class="btn btn-sm btn-ghost" x-show="camera" x-cloak x-on:click="camera = false">Pick files instead of using the camera</button>
                                         </div>
 
-                                        <div wire:loading wire:target="scans" class="ui-hint">Uploading…</div>
+                                        <div wire:loading.inline-flex wire:target="scans" class="ui-hint wl-inline"><x-loading.drops size="sm" decorative />Uploading…</div>
                                         @error('scans') <x-ui.alert tone="danger">{{ $message }}</x-ui.alert> @enderror
                                         @foreach ($errors->get('scans.*') as $messages)
                                             <x-ui.alert tone="danger">{{ $messages[0] }}</x-ui.alert>
