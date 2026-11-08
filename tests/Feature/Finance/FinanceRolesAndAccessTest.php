@@ -94,6 +94,35 @@ class FinanceRolesAndAccessTest extends FinanceTestCase
         Livewire::actingAs($aud)->test(Queue::class)->assertNotFound();
     }
 
+    public function test_the_home_dashboard_shows_a_tile_for_each_module_the_person_may_enter_and_one_flag_hides_both(): void
+    {
+        $fin = $this->finance('F1', $this->sowutuom);
+        $aud = $this->audit('AU1', $this->sowutuom);
+        $both = $this->both('B1', $this->sowutuom);
+        $plain = $this->person('E1', $this->sowutuom);
+
+        $tiles = function ($who) {
+            $this->actingAs($who);
+
+            return collect(dashboardModules())->pluck('route', 'slug');
+        };
+
+        $this->assertSame(route('finance.home'), $tiles($fin)['finance']);
+        $this->assertArrayNotHasKey('audit', $tiles($fin)->all());
+        $this->assertSame(route('audit.home'), $tiles($aud)['audit']);
+        $this->assertArrayNotHasKey('finance', $tiles($aud)->all());
+        $this->assertArrayHasKey('finance', $tiles($both)->all());
+        $this->assertArrayHasKey('audit', $tiles($both)->all());
+        $this->assertArrayNotHasKey('finance', $tiles($plain)->all());
+        $this->assertArrayNotHasKey('audit', $tiles($plain)->all());
+
+        $this->actingAs($fin)->get(route('dashboard'))->assertOk()->assertSee(route('finance.home'), false);
+
+        config(['gwl.finance_audit_enabled' => false]);
+        $this->assertArrayNotHasKey('finance', $tiles($fin)->all());
+        $this->assertArrayNotHasKey('audit', $tiles($both)->all());
+    }
+
     public function test_the_flag_is_off_by_default_in_config_and_routes_are_not_registered_without_it(): void
     {
         // phpunit.xml switches the flag on, so the shipped default is read from the config file itself.

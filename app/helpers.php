@@ -99,6 +99,20 @@ if (! function_exists('dashboardModules')) {
                 'icon' => 'GW',
                 'route' => route('gwater.home'),
             ]] : []),
+            // Finance and Audit are one payment-voucher workflow shown through two modules, behind one flag.
+            ...(config('gwl.finance_audit_enabled') ? [[
+                'slug' => 'finance',
+                'title' => 'Finance',
+                'description' => 'Prepare payment vouchers, send them to Audit, and follow queries and acknowledgements',
+                'icon' => 'FN',
+                'route' => route('finance.home'),
+            ], [
+                'slug' => 'audit',
+                'title' => 'Audit',
+                'description' => 'Review payment vouchers from Finance: tick them off or query them',
+                'icon' => 'AU',
+                'route' => route('audit.home'),
+            ]] : []),
             [
                 'slug' => 'uac',
                 'title' => 'User Access Control',

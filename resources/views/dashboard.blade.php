@@ -15,6 +15,8 @@
             'commercial' => 'chart-column',
             'health_safety' => 'triangle-alert',
             'gwater' => 'droplets',
+            'finance' => 'banknote',
+            'audit' => 'circle-check',
             'uac' => 'shield-check',
         ];
         $leave = $summary['leave'] ?? null;
