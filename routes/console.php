@@ -14,6 +14,8 @@ use App\Services\Commercial\Sms\SmsRetention;
 use App\Services\Commercial\UploadReminderService;
 use App\Services\GWater\GwaterReminderService;
 use App\Services\HealthSafety\HealthSafetyAlertService;
+use App\Services\Finance\AuditReminderService;
+use App\Services\Finance\FinanceReminderService;
 use App\Services\Leave\LeaveBalanceService;
 use App\Services\Visitors\VisitorService;
 use Illuminate\Foundation\Inspiring;
@@ -142,6 +144,42 @@ if (config('gwl.gwater_module_enabled')) {
     })->purpose('Remind G-Water users of low stock');
 
     Schedule::command('gwater:remind')->dailyAt('07:55')->withoutOverlapping();
+}
+
+// Finance and Audit reminders (docs/20-module-finance-audit.md): TWO independent commands, each with its own settings per location
+// (Finance > Settings > Reminders, Audit > Settings > Reminders): finance:remind (queried, ticked-and-waiting, drafts) and audit:remind
+// (With Audit). A voucher is reminded about once per repeat interval. Scheduled only while the module is on, and they need the
+// scheduler to be running.
+if (config('gwl.finance_audit_enabled')) {
+    $remindSummary = function ($command, array $summary, bool $dryRun): int {
+        $command->info(sprintf(
+            '%d voucher(s) waiting, %d overdue; %s %d reminder(s) (%d notification(s)); %d already reminded recently; %d at locations that switched reminders off.',
+            $summary['waiting'],
+            $summary['overdue'],
+            $dryRun ? 'would send' : 'sent',
+            $summary['reminded'],
+            $summary['notifications'],
+            $summary['skipped'],
+            $summary['disabled']
+        ));
+
+        return 0;
+    };
+
+    Artisan::command('finance:remind {--dry-run : List what would be sent, without sending or recording anything}', function (FinanceReminderService $reminders) use ($remindSummary) {
+        $dryRun = (bool) $this->option('dry-run');
+
+        return $remindSummary($this, $reminders->remind(dryRun: $dryRun), $dryRun);
+    })->purpose('Remind Finance officers of queried, ticked and draft payment vouchers that have waited too long');
+
+    Artisan::command('audit:remind {--dry-run : List what would be sent, without sending or recording anything}', function (AuditReminderService $reminders) use ($remindSummary) {
+        $dryRun = (bool) $this->option('dry-run');
+
+        return $remindSummary($this, $reminders->remind(dryRun: $dryRun), $dryRun);
+    })->purpose('Remind Audit officers of payment vouchers that have waited too long for a tick or a query');
+
+    Schedule::command('finance:remind')->dailyAt('08:00')->withoutOverlapping();
+    Schedule::command('audit:remind')->dailyAt('08:00')->withoutOverlapping();
 }
 
 if (config('gwl.commercial_module_enabled')) {

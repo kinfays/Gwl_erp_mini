@@ -26,7 +26,7 @@
                         <div class="cell-muted" title="{{ $payeeFlags[$pv->id]['message'] }}"><x-ui.icon name="triangle-alert" /> Left service</div>
                     @endif
                 </td>
-                <td>{{ $pv->category?->name }}<div class="cell-muted">{{ $pv->type?->name }}</div></td>
+                <td>{{ $pv->category_label }}<div class="cell-muted">{{ $pv->type_label }}</div></td>
                 <td class="num">{{ $pv->amountFormatted() }}</td>
                 <td>{{ $pv->statusLabel() }}</td>
                 <td><x-finance.mark :mark="$marks['audit']" party="Audit" /></td>

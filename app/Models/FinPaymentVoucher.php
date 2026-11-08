@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Finance\PvCatalogService;
 use App\Services\GWater\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -99,6 +100,20 @@ class FinPaymentVoucher extends Model
     public static function normaliseNumber(?string $number): string
     {
         return mb_strtoupper(trim((string) preg_replace('/\s+/u', ' ', (string) $number)));
+    }
+
+    /**
+     * The category name as THIS voucher's location shows it today (its own rename, else the standard / own name). Lists set it in
+     * bulk through PvCatalogService::labelPvs(); otherwise it is worked out for this voucher alone. Never print `category->name`.
+     */
+    public function getCategoryLabelAttribute(): string
+    {
+        return $this->attributes['category_label'] ?? app(PvCatalogService::class)->labelsOf($this)['category'];
+    }
+
+    public function getTypeLabelAttribute(): string
+    {
+        return $this->attributes['type_label'] ?? app(PvCatalogService::class)->labelsOf($this)['type'];
     }
 
     public function category(): BelongsTo
@@ -200,12 +215,14 @@ class FinPaymentVoucher extends Model
      */
     public function contentSnapshot(): array
     {
+        $labels = app(PvCatalogService::class)->labelsOf($this);
+
         return [
             'PV date' => $this->pv_date?->format('d M Y') ?? '',
             'PV number' => (string) $this->pv_no,
             'Payee' => $this->payeeKindLabel().': '.$this->payee_name,
-            'Category' => (string) ($this->category?->name ?? ''),
-            'Type' => (string) ($this->type?->name ?? ''),
+            'Category' => $labels['category'],
+            'Type' => $labels['type'],
             'Details' => (string) $this->details,
             'Amount (GH¢)' => Money::format($this->amount),
             'Remarks' => (string) $this->remarks,

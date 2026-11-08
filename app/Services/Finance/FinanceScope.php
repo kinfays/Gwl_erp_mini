@@ -34,6 +34,17 @@ class FinanceScope
 
     public const AS_AUDIT = 'audit';
 
+    public const AUDIT_ALL = 'all';
+
+    public const AUDIT_WORKED = 'worked';
+
+    public const AUDIT_NONE = 'none';
+
+    /** The payee pickers send nothing to the page for fewer characters than this, and never more rows than the limit. */
+    public const SEARCH_MIN = 2;
+
+    public const SEARCH_LIMIT = 20;
+
     public function __construct(protected TransportScope $scope) {}
 
     public function can(User $user, string $permission): bool
@@ -89,14 +100,51 @@ class FinanceScope
      */
     public function pvs(User $user, string $as = self::AS_FINANCE): Builder
     {
+        $query = $this->pvsForTotals($user, $as);
+
+        if ($as === self::AS_AUDIT && $this->auditReach($user) === self::AUDIT_WORKED) {
+            // THE rule of the Audit manager's view, in one place: only a voucher an Audit officer has worked on (ticked, queried
+            // or withdrawn a tick). One that is With Audit and was never reviewed is invisible: no row, no detail, no file, no export.
+            $query->whereExists(fn ($events) => $events->selectRaw('1')->from('fin_pv_events')
+                ->whereColumn('fin_pv_events.pv_id', 'fin_pvs.id')
+                ->whereIn('fin_pv_events.action', FinPvEvent::REVIEWING));
+        }
+
+        return $query;
+    }
+
+    /**
+     * The location's vouchers for COUNTING only (analytics figures, how many are waiting): the same location, the same draft rule
+     * as pvs(), but without the Audit manager's "worked on" limit. Never list, open or export rows from this; a person with no
+     * Audit reach at all still gets nothing.
+     */
+    public function pvsForTotals(User $user, string $as = self::AS_FINANCE): Builder
+    {
         $query = $this->scope(FinPaymentVoucher::query(), $user);
 
         if ($as === self::AS_AUDIT) {
             $query->where('fin_pvs.status', '!=', FinPaymentVoucher::DRAFT)
                 ->whereNotNull('fin_pvs.submitted_at');
+
+            if ($this->auditReach($user) === self::AUDIT_NONE) {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         return $query;
+    }
+
+    /**
+     * How much of Audit's work a user reads: everything the location sent to Audit (audit.view, or audit.review which implies
+     * it), only the vouchers an Audit officer has worked on (audit.view_reviewed: the Audit manager), or nothing.
+     */
+    public function auditReach(User $user): string
+    {
+        if ($this->can($user, 'audit.view') || $this->can($user, 'audit.review')) {
+            return self::AUDIT_ALL;
+        }
+
+        return $this->can($user, 'audit.view_reviewed') ? self::AUDIT_WORKED : self::AUDIT_NONE;
     }
 
     /** 404 unless the user reaches the voucher (as Finance or as Audit). */
@@ -209,6 +257,62 @@ class FinanceScope
                 }),
             default => $query->whereRaw('1 = 0'),
         };
+    }
+
+    /**
+     * A "contains" pattern for a typed term where % and _ are ordinary characters. Pair it with `LIKE ? ESCAPE '!'`: that escape
+     * character works the same on MySQL and SQLite (a backslash does not, on SQLite).
+     */
+    public static function like(string $term): string
+    {
+        return '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%';
+    }
+
+    /**
+     * Current staff or retirees of the location whose name or staff ID contains the term: the voucher form's server-side picker.
+     * Still ONLY that location's people (it is employees() underneath), at most 20, none for under 2 characters. A row is the
+     * id, the name and staff ID + department as a disambiguator: never a phone number or an e-mail address.
+     *
+     * @return list<array{value: int, label: string, description: string}>
+     */
+    public function searchEmployees(User $actor, string $kind, string $term, ?array $location = null): array
+    {
+        $term = trim((string) preg_replace('/\s+/u', ' ', $term));
+
+        if (mb_strlen($term) < self::SEARCH_MIN) {
+            return [];
+        }
+
+        $like = self::like($term);
+
+        return $this->employees($actor, $kind, $location)
+            ->where(fn (Builder $query) => $query->whereRaw("employees.full_name LIKE ? ESCAPE '!'", [$like])->orWhereRaw("employees.staff_id LIKE ? ESCAPE '!'", [$like]))
+            ->with('department:id,department_name')
+            ->limit(self::SEARCH_LIMIT)
+            ->get(['employees.id', 'employees.full_name', 'employees.staff_id', 'employees.department_id'])
+            ->map(fn (Employee $employee) => [
+                'value' => $employee->id,
+                'label' => $employee->full_name,
+                'description' => trim('Staff ID '.$employee->staff_id.($employee->department ? ' · '.$employee->department->department_name : '')),
+            ])->all();
+    }
+
+    /**
+     * The districts a voucher may be paid to: REGION BASED ONLY, the districts of the location being worked in. A regional user
+     * gets their region's districts (not Head Office, not another region's); Head Office staff the Head Office district; super_admin
+     * the districts of the location they picked (nothing until they pick one). Few rows, so the picker filters in the browser.
+     *
+     * @return Builder<District>
+     */
+    public function districts(User $actor, ?array $location = null): Builder
+    {
+        $location = $this->seesAll($actor) ? $location : $this->scope->locationOf($actor);
+
+        if (! $location) {
+            return District::query()->whereRaw('1 = 0')->orderBy('districts.district_name');
+        }
+
+        return $this->scope->districtsOfUnit($this->isHeadOffice($location), $location['region_id'] ?? null)->orderBy('districts.district_name');
     }
 
     /**

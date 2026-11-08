@@ -25,9 +25,10 @@ class FinanceAuditScreensTest extends FinanceTestCase
         $this->get(route('finance.home'))->assertRedirect();
         $this->actingAs($fin)->get(route('finance.home'))->assertOk()->assertSee('Payment vouchers');
         $this->actingAs($fin)->get(route('finance.pvs.create'))->assertOk();
-        $this->actingAs($fin)->get(route('finance.settings'))->assertOk()->assertSee('Staff Claims');
+        $this->actingAs($fin)->get(route('finance.settings'))->assertForbidden();
+        $this->actingAs($this->financeManager('FM1', $this->sowutuom))->get(route('finance.settings'))->assertOk()->assertSee('Staff Claims');
         $this->actingAs($aud)->get(route('audit.home'))->assertOk()->assertSee('Audit review');
-        $this->actingAs($aud)->get(route('audit.categories'))->assertOk();
+        $this->actingAs($aud)->get(route('audit.categories'))->assertForbidden();
 
         // Audit has no door into Finance and the other way round; an ordinary employee has neither.
         $this->actingAs($aud)->get(route('finance.home'))->assertRedirect();
@@ -109,13 +110,14 @@ class FinanceAuditScreensTest extends FinanceTestCase
         $type = FinPvType::query()->where('name', 'Medical')->firstOrFail();
         $component = Livewire::actingAs($super)->test(VoucherForm::class)
             ->assertSee('Choose a location above')
-            ->set('form.pv_no', 'SA-1')->set('form.payee_kind', 'district')->set('form.payee_district_id', (string) $this->odorkor->id)
+            ->set('form.pv_no', 'SA-1')->set('form.payee_kind', 'district')->set('form.payee_district_id', (string) $this->kumasi->id)
             ->set('form.category_id', (string) $type->category_id)->set('form.type_id', (string) $type->id)
             ->set('form.details', 'Claim')->set('form.amount', '10.00');
 
         $component->call('saveDraft')->assertHasErrors(['form.location']);
 
-        $component->set('locationId', (string) $this->kumasi->id)->call('saveDraft')->assertHasNoErrors();
+        $component->set('locationId', (string) $this->kumasi->id)->assertSet('form.payee_district_id', '', 'changing the location throws the picked payee away')
+            ->set('form.payee_district_id', (string) $this->kumasi->id)->call('saveDraft')->assertHasNoErrors();
         $this->assertSame($this->ashanti->id, Pv::query()->where('pv_no', 'SA-1')->value('region_id'));
     }
 

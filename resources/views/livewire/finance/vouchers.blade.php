@@ -19,7 +19,7 @@
             <x-ui.select label="Category" wire:model.live="categoryId">
                 <option value="">All</option>
                 @foreach ($categories as $category)
-                    <option value="{{ $category->id }}">{{ $category->name }}</option>
+                    <option value="{{ $category->id }}">{{ $category->effective_name }}</option>
                 @endforeach
             </x-ui.select>
             <x-ui.input label="PV date from" type="date" wire:model.live="from" />

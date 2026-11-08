@@ -105,6 +105,25 @@ return [
     'fin_attachment_max_per_pv' => (int) env('GWL_FIN_ATTACHMENT_MAX_PER_PV', 10),
     // Most rows one supplier import file may hold (the file is read into memory).
     'fin_supplier_import_max_rows' => (int) env('GWL_FIN_SUPPLIER_IMPORT_MAX_ROWS', 2000),
+    // Reminders: TWO independent sets, each changed only by its own manager and per location (Finance > Settings > Reminders needs
+    // finance.manage_reminders; Audit > Settings > Reminders needs audit.manage_reminders). A voucher that has waited longer than
+    // the threshold is reminded about, then again after the repeat interval while it still waits.
+    // Finance set (finance:remind): on/off, days Queried before Finance officers are reminded, days Audit acknowledged before
+    // Finance officers are reminded to acknowledge, days a Draft may sit unsent, repeat interval.
+    'fin_remind_enabled' => (bool) env('GWL_FIN_REMIND_ENABLED', true),
+    'fin_queried_wait_days' => (int) env('GWL_FIN_QUERIED_WAIT_DAYS', 5),
+    'fin_acknowledge_wait_days' => (int) env('GWL_FIN_ACKNOWLEDGE_WAIT_DAYS', 3),
+    'fin_draft_wait_days' => (int) env('GWL_FIN_DRAFT_WAIT_DAYS', 7),
+    'fin_remind_repeat_days' => (int) env('GWL_FIN_REMIND_REPEAT_DAYS', 3),
+    // Audit set (audit:remind): on/off, days With Audit before Audit officers are reminded, repeat interval.
+    'audit_remind_enabled' => (bool) env('GWL_AUDIT_REMIND_ENABLED', true),
+    'fin_audit_wait_days' => (int) env('GWL_FIN_AUDIT_WAIT_DAYS', 3),
+    'audit_remind_repeat_days' => (int) env('GWL_AUDIT_REMIND_REPEAT_DAYS', 3),
+    // Seconds the analytics payload of one location is kept (it is also dropped the moment a voucher changes).
+    'fin_analytics_cache_seconds' => (int) env('GWL_FIN_ANALYTICS_CACHE_SECONDS', 300),
+    // Most rows in one Finance / Audit export (Excel, PDF); the PDF is smaller because it is drawn page by page.
+    'fin_export_max_rows' => (int) env('GWL_FIN_EXPORT_MAX_ROWS', 5000),
+    'fin_export_pdf_max_rows' => (int) env('GWL_FIN_EXPORT_PDF_MAX_ROWS', 1500),
     // Hours an incident may sit unacknowledged before it is shown as overdue (the alert command chases it).
     'hs_ack_hours' => (int) env('GWL_HS_ACK_HOURS', 24),
     // Days from acknowledgement within which the investigation should be finished.

@@ -17,8 +17,8 @@ class FinanceRolesAndAccessTest extends FinanceTestCase
     public function test_the_permissions_exist_in_both_modules(): void
     {
         $finance = ['finance.view', 'finance.create_pv', 'finance.void_pv', 'finance.acknowledge', 'finance.manage_categories', 'finance.manage_suppliers',
-            'finance.deactivate_suppliers', 'finance.import_suppliers', 'finance.view_reports', 'finance.export'];
-        $audit = ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export'];
+            'finance.deactivate_suppliers', 'finance.import_suppliers', 'finance.view_reports', 'finance.export', 'finance.manage_reminders'];
+        $audit = ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export', 'audit.view_reviewed', 'audit.manage_reminders'];
 
         $this->assertEqualsCanonicalizing($finance, Permission::query()->where('module', 'finance')->pluck('name')->all());
         $this->assertEqualsCanonicalizing($audit, Permission::query()->where('module', 'audit')->pluck('name')->all());
@@ -54,6 +54,7 @@ class FinanceRolesAndAccessTest extends FinanceTestCase
         $this->assertContains('finance.create_pv', $slugs($finance));
         $this->assertContains('finance.import_suppliers', $slugs($finance));
         $this->assertNotContains('finance.deactivate_suppliers', $slugs($finance), 'deactivating a supplier is granted to few people');
+        $this->assertNotContains('finance.manage_categories', $slugs($finance), 'the catalogue belongs to the Finance manager (FinanceManagersTest)');
         $this->assertNotContains('audit.review', $slugs($finance));
         $this->assertEqualsCanonicalizing(['audit.view', 'audit.review', 'audit.view_reports', 'audit.export'], $slugs($audit));
 

@@ -84,7 +84,7 @@ class FinanceScopeTest extends FinanceTestCase
             $this->assertArrayHasKey('location', $exception->errors());
         }
 
-        $pv = $this->workflow()->createDraft($super, $this->pvData(['pv_no' => 'X-3']), [], $this->kumasi->id);
+        $pv = $this->workflow()->createDraft($super, $this->pvData(['pv_no' => 'X-3', 'payee_district_id' => $this->kumasi->id]), [], $this->kumasi->id);
         $this->assertSame($this->ashanti->id, $pv->region_id);
         $this->assertSame($this->kumasi->id, $pv->district_id);
     }

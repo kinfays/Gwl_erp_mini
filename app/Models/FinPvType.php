@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A payment voucher type; belongs to ONE category. See FinPvCategory. */
 class FinPvType extends Model
 {
-    protected $fillable = ['category_id', 'name', 'sort_order', 'is_active'];
+    protected $fillable = ['category_id', 'name', 'unit', 'sort_order', 'is_active'];
 
     protected $casts = ['category_id' => 'integer', 'sort_order' => 'integer', 'is_active' => 'boolean'];
 

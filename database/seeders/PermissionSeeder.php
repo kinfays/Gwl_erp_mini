@@ -182,12 +182,15 @@ class PermissionSeeder extends Seeder
                 'finance.import_suppliers',
                 'finance.view_reports',
                 'finance.export',
+                'finance.manage_reminders',
             ],
             'audit' => [
                 'audit.view',
                 'audit.review',
                 'audit.view_reports',
                 'audit.export',
+                'audit.view_reviewed',
+                'audit.manage_reminders',
             ],
         ];
 

@@ -43,6 +43,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\Finance\AuditController;
 use App\Http\Controllers\Finance\FinanceController;
+use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\GWater\GwaterController;
 use App\Http\Controllers\GWater\GwaterExportController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
@@ -786,7 +787,14 @@ if (config('gwl.finance_audit_enabled')) {
             Route::get('/pvs/{pv}/edit', [FinanceController::class, 'edit'])->whereNumber('pv')->middleware('permission:finance.create_pv')->name('pvs.edit');
             Route::get('/pvs/{pv}', [FinanceController::class, 'show'])->whereNumber('pv')->middleware('permission:finance.view')->name('pvs.show');
             Route::get('/pvs/{pv}/attachments/{attachment}', [FinanceController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:finance.view')->name('pvs.attachment');
-            Route::get('/categories', [FinanceController::class, 'settings'])->middleware('permission:finance.view')->name('settings');
+            Route::get('/categories', [FinanceController::class, 'settings'])->middleware('permission:finance.manage_categories')->name('settings');
+            Route::get('/reports', [FinanceController::class, 'reports'])->middleware('permission:finance.view_reports')->name('reports');
+            Route::get('/export/{report}/{format}', [FinanceExportController::class, 'finance'])
+                ->where('report', '[a-z-]+')
+                ->where('format', 'excel|pdf')
+                ->middleware(['permission:finance.export', 'permission:finance.view_reports'])
+                ->name('export');
+            Route::get('/settings', [FinanceController::class, 'reminderSettings'])->middleware('permission:finance.manage_reminders')->name('reminder-settings');
             Route::get('/suppliers', [FinanceController::class, 'suppliers'])->middleware('permission:finance.view')->name('suppliers');
             Route::get('/suppliers/import', [FinanceController::class, 'supplierImport'])->middleware('permission:finance.import_suppliers')->name('suppliers.import');
             Route::get('/suppliers/import/template', [FinanceController::class, 'supplierImportTemplate'])->middleware('permission:finance.import_suppliers')->name('suppliers.import.template');
@@ -796,10 +804,20 @@ if (config('gwl.finance_audit_enabled')) {
         ->prefix('audit')
         ->name('audit.')
         ->group(function () {
-            Route::get('/', [AuditController::class, 'home'])->middleware('permission:audit.view')->name('home');
-            Route::get('/pvs/{pv}', [AuditController::class, 'show'])->whereNumber('pv')->middleware('permission:audit.view')->name('pvs.show');
-            Route::get('/pvs/{pv}/attachments/{attachment}', [AuditController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:audit.view')->name('pvs.attachment');
-            Route::get('/categories', [AuditController::class, 'categories'])->middleware('permission:audit.view')->name('categories');
+            // audit.view = the whole queue (Audit officer); audit.view_reviewed = only vouchers an Audit officer has worked on (Audit
+            // manager). FinanceScope::pvs() applies the difference, so these routes never decide it.
+            Route::get('/', [AuditController::class, 'home'])->middleware('permission:audit.view,audit.view_reviewed')->name('home');
+            Route::get('/pvs/{pv}', [AuditController::class, 'show'])->whereNumber('pv')->middleware('permission:audit.view,audit.view_reviewed')->name('pvs.show');
+            Route::get('/pvs/{pv}/attachments/{attachment}', [AuditController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:audit.view,audit.view_reviewed')->name('pvs.attachment');
+            // Audit has no say over categories and types any more: the route stays only to answer 403 to an old bookmark.
+            Route::get('/categories', [AuditController::class, 'categories'])->name('categories');
+            Route::get('/reports', [AuditController::class, 'reports'])->middleware('permission:audit.view_reports')->name('reports');
+            Route::get('/export/{report}/{format}', [FinanceExportController::class, 'audit'])
+                ->where('report', '[a-z-]+')
+                ->where('format', 'excel|pdf')
+                ->middleware(['permission:audit.export', 'permission:audit.view_reports'])
+                ->name('export');
+            Route::get('/settings', [AuditController::class, 'reminderSettings'])->middleware('permission:audit.manage_reminders')->name('reminder-settings');
             Route::get('/suppliers', [AuditController::class, 'suppliers'])->middleware('permission:audit.view')->name('suppliers');
         });
 }

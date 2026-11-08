@@ -80,7 +80,8 @@
                             @if (! empty($post->tags))
                                 <div style="display:flex;flex-wrap:wrap;gap:4px">
                                     @foreach ($post->tags as $tag)
-                                        <x-ui.button size="sm" variant="ghost" wire:click="searchTag(@js($tag))">#{{ $tag }}</x-ui.button>
+                                        {{-- A plain button, not <x-ui.button>: Blade does not compile @js() inside a component's attributes. --}}
+                                        <button type="button" class="btn btn-ghost btn-sm" wire:click="searchTag(@js($tag))">#{{ $tag }}</button>
                                     @endforeach
                                 </div>
                             @endif

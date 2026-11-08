@@ -7,23 +7,32 @@ use App\Models\Role;
 use Illuminate\Database\Seeder;
 
 /**
- * Mirrors the role -> permission grants of migration 2026_11_10_000002_seed_finance_audit_access, for fresh installs (the
- * migration runs before any role exists there) and for tests that seed roles themselves. finance_officer holds every
- * finance.* permission except finance.deactivate_suppliers, audit_officer every audit.* one, super_admin all of them.
+ * Mirrors the role -> permission grants of the Finance / Audit migrations, for fresh installs (the migrations run before any role
+ * exists there) and for tests that seed roles themselves. The lists are explicit so a permission added later is never granted by
+ * accident:
+ *  - finance_officer: prepares and sends vouchers, suppliers (not deactivating them), reports and exports; NO catalogue, NO reminders;
+ *  - finance_manager: reads everything of its location, manages the catalogue and the reminders, deactivates suppliers; never writes a voucher;
+ *  - audit_officer: the whole queue and the review; audit_manager: only vouchers an Audit officer worked on, reports, reminders;
+ *  - super_admin: all of them.
  */
 class FinanceAuditRolePermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        $finance = Permission::query()->where('module', Permission::MODULE_FINANCE)->get();
-        $audit = Permission::query()->where('module', Permission::MODULE_AUDIT)->get();
+        $finance = Permission::query()->where('module', Permission::MODULE_FINANCE)->pluck('name');
+        $audit = Permission::query()->where('module', Permission::MODULE_AUDIT)->pluck('name');
 
-        $grant = function (string $role, $permissions): void {
-            Role::query()->where('name', $role)->first()?->permissions()->syncWithoutDetaching($permissions->pluck('id')->all());
-        };
+        $grants = [
+            'finance_officer' => $finance->reject(fn (string $name) => in_array($name, ['finance.deactivate_suppliers', 'finance.manage_categories', 'finance.manage_reminders'], true))->all(),
+            'finance_manager' => ['finance.view', 'finance.view_reports', 'finance.export', 'finance.manage_categories', 'finance.manage_reminders', 'finance.deactivate_suppliers'],
+            'audit_officer' => ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export'],
+            'audit_manager' => ['audit.view_reviewed', 'audit.view_reports', 'audit.export', 'audit.manage_reminders'],
+            'super_admin' => $finance->merge($audit)->all(),
+        ];
 
-        $grant('finance_officer', $finance->reject(fn (Permission $permission) => $permission->name === 'finance.deactivate_suppliers'));
-        $grant('audit_officer', $audit);
-        $grant('super_admin', $finance->merge($audit));
+        foreach ($grants as $role => $names) {
+            $ids = Permission::query()->whereIn('name', $names)->pluck('id')->all();
+            Role::query()->where('name', $role)->first()?->permissions()->syncWithoutDetaching($ids);
+        }
     }
 }

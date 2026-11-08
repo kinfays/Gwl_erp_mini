@@ -42,6 +42,8 @@ class ModuleAccessSeeder extends Seeder
             'g_water' => [Permission::MODULE_GWATER],
             'finance_officer' => [Permission::MODULE_FINANCE],
             'audit_officer' => [Permission::MODULE_AUDIT],
+            'finance_manager' => [Permission::MODULE_FINANCE],
+            'audit_manager' => [Permission::MODULE_AUDIT],
             'hr_headoffice' => $hrModules,
             'hr_region' => $hrModules,
             'secretary' => [Permission::MODULE_LETTERS],

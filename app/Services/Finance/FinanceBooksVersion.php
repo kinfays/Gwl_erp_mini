@@ -29,6 +29,16 @@ class FinanceBooksVersion
         Cache::forever(self::cacheKey($location), self::current($location) + 1);
     }
 
+    /** Every location's books at once: a change to a system default (the catalogue) shows in all of them. */
+    public static function touchAll(): void
+    {
+        $units = ['ho', ...\App\Models\Region::query()->pluck('id')->map(fn ($id) => 'r'.$id)->all()];
+
+        foreach ($units as $unit) {
+            Cache::forever('finance:books-version:'.$unit, (int) Cache::get('finance:books-version:'.$unit, 0) + 1);
+        }
+    }
+
     private static function cacheKey(array $location): string
     {
         return 'finance:books-version:'.self::unitKey($location);

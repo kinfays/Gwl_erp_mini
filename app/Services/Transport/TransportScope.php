@@ -131,6 +131,27 @@ class TransportScope
     }
 
     /**
+     * The DISTRICTS of one unit: the Head Office district, or the districts of a region EXCLUDING Head Office (which shares the
+     * region's id). For a query on `districts` itself (applyUnit() is for tables that carry region_id + district_id).
+     *
+     * @return Builder<District>
+     */
+    public function districtsOfUnit(bool $headOffice, ?int $regionId): Builder
+    {
+        $query = District::query();
+
+        if ($headOffice) {
+            return $query->whereIn('districts.id', $this->headOfficeDistricts());
+        }
+
+        if ($regionId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where('districts.region_id', $regionId)->whereNotIn('districts.id', $this->headOfficeDistricts());
+    }
+
+    /**
      * Restricts a query on a table that hangs off a vehicle (expenses, mileage logs, issues, maintenance records,
      * assignment history) to the vehicles the user may reach. Soft-deleted vehicles keep their history visible.
      */

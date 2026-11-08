@@ -6,8 +6,6 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Finance\Concerns\ScopesFinanceByActor;
 use App\Models\District;
 use App\Models\FinPaymentVoucher as Pv;
-use App\Models\FinPvCategory;
-use App\Models\FinPvType;
 use App\Models\FinSupplier;
 use App\Models\Permission;
 use App\Services\Finance\FinanceScope;
@@ -39,18 +37,15 @@ class VoucherForm extends Component
     /** Finance's reply to Audit when a queried voucher is resubmitted (kept on the timeline, optional). */
     public string $note = '';
 
-    public string $payeeSearch = '';
+    /** Bumped when the page itself picks a payee (a supplier just added), so the picker is rebuilt showing it. */
+    public int $pickerNonce = 0;
+
+    public bool $showSupplierAdd = false;
 
     public array $uploads = [];
 
     /** @var array<int, int> attachments ticked for removal */
     public array $removeIds = [];
-
-    public string $newCategory = '';
-
-    public string $newType = '';
-
-    public bool $showCatalogue = false;
 
     /** The "add a supplier" panel (company-wide list, SupplierService): typed values and "this is a different supplier". */
     public array $newSupplier = ['name' => '', 'code' => '', 'tin' => '', 'phone' => ''];
@@ -115,17 +110,76 @@ class VoucherForm extends Component
         $this->form['type_id'] = '';
     }
 
+    /** Choosing who is paid FIRST: changing the kind throws the picked payee away (a person is never kept as a supplier). */
     public function updatedFormPayeeKind(): void
     {
-        $this->form['payee_employee_id'] = '';
-        $this->form['payee_district_id'] = '';
-        $this->form['supplier_id'] = '';
-        $this->payeeSearch = '';
+        $this->clearPayee();
     }
 
     public function updatedLocationId(): void
     {
+        $this->clearPayee();
+    }
+
+    protected function clearPayee(): void
+    {
         $this->form['payee_employee_id'] = '';
+        $this->form['payee_district_id'] = '';
+        $this->form['supplier_id'] = '';
+        $this->pickerNonce++;
+        $this->resetErrorBag(['form.payee_employee_id', 'form.payee_district_id', 'form.supplier_id']);
+    }
+
+    // ------------------------------------------------------------------ the payee pickers (server-side search)
+
+    /**
+     * Current staff or retirees of THIS voucher's location for the picker: called by the browser with the typed text. Scoped,
+     * 2+ characters, 20 rows at most, never a phone number (FinanceScope::searchEmployees).
+     *
+     * @return list<array{value: int, label: string, description: string}>
+     */
+    public function searchPeople(string $term): array
+    {
+        $this->guard('finance.create_pv');
+        $kind = $this->form['payee_kind'];
+
+        if (! in_array($kind, [Pv::PAYEE_EMPLOYEE, Pv::PAYEE_RETIREE], true)) {
+            return [];
+        }
+
+        return $this->scope()->searchEmployees($this->actor(), $kind, $term, $this->payeeLocation($this->currentVoucher()));
+    }
+
+    /** @return list<array{value: int, label: string, description: string}> active suppliers (company-wide), never a TIN or phone */
+    public function searchSuppliers(string $term): array
+    {
+        $this->guard('finance.create_pv');
+
+        return $this->form['payee_kind'] === Pv::PAYEE_SUPPLIER ? app(SupplierService::class)->search($term) : [];
+    }
+
+    /** "No match: add it as a new supplier": opens the quick-add panel with the typed name (only for those who may add suppliers). */
+    public function startNewSupplier(string $name): void
+    {
+        $this->guard('finance.manage_suppliers');
+        $this->resetErrorBag(['newSupplier.name', 'newSupplier.code', 'newSupplier.tin', 'newSupplier.phone']);
+        $this->newSupplier['name'] = mb_substr(trim($name), 0, 200);
+        $this->differentSupplier = false;
+        $this->showSupplierAdd = true;
+    }
+
+    /** The voucher being edited, found inside the user's reach (the id is a public property the browser could change). */
+    protected function currentVoucher(): ?Pv
+    {
+        return $this->pvId ? $this->pvs(FinanceScope::AS_FINANCE)->find($this->pvId) : null;
+    }
+
+    /** @return array{region_id: int|null, district_id: int|null}|null */
+    protected function payeeLocation(?Pv $existing): ?array
+    {
+        return $existing
+            ? ['region_id' => $existing->region_id, 'district_id' => $existing->district_id]
+            : $this->workingLocation();
     }
 
     public function saveDraft()
@@ -171,25 +225,6 @@ class VoucherForm extends Component
         return $this->redirectRoute('finance.pvs.show', $pv->id);
     }
 
-    public function addCategory(PvCatalogService $catalogue): void
-    {
-        $this->guard('finance.manage_categories');
-        $category = $this->run(fn () => $catalogue->createCategory($this->actor(), $this->newCategory), 'catalogue');
-        $this->newCategory = '';
-        $this->form['category_id'] = (string) $category->id;
-        $this->form['type_id'] = '';
-        $this->dispatch('toast', type: 'success', message: 'Category added.');
-    }
-
-    public function addType(PvCatalogService $catalogue): void
-    {
-        $this->guard('finance.manage_categories');
-        $type = $this->run(fn () => $catalogue->createType($this->actor(), (int) $this->form['category_id'], $this->newType), 'catalogue');
-        $this->newType = '';
-        $this->form['type_id'] = (string) $type->id;
-        $this->dispatch('toast', type: 'success', message: 'Type added.');
-    }
-
     public function updatedNewSupplierName(): void
     {
         $this->differentSupplier = false;
@@ -204,7 +239,8 @@ class VoucherForm extends Component
 
         $this->newSupplier = ['name' => '', 'code' => '', 'tin' => '', 'phone' => ''];
         $this->differentSupplier = false;
-        $this->payeeSearch = '';
+        $this->showSupplierAdd = false;
+        $this->pickerNonce++;
         $this->form['supplier_id'] = (string) $supplier->id;
         $this->dispatch('toast', type: 'success', message: 'Supplier added and chosen.');
     }
@@ -215,64 +251,65 @@ class VoucherForm extends Component
         $this->uploads = array_values($this->uploads);
     }
 
-    public function render(SupplierService $supplierService)
+    /**
+     * The name to show in the picker for the payee already chosen, worked out inside the user's reach (an id from the browser is
+     * never turned into a name unless it is one the person could pick; a voucher being edited keeps its own payee).
+     */
+    protected function payeeLabel(?Pv $existing, ?array $location): string
     {
-        // Resolved inside the user's reach every time: the id is a public property the browser could change.
-        $existing = $this->pvId ? $this->pvs(FinanceScope::AS_FINANCE)->find($this->pvId) : null;
         $kind = $this->form['payee_kind'];
-        $location = $this->pvId && $existing
-            ? ['region_id' => $existing->region_id, 'district_id' => $existing->district_id]
-            : $this->workingLocation();
-        $search = trim($this->payeeSearch);
-
-        $employees = collect();
+        $same = fn (string $column, int $id) => $existing && $existing->payee_kind === $kind && (int) $existing->{$column} === $id;
 
         if (in_array($kind, [Pv::PAYEE_EMPLOYEE, Pv::PAYEE_RETIREE], true)) {
-            $query = $this->scope()->employees($this->actor(), $kind, $location);
-            $selected = (int) $this->form['payee_employee_id'];
+            $id = (int) $this->form['payee_employee_id'];
+            $person = $id > 0 ? $this->scope()->employees($this->actor(), $kind, $location)->whereKey($id)->first() : null;
+            $person ??= $same('payee_employee_id', $id) ? \App\Models\Employee::query()->find($id) : null;
 
-            $employees = (clone $query)
-                ->when($search !== '', fn ($builder) => $builder->where(function ($inner) use ($search) {
-                    $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
-                    $inner->where('employees.full_name', 'like', $like)->orWhere('employees.staff_id', 'like', $like);
-                }))
-                ->limit(25)->get();
-
-            if ($selected && ! $employees->contains('id', $selected)) {
-                $current = $existing?->payee_employee_id === $selected
-                    ? \App\Models\Employee::query()->find($selected)
-                    : (clone $query)->whereKey($selected)->first();
-                $employees = $current ? $employees->prepend($current) : $employees;
-            }
+            return (string) $person?->full_name;
         }
 
-        $categoryId = (int) $this->form['category_id'];
-        $categories = FinPvCategory::query()
-            ->where(fn ($query) => $query->where('is_active', true)->when($existing, fn ($inner) => $inner->orWhere('id', $existing->category_id)))
-            ->orderBy('sort_order')->orderBy('name')->get();
-        $types = $categoryId
-            ? FinPvType::query()->where('category_id', $categoryId)
-                ->where(fn ($query) => $query->where('is_active', true)->when($existing, fn ($inner) => $inner->orWhere('id', $existing->type_id)))
-                ->orderBy('sort_order')->orderBy('name')->get()
-            : collect();
+        if ($kind === Pv::PAYEE_DISTRICT) {
+            $id = (int) $this->form['payee_district_id'];
+            $district = $id > 0 ? $this->scope()->districts($this->actor(), $location)->whereKey($id)->first() : null;
+            $district ??= $same('payee_district_id', $id) ? District::query()->find($id) : null;
 
-        $suppliers = $kind === Pv::PAYEE_SUPPLIER
-            ? FinSupplier::query()
-                ->where(fn ($query) => $query->where('is_active', true)->when($existing?->supplier_id, fn ($inner) => $inner->orWhere('id', $existing->supplier_id)))
-                ->when($search !== '', fn ($query) => $query->where('name', 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%'))
-                ->orderBy('name')->limit(50)->get()
-            : collect();
+            return (string) $district?->district_name;
+        }
+
+        $id = (int) $this->form['supplier_id'];
+        $supplier = $id > 0 ? FinSupplier::query()->whereKey($id)->where(fn ($query) => $query->where('is_active', true)->when($same('supplier_id', $id), fn ($inner) => $inner->orWhere('id', $id)))->first() : null;
+
+        return (string) $supplier?->name;
+    }
+
+    public function render(SupplierService $supplierService, PvCatalogService $catalogue)
+    {
+        // Resolved inside the user's reach every time: the id is a public property the browser could change.
+        $existing = $this->currentVoucher();
+        $kind = $this->form['payee_kind'];
+        $location = $this->payeeLocation($existing);
+
+        // Only the location's active categories and types (PvCatalogService works them out); a voucher being edited keeps its own.
+        ['categories' => $categories, 'types' => $types] = $catalogue->choices($location, (int) $this->form['category_id'], $existing);
+
+        // The districts of this location only; a district an old voucher already has stays in its own list so it can be shown.
+        $districts = $this->scope()->districts($this->actor(), $location)->get();
+        $kept = $existing?->payee_kind === Pv::PAYEE_DISTRICT ? (int) $existing->payee_district_id : 0;
+
+        if ($kept && ! $districts->contains('id', $kept) && ($old = District::query()->find($kept))) {
+            $districts->push($old);
+        }
 
         return view('livewire.finance.voucher-form', [
             'existing' => $existing,
-            'employees' => $employees,
             'categories' => $categories,
             'types' => $types,
-            'suppliers' => $suppliers,
-            'districts' => $kind === Pv::PAYEE_DISTRICT ? District::query()->orderBy('district_name')->get() : collect(),
+            'districtOptions' => $kind === Pv::PAYEE_DISTRICT
+                ? $districts->map(fn (District $district) => ['value' => $district->id, 'label' => $district->district_name])->all()
+                : [],
+            'payeeLabel' => $this->payeeLabel($existing, $location),
             'payeeKinds' => Pv::PAYEE_KINDS,
             'attachments' => $existing ? $existing->attachments()->get() : collect(),
-            'canManageCatalogue' => $this->can('finance.manage_categories'),
             'canManageSuppliers' => $this->can('finance.manage_suppliers'),
             'supplierMatches' => $kind === Pv::PAYEE_SUPPLIER && trim($this->newSupplier['name']) !== '' ? $supplierService->nearMatches($this->newSupplier['name']) : [],
             'isResubmission' => $existing?->status === Pv::QUERIED,

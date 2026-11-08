@@ -1286,14 +1286,6 @@ class ErpNavigation
                 'can' => $can('finance.create_pv'),
             ],
             [
-                'label' => 'Categories and types',
-                'route' => 'finance.settings',
-                'active' => ['finance.settings'],
-                'icon' => $this->icon('grid'),
-                'icon_name' => 'settings',
-                'can' => $can('finance.view'),
-            ],
-            [
                 'label' => 'Suppliers',
                 'route' => 'finance.suppliers',
                 'active' => ['finance.suppliers'],
@@ -1309,10 +1301,39 @@ class ErpNavigation
                 'icon_name' => 'upload',
                 'can' => $can('finance.import_suppliers'),
             ],
+            [
+                'label' => 'Reports',
+                'route' => 'finance.reports',
+                'active' => ['finance.reports'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => $can('finance.view_reports'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Settings',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('finance.manage_categories') || $currentUser->hasPermission('finance.manage_reminders'),
+            ],
+            [
+                'label' => 'Categories and types',
+                'route' => 'finance.settings',
+                'active' => ['finance.settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'settings',
+                'can' => $can('finance.manage_categories'),
+            ],
+            [
+                'label' => 'Reminders',
+                'route' => 'finance.reminder-settings',
+                'active' => ['finance.reminder-settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'clock',
+                'can' => $can('finance.manage_reminders'),
+            ],
         ];
     }
 
-    /** Audit (docs/20-module-finance-audit.md): the review queue and the (read-only) catalogue. */
+    /** Audit (docs/20-module-finance-audit.md): the review queue (or, for the Audit manager, the vouchers already worked on). */
     protected function auditSidebar(User $user): array
     {
         $can = fn (string $slug) => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission($slug);
@@ -1324,15 +1345,7 @@ class ErpNavigation
                 'active' => ['audit.home', 'audit.pvs.show'],
                 'icon' => $this->icon('list'),
                 'icon_name' => 'circle-check',
-                'can' => $can('audit.view'),
-            ],
-            [
-                'label' => 'Categories and types',
-                'route' => 'audit.categories',
-                'active' => ['audit.categories'],
-                'icon' => $this->icon('grid'),
-                'icon_name' => 'settings',
-                'can' => $can('audit.view'),
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('audit.view') || $currentUser->hasPermission('audit.view_reviewed'),
             ],
             [
                 'label' => 'Suppliers',
@@ -1341,6 +1354,27 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'building-2',
                 'can' => $can('audit.view'),
+            ],
+            [
+                'label' => 'Reports',
+                'route' => 'audit.reports',
+                'active' => ['audit.reports'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'chart-column',
+                'can' => $can('audit.view_reports'),
+            ],
+            [
+                'type' => 'section',
+                'label' => 'Settings',
+                'can' => $can('audit.manage_reminders'),
+            ],
+            [
+                'label' => 'Reminders',
+                'route' => 'audit.reminder-settings',
+                'active' => ['audit.reminder-settings'],
+                'icon' => $this->icon('grid'),
+                'icon_name' => 'clock',
+                'can' => $can('audit.manage_reminders'),
             ],
         ];
     }

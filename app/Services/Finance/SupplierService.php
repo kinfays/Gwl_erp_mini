@@ -28,13 +28,46 @@ class SupplierService
 {
     public const MODULE = 'finance';
 
-    /** Letters, digits and hyphens, 6 to 20 characters, upper case (a business TIN, or a Ghana Card number with its hyphens). */
-    public const TIN_PATTERN = '/^[A-Z0-9][A-Z0-9\-]{5,19}$/';
+    /** One letter then ten digits, upper case: P0012345678 (11 characters). */
+    public const TIN_PATTERN = '/^[A-Z]\d{10}$/';
 
     /** Optional "+", then 9 to 15 digits. */
     public const PHONE_PATTERN = '/^\+?\d{9,15}$/';
 
     public function __construct(protected FinanceScope $scope) {}
+
+    // ------------------------------------------------------------------ the payee picker
+
+    /** Fewest characters a picker search needs, and the most rows it returns: the whole list is never sent to a page. */
+    public const SEARCH_MIN = FinanceScope::SEARCH_MIN;
+
+    public const SEARCH_LIMIT = FinanceScope::SEARCH_LIMIT;
+
+    /**
+     * ACTIVE suppliers whose name or code contains the term, for the voucher form's picker (the company-wide list, not
+     * location-scoped; the caller has checked the person may use the screen). At most 20, none for under 2 characters. A row is
+     * the id, the name and the code as a disambiguator: NEVER a phone number or a TIN.
+     *
+     * @return list<array{value: int, label: string, description: string}>
+     */
+    public function search(string $term): array
+    {
+        $term = trim((string) preg_replace('/\s+/u', ' ', $term));
+
+        if (mb_strlen($term) < self::SEARCH_MIN) {
+            return [];
+        }
+
+        $like = FinanceScope::like($term);
+
+        return FinSupplier::query()
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereRaw("name LIKE ? ESCAPE '!'", [$like])->orWhereRaw("code LIKE ? ESCAPE '!'", [$like]))
+            ->orderBy('name')->limit(self::SEARCH_LIMIT)
+            ->get(['id', 'name', 'code'])
+            ->map(fn (FinSupplier $supplier) => ['value' => $supplier->id, 'label' => $supplier->name, 'description' => $supplier->code ? 'Code '.$supplier->code : ''])
+            ->all();
+    }
 
     // ------------------------------------------------------------------ writes
 
@@ -193,7 +226,7 @@ class SupplierService
         $tin = mb_strtoupper(preg_replace('/\s+/u', '', (string) ($data['tin'] ?? '')));
 
         if ($tin !== '' && ! preg_match(self::TIN_PATTERN, $tin)) {
-            $errors['tin'] = 'A TIN has letters, digits and hyphens only, 6 to 20 characters. Leave it empty if you do not have it.';
+            $errors['tin'] = 'A TIN is one letter followed by ten digits, for example P0012345678. Leave it empty if you do not have it.';
         }
 
         $phone = $this->phone((string) ($data['phone'] ?? ''));

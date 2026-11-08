@@ -43,6 +43,7 @@ class PaymentVoucherWorkflowService
     public function __construct(
         protected FinanceScope $scope,
         protected PvAttachmentService $files,
+        protected PvCatalogService $catalogue,
     ) {}
 
     // ------------------------------------------------------------------ Finance: prepare
@@ -421,7 +422,7 @@ class PaymentVoucherWorkflowService
             throw $this->numberUsed();
         }
 
-        [$category, $type] = $this->catalogue($data, $existing);
+        [$category, $type] = $this->catalogue($location, $data, $existing);
 
         return [
             'pv_date' => $date->toDateString(),
@@ -463,10 +464,14 @@ class PaymentVoucherWorkflowService
         }
 
         if ($kind === Pv::PAYEE_DISTRICT) {
-            $district = District::query()->find((int) ($data['payee_district_id'] ?? 0));
+            // Region based only: the districts of the voucher's own location. The id is re-resolved here on every save (the browser's
+            // value is never trusted); a voucher being edited keeps the district it already has.
+            $id = (int) ($data['payee_district_id'] ?? 0);
+            $district = $id > 0 ? $this->scope->districts($actor, $location)->whereKey($id)->first() : null;
+            $district ??= $same('payee_district_id', $id) ? District::query()->find($id) : null;
 
             if (! $district) {
-                throw ValidationException::withMessages(['payee_district_id' => 'Choose the district being paid.']);
+                throw ValidationException::withMessages(['payee_district_id' => 'Choose one of the districts of this location.']);
             }
 
             return ['payee_kind' => $kind, 'payee_name' => $district->district_name, ...$blank, 'payee_district_id' => $district->id];
@@ -482,26 +487,15 @@ class PaymentVoucherWorkflowService
         return ['payee_kind' => $kind, 'payee_name' => $supplier->name, ...$blank, 'supplier_id' => $supplier->id];
     }
 
-    /** @return array{0: FinPvCategory, 1: FinPvType} */
-    protected function catalogue(array $data, ?Pv $existing): array
+    /**
+     * The category and type must be in the VOUCHER'S location's effective list (a switched-off one is refused for a new choice;
+     * the voucher being edited keeps the one it has). The rule is PvCatalogService's.
+     *
+     * @return array{0: FinPvCategory, 1: FinPvType}
+     */
+    protected function catalogue(array $location, array $data, ?Pv $existing): array
     {
-        $category = FinPvCategory::query()->find((int) ($data['category_id'] ?? 0));
-        $type = FinPvType::query()->find((int) ($data['type_id'] ?? 0));
-
-        if (! $category) {
-            throw ValidationException::withMessages(['category_id' => 'Choose a category.']);
-        }
-
-        if (! $type || $type->category_id !== $category->id) {
-            throw ValidationException::withMessages(['type_id' => 'Choose a type that belongs to the category.']);
-        }
-
-        // A deactivated category or type cannot be picked for a new choice, but a voucher keeps the one it already has.
-        if ((! $category->is_active && $existing?->category_id !== $category->id) || (! $type->is_active && $existing?->type_id !== $type->id)) {
-            throw ValidationException::withMessages(['type_id' => 'That category or type is no longer in use. Choose another.']);
-        }
-
-        return [$category, $type];
+        return $this->catalogue->resolve($location, (int) ($data['category_id'] ?? 0), (int) ($data['type_id'] ?? 0), $existing);
     }
 
     protected function date(mixed $value): Carbon

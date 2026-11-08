@@ -83,13 +83,24 @@ class PvNoticesAndAuditRowsTest extends FinanceTestCase
         $voided = $this->draft($fin, ['pv_no' => 'PV-V']);
         $this->workflow()->void($fin, $voided, 'SECRET-VOID-REASON');
 
-        $notices = json_encode(User::query()->get()->flatMap(fn (User $user) => $this->noticesFor($user))->all());
+        // The reminders (both sets) and the settings that drive them are part of the scan.
+        $this->draft($fin, ['pv_no' => 'PV-D', 'amount' => '6666.66', 'details' => 'SECRET-DRAFT']);
+        \Illuminate\Support\Carbon::setTestNow('2026-12-20 09:00');
+        app(\App\Services\Finance\FinanceSettings::class)->save($this->financeManager('FM1', $this->sowutuom), [\App\Services\Finance\FinanceSettings::QUERIED_WAIT => 9, \App\Services\Finance\FinanceSettings::ENABLED => true], null);
+        app(\App\Services\Finance\AuditSettings::class)->save($this->auditManager('AM1', $this->sowutuom), [\App\Services\Finance\AuditSettings::WAIT => 4], null);
+        $sentToAudit = app(\App\Services\Finance\AuditReminderService::class)->remind()['notifications'];
+        $sentToFinance = app(\App\Services\Finance\FinanceReminderService::class)->remind()['notifications'];
+        $this->assertGreaterThan(0, $sentToAudit);
+        $this->assertGreaterThan(0, $sentToFinance);
+
+        $notices =json_encode(User::query()->get()->flatMap(fn (User $user) => $this->noticesFor($user))->all());
         $audits = json_encode(DB::table('audit_logs')->get());
 
         $this->assertNotSame('[]', $notices);
         $this->assertStringContainsString('PV-E', $notices, 'the notice names the voucher');
+        $this->assertStringContainsString('pv_waiting', $notices, 'the reminders are in the scan');
 
-        foreach (['Zebediah', 'Quarcoo', 'Gold Coast', 'C0099988877', '0244998877', '7777.77', '8888.88', '9999.99', '777777', '888888', '999999',
+        foreach (['Zebediah', 'Quarcoo', 'Gold Coast', 'C0099988877', '0244998877', '7777.77', '8888.88', '9999.99', '6666.66', '777777', '888888', '999999', '666666',
             'SECRET', 'secret-scan-name', 'Medical claim', 'Finance own note'] as $needle) {
             $this->assertStringNotContainsString($needle, $notices, "notices must not contain {$needle}");
             $this->assertStringNotContainsString($needle, $audits, "audit rows must not contain {$needle}");

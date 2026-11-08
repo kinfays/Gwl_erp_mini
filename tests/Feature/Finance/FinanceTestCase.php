@@ -47,6 +47,18 @@ abstract class FinanceTestCase extends TransportTestCase
         return $this->person($staffId, $district, ['employee', 'audit_officer']);
     }
 
+    /** Reads everything of the location, manages the catalogue and the reminders, never writes a voucher. */
+    protected function financeManager(string $staffId, \App\Models\District $district): User
+    {
+        return $this->person($staffId, $district, ['employee', 'finance_manager']);
+    }
+
+    /** Sees only the vouchers an Audit officer has worked on, reports, reminders; never reviews. */
+    protected function auditManager(string $staffId, \App\Models\District $district): User
+    {
+        return $this->person($staffId, $district, ['employee', 'audit_manager']);
+    }
+
     protected function both(string $staffId, \App\Models\District $district): User
     {
         return $this->person($staffId, $district, ['employee', 'finance_officer', 'audit_officer']);
@@ -57,11 +69,15 @@ abstract class FinanceTestCase extends TransportTestCase
     {
         $type = FinPvType::query()->where('name', 'Medical')->firstOrFail();
 
+        // A district payee must be one of the districts of the voucher's own location: by default the signed-in user's own district.
+        $me = auth()->user();
+        $district = $me ? ($me->employee ?? $me->employeeByStaffId)?->district_id : null;
+
         return [
             'pv_date' => '2026-11-02',
             'pv_no' => 'PV-001',
             'payee_kind' => 'district',
-            'payee_district_id' => $this->kumasi->id,
+            'payee_district_id' => $district ?? $this->sowutuom->id,
             'category_id' => $type->category_id,
             'type_id' => $type->id,
             'details' => 'Medical claim for the third quarter',

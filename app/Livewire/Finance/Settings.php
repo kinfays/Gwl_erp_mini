@@ -4,22 +4,19 @@ namespace App\Livewire\Finance;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Finance\Concerns\ScopesFinanceByActor;
-use App\Models\FinPvCategory;
 use App\Models\Permission;
 use App\Services\Finance\PvCatalogService;
 use Livewire\Component;
 
 /**
- * The category / type catalogue: shared company-wide, changed only through PvCatalogService (finance.manage_categories).
- * Without that permission it is read-only (this is also what Audit sees, from the Audit module).
+ * Finance > Settings > Categories and types: the category / type list of ONE location, for whoever holds
+ * finance.manage_categories (the Finance manager, for their own location; super_admin picks a location, or edits the system
+ * defaults). Everything is read and changed through PvCatalogService. No other screen, Audit included, has controls for it.
  */
 class Settings extends Component
 {
     use EnforcesModuleAccess;
     use ScopesFinanceByActor;
-
-    /** 'finance' or 'audit': which module's door the user came through (its module access and view permission apply). */
-    public string $module = 'finance';
 
     public string $newCategory = '';
 
@@ -32,49 +29,84 @@ class Settings extends Component
 
     public string $renameValue = '';
 
-    public function mount(string $module = 'finance'): void
+    /** @var array<int, string> the category a location-owned type is being moved to, per type id */
+    public array $moveTo = [];
+
+    /** super_admin only: work on the system defaults instead of a location. */
+    public bool $defaults = false;
+
+    public function mount(): void
     {
-        $this->module = $module === 'audit' ? 'audit' : 'finance';
-        $this->enforceFinance($this->module === 'audit' ? Permission::MODULE_AUDIT : Permission::MODULE_FINANCE);
-        $this->guard($this->module.'.view');
+        $this->enforceFinance(Permission::MODULE_FINANCE);
+        $this->guard('finance.manage_categories');
+    }
+
+    public function updatedDefaults(): void
+    {
+        $this->cancelRename();
+    }
+
+    public function updatedLocationId(): void
+    {
+        $this->cancelRename();
     }
 
     public function addCategory(PvCatalogService $catalogue): void
     {
-        $this->run(fn () => $catalogue->createCategory($this->actor(), $this->newCategory), 'catalogue');
+        $this->resetErrorBag();
+        $this->run(fn () => $catalogue->createCategory($this->actor(), $this->newCategory, $this->recordingDistrict(), $this->defaults), 'catalogue');
         $this->newCategory = '';
     }
 
     public function addType(PvCatalogService $catalogue, int $categoryId): void
     {
-        $this->run(fn () => $catalogue->createType($this->actor(), $categoryId, $this->newType[$categoryId] ?? ''), 'catalogue');
+        $this->resetErrorBag();
+        $this->run(fn () => $catalogue->createType($this->actor(), $categoryId, $this->newType[$categoryId] ?? '', $this->recordingDistrict(), $this->defaults), 'catalogue');
         $this->newType[$categoryId] = '';
     }
 
-    public function startRenameCategory(int $id, string $current): void
+    // The browser sends only the id: the name being edited is read here, from the list the person is working on (never trusted
+    // from the page; an id outside it is a 404).
+    public function startRenameCategory(PvCatalogService $catalogue, int $id): void
     {
         $this->guard('finance.manage_categories');
+        $category = $this->visibleCategories($catalogue)->firstWhere('id', $id);
+        abort_unless($category, 404);
+
         $this->renamingCategory = $id;
         $this->renamingType = null;
-        $this->renameValue = $current;
+        $this->renameValue = $category->effective_name;
         $this->resetErrorBag();
     }
 
-    public function startRenameType(int $id, string $current): void
+    public function startRenameType(PvCatalogService $catalogue, int $id): void
     {
         $this->guard('finance.manage_categories');
+        $type = $this->visibleCategories($catalogue)->flatMap->types->firstWhere('id', $id);
+        abort_unless($type, 404);
+
         $this->renamingType = $id;
         $this->renamingCategory = null;
-        $this->renameValue = $current;
+        $this->renameValue = $type->effective_name;
         $this->resetErrorBag();
+    }
+
+    /** The list being worked on: the system defaults (super_admin's switch), or the location. */
+    protected function visibleCategories(PvCatalogService $catalogue)
+    {
+        $defaults = $this->defaults && $this->isSuperAdmin();
+        $location = $defaults ? null : $this->workingLocation();
+
+        return $defaults || $location ? $catalogue->effective($location) : collect();
     }
 
     public function saveRename(PvCatalogService $catalogue): void
     {
+        $this->resetErrorBag();
         $this->run(function () use ($catalogue) {
             $this->renamingCategory
-                ? $catalogue->renameCategory($this->actor(), $this->renamingCategory, $this->renameValue)
-                : $catalogue->renameType($this->actor(), (int) $this->renamingType, $this->renameValue);
+                ? $catalogue->renameCategory($this->actor(), $this->renamingCategory, $this->renameValue, $this->recordingDistrict(), $this->defaults)
+                : $catalogue->renameType($this->actor(), (int) $this->renamingType, $this->renameValue, $this->recordingDistrict(), $this->defaults);
         }, 'catalogue');
         $this->cancelRename();
     }
@@ -88,19 +120,29 @@ class Settings extends Component
 
     public function toggleCategory(PvCatalogService $catalogue, int $id, bool $active): void
     {
-        $this->run(fn () => $catalogue->setCategoryActive($this->actor(), $id, $active), 'catalogue');
+        $this->resetErrorBag();
+        $this->run(fn () => $catalogue->setCategoryActive($this->actor(), $id, $active, $this->recordingDistrict(), $this->defaults), 'catalogue');
     }
 
     public function toggleType(PvCatalogService $catalogue, int $id, bool $active): void
     {
-        $this->run(fn () => $catalogue->setTypeActive($this->actor(), $id, $active), 'catalogue');
+        $this->resetErrorBag();
+        $this->run(fn () => $catalogue->setTypeActive($this->actor(), $id, $active, $this->recordingDistrict(), $this->defaults), 'catalogue');
     }
 
-    public function render()
+    public function moveType(PvCatalogService $catalogue, int $typeId): void
     {
+        $this->resetErrorBag();
+        $this->run(fn () => $catalogue->moveType($this->actor(), $typeId, (int) ($this->moveTo[$typeId] ?? 0), $this->recordingDistrict(), $this->defaults), 'catalogue');
+        unset($this->moveTo[$typeId]);
+    }
+
+    public function render(PvCatalogService $catalogue)
+    {
+        // Defaults mode is super_admin's alone (the service refuses anyone else); everyone else works in their own location.
         return view('livewire.finance.settings', [
-            'categories' => FinPvCategory::query()->with(['types' => fn ($query) => $query->orderBy('sort_order')->orderBy('name')])->orderBy('sort_order')->orderBy('name')->get(),
-            'canManage' => $this->can('finance.manage_categories'),
-        ]);
+            'categories' => $this->visibleCategories($catalogue),
+            'editingDefaults' => $this->defaults && $this->isSuperAdmin(),
+        ] + $this->locationView());
     }
 }

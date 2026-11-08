@@ -5,7 +5,7 @@ namespace App\Livewire\Finance;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Finance\Concerns\ScopesFinanceByActor;
 use App\Models\FinPaymentVoucher;
-use App\Models\FinPvCategory;
+use App\Services\Finance\PvCatalogService;
 use App\Models\Permission;
 use App\Services\Finance\FinanceScope;
 use Livewire\Component;
@@ -50,7 +50,7 @@ class Vouchers extends Component
         $this->resetPage();
     }
 
-    public function render()
+    public function render(PvCatalogService $catalogue)
     {
         $term = trim($this->search);
 
@@ -68,10 +68,12 @@ class Vouchers extends Component
             ->orderByDesc('fin_pvs.id')
             ->paginate(15);
 
+        $catalogue->labelPvs($rows->items());
+
         return view('livewire.finance.vouchers', [
             'rows' => $rows,
             'statuses' => FinPaymentVoucher::STATUSES,
-            'categories' => FinPvCategory::query()->orderBy('sort_order')->orderBy('name')->get(),
+            'categories' => $catalogue->effective($this->workingLocation()),
             'canCreate' => $this->can('finance.create_pv'),
             'showRoute' => 'finance.pvs.show',
             'party' => 'finance',

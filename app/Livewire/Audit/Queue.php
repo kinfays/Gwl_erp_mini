@@ -5,7 +5,7 @@ namespace App\Livewire\Audit;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Finance\Concerns\ScopesFinanceByActor;
 use App\Models\FinPaymentVoucher;
-use App\Models\FinPvCategory;
+use App\Services\Finance\PvCatalogService;
 use App\Models\Permission;
 use App\Services\Finance\FinanceScope;
 use Livewire\Component;
@@ -34,7 +34,12 @@ class Queue extends Component
     public function mount(): void
     {
         $this->enforceFinance(Permission::MODULE_AUDIT);
-        $this->guard('audit.view');
+        abort_unless($this->scope()->auditReach($this->actor()) !== FinanceScope::AUDIT_NONE, 403, 'You do not have permission to do that.');
+
+        // The Audit manager sees only vouchers already worked on, whatever their status: start from all of them.
+        if ($this->scope()->auditReach($this->actor()) === FinanceScope::AUDIT_WORKED) {
+            $this->status = '';
+        }
     }
 
     public function updated(string $property): void
@@ -47,11 +52,11 @@ class Queue extends Component
     public function clearFilters(): void
     {
         $this->reset(['search', 'from', 'to', 'categoryId']);
-        $this->status = FinPaymentVoucher::WITH_AUDIT;
+        $this->status = $this->scope()->auditReach($this->actor()) === FinanceScope::AUDIT_WORKED ? '' : FinPaymentVoucher::WITH_AUDIT;
         $this->resetPage();
     }
 
-    public function render()
+    public function render(PvCatalogService $catalogue)
     {
         $term = trim($this->search);
 
@@ -70,10 +75,12 @@ class Queue extends Component
             ->orderBy('fin_pvs.id')
             ->paginate(15);
 
+        $catalogue->labelPvs($rows->items());
+
         return view('livewire.audit.queue', [
             'rows' => $rows,
             'statuses' => collect(FinPaymentVoucher::STATUSES)->except(FinPaymentVoucher::DRAFT)->all(),
-            'categories' => FinPvCategory::query()->orderBy('sort_order')->orderBy('name')->get(),
+            'categories' => $catalogue->effective($this->workingLocation()),
             'showRoute' => 'audit.pvs.show',
             'party' => 'audit',
             'payeeFlags' => app(\App\Services\Finance\PayeeStatusService::class)->warningsFor($rows->items()),

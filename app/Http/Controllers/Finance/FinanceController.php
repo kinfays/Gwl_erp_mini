@@ -57,6 +57,20 @@ class FinanceController extends Controller
         return view('finance.settings');
     }
 
+    public function reports(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.reports');
+    }
+
+    public function reminderSettings(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.reminder-settings');
+    }
+
     public function suppliers(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_FINANCE);

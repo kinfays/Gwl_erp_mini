@@ -262,7 +262,7 @@ class SupplierImportService
         return [
             ['What this is', 'Suppliers for the company-wide list used on payment vouchers. Every row is checked exactly as if it were typed on the Suppliers screen.'],
             ['Columns', 'name (required), code, tin, phone (all optional; leave a cell empty if you do not have it). Do not rename the sheet or the headings.'],
-            ['TIN', 'Letters, digits and hyphens, 6 to 20 characters. A TIN that already belongs to another supplier is refused.'],
+            ['TIN', 'One letter followed by ten digits, for example P0012345678. A TIN that already belongs to another supplier is refused.'],
             ['Phone', '9 to 15 digits, with an optional + at the start. Spaces and dashes are ignored. The cells are formatted as text so the leading zero stays.'],
             ['Never overwrites', 'A supplier already on the list (same name, ignoring spaces and capital letters) is skipped, not changed. Importing the same file twice adds nothing.'],
             ['Look-alikes', 'A name that is very close to a listed one (for example "ABC Trading Ltd" and "ABC Trading Limited") is imported but listed as a warning in the check, so you can take the row out of the file first.'],

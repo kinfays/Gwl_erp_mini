@@ -6,6 +6,10 @@
     Server search (the Livewire method is called with the typed text and returns the options, already scoped and limited):
         <x-form.searchable-select label="Asset" model="form.ict_asset_id" search="searchAssets" :initial-label="$label" :reset-key="$type" />
 
+    Server search can also take `min-chars` (ask nothing below that many characters; the status is announced), `limit` (the most
+    rows the method returns: a "keep typing" row shows when that many came back; `more-text` words it) and a `noMatch` slot (shown
+    only when a real search found nothing, e.g. "add it as a new supplier"). A polite live region announces the result count, and
+    Home / End jump through the list once the arrows have been used. Used by the Finance payee pickers.
     An option is ['value' => id, 'label' => text, 'description' => small text, 'image' => url]. `reset-key` is anything
     that, when it changes, should throw away the cached search results (e.g. the chosen asset type). The Livewire side
     must still validate and re-resolve the posted id: the browser can send anything.
@@ -24,6 +28,9 @@
     'disabled' => false,
     'clearable' => true,
     'live' => false,
+    'minChars' => 0,
+    'limit' => null,
+    'moreText' => 'Keep typing to narrow the list.',
 ])
 
 @php
@@ -43,7 +50,7 @@
         ->all();
 
     // The element is rebuilt when the list or the scope changes, so Alpine never keeps a stale list.
-    $stateKey = md5(json_encode([$normalized, $resetKey, (bool) $disabled]));
+    $stateKey = md5(json_encode([$normalized, $resetKey, (bool) $disabled, $minChars, $limit]));
 @endphp
 
 <div {{ $attributes->except(['id', 'wire:model'])->class(['ui-field', 'erp-combobox', 'searchable-select']) }}
@@ -54,6 +61,9 @@
         method: @js($search),
         initialLabel: @js((string) $initialLabel),
         listId: @js($listId),
+        minChars: @js((int) $minChars),
+        limit: @js($limit),
+        emptyText: @js($emptyText),
     })"
     x-on:click.outside="close()"
 >
@@ -88,6 +98,8 @@
                 x-on:focus="openMenu()"
                 x-on:keydown.arrow-down.prevent="move(1)"
                 x-on:keydown.arrow-up.prevent="move(-1)"
+                x-on:keydown.home="jump(false, $event)"
+                x-on:keydown.end="jump(true, $event)"
                 x-on:keydown.enter="if (open) { $event.preventDefault(); chooseActive(); }"
                 x-on:keydown.escape="if (open) { $event.stopPropagation(); close(); }"
                 x-on:keydown.tab="close()"
@@ -125,9 +137,18 @@
             </li>
         </template>
 
-        <li class="erp-combobox-empty" x-show="loading && visible.length === 0">Searching…</li>
-        <li class="erp-combobox-empty" x-show="! loading && visible.length === 0">{{ $emptyText }}</li>
+        <li class="erp-combobox-empty" role="presentation" x-show="tooShort">Type at least {{ (int) $minChars }} characters to search.</li>
+        <li class="erp-combobox-empty" role="presentation" x-show="! tooShort && loading && visible.length === 0">Searching…</li>
+        <li class="erp-combobox-empty" role="presentation" x-show="! tooShort && ! loading && visible.length === 0">{{ $emptyText }}</li>
+        <li class="erp-combobox-empty" role="presentation" x-show="capped">{{ $moreText }}</li>
+        @isset($noMatch)
+            {{-- Offered only when a real search found nothing (for example "add it as a new supplier"). --}}
+            <li class="erp-combobox-empty" role="presentation" x-show="! tooShort && ! loading && visible.length === 0 && query.trim() !== ''">{{ $noMatch }}</li>
+        @endisset
     </ul>
+
+    {{-- Announced politely to a screen reader whenever the list changes (result count, "keep typing", "no matches"). --}}
+    <div class="sr-only-text" role="status" aria-live="polite" aria-atomic="true" x-text="status"></div>
 
     @if ($hint)
         <p class="ui-hint" id="{{ $inputId }}-hint">{{ $hint }}</p>

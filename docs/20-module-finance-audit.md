@@ -3,10 +3,13 @@
 Two modules, **Finance** and **Audit**, show ONE shared payment-voucher (PV) workflow. Finance prepares a voucher, Audit
 acknowledges it (a tick) or queries it (an X), Finance acknowledges back. Behind ONE flag, `GWL_FINANCE_AUDIT_ENABLED`
 (`config/gwl.php` `finance_audit_enabled`, default **off**, true in `phpunit.xml`); when off the routes do not register and both
-modules disappear from navigation. Module slugs `finance` and `audit`; roles `finance_officer` and `audit_officer`.
+modules disappear from navigation. Module slugs `finance` and `audit`; roles `finance_officer`, `finance_manager`, `audit_officer`
+and `audit_manager` (section 6).
 
-Status: **Phases 1 (core) and 2 (suppliers: list, quick add, Excel import; the "left service" flag) are built.** Phase 3
-(analytics, charts, exports, reminders, settings) is not. Sections marked *(phase 3)* are the design for it.
+Status: **all three phases and the change request (steps A-E) are built**: 1 (core), 2 (suppliers: list, quick add, Excel import; the
+"left service" flag), 3 (reports and charts, exports, reminders, settings), then A the two manager roles, B the per-location
+catalogue (and the rename fix), C the payee comboboxes with region-only districts, D two separate reminder sets, E the demo data
+command (section 9).
 
 ## 1. What a voucher is
 
@@ -56,7 +59,7 @@ region id with its staff).
   `pvs($user, 'finance'|'audit')`: the **audit** view never includes drafts and never a voided draft (`submitted_at` null).
 - Another location's row answers **404**, not 403. `super_admin` reads every location but must pick the district for a write
   (`recordingLocation()`); a login with no employee region has nothing.
-- Suppliers and the category/type catalogue are deliberately **not** location-scoped.
+- Suppliers are deliberately **not** location-scoped. The category/type catalogue IS per location (section 4).
 - The Livewire trait `Livewire/Finance/Concerns/ScopesFinanceByActor` only wraps `FinanceScope` (a separate scoping trait, like
   the other modules'); `FinanceScopeTest::test_the_livewire_trait_agrees_with_the_scope...` pins the two together.
 
@@ -80,9 +83,46 @@ location). A unique-violation race is caught and gives the same message.
 
 ### Payee (frozen when saved)
 
-`payee_kind` = `employee` (CURRENT staff of the location), `retiree` (former staff of the location), `district` (any district) or
-`supplier` (the company-wide list, active only). The voucher stores the kind, the display name and the id of the person /
-district / supplier. A voucher being edited keeps its payee even if the person has since left or the supplier was deactivated.
+`payee_kind` = `employee` (CURRENT staff of the location), `retiree` (former staff of the location), `district` (a district OF THE
+LOCATION: region based only) or `supplier` (the company-wide list, active only). The voucher stores the kind, the display name and
+the id of the person / district / supplier. A voucher being edited keeps its payee even if the person has since left, the supplier
+was deactivated or an old voucher's district would not be offered today.
+
+**The payee pickers (change request step C).** Choose the kind FIRST (changing the kind, or super_admin's location, clears the picked
+payee), then one accessible combobox, the shared `<x-form.searchable-select>` (ARIA 1.2 combobox + listbox; the Assets screens use it
+too, the new props are `min-chars`, `limit`, `more-text` and a `noMatch` slot):
+- **Employees, retirees, suppliers: server-side search.** The component calls the form's `searchPeople()` / `searchSuppliers()` after a
+  250 ms debounce, from 2 characters, and gets at most 20 rows (a "keep typing to narrow the list" row appears when 20 came back); the
+  whole list is never put in the page. The work is `FinanceScope::searchEmployees($actor, $kind, $term, $location)` (still only that
+  location's people, current staff or retirees, never mixed) and `SupplierService::search($term)` (company-wide, ACTIVE only; name or
+  code). `%` and `_` in a term are plain text (`FinanceScope::like()` + `ESCAPE '!'`, which behaves the same on MySQL and SQLite).
+  A row is the id, the name and a short disambiguator (staff ID + department; supplier code): never a phone, an e-mail address or a TIN
+  (a TIN is not searchable here either).
+- **Districts: region based only.** `FinanceScope::districts($actor, $location)`: a regional user gets their region's districts (NOT
+  Head Office, NOT another region's), Head Office staff the Head Office district, super_admin the districts of the location they
+  picked (none until they pick). Few rows, so this picker filters in the browser. The workflow service re-checks it on every save.
+- **The browser sends back only an id.** `PaymentVoucherWorkflowService::payee()` re-resolves every id inside the actor's scope on
+  every save (a person of another location, a retiree sent as an employee, an inactive supplier, a district outside the location are
+  validation errors); the shown name is worked out the same way and never from the browser.
+- **No match** on the supplier picker offers "Add '<typed>' as a new supplier" to `finance.manage_suppliers` holders: it opens the
+  existing quick-add panel with the name filled in (`startNewSupplier()`); a successful add chooses the new supplier.
+- There is no payee filter on the voucher lists today (they search the PV number and payee name as plain text), so there was nothing to
+  convert there.
+- **Manual keyboard / screen-reader QA** (the browser behaviour cannot be unit tested; the tests cover the server side and the markup):
+  1. Tab into "Employee": the input is announced as a combobox, "Employee", collapsed; Tab leaves it without opening anything.
+  2. Type one letter: the list stays closed and the status is announced as "Type at least 2 characters to search". Type a second: after a
+     moment "N results available. Use the up and down arrow keys, then Enter to choose" is announced (and "Keep typing to narrow the list"
+     when 20 came back).
+  3. Down/Up move through the options and wrap; the active option is announced (focus stays in the input, `aria-activedescendant`
+     changes). Once you have used the arrows, Home/End jump to the first/last option; before that they move the text cursor.
+  4. Enter chooses the active option and closes the list, the input shows the chosen name; Escape closes the list and puts the
+     chosen name (or nothing) back, never half-typed text; typing over a chosen name un-chooses it.
+  5. The clear (x) button is announced as "Clear Employee", empties the picker and returns focus to it.
+  6. A search with no result announces "No one matches that" (suppliers: "No supplier matches that" plus the "Add ... as a new supplier"
+     button for those who may add one).
+  7. Change "Who is being paid": the picked payee is gone and the new picker is empty. Districts: type part of a name, only the
+     location's districts appear.
+  8. Repeat with 200% zoom and a screen reader (NVDA/VoiceOver) in the light and dark themes; nothing may depend on colour alone.
 
 **Staff exit data (what Staff already records, nothing was changed):** `employees.is_active`, `employees.deactivation_reason`
 (`retired`, `resigned`, `contract_ended`, `transfer`, `left`, `dead`, `other`; null on old records) and `employees.deactivated_at`
@@ -112,33 +152,78 @@ audit row or notice.
 
 ## 4. Catalogue: `PvCatalogService`
 
-`fin_pv_categories` / `fin_pv_types` (two levels; a type belongs to ONE category), shared company-wide. Seeded: **Staff Claims**
-(Medical, Risk Allowance, Travel and Transportation (T&T) Allowance, Sitting Allowance, Incidental Allowance) and **Operations
-Activities** (Operations, Stationery, New Service, Contracts). Changed ONLY through the service (create, rename, move,
-activate/deactivate; **never delete**; an audit row per change, ids only), permission `finance.manage_categories` checked in the
-service, the screens and (for the form's panel) the component. A deactivated category/type cannot start a new choice but stays on
-old vouchers, and the voucher form keeps a voucher's current one selectable. A type **used by a voucher cannot be moved** to
-another category (the voucher stores both ids); add a new type and deactivate the old. Finance has the "Add a category or type"
-panel on the PV form and a Categories and types screen; Audit sees the same screen read-only.
+`fin_pv_categories` / `fin_pv_types` (two levels; a type belongs to ONE category) are **per location**, "own row else system
+default" (the G-Water price pattern). Seeded: **Staff Claims** (Medical, Risk Allowance, Travel and Transportation (T&T) Allowance,
+Sitting Allowance, Incidental Allowance) and **Operations Activities** (Operations, Stationery, New Service, Contracts) are SYSTEM
+DEFAULT rows (`unit` NULL); only super_admin edits the defaults themselves. A location is `unit` `ho` or `r<region id>` (the
+`FinanceBooksVersion` key).
+- **One reader/writer: `PvCatalogService`.** `effective($location)` is the ONE method that works out names and on/off state (each item
+  gets `effective_name`, `effective_active`, `is_default`, `is_renamed`, `is_switched`); the voucher form (`choices()`), the lists'
+  filters, Reports, exports and Settings all call it, and a voucher's labels come from `labelPvs()` / `labelsOf()` (its OWN
+  location's current name; the model's `category_label` / `type_label`; never print `category->name`). The workflow service
+  validates a voucher's category/type through `resolve()`.
+- **A finance_manager (`finance.manage_categories`), for their own location only:** adds a location-owned category or type
+  (`unit` = their location); renames ANY category/type for the location only (a row in `fin_catalog_overrides`: `unit`, `kind`,
+  `item_id`, nullable `display_name`, nullable `is_active`; it exists only while it differs from the default and is removed when it
+  is back at it); switches ANY off/on for the location only (a category switched off takes its types off there: a type is
+  effectively active only while its category is, and a type switched off on its own stays off when the category comes back);
+  moves the location's OWN types between the location's categories. A standard type is never moved by a manager.
+- **super_admin** must name the district whose location a change is for, or work on the **system defaults** (`$defaults`; a
+  default edit bumps every location's books version). Anyone else asking for the defaults gets 403.
+- **Names** are unique (case-insensitive) within the location's effective list, types within their category (the global unique
+  indexes were dropped in `2026_11_13_000001`). Another location's owned row answers 404. Every change writes an audit row with
+  ids and the location key only (never a name).
+- A voucher keeps its category/type ids; a switched-off item stays on the vouchers already using it and on their edit form, but
+  cannot start a new voucher. A type **used by a voucher cannot be moved** to another category.
+- **Cache:** every catalogue change bumps the books version of the location (all locations for a default), so cached Reports and
+  exports never show a name from before it. `comparisonLabel()` is the label for a cross-location view: a standard item by its
+  standard name, an owned one as "<Location>: <name>" (no screen sets locations side by side yet).
+- **Screens:** the voucher form only OFFERS the location's active items (no add panel for anyone). Management lives only in Finance >
+  Settings > Categories and types (`finance.settings`, route/screen/service all need `finance.manage_categories`: officers get 403
+  and no menu entry). Audit has none.
+- **The rename bug (reported "rename seems not to work"):** two causes, both fixed with a regression test
+  (`PvCatalogRenameTest`). (1) The Rename button's handler was the literal text `startRenameType(1, @js($type->name))`, because
+  Blade does not compile `@js()` inside a component's attributes, so the click was never a valid call (the Livewire tests called
+  the method directly, which hid it). The buttons now send only the id and the server reads the current name. (2) The Reports
+  figures and exports are cached per location and a catalogue change never invalidated that cache, so they kept the old name for
+  up to `fin_analytics_cache_seconds`.
 
 ## 5. Notices: `PvNotificationService`
 
 In-app only, through `GeneralDatabaseNotification`. Recipients are people **based at the voucher's location** holding the
 permission (`FinanceScope::usersAt()`; `audit.review` for Audit, `finance.create_pv` for Finance), never the person who did the
 action. Audit is told on submit/resubmit; Finance on query, tick and tick withdrawn. A notice carries the **PV number and the
-action only**. The listener `Listeners/Finance/NotifyPvParties` is found by Laravel's event discovery. *(phase 3)* A reminder
-command for vouchers waiting too long (`PvNotificationService::waiting()` is ready for it).
+action only**. The listener `Listeners/Finance/NotifyPvParties` is found by Laravel's event discovery. Reminders for vouchers waiting
+too long are digest notices (the count, the longest wait and the PV numbers; section 7b).
 
 ## 6. Access
 
 Permissions (migration-seeded, `2026_11_10_000002`, repeated for fresh installs/tests by `FinanceAuditRolePermissionSeeder`):
 `finance.view`, `.create_pv` (create, edit, send, resubmit), `.void_pv`, `.acknowledge`, `.manage_categories`,
-`.manage_suppliers` (add/edit), `.deactivate_suppliers`, `.import_suppliers`, `.view_reports`, `.export`; `audit.view`,
-`.review` (tick, query, withdraw), `.view_reports`, `.export`. `finance_officer` holds all `finance.*` except
-`finance.deactivate_suppliers` (an edit or deactivation of a supplier affects every location, so it is granted to few);
-`audit_officer` all `audit.*`; `super_admin` everything. Both roles are ICT-assignable, not protected, not system roles, and in
-**neither** `RoleGrantPolicy::HEAD_OFFICE_ROLES` nor `REGIONAL_ROLES`. Routes: `finance.*` (`module:finance`) and `audit.*`
-(`module:audit`) with `permission:` per screen.
+`.manage_suppliers` (add/edit), `.deactivate_suppliers`, `.import_suppliers`, `.view_reports`, `.export`,
+`.manage_reminders` (was `.manage_settings`, renamed in place); `audit.view` (the whole queue), `.review` (tick, query, withdraw),
+`.view_reviewed` (only vouchers Audit has worked on), `.view_reports`, `.export`, `.manage_reminders`. Four ICT-assignable roles
+(not protected, not system roles, in **neither** `RoleGrantPolicy::HEAD_OFFICE_ROLES` nor `REGIONAL_ROLES`; roles are permissions,
+never reach: every one goes through `FinanceScope`, their own location only):
+- `finance_officer`: create, edit, send, resubmit, void, acknowledge, add/edit/import suppliers, reports, export. NO catalogue, NO
+  reminder settings, NO deactivating suppliers (the migration `2026_11_12_000001` removes `finance.manage_categories` from officers
+  on databases that had it).
+- `finance_manager`: `finance.view`, `.view_reports`, `.export`, `.manage_categories`, `.manage_reminders`,
+  `.deactivate_suppliers`. Reads EVERYTHING of its location (drafts, every status, events, files, suppliers, analytics) but cannot
+  add, edit, send, resubmit, void or acknowledge: `PaymentVoucherWorkflowService` refuses (403) for a user without
+  `finance.create_pv` / `.void_pv` / `.acknowledge`, and the create/edit routes answer 403. Buttons are hidden as a courtesy only.
+- `audit_officer`: `audit.view`, `.review`, `.view_reports`, `.export`.
+- `audit_manager`: `audit.view_reviewed`, `.view_reports`, `.export`, `.manage_reminders`; NO `audit.review`, so never a tick,
+  query or withdrawal. Sees ONLY the vouchers with at least one `audit_acknowledged`, `queried` or `tick_withdrawn` event, with the
+  full timeline and who did each action. This is ONE condition in `FinanceScope::pvs()` (`auditReach()` is `all` for `audit.view` /
+  `audit.review`, `worked` for `audit.view_reviewed`, `none` otherwise; the `worked` case adds a `whereExists` on
+  `FinPvEvent::REVIEWING`). The register, detail screen, file route, timeline, queue search and the waiting export all start from
+  `pvs()`, so a With Audit voucher nobody has reviewed answers 404 there. Figures and "how many are waiting" are location-wide totals
+  (`FinanceScope::pvsForTotals()`, used ONLY by `PvAnalyticsService`; never list or open rows from it) but the waiting list names only
+  vouchers the viewer may open.
+- `super_admin` everything. Audit has NO catalogue screen, control, route or menu entry (`audit.categories` answers 403).
+Routes: `finance.*` (`module:finance`) and `audit.*` (`module:audit`) with `permission:` per screen (`audit.view,audit.view_reviewed`
+for the review list and detail).
 
 ## 7. Suppliers (phase 2)
 
@@ -151,8 +236,8 @@ field; **code, TIN and phone are optional and a blank is stored as NULL, never `
   (the import also needs `manage_suppliers`). Audit reads only (`audit.view`); even a person holding both roles cannot change
   anything through the Audit door (`Suppliers` component, `module = audit`).
 - **Cleaning** (`SupplierService::clean()`, every problem reported at once): name 1-200 characters, spaces collapsed; TIN upper-cased,
-  spaces removed, letters/digits/hyphens, 6-20 characters (an assumption: the real Ghana formats were not supplied, so it is
-  deliberately loose; change `TIN_PATTERN` in one place); phone with spaces/dashes/dots/brackets removed, an optional `+` and 9-15
+  spaces removed, exactly one letter then ten digits such as `P0012345678` (the format the company gave; `TIN_PATTERN` is the one
+  place to change it); phone with spaces/dashes/dots/brackets removed, an optional `+` and 9-15
   digits, and a 9-digit number that lost its leading zero in Excel gets it back. A format is checked only when something is given.
 - **Duplicates are refused, naming the supplier that is there**: the same name once case and spacing are ignored (`name_key`, unique;
   a switched-off supplier counts and the message says so) or the same TIN (unique). A unique-index race gives a friendly message.
@@ -179,18 +264,83 @@ field; **code, TIN and phone are optional and a blank is stored as NULL, never `
   the file first. All-or-nothing unless "valid rows only". Cells are read as text; the template's four columns are formatted as
   text (a whole-column style) so a phone keeps its zero. Row cap `gwl.fin_supplier_import_max_rows` (2000).
 
-## 7b. Phase 3 (to build)
+## 7b. Reports, exports, reminders and settings (phase 3)
 
-- **Analytics** `PvAnalyticsService` (the ONLY evaluator; cached by `FinanceScope::keyFor()` + `FinanceBooksVersion`) and exports
-  `FinanceExportService` (Excel via `CommercialReportExport`/`ReportSheet`, PDF via the Commercial PDF page), reminders for
-  vouchers waiting too long (`PvNotificationService::waiting()` is ready), settings.
+**Reports** (`finance.reports` / `audit.reports`, `{module}.view_reports`; Livewire `Reports`, Chart.js through `<x-ui.chart>`): ONE
+location at a time (the user's own; super_admin picks), a period by PV date (last 12 months by default). Everything on the screen, the
+charts and the exports is `PvAnalyticsService::report()`, the ONLY evaluator (never add a second one, in SQL or a screen). It reads
+vouchers through `FinanceScope::pvs()` (Finance, or Audit which never sees a draft), at the location, so it can only show what the
+viewer may. Amounts are integer pesewas (the chart payload gets a cedis copy); a draft and a voided voucher are never spend; every
+ratio is `null` on a zero denominator. The payload (arrays and scalars only) is cached for `gwl.fin_analytics_cache_seconds` under
+a key made of what the viewer reads, the location's `FinanceBooksVersion` (bumped after every voucher write and every settings save),
+the period and the view, so a figure is never shown after a change.
+- **Period figures:** vouchers that went ahead, total / average / completed / still-open amounts, drafts and voided counts, status
+  counts, spend by category / type (top 10) / payee kind / month (the 36 months ending with the period, zero-filled) / supplier (top
+  10), how many vouchers Audit queried (rate), rounds per voucher, why Audit queried (reason codes) and four turnaround averages
+  computed from the immutable `fin_pv_events`: Audit's response (each sending -> tick or query), Finance's answer to a query
+  (query -> resubmission), Finance's acknowledgement (tick -> acknowledged) and first sending -> acknowledged.
+- **Right now** (whatever the period): what is waiting, how long, how much is overdue, and an aging chart of vouchers With Audit
+  (0-2, 3-6, 7-13, 14+ days). `PvBacklog` is the ONE definition of "waiting": With Audit (since the latest submission or withdrawn
+  tick), Queried (since the query) and Audit acknowledged (since the tick); the threshold per kind is the location's setting.
+
+**Exports** (`FinanceExportService`, controller `FinanceExportController`, routes `finance.export` / `audit.export`
+`/export/{report}/{format}`): reports `register` (every voucher of the period with marks, one row each), `summary` (the analytics as
+titled tables) and `waiting` (every waiting voucher), in Excel and PDF. The same titled-tables array feeds both: Excel through the
+Commercial `CommercialReportExport` / `ReportSheet` (a text cell that starts `= + - @` stays text) and the PDF through the Commercial
+report page. A file needs `{module}.export` AND `{module}.view_reports`, is for ONE location (the user's own; `?district=` only for
+super_admin, ignored for anyone else), is seen as Finance or as Audit (no drafts), and is capped (`fin_export_max_rows` 5000,
+`fin_export_pdf_max_rows` 1500; a register over the cap is not even built). One audit row per download holds the report, format,
+period, row count and location, never a payee, number or amount.
+
+**Reminders: TWO independent sets (change request step D).** Each is changed only by its own manager, per location, as overrides of
+`config/gwl.php` stored in `fin_settings` (`unit` `ho` or `r<region id>`, the `FinanceBooksVersion` key) ONLY when they differ from the
+default (a switch is stored as 0/1; the audit row holds the location ids and the NAMES of what changed, never a value). The mechanics
+are `ModuleReminderSettings`; `FinanceSettings` and `AuditSettings` are bound as singletons so a save is seen by every reader.
+- **Finance reminders** (Finance > Settings > Reminders, `finance.reminder-settings`, `finance.manage_reminders`): on/off
+  (`finance_remind_enabled`), days Queried before Finance officers are reminded (`queried_wait_days` 5), days Audit acknowledged before
+  they are reminded to acknowledge (`acknowledge_wait_days` 3), days a Draft may sit unsent (`draft_wait_days` 7), repeat interval
+  (`finance_repeat_days` 3). Command `finance:remind` (`FinanceReminderService`). Recipients: active people BASED AT the voucher's
+  location holding `finance.create_pv` (a query, a draft) or `finance.acknowledge` (a tick).
+- **Audit reminders** (Audit > Settings > Reminders, `audit.reminder-settings`, `audit.manage_reminders`): on/off
+  (`audit_remind_enabled`), days With Audit before Audit officers are reminded (`audit_wait_days` 3, which is also what the Reports
+  call overdue for vouchers With Audit), repeat interval (`audit_repeat_days` 3). Command `audit:remind` (`AuditReminderService`).
+  Recipients: active `audit.review` holders based at the voucher's location.
+- A finance_manager cannot see or change the Audit set and the audit_manager cannot see or change Finance's: the screen is ONE
+  component (`Livewire/Finance/ReminderSettings`) whose `module` is set by the route and locked against the browser, the route needs
+  the module's own permission, and the service's `save()` checks it again. Officers have no reminder settings. super_admin may do both
+  for the location they pick. The old shared `remind_repeat_days` was copied into both sets by migration `2026_11_14_000001`.
+- **Mechanism** (`PvReminderService`, abstract; both commands scheduled daily at 08:00 only while the flag is on; the scheduler must be
+  running): what is waiting is `PvBacklog`'s (With Audit, Queried, Audit acknowledged; plus `PvBacklog::drafts()` for the Finance set
+  only, since a draft is never "waiting" on the Reports). A voucher at or over its limit is due unless its location switched the set
+  off or it was reminded within the repeat interval for the SAME wait: `fin_reminder_states` (pv, kind, `since`, last sent; kind
+  audit | queried | acknowledge | draft) is the dedupe, so a NEW wait (a second query, a withdrawn tick) is reminded afresh.
+  Vouchers due together at one location are grouped by kind and each recipient gets ONE notice for the group: **the count of vouchers,
+  the longest wait and the PV numbers** (the longest waiting first, at most ten, then "and N more"; also in the notice's `pv_numbers`),
+  never a payee, amount or comment (`PvNotificationService::waiting()`), linking to the list.
+  The commands read every location on purpose (no signed-in user). `--dry-run` records and sends nothing.
+
 ## 8. Easy to get wrong
 
 - Never filter vouchers by region in Blade or a screen, and never by region alone. Always `FinanceScope`.
 - A draft is Finance's only: Audit queries use `AS_AUDIT`. A user holding both roles still gets the Audit view on Audit screens.
-- Never write a `Fin*` row outside `PaymentVoucherWorkflowService` / `PvCatalogService` / `PvAttachmentService`.
-- Never put a payee, amount, comment, reason, supplier name/TIN/phone or file name in an audit row, a notice or a log
-  (`PvNoticesAndAuditRowsTest` scans for them).
+- **The Audit manager's view is ONE condition** in `FinanceScope::pvs()` (`auditReach()`): only vouchers with a tick, query or withdrawn-tick
+  event. `pvsForTotals()` is for COUNTING only (analytics figures, how many are waiting): never list, open or export rows from it.
+- Roles are permissions, not reach, and the workflow service checks the permission itself (`finance.create_pv` / `.void_pv` /
+  `.acknowledge` / `audit.review`): hiding a button is a courtesy, never the rule. The managers hold none of them.
+- Never write a `Fin*` row outside `PaymentVoucherWorkflowService` / `PvCatalogService` / `PvAttachmentService` / `SupplierService`.
+  (The demo data command goes through those services too; only its removal uses direct deletes.)
+- **Never print a category or type name from the model** (`category->name`, `type->name`): a location may have renamed it. Use
+  `PvCatalogService::effective()` for a list and `category_label` / `type_label` (or `labelPvs()` for a page of vouchers) for a voucher.
+- **Blade does not compile `@js()` (or any directive) inside a component's attributes** (`<x-ui.button wire:click="f(@js($x))">` renders the
+  literal text and the click does nothing). Send an id and look the value up on the server, or use a plain element.
+- Never put a payee, amount, comment, reason, supplier name/TIN/phone or file name in an audit row or a log, nor in a notice other than
+  the PV number the reminder and action notices carry (`PvNoticesAndAuditRowsTest` scans for them).
+- Never compute a figure outside `PvAnalyticsService`, define "waiting" outside `PvBacklog`, or write `fin_settings` /
+  `fin_reminder_states` outside the settings / reminder services. An export or a chart must show what the Reports screen shows. A change that
+  alters what a cached figure shows (a catalogue change, a settings save, any voucher write) must bump the books version.
+- The two reminder sets never share a key: `FinanceSettings` and `AuditSettings` (singletons), each saved only with its own permission.
+- Payee ids from the browser are re-resolved inside the actor's scope on every save (`payee()`); a district payee is one of the LOCATION's
+  districts (`FinanceScope::districts()`).
 - Never write `fin_suppliers` outside `SupplierService`, and never read a supplier's figures other than through `SupplierDirectory`
   (a location must not see what another paid). The import must not become a second writer: it calls the service.
 - `PvConflictException` is not a validation error: screens catch it and offer a reload.
@@ -198,3 +348,31 @@ field; **code, TIN and phone are optional and a blank is stored as NULL, never `
   notice twice. (Transport's listeners are registered both ways and look doubled in `php artisan event:list`.)
 - Tests use `Notification::fake()` (the Transport fixtures do): read notices with `Notification::sent()`, not the table.
 - `FinPaymentVoucher` has `$table = 'fin_pvs'` (the inferred name would be `fin_payment_vouchers`).
+- A full-suite flake unrelated to this module: the Leave letter PDF tests sometimes fail with a Dompdf "Division by zero" and an MDM
+  policy test with a unique violation; they pass alone.
+
+## 9. Demo data (change request step E)
+
+`php artisan finance:demo-data [--with-users] [--remove]` and `Database\Seeders\FinanceAuditDemoSeeder` (NOT in `DatabaseSeeder`; run it with
+`php artisan db:seed --class=FinanceAuditDemoSeeder`, which is the command without `--with-users`). Both are `FinanceDemoDataService`. They
+**refuse to run in production and unless `GWL_FINANCE_AUDIT_ENABLED` is on** (`--remove` too); `--with-users` is for the `local` and
+`testing` environments only.
+- **What it makes:** for Head Office and up to three regions (a region without Head Office; the first non-Head Office district
+  of each): four demo accounts per location (finance officer, finance manager, audit officer, audit manager) as demo STAFF records with staff
+  ids `DEMO-<LOC>-FO|FM|AO|AM` (so they are valid accounts, made the way every staff record gets its user); about 25 suppliers company-wide
+  (every name ends " (Demo)", some with a TIN and phone, some a name only); and 60 vouchers per location, `DEMO-<LOC>-0001`..., spread over the
+  last six months: Draft, With Audit aged 0-2 / 3-7 / 8-14 / 15+ days, Queried once and twice (different reason codes), resubmitted, Audit
+  acknowledged and waiting, Completed (some after a query), tick withdrawn then re-reviewed, Voided. All four payee kinds (existing staff and
+  retirees of the location first, topped up with demo ones), both categories and most types, and two vouchers per location paid to demo staff
+  who resign afterwards (the "payee left service" flag). The first region also gets a location-owned type, a renamed type and a switched-off type.
+- **How:** through `PaymentVoucherWorkflowService`, `SupplierService` and `PvCatalogService`, acting as the demo accounts, with
+  `Carbon::setTestNow` set back so events, rounds, audit rows, turnaround and ageing are genuine. Notices (and the invitation e-mail a new
+  staff record would send) are suppressed for the run, and the clock and the signed-in user are put back. Existing employees and districts are
+  only read; Staff data is never altered.
+- **Accounts:** without `--with-users` the demo users are INACTIVE (nobody can sign in as them; they are only the actors in the history).
+  With it they are active with a random password each, printed once, and `must_change_password` set.
+- **Re-running** does nothing while any `DEMO-` voucher exists.
+- **`--remove`** deletes ONLY: `DEMO-` vouchers with their events, attachments (files too) and reminder states (direct deletes, because the
+  event model refuses them); suppliers ending " (Demo)" that no other voucher uses (those are kept and counted); location-owned catalogue rows
+  named "... (Demo)" and the overrides the demo accounts made; the demo accounts, their notices, the audit rows they wrote and their staff records.
+  `FinanceDemoDataTest` proves a normal run and a removal leave every non-demo row exactly as it was.

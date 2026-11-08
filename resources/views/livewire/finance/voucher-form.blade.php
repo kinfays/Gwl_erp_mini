@@ -39,41 +39,48 @@
                     @endforeach
                 </x-ui.select>
 
+                {{-- One accessible combobox for every payee kind (<x-form.searchable-select>, ARIA 1.2). People and suppliers are searched on
+                     the server (250 ms debounce, 2+ characters, 20 rows at most); districts are few, so they filter in the browser. The
+                     browser sends back only an id, which the workflow service re-resolves inside the location on every save. --}}
                 @if (in_array($form['payee_kind'], ['employee', 'retiree'], true))
-                    <x-ui.input label="Find the person" wire:model.live.debounce.400ms="payeeSearch" placeholder="Name or staff ID" hint="{{ $form['payee_kind'] === 'employee' ? 'Current staff of this location.' : 'Former staff (retired or left service) of this location.' }}" />
-                    <x-ui.select label="{{ $form['payee_kind'] === 'employee' ? 'Employee' : 'Retiree' }}" required wire:model="form.payee_employee_id">
-                        <option value="">Choose</option>
-                        @foreach ($employees as $person)
-                            <option value="{{ $person->id }}">{{ $person->full_name }} ({{ $person->staff_id }})@if (! $person->is_active) - left service @endif</option>
-                        @endforeach
-                    </x-ui.select>
+                    <x-form.searchable-select
+                        :label="$form['payee_kind'] === 'employee' ? 'Employee' : 'Retiree'" model="form.payee_employee_id" search="searchPeople"
+                        :initial-label="$payeeLabel" :reset-key="$form['payee_kind'].'|'.$pickerNonce.'|'.($location['district_id'] ?? '')"
+                        :min-chars="2" :limit="20" required placeholder="Type a name or staff ID"
+                        empty-text="No one matches that"
+                        :hint="$form['payee_kind'] === 'employee' ? 'Current staff of this location.' : 'Former staff (retired or left service) of this location.'" />
                 @elseif ($form['payee_kind'] === 'district')
-                    <x-ui.select label="District" required wire:model="form.payee_district_id">
-                        <option value="">Choose</option>
-                        @foreach ($districts as $district)
-                            <option value="{{ $district->id }}">{{ $district->district_name }}</option>
-                        @endforeach
-                    </x-ui.select>
+                    <x-form.searchable-select
+                        label="District" model="form.payee_district_id" :options="$districtOptions"
+                        :initial-label="$payeeLabel" :reset-key="'district|'.($location['district_id'] ?? '')"
+                        required placeholder="Type to find a district" empty-text="No district matches that"
+                        hint="The districts of this location." />
                 @else
-                    <x-ui.input label="Find the supplier" wire:model.live.debounce.400ms="payeeSearch" placeholder="Supplier name" />
-                    <x-ui.select label="Supplier" required wire:model="form.supplier_id" hint="The company-wide supplier list.">
-                        <option value="">Choose</option>
-                        @foreach ($suppliers as $supplier)
-                            <option value="{{ $supplier->id }}">{{ $supplier->name }}@unless ($supplier->is_active) (inactive) @endunless</option>
-                        @endforeach
-                    </x-ui.select>
+                    <x-form.searchable-select
+                        label="Supplier" model="form.supplier_id" search="searchSuppliers"
+                        :initial-label="$payeeLabel" :reset-key="'supplier|'.$pickerNonce"
+                        :min-chars="2" :limit="20" required placeholder="Type a supplier name or code"
+                        empty-text="No supplier matches that" hint="The company-wide supplier list.">
+                        @if ($canManageSuppliers)
+                            <x-slot:noMatch>
+                                <button type="button" class="btn btn-ghost btn-sm" x-on:mousedown.prevent="$wire.startNewSupplier(query); close()">
+                                    Add <strong x-text="'&quot;' + query.trim() + '&quot;'"></strong> as a new supplier
+                                </button>
+                            </x-slot:noMatch>
+                        @endif
+                    </x-form.searchable-select>
                 @endif
 
                 <x-ui.select label="Category" required wire:model.live="form.category_id">
                     <option value="">Choose</option>
                     @foreach ($categories as $category)
-                        <option value="{{ $category->id }}">{{ $category->name }}@unless ($category->is_active) (no longer in use) @endunless</option>
+                        <option value="{{ $category->id }}">{{ $category->effective_name }}@unless ($category->effective_active) (no longer in use) @endunless</option>
                     @endforeach
                 </x-ui.select>
                 <x-ui.select label="Type" required wire:model="form.type_id">
                     <option value="">{{ $form['category_id'] ? 'Choose' : 'Choose a category first' }}</option>
                     @foreach ($types as $type)
-                        <option value="{{ $type->id }}">{{ $type->name }}@unless ($type->is_active) (no longer in use) @endunless</option>
+                        <option value="{{ $type->id }}">{{ $type->effective_name }}@unless ($type->effective_active) (no longer in use) @endunless</option>
                     @endforeach
                 </x-ui.select>
 
@@ -87,23 +94,10 @@
             </div>
 
             @if ($form['payee_kind'] === 'supplier' && $canManageSuppliers)
-                <details class="dash-row" @if ($errors->has('newSupplier.*') || $supplierMatches) open @endif>
+                <details class="dash-row" @if ($showSupplierAdd || $errors->has('newSupplier.*') || $supplierMatches) open @endif>
                     <summary>Supplier not on the list? Add it</summary>
                     @include('livewire.finance.partials.supplier-fields', ['prefix' => 'newSupplier', 'matches' => $supplierMatches, 'ackModel' => 'differentSupplier'])
                     <div class="ui-form-actions"><x-ui.button size="sm" icon="plus" wire:click="addSupplier" loading="addSupplier">Add and choose this supplier</x-ui.button></div>
-                </details>
-            @endif
-
-            @if ($canManageCatalogue)
-                <details class="dash-row" @if ($errors->has('catalogue.*')) open @endif>
-                    <summary>Add a category or type</summary>
-                    <div class="ui-form-grid">
-                        <x-ui.input label="New category" wire:model="newCategory" maxlength="120" error="catalogue.name" />
-                        <div class="ui-form-actions"><x-ui.button size="sm" wire:click="addCategory">Add category</x-ui.button></div>
-                        <x-ui.input label="New type (in the category chosen above)" wire:model="newType" maxlength="120" error="catalogue.name" />
-                        <div class="ui-form-actions"><x-ui.button size="sm" wire:click="addType">Add type</x-ui.button></div>
-                    </div>
-                    @error('catalogue.category_id') <x-ui.alert tone="danger" role="alert">{{ $message }}</x-ui.alert> @enderror
                 </details>
             @endif
         </x-ui.card>

@@ -78,6 +78,18 @@ class SupplierServiceTest extends FinanceTestCase
         $this->assertSame(0, FinSupplier::query()->count());
     }
 
+    public function test_a_tin_is_one_letter_and_ten_digits(): void
+    {
+        $fin = $this->finance('F1', $this->sowutuom);
+        $this->actingAs($fin);
+
+        $this->assertSame('P0012345678', $this->suppliers()->create($fin, ['name' => 'Good Tin Ltd', 'tin' => 'p0012345678'])->tin);
+
+        foreach (['P001234567', 'P00123456789', 'PP012345678', '00123456789', 'P0012-345678', 'GHA-123456789-1'] as $i => $bad) {
+            $this->assertValidationFails('tin', fn () => $this->suppliers()->create($fin, ['name' => 'Bad Tin '.$i.' Works', 'tin' => $bad]));
+        }
+    }
+
     public function test_phone_and_tin_are_cleaned_and_a_lost_leading_zero_is_restored(): void
     {
         $fin = $this->finance('F1', $this->sowutuom);
@@ -217,8 +229,8 @@ class SupplierServiceTest extends FinanceTestCase
         $super = $this->superAdmin();
         $this->actingAs($fin);
 
-        $supplier = $this->suppliers()->create($fin, ['name' => 'Confidential Wares', 'tin' => 'TIN-SECRET-77', 'phone' => '0201112223']);
-        $this->suppliers()->update($fin, $supplier->id, ['name' => 'Confidential Wares', 'tin' => 'TIN-SECRET-77', 'phone' => '0201112224']);
+        $supplier = $this->suppliers()->create($fin, ['name' => 'Confidential Wares', 'tin' => 'P0099887766', 'phone' => '0201112223']);
+        $this->suppliers()->update($fin, $supplier->id, ['name' => 'Confidential Wares', 'tin' => 'P0099887766', 'phone' => '0201112224']);
         $this->actingAs($super);
         $this->suppliers()->setActive($super, $supplier->id, false);
 
@@ -228,7 +240,7 @@ class SupplierServiceTest extends FinanceTestCase
 
         $dump = $rows->toJson();
 
-        foreach (['Confidential', 'TIN-SECRET-77', '0201112223', '0201112224'] as $secret) {
+        foreach (['Confidential', 'P0099887766', '0201112223', '0201112224'] as $secret) {
             $this->assertStringNotContainsString($secret, $dump);
         }
     }

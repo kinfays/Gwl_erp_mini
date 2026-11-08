@@ -33,7 +33,7 @@ class VoucherShow extends Component
     public function mount(int $pv): void
     {
         $this->enforceFinance(Permission::MODULE_AUDIT);
-        $this->guard('audit.view');
+        abort_unless($this->scope()->auditReach($this->actor()) !== FinanceScope::AUDIT_NONE, 403, 'You do not have permission to do that.');
 
         $this->pvId = $this->pvOrFail($pv, FinanceScope::AS_AUDIT)->id;
     }

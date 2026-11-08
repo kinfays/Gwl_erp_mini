@@ -185,6 +185,11 @@ document.addEventListener('alpine:init', () => {
         initialLabel: config.initialLabel || '',
         debounce: config.debounce ?? 250,
         listId: config.listId,
+        // Server search only: nothing is asked for below `minChars` characters, and a list of `limit` rows may be cut short.
+        minChars: config.minChars ?? 0,
+        limit: config.limit ?? null,
+        emptyText: config.emptyText || 'No results',
+        navigated: false,
         results: [],
         current: null,
         loading: false,
@@ -253,6 +258,7 @@ document.addEventListener('alpine:init', () => {
 
         inputChanged() {
             this.open = true;
+            this.navigated = false;
 
             // Typing over a chosen value un-chooses it, so a half-typed label can never be saved.
             if (this.current && this.query !== this.current.label) {
@@ -268,9 +274,56 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        term() {
+            return this.current && this.query === this.current.label ? '' : this.query.trim();
+        },
+
+        // Server search that is waiting for more typing (so "no matches" would be the wrong thing to say yet).
+        get tooShort() {
+            return Boolean(this.method) && this.minChars > 0 && this.term().length < this.minChars;
+        },
+
+        // More rows may exist than were sent.
+        get capped() {
+            return Boolean(this.method) && this.limit !== null && this.results.length >= this.limit;
+        },
+
+        // The sentence a screen reader announces (a polite live region) every time the list changes.
+        get status() {
+            if (! this.open) {
+                return '';
+            }
+
+            if (this.tooShort) {
+                return `Type at least ${this.minChars} characters to search.`;
+            }
+
+            if (this.loading) {
+                return 'Searching.';
+            }
+
+            const count = this.visible.length;
+
+            if (count === 0) {
+                return `${this.emptyText}.`;
+            }
+
+            return `${count} ${count === 1 ? 'result' : 'results'} available.`
+                + (this.capped ? ' Keep typing to narrow the list.' : '')
+                + ' Use the up and down arrow keys, then Enter to choose.';
+        },
+
         async fetchNow() {
             const id = ++this.requestId;
-            const term = this.current && this.query === this.current.label ? '' : this.query.trim();
+            const term = this.term();
+
+            if (this.tooShort) {
+                this.results = [];
+                this.loading = false;
+                this.activeIndex = -1;
+
+                return;
+            }
 
             this.loading = true;
 
@@ -325,7 +378,20 @@ document.addEventListener('alpine:init', () => {
                 return;
             }
 
+            this.navigated = true;
             this.activeIndex = (this.activeIndex + step + count) % count;
+            this.$nextTick(() => document.getElementById(`${this.listId}-${this.activeIndex}`)?.scrollIntoView({ block: 'nearest' }));
+        },
+
+        // Home / End jump to the first / last option once the person has started moving through the list; before that they
+        // keep their normal job of moving the text cursor.
+        jump(last, event) {
+            if (! this.open || ! this.navigated || this.visible.length === 0) {
+                return;
+            }
+
+            event.preventDefault();
+            this.activeIndex = last ? this.visible.length - 1 : 0;
             this.$nextTick(() => document.getElementById(`${this.listId}-${this.activeIndex}`)?.scrollIntoView({ block: 'nearest' }));
         },
 
@@ -345,6 +411,7 @@ document.addEventListener('alpine:init', () => {
 
         close() {
             this.open = false;
+            this.navigated = false;
             // Leave the box showing the chosen label (or empty), never a half-typed search.
             this.syncFromSelected();
         },

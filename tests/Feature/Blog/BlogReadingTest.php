@@ -34,6 +34,20 @@ class BlogReadingTest extends BlogTestCase
             ->assertDontSee($draft->title);
     }
 
+    public function test_a_tag_on_an_article_card_filters_the_feed_even_with_a_quote_in_it(): void
+    {
+        $this->article($this->accraWest, ['title' => 'Workshop with a tagged theme', 'tags' => ["women's day", 'safety']]);
+        $this->article($this->accraWest, ['title' => 'Unrelated meeting minutes', 'tags' => ['finance']]);
+
+        $page = Livewire::actingAs($this->reader())->test(Feed::class)
+            ->assertDontSee('@js', false)
+            ->assertSee('Workshop with a tagged theme')->assertSee('Unrelated meeting minutes');
+
+        // The button carries a real call (the tag as a JavaScript string), not the text of the directive.
+        $page->assertSeeHtml('wire:click="searchTag(');
+        $page->call('searchTag', "women's day")->assertSet('search', "women's day");
+    }
+
     public function test_staff_in_another_region_see_theirs_and_not_the_first_regions(): void
     {
         $accra = $this->article($this->accraWest, ['title' => 'Accra West safety training']);

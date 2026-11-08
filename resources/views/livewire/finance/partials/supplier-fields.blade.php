@@ -4,7 +4,7 @@
 <div class="ui-form-grid">
     <x-ui.input label="Supplier name" required wire:model.live.debounce.500ms="{{ $prefix }}.name" maxlength="200" />
     <x-ui.input label="Supplier code" wire:model="{{ $prefix }}.code" maxlength="40" hint="Optional." />
-    <x-ui.input label="TIN" wire:model="{{ $prefix }}.tin" maxlength="30" hint="Optional. Letters, digits and hyphens, 6 to 20 characters." />
+    <x-ui.input label="TIN" wire:model="{{ $prefix }}.tin" maxlength="14" hint="Optional. One letter and ten digits, for example P0012345678." />
     <x-ui.input label="Phone" inputmode="tel" wire:model="{{ $prefix }}.phone" maxlength="30" hint="Optional. 9 to 15 digits." />
 </div>
 

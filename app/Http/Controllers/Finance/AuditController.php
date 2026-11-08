@@ -29,11 +29,26 @@ class AuditController extends Controller
         return view('audit.show', ['pv' => $pv]);
     }
 
-    public function categories(Request $request): View
+    /** Categories and types are the Finance manager's, per location. Audit has no screen for them: always 403. */
+    public function categories(Request $request): never
     {
         $this->enforceModule($request, Permission::MODULE_AUDIT);
 
-        return view('audit.categories');
+        abort(403, 'Categories and types are managed from Finance.');
+    }
+
+    public function reports(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.reports');
+    }
+
+    public function reminderSettings(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.reminder-settings');
     }
 
     public function suppliers(Request $request): View

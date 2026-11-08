@@ -15,8 +15,8 @@
     <dl class="ui-dl">
         <div><dt>PV date</dt><dd>{{ $pv->pv_date->format('d M Y') }}</dd></div>
         <div><dt>Payee</dt><dd>{{ $pv->payee_name }} <span class="cell-muted">({{ $pv->payeeKindLabel() }})</span></dd></div>
-        <div><dt>Category</dt><dd>{{ $pv->category?->name }}</dd></div>
-        <div><dt>Type</dt><dd>{{ $pv->type?->name }}</dd></div>
+        <div><dt>Category</dt><dd>{{ $pv->category_label }}</dd></div>
+        <div><dt>Type</dt><dd>{{ $pv->type_label }}</dd></div>
         <div><dt>Amount (GH¢)</dt><dd>{{ $pv->amountFormatted() }}</dd></div>
         <div><dt>Prepared by</dt><dd>{{ $pv->creator?->full_name }}</dd></div>
         <div><dt>Details</dt><dd style="white-space: pre-line">{{ $pv->details }}</dd></div>

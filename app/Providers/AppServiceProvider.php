@@ -49,6 +49,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CommercialSettings::class);
         // One instance per application: it reads the saved Health & Safety settings once and forgets them on a save.
         $this->app->singleton(\App\Services\HealthSafety\HealthSafetySettings::class);
+        // Finance / Audit reminder settings: one instance per application, so a save is seen by every reader (PvBacklog, Reports).
+        $this->app->singleton(\App\Services\Finance\FinanceSettings::class);
+        $this->app->singleton(\App\Services\Finance\AuditSettings::class);
     }
 
     

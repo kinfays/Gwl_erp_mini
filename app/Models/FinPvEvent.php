@@ -40,6 +40,9 @@ class FinPvEvent extends Model
     /** The actions that put the voucher in front of Audit: whoever did one of them can never review it. */
     public const SUBMITTING = [self::SUBMITTED, self::RESUBMITTED];
 
+    /** The actions an Audit officer performs: a voucher with at least one of them has been "worked on" (what the Audit manager may see). */
+    public const REVIEWING = [self::AUDIT_ACKNOWLEDGED, self::QUERIED, self::TICK_WITHDRAWN];
+
     protected $fillable = ['pv_id', 'round', 'action', 'actor_user_id', 'comment', 'query_reason_code', 'changes'];
 
     protected $casts = [
