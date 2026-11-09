@@ -32,7 +32,7 @@ class AssetListQuery
             ->when($search !== '', function (Builder $q) use ($search, $category) {
                 $term = '%'.$search.'%';
                 $q->where(function (Builder $inner) use ($term, $category) {
-                    $inner->where('asset_name', 'like', $term)->orWhere('serial_number', 'like', $term);
+                    $inner->where('asset_name', 'like', $term)->orWhere('serial_number', 'like', $term)->orWhere('tag_no', 'like', $term);
 
                     match ($category) {
                         IctAsset::DEVICE_CATEGORY_PHONE => $inner

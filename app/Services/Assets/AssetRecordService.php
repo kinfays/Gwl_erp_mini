@@ -67,7 +67,11 @@ class AssetRecordService
 
         // A cleared <select>/date input arrives as '' — store NULL rather than
         // hand a strict-mode database an empty string for an integer/date column.
-        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'status_reason', 'actual_location'] as $nullableKey) {
+        if (array_key_exists('tag_no', $data)) {
+            $data['tag_no'] = trim((string) $data['tag_no']);
+        }
+
+        foreach (['ict_asset_model_id', 'assigned_to_employee_id', 'department_id', 'region_id', 'district_id', 'purchased_at', 'status_reason', 'actual_location', 'tag_no'] as $nullableKey) {
             if (($data[$nullableKey] ?? null) === '') {
                 $data[$nullableKey] = null;
             }

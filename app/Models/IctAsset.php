@@ -109,6 +109,7 @@ class IctAsset extends Model
         'is_general_use',
         'assigned_to_employee_id',
         'department_id',
+        'tag_no',
         'region_id',
         'district_id',
         'device_ip',

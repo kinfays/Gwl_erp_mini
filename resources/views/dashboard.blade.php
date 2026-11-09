@@ -35,7 +35,7 @@
                 <p>
                     <span>{{ $today ?? now()->format('l, j F Y') }}</span>
                     <span>{{ $location ?? trim(($employee?->district?->district_name ?? '') . ', ' . ($employee?->region?->region_name ?? ''), ', ') }}</span>
-                    <span>{{ $roleName ?? $user?->displayRoleNames() }}</span>
+                    <span>{{ $employee?->jobTitle?->job_title_name ?: ($roleName ?? $user?->displayRoleNames()) }}</span>
                 </p>
             </div>
             <div class="ph-right">

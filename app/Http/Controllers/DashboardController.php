@@ -16,6 +16,8 @@ class DashboardController extends Controller
             'employee.district',
             'employeeByStaffId.region',
             'employeeByStaffId.district',
+            'employee.jobTitle',
+            'employeeByStaffId.jobTitle',
         ]);
 
         $employee = $user->employee ?? $user->employeeByStaffId;

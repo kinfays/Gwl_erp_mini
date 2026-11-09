@@ -44,6 +44,8 @@ class ErpNavigation
             'employeeByStaffId.region',
             'employeeByStaffId.district',
             'employeeByStaffId.department',
+            'employee.jobTitle',
+            'employeeByStaffId.jobTitle',
         ]);
 
         $employee = $user->employee ?? $user->employeeByStaffId;
@@ -79,7 +81,8 @@ class ErpNavigation
             'identity' => [
                 'name' => $user->full_name ?? $employee?->full_name ?? $user->email,
                 'initials' => $this->initials($user->full_name ?? $employee?->full_name ?? 'User'),
-                'role' => $user->displayRoleNames(),
+                // Shown under the name: the person's job title, else (no employee record or title) their role.
+                'role' => $employee?->jobTitle?->job_title_name ?: $user->displayRoleNames(),
                 'location' => collect([
                     $employee?->district?->district_name,
                     $employee?->region?->region_name,

@@ -227,6 +227,8 @@
                         <option value="{{ $department->id }}">{{ $department->department_name }}</option>
                     @endforeach
                 </x-ui.select>
+                <x-ui.input label="Tag No." wire:model.defer="form.tag_no" class="mono" placeholder="GWCL/FOE/YEAR/NUMBER" maxlength="100" />
+
                 <x-ui.input label="Date" type="date" wire:model.defer="form.purchased_at" />
 
                 <x-assets.actor-region :region="$actorRegion" />
