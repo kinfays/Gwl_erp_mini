@@ -27,6 +27,12 @@ class PvBacklog
 
     public const ACKNOWLEDGE = 'acknowledge';
 
+    /** With Audit and nobody in Audit holds it yet: the Audit manager's wait (AuditSettings::UNASSIGNED_WAIT). Only the Audit reminders ask for it. */
+    public const UNASSIGNED = 'unassigned';
+
+    /** With Audit and given to an officer: that officer's wait, counted from the later of the wait's start and the assignment (AuditSettings::WAIT). */
+    public const OFFICER = 'officer';
+
     /** A Draft nobody has sent to Audit yet. Not "waiting" in the Reports sense (Audit never sees it): only the Finance reminders ask for it. */
     public const DRAFT = 'draft';
 
@@ -74,7 +80,7 @@ class PvBacklog
     {
         $now = $now ? Carbon::instance($now) : now();
         $open = (clone $pvs)->whereIn('fin_pvs.status', array_keys(self::KINDS))
-            ->get(['fin_pvs.id', 'fin_pvs.pv_no', 'fin_pvs.status', 'fin_pvs.region_id', 'fin_pvs.district_id', 'fin_pvs.last_submitted_at', 'fin_pvs.submitted_at', 'fin_pvs.pv_date', 'fin_pvs.amount', 'fin_pvs.payee_name']);
+            ->get(['fin_pvs.id', 'fin_pvs.pv_no', 'fin_pvs.status', 'fin_pvs.region_id', 'fin_pvs.district_id', 'fin_pvs.last_submitted_at', 'fin_pvs.submitted_at', 'fin_pvs.pv_date', 'fin_pvs.amount', 'fin_pvs.payee_name', 'fin_pvs.assigned_to_user_id', 'fin_pvs.assigned_at']);
 
         if ($open->isEmpty()) {
             return collect();
@@ -101,6 +107,37 @@ class PvBacklog
         })->sortByDesc('days')->values();
     }
 
+    /**
+     * The vouchers With Audit split by WHO is waiting on them, for the Audit reminders (the Reports keep the single `audit` kind of items()):
+     *  - unassigned: no officer yet; since the wait began; the manager's limit; no recipient officer;
+     *  - officer: given to an officer; since the LATER of the wait's start and the assignment (an officer cannot be slow before they have
+     *    it, and a reassignment gives the new officer a fresh wait); the officer's limit; `recipient` is that officer's user id.
+     * Every With Audit voucher of the query is in exactly one of the two.
+     *
+     * @param  Builder<FinPaymentVoucher>  $pvs  a query that is already scoped
+     * @return Collection<int, array{pv: FinPaymentVoucher, kind: string, since: Carbon, days: int, threshold: int, overdue: bool, recipient: int|null}> longest wait first
+     */
+    public function auditItems(Builder $pvs, ?CarbonInterface $now = null): Collection
+    {
+        $now = $now ? Carbon::instance($now) : now();
+
+        return $this->items((clone $pvs)->where('fin_pvs.status', FinPaymentVoucher::WITH_AUDIT), $now)->map(function (array $item) use ($now) {
+            /** @var FinPaymentVoucher $pv */
+            $pv = $item['pv'];
+
+            if ($pv->assigned_to_user_id === null) {
+                $threshold = $this->audit->value($this->placeOf($pv), AuditSettings::UNASSIGNED_WAIT);
+
+                return ['kind' => self::UNASSIGNED, 'threshold' => $threshold, 'overdue' => $item['days'] >= $threshold, 'recipient' => null] + $item;
+            }
+
+            $since = $pv->assigned_at && $pv->assigned_at->gt($item['since']) ? Carbon::instance($pv->assigned_at) : $item['since'];
+            $days = (int) floor(max(0, $now->getTimestamp() - $since->getTimestamp()) / 86400);
+
+            return ['kind' => self::OFFICER, 'since' => $since, 'days' => $days, 'overdue' => $days >= $item['threshold'], 'recipient' => (int) $pv->assigned_to_user_id] + $item;
+        })->sortByDesc('days')->values();
+    }
+
     public static function kindLabel(string $kind): string
     {
         return match ($kind) {
@@ -108,6 +145,8 @@ class PvBacklog
             self::QUERIED => 'Queried, waiting for Finance',
             self::ACKNOWLEDGE => 'Ticked, waiting for Finance to acknowledge',
             self::DRAFT => 'Draft not yet sent',
+            self::UNASSIGNED => 'Sent to Audit, waiting for an officer',
+            self::OFFICER => 'With an Audit officer',
             default => $kind,
         };
     }

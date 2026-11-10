@@ -6,6 +6,7 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\FinPaymentVoucher;
 use App\Models\FinPvAttachment;
+use App\Models\FinPvBatch;
 use App\Models\FinPvEvent;
 use App\Models\User;
 use App\Services\Transport\TransportScope;
@@ -34,11 +35,32 @@ class FinanceScope
 
     public const AS_AUDIT = 'audit';
 
+    /** super_admin: every voucher that reached Audit, in every location (they still cannot review: nothing is assigned to them). */
     public const AUDIT_ALL = 'all';
 
+    /** An Audit officer (audit.review): the vouchers assigned to them, plus any voucher they have ticked, queried or withdrawn a tick on. */
+    public const AUDIT_ASSIGNED = 'assigned';
+
+    /** Audit manager (and other read-only roles): only the vouchers an Audit officer has worked on. */
     public const AUDIT_WORKED = 'worked';
 
     public const AUDIT_NONE = 'none';
+
+    /**
+     * The columns the Audit manager's ASSIGNMENT QUEUE may read of a voucher that nobody has worked on yet: a reference, where it
+     * is, how much, when it was sent and who has it. Deliberately no payee, details, remarks, attachments or creator.
+     */
+    public const QUEUE_COLUMNS = [
+        'fin_pvs.id', 'fin_pvs.region_id', 'fin_pvs.district_id', 'fin_pvs.batch_id', 'fin_pvs.pv_no', 'fin_pvs.category_id', 'fin_pvs.type_id',
+        'fin_pvs.amount', 'fin_pvs.status', 'fin_pvs.round', 'fin_pvs.submitted_at', 'fin_pvs.last_submitted_at',
+        'fin_pvs.assigned_to_user_id', 'fin_pvs.assigned_by_user_id', 'fin_pvs.assigned_at',
+    ];
+
+    /** The same idea for a batch: no remarks. */
+    public const BATCH_QUEUE_COLUMNS = [
+        'fin_pv_batches.id', 'fin_pv_batches.batch_no', 'fin_pv_batches.title', 'fin_pv_batches.region_id', 'fin_pv_batches.district_id',
+        'fin_pv_batches.status', 'fin_pv_batches.sent_at',
+    ];
 
     /** The payee pickers send nothing to the page for fewer characters than this, and never more rows than the limit. */
     public const SEARCH_MIN = 2;
@@ -102,15 +124,46 @@ class FinanceScope
     {
         $query = $this->pvsForTotals($user, $as);
 
-        if ($as === self::AS_AUDIT && $this->auditReach($user) === self::AUDIT_WORKED) {
-            // THE rule of the Audit manager's view, in one place: only a voucher an Audit officer has worked on (ticked, queried
-            // or withdrawn a tick). One that is With Audit and was never reviewed is invisible: no row, no detail, no file, no export.
-            $query->whereExists(fn ($events) => $events->selectRaw('1')->from('fin_pv_events')
-                ->whereColumn('fin_pv_events.pv_id', 'fin_pvs.id')
-                ->whereIn('fin_pv_events.action', FinPvEvent::REVIEWING));
+        if ($as === self::AS_AUDIT && ! $this->seesAll($user)) {
+            // THE rule of Audit's view, in one place. Nobody in Audit reads a voucher that is still awaiting assignment, except that
+            // the manager's ASSIGNMENT QUEUE (assignmentQueue(), minimal columns) lists it:
+            //  - an officer (audit.review): a voucher assigned to them, or one they have worked on (ticked, queried, withdrawn a tick);
+            //  - the manager and the read-only roles: a voucher an Audit officer has worked on.
+            // A voucher nobody has worked on and that is not theirs is invisible: no row, no detail, no file, no export.
+            $assigned = $this->can($user, 'audit.review');
+            $worked = $this->readsWorked($user);
+
+            $query->where(function (Builder $reach) use ($user, $assigned, $worked): void {
+                $reach->whereRaw('1 = 0');
+
+                if ($assigned) {
+                    $reach->orWhere('fin_pvs.assigned_to_user_id', $user->id)
+                        ->orWhereExists(fn ($events) => $events->selectRaw('1')->from('fin_pv_events')
+                            ->whereColumn('fin_pv_events.pv_id', 'fin_pvs.id')
+                            ->where('fin_pv_events.actor_user_id', $user->id)
+                            ->whereIn('fin_pv_events.action', FinPvEvent::REVIEWING));
+                }
+
+                if ($worked) {
+                    $reach->orWhereExists(fn ($events) => $events->selectRaw('1')->from('fin_pv_events')
+                        ->whereColumn('fin_pv_events.pv_id', 'fin_pvs.id')
+                        ->whereIn('fin_pv_events.action', FinPvEvent::REVIEWING));
+                }
+            });
         }
 
         return $query;
+    }
+
+    /**
+     * Whether the user reads the vouchers an Audit officer has worked on: the manager (audit.assign), audit.view_reviewed, or a
+     * read-only holder of audit.view. An officer's own audit.view is only the door to their screen: they read what is theirs.
+     */
+    protected function readsWorked(User $user): bool
+    {
+        return $this->can($user, 'audit.assign')
+            || $this->can($user, 'audit.view_reviewed')
+            || ($this->can($user, 'audit.view') && ! $this->can($user, 'audit.review'));
     }
 
     /**
@@ -135,16 +188,124 @@ class FinanceScope
     }
 
     /**
-     * How much of Audit's work a user reads: everything the location sent to Audit (audit.view, or audit.review which implies
-     * it), only the vouchers an Audit officer has worked on (audit.view_reviewed: the Audit manager), or nothing.
+     * How much of Audit's work a user reads: everything that reached Audit (super_admin), what is assigned to them or they have
+     * worked on (an officer, audit.review), only what an officer has worked on (the manager and read-only roles), or nothing.
+     * Someone holding both the officer and the manager role is an officer here (pvs() adds the manager's part to the officer's).
      */
     public function auditReach(User $user): string
     {
-        if ($this->can($user, 'audit.view') || $this->can($user, 'audit.review')) {
+        if ($this->seesAll($user)) {
             return self::AUDIT_ALL;
         }
 
-        return $this->can($user, 'audit.view_reviewed') ? self::AUDIT_WORKED : self::AUDIT_NONE;
+        if ($this->can($user, 'audit.review')) {
+            return self::AUDIT_ASSIGNED;
+        }
+
+        return $this->readsWorked($user) ? self::AUDIT_WORKED : self::AUDIT_NONE;
+    }
+
+    /**
+     * The Audit manager's ASSIGNMENT QUEUE: every voucher the location sent to Audit (never a draft), whatever its state, limited to
+     * QUEUE_COLUMNS. It is the only way to list a voucher nobody has worked on, and only for audit.assign holders. Read a page of it
+     * for display; it carries no payee, details, remarks or attachment, and opening the voucher still goes through pvs().
+     */
+    public function assignmentQueue(User $user): Builder
+    {
+        $query = $this->pvsForTotals($user, self::AS_AUDIT)->select(self::QUEUE_COLUMNS);
+
+        if (! $this->can($user, 'audit.assign')) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
+    /** The sent batches of the location for the assignment queue (BATCH_QUEUE_COLUMNS only), for audit.assign holders. */
+    public function assignmentBatches(User $user): Builder
+    {
+        $query = $this->scope(FinPvBatch::query(), $user)->where('fin_pv_batches.status', FinPvBatch::SENT)->select(self::BATCH_QUEUE_COLUMNS);
+
+        if (! $this->can($user, 'audit.assign')) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
+    // ------------------------------------------------------------------ batches
+
+    /**
+     * The batches a user may reach, seen as Finance (drafts and cancelled ones included) or as Audit (only SENT batches). Finance
+     * reads every batch of the location. In Audit the manager (audit.assign) and super_admin see every sent batch, anyone else only
+     * a batch with at least one voucher they may open (pvs()). A batch the user does not reach answers 404.
+     */
+    public function batches(User $user, string $as = self::AS_FINANCE): Builder
+    {
+        $query = $this->scope(FinPvBatch::query(), $user);
+
+        if ($as === self::AS_AUDIT) {
+            $query->where('fin_pv_batches.status', FinPvBatch::SENT);
+
+            if ($this->auditReach($user) === self::AUDIT_NONE) {
+                $query->whereRaw('1 = 0');
+            } elseif (! $this->seesAll($user) && ! $this->can($user, 'audit.assign')) {
+                $query->whereExists(fn ($members) => $members->selectRaw('1')->from('fin_pvs')
+                    ->whereColumn('fin_pvs.batch_id', 'fin_pv_batches.id')
+                    ->whereIn('fin_pvs.id', $this->pvs($user, self::AS_AUDIT)->select('fin_pvs.id')));
+            }
+        }
+
+        return $query;
+    }
+
+    /**
+     * The location's batches for COUNTING only (the analytics' batch figures): the same location and the same Audit rule as batches()
+     * (sent ones only) but without the officer's "only mine" limit, the way pvsForTotals() is to pvs(). Never list or open from this.
+     */
+    public function batchesForTotals(User $user, string $as = self::AS_FINANCE): Builder
+    {
+        $query = $this->scope(FinPvBatch::query(), $user);
+
+        if ($as === self::AS_AUDIT) {
+            $query->where('fin_pv_batches.status', FinPvBatch::SENT);
+
+            if ($this->auditReach($user) === self::AUDIT_NONE) {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        return $query;
+    }
+
+    /** 404 unless the user reaches the batch (as Finance or as Audit). */
+    public function findBatch(User $user, int|string $id, string $as = self::AS_FINANCE): FinPvBatch
+    {
+        return $this->batches($user, $as)->whereKey($id)->firstOrFail();
+    }
+
+    public function containsBatch(User $user, FinPvBatch $batch, string $as = self::AS_FINANCE): bool
+    {
+        return $this->batches($user, $as)->whereKey($batch->getKey())->exists();
+    }
+
+    /**
+     * The Audit officers a voucher (or the vouchers of a batch) may be given to: active people based at the location who hold
+     * audit.review, minus anyone who sent ANY of these vouchers to Audit in any round (separation of duties). super_admin is never
+     * based anywhere, so is never offered.
+     *
+     * @param  array<int, int>  $pvIds
+     * @return Builder<User>
+     */
+    public function assignableOfficers(array $location, array $pvIds = []): Builder
+    {
+        $query = $this->usersAt($location, 'audit.review');
+
+        if ($pvIds !== []) {
+            $query->whereNotIn('users.id', FinPvEvent::query()->whereIn('pv_id', $pvIds)->whereIn('action', FinPvEvent::SUBMITTING)->select('actor_user_id'));
+        }
+
+        return $query->orderBy('users.full_name');
     }
 
     /** 404 unless the user reaches the voucher (as Finance or as Audit). */

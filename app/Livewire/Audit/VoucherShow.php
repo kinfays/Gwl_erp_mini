@@ -88,10 +88,11 @@ class VoucherShow extends Component
     public function render()
     {
         $pv = $this->pvOrFail($this->pvId, FinanceScope::AS_AUDIT);
-        $pv->load(['events.actor', 'category', 'type', 'attachments', 'creator']);
+        $pv->load(['events.actor', 'events.toUser:id,full_name', 'category', 'type', 'attachments', 'creator', 'batch:id,batch_no,title', 'assignedTo:id,full_name', 'assignedBy:id,full_name']);
 
         $mine = $this->workflow()->hasSubmitted($this->actor(), $pv);
-        $canReview = $this->can('audit.review') && ! $mine;
+        // Tick, query and withdraw belong to the officer the voucher is assigned to, and to nobody else.
+        $canReview = $this->can('audit.review') && ! $mine && (int) $pv->assigned_to_user_id === (int) $this->actor()->id;
 
         return view('livewire.audit.voucher-show', [
             'pv' => $pv,

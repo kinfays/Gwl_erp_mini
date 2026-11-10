@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Audit review" description="Vouchers Finance has sent to Audit in your location. The ones waiting longest are first." />
+    <x-ui.page-header :title="$mine ? 'My work' : 'Reviewed vouchers'" :description="$mine ? 'The vouchers the Audit manager has given to you, and any you have already worked on. The ones waiting longest are first.' : 'Vouchers an Audit officer has already ticked, queried or withdrawn a tick on. Assigning is done from Assignments.'" />
 
     <x-ui.card class="dash-row">
         <div class="ui-form-grid">
@@ -22,5 +22,6 @@
         <div class="ui-form-actions"><x-ui.button size="sm" variant="ghost" wire:click="clearFilters">Reset</x-ui.button></div>
     </x-ui.card>
 
+    @include('livewire.finance.partials.print-bar')
     @include('livewire.finance.partials.pv-table')
 </div>

@@ -146,6 +146,20 @@ class FinanceExportService
             ['title' => 'Why Audit queried', 'headings' => ['Reason', 'Queries'], 'rows' => array_map(fn (array $row) => [$row['label'], $row['count']], $r['reasons'])],
             ['title' => 'Turnaround', 'headings' => ['Step', 'Average'], 'rows' => $turnaround],
             ['title' => 'Waiting right now', 'headings' => ['Waiting for', 'Vouchers', 'Overdue', 'Longest wait (days)', 'Remind after (days)'], 'rows' => $waiting],
+            ['title' => 'Assignment to Audit officers', 'headings' => ['Measure', 'Value'], 'rows' => [
+                ['Sent to assigned (average)', $days($r['assignment']['days_to_assign'])],
+                ['Assigned to first tick or query (average)', $days($r['assignment']['days_to_first_action'])],
+                ['Waiting for an officer right now', $r['assignment']['unassigned']['count']],
+                ['Of which past the limit', $r['assignment']['unassigned']['overdue']],
+            ]],
+            ['title' => 'Batches created in the period', 'headings' => ['State', 'Batches'], 'rows' => array_merge(
+                array_map(fn (array $state) => [$state['label'], $state['count']], $r['batches']['states']),
+                [['Vouchers in them', $r['batches']['vouchers']], ['Vouchers per batch (average)', $r['batches']['average_vouchers'] === null ? 'n/a' : number_format($r['batches']['average_vouchers'], 1)]]
+            )],
+            ...($r['officers'] === null ? [] : [['title' => 'Officer workload', 'headings' => ['Officer', 'Assigned', 'Done', 'Open', 'Average days to first action', 'Queried', 'Share queried'], 'rows' => array_map(
+                fn (array $o) => [$o['name'], $o['assigned'], $o['done'], $o['open'], $o['average_days'] === null ? 'n/a' : number_format($o['average_days'], 1), $o['queried'], $pct($o['query_rate'])],
+                $r['officers']
+            )]]),
         ], $from, $to);
     }
 

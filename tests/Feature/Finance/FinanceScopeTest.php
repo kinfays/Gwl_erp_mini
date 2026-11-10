@@ -56,8 +56,11 @@ class FinanceScopeTest extends FinanceTestCase
         $this->assertFalse($scope->containsPv($aud, $draft, FinanceScope::AS_AUDIT));
         $this->expectNotFound(fn () => $this->workflow()->auditAcknowledge($aud, $draft));
 
-        // Once sent, Audit reaches it; a draft voided before it ever reached Audit stays invisible to them.
+        // Once sent it is waiting for the Audit manager to assign it; the officer reaches it only after that. A draft voided before it
+        // ever reached Audit stays invisible to them.
         $sent = $this->sent($fin, ['pv_no' => 'PV-2']);
+        $this->assertFalse($scope->containsPv($aud, $sent, FinanceScope::AS_AUDIT), 'awaiting assignment: invisible to officers');
+        $this->assignTo($sent, $aud);
         $this->assertTrue($scope->containsPv($aud, $sent, FinanceScope::AS_AUDIT));
 
         $voidedDraft = $this->draft($fin, ['pv_no' => 'PV-3']);

@@ -27,7 +27,14 @@ class FinPvEvent extends Model
 
     public const VOIDED = 'voided';
 
+    /** The Audit manager gave the voucher to an Audit officer (from_user_id null), or moved it from one to another. */
+    public const ASSIGNED = 'assigned';
+
+    public const REASSIGNED = 'reassigned';
+
     public const ACTIONS = [
+        self::ASSIGNED => 'Assigned to an Audit officer',
+        self::REASSIGNED => 'Reassigned to another Audit officer',
         self::SUBMITTED => 'Sent to Audit',
         self::QUERIED => 'Queried by Audit',
         self::AUDIT_ACKNOWLEDGED => 'Acknowledged by Audit',
@@ -43,9 +50,15 @@ class FinPvEvent extends Model
     /** The actions an Audit officer performs: a voucher with at least one of them has been "worked on" (what the Audit manager may see). */
     public const REVIEWING = [self::AUDIT_ACKNOWLEDGED, self::QUERIED, self::TICK_WITHDRAWN];
 
-    protected $fillable = ['pv_id', 'round', 'action', 'actor_user_id', 'comment', 'query_reason_code', 'changes'];
+    /** Not review work: an assignment never makes a voucher "worked on", and never counts as the last thing Audit did. */
+    public const ASSIGNING = [self::ASSIGNED, self::REASSIGNED];
+
+    protected $fillable = ['pv_id', 'round', 'action', 'actor_user_id', 'comment', 'query_reason_code', 'changes', 'batch_id', 'from_user_id', 'to_user_id'];
 
     protected $casts = [
+        'batch_id' => 'integer',
+        'from_user_id' => 'integer',
+        'to_user_id' => 'integer',
         'pv_id' => 'integer',
         'round' => 'integer',
         'actor_user_id' => 'integer',
@@ -67,6 +80,21 @@ class FinPvEvent extends Model
     public function actor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'actor_user_id');
+    }
+
+    public function toUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'to_user_id');
+    }
+
+    public function fromUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'from_user_id');
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(FinPvBatch::class, 'batch_id');
     }
 
     public function label(): string

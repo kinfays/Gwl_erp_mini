@@ -27,6 +27,9 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
         $this->assertSame(1, $pv->round);
         $this->assertNotNull($pv->submitted_at);
 
+        // Nobody in Audit can work on it until the Audit manager gives it to an officer.
+        $pv = $this->assignTo($pv, $aud);
+
         $this->actingAs($aud);
         $pv = $this->workflow()->auditAcknowledge($aud, $pv);
         $this->assertSame(Pv::AUDIT_ACKNOWLEDGED, $pv->status);
@@ -37,17 +40,17 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
         $this->assertNotNull($pv->completed_at);
 
         $this->assertSame(
-            [FinPvEvent::SUBMITTED, FinPvEvent::AUDIT_ACKNOWLEDGED, FinPvEvent::FINANCE_ACKNOWLEDGED],
+            [FinPvEvent::SUBMITTED, FinPvEvent::ASSIGNED, FinPvEvent::AUDIT_ACKNOWLEDGED, FinPvEvent::FINANCE_ACKNOWLEDGED],
             $pv->events()->pluck('action')->all()
         );
-        $this->assertSame([$fin->id, $aud->id, $fin->id], $pv->events()->pluck('actor_user_id')->all());
+        $this->assertSame([$fin->id, $this->managerFor($this->sowutuom)->id, $aud->id, $fin->id], $pv->events()->pluck('actor_user_id')->all());
     }
 
     public function test_a_query_needs_a_reason_code_and_a_comment_and_resubmitting_raises_the_round_with_a_diff(): void
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
-        $pv = $this->sent($fin);
+        $pv = $this->sentAndAssigned($fin, $aud);
 
         $this->actingAs($aud);
         $this->assertValidationFails('reason_code', fn () => $this->workflow()->auditQuery($aud, $pv, 'nonsense', 'Wrong amount'));
@@ -90,7 +93,7 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
         $this->assertValidationFails('status', fn () => $workflow->resubmit($fin, $draft, $draft->lock_version));
         $this->assertValidationFails('status', fn () => $workflow->financeAcknowledge($fin, $draft));
 
-        $sent = $this->sent($fin, ['pv_no' => 'PV-2']);
+        $sent = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'PV-2']);
         $this->assertValidationFails('status', fn () => $workflow->submit($fin, $sent, $sent->lock_version));
         $this->assertValidationFails('status', fn () => $workflow->update($fin, $sent, $this->pvData(['pv_no' => 'PV-2']), $sent->lock_version));
         $this->assertValidationFails('status', fn () => $workflow->financeAcknowledge($fin, $sent));
@@ -116,7 +119,7 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
-        $pv = $this->sent($fin);
+        $pv = $this->sentAndAssigned($fin, $aud);
 
         $this->actingAs($aud);
         $pv = $this->workflow()->auditAcknowledge($aud, $pv);
@@ -141,18 +144,45 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
         $other = $this->audit('AU2', $this->sowutuom);
         $pv = $this->sent($both);
 
+        // The manager cannot give a voucher to the person who sent it, and that person cannot even see it in Audit.
+        try {
+            $this->assignTo($pv, $both);
+            $this->fail('The submitter must not be assignable.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('officer', $exception->errors());
+        }
+
+        $pv = $this->assignTo($pv, $other);
+
         $this->actingAs($both);
-        $this->assertValidationFails('action', fn () => $this->workflow()->auditAcknowledge($both, $pv));
-        $this->assertValidationFails('action', fn () => $this->workflow()->auditQuery($both, $pv, 'other', 'Hmm'));
+        $this->assertNotFound(fn () => $this->workflow()->auditAcknowledge($both, $pv));
+        $this->assertNotFound(fn () => $this->workflow()->auditQuery($both, $pv, 'other', 'Hmm'));
 
         $this->actingAs($other);
         $pv = $this->workflow()->auditAcknowledge($other, $pv);
 
         $this->actingAs($both);
-        $this->assertValidationFails('action', fn () => $this->workflow()->withdrawTick($both, $pv, 'I changed my mind'));
+        $this->assertNotFound(fn () => $this->workflow()->withdrawTick($both, $pv, 'I changed my mind'));
 
         // It is Finance's own step, so the submitter may acknowledge.
         $this->assertSame(Pv::COMPLETED, $this->workflow()->financeAcknowledge($both, $pv)->status);
+    }
+
+    public function test_an_officer_who_later_resubmits_the_voucher_can_no_longer_review_it(): void
+    {
+        $fin = $this->finance('F1', $this->sowutuom);
+        $both = $this->both('B1', $this->sowutuom);
+        $pv = $this->sentAndAssigned($fin, $both);
+
+        // They are assigned, so they may query it...
+        $this->actingAs($both);
+        $pv = $this->workflow()->auditQuery($both, $pv, 'other', 'Please check');
+
+        // ...but once they (as Finance) correct and resubmit it, they became a submitter in round 2 and the voucher stays theirs only on paper.
+        $pv = $this->workflow()->resubmit($both, $pv, $pv->lock_version);
+        $this->assertSame($both->id, $pv->assigned_to_user_id);
+        $this->assertValidationFails('action', fn () => $this->workflow()->auditAcknowledge($both, $pv));
+        $this->assertValidationFails('action', fn () => $this->workflow()->auditQuery($both, $pv, 'other', 'No'));
     }
 
     public function test_separation_of_duties_counts_any_round_and_super_admin_is_not_exempt(): void
@@ -160,7 +190,7 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
         $super = $this->superAdmin();
-        $pv = $this->sent($fin);
+        $pv = $this->sentAndAssigned($fin, $aud);
 
         $this->actingAs($aud);
         $pv = $this->workflow()->auditQuery($aud, $pv, 'other', 'Please check');
@@ -338,7 +368,7 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
 
         $draft = $w->void($fin, $this->draft($fin, ['pv_no' => 'V1']), 'Wrong payee');
         $sent = $w->void($fin, $this->sent($fin, ['pv_no' => 'V2']), 'Cancelled');
-        $queried = $this->sent($fin, ['pv_no' => 'V3']);
+        $queried = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'V3']);
         $this->actingAs($aud);
         $queried = $w->auditQuery($aud, $queried, 'duplicate', 'Seen before');
         $this->actingAs($fin);
@@ -359,12 +389,12 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
-        $pv = $this->sent($fin);
+        $pv = $this->sentAndAssigned($fin, $aud);
         $this->actingAs($aud);
         $this->workflow()->auditAcknowledge($aud, $pv);
 
         $actions = AuditLog::query()->orderBy('id')->pluck('action')->all();
-        $this->assertSame(['finance.pv_created', 'finance.pv_submitted', 'audit.pv_acknowledged'], $actions);
+        $this->assertSame(['finance.pv_created', 'finance.pv_submitted', 'audit.pv_assigned', 'audit.pv_acknowledged'], $actions);
     }
 
     private function assertValidationFails(string $field, callable $call): void
@@ -374,6 +404,16 @@ class PaymentVoucherWorkflowTest extends FinanceTestCase
             $this->fail("Expected a validation error on {$field}.");
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey($field, $exception->errors());
+        }
+    }
+
+    private function assertNotFound(callable $call): void
+    {
+        try {
+            $call();
+            $this->fail('Expected a 404.');
+        } catch (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
         }
     }
 

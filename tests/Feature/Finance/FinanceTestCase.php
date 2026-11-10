@@ -59,6 +59,29 @@ abstract class FinanceTestCase extends TransportTestCase
         return $this->person($staffId, $district, ['employee', 'audit_manager']);
     }
 
+    /** @var array<int, User> one assignment manager per district, made on first use */
+    private array $assignmentManagers = [];
+
+    /** The Audit manager of the district a voucher was sent from (made on first use): who assigns vouchers in these tests. */
+    protected function managerFor(\App\Models\District|int $district): User
+    {
+        $district = $district instanceof \App\Models\District ? $district : \App\Models\District::query()->findOrFail($district);
+
+        return $this->assignmentManagers[$district->id] ??= $this->auditManager('AMGR'.$district->id, $district);
+    }
+
+    /** The Audit manager gives a sent voucher to an Audit officer (an `assigned` event). Nobody in Audit can work on it before. */
+    protected function assignTo(FinPaymentVoucher $pv, User $officer, ?string $note = null): FinPaymentVoucher
+    {
+        return $this->workflow()->assign($this->managerFor((int) $pv->district_id), $pv, $officer->id, $note);
+    }
+
+    /** A voucher the user has sent to Audit and the Audit manager has already given to $officer. */
+    protected function sentAndAssigned(User $user, User $officer, array $overrides = []): FinPaymentVoucher
+    {
+        return $this->assignTo($this->sent($user, $overrides), $officer);
+    }
+
     protected function both(string $staffId, \App\Models\District $district): User
     {
         return $this->person($staffId, $district, ['employee', 'finance_officer', 'audit_officer']);

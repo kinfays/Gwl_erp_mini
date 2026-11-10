@@ -9,7 +9,10 @@ and `audit_manager` (section 6).
 Status: **all three phases and the change request (steps A-E) are built**: 1 (core), 2 (suppliers: list, quick add, Excel import; the
 "left service" flag), 3 (reports and charts, exports, reminders, settings), then A the two manager roles, B the per-location
 catalogue (and the rename fix), C the payee comboboxes with region-only districts, D two separate reminder sets, E the demo data
-command (section 9).
+command (section 9). **Change request 2 (steps F-J) is built too: batches, assignment by the Audit manager, printing, the new
+analytics and reminders, and demo batches (section 10).** It changes three things earlier sections describe: an Audit officer no longer
+reads the whole location's queue (only what is assigned to them, section 10.2), the Audit manager gained an assignment queue (10.2),
+and the Audit reminders now go to the manager (unassigned) or to the one officer (assigned), not to every officer (10.6).
 
 ## 1. What a voucher is
 
@@ -191,9 +194,11 @@ DEFAULT rows (`unit` NULL); only super_admin edits the defaults themselves. A lo
 ## 5. Notices: `PvNotificationService`
 
 In-app only, through `GeneralDatabaseNotification`. Recipients are people **based at the voucher's location** holding the
-permission (`FinanceScope::usersAt()`; `audit.review` for Audit, `finance.create_pv` for Finance), never the person who did the
-action. Audit is told on submit/resubmit; Finance on query, tick and tick withdrawn. A notice carries the **PV number and the
-action only**. The listener `Listeners/Finance/NotifyPvParties` is found by Laravel's event discovery. Reminders for vouchers waiting
+permission (`FinanceScope::usersAt()`), never the person who did the action. Since change request 2: a new voucher or batch tells the
+location's Audit MANAGERS (`audit.assign`: "waiting to be assigned", linking to the assignment queue); an assignment tells the officer
+(one digest for several vouchers or a batch); a resubmit tells the officer the voucher is assigned to (the managers only if it somehow has
+none); Finance (`finance.create_pv`) is told on query, tick and tick withdrawn. A notice carries the **PV number and the action only**
+(a batch notice the batch number and a count). The listener `Listeners/Finance/NotifyPvParties` is found by Laravel's event discovery. Reminders for vouchers waiting
 too long are digest notices (the count, the longest wait and the PV numbers; section 7b).
 
 ## 6. Access
@@ -201,8 +206,9 @@ too long are digest notices (the count, the longest wait and the PV numbers; sec
 Permissions (migration-seeded, `2026_11_10_000002`, repeated for fresh installs/tests by `FinanceAuditRolePermissionSeeder`):
 `finance.view`, `.create_pv` (create, edit, send, resubmit), `.void_pv`, `.acknowledge`, `.manage_categories`,
 `.manage_suppliers` (add/edit), `.deactivate_suppliers`, `.import_suppliers`, `.view_reports`, `.export`,
-`.manage_reminders` (was `.manage_settings`, renamed in place); `audit.view` (the whole queue), `.review` (tick, query, withdraw),
-`.view_reviewed` (only vouchers Audit has worked on), `.view_reports`, `.export`, `.manage_reminders`. Four ICT-assignable roles
+`.manage_reminders` (was `.manage_settings`, renamed in place); `audit.view` (the door to the Audit screens; an officer's own list is
+what is assigned to them, see 10.2), `.review` (tick, query, withdraw: only on a voucher assigned to you), `.view_reviewed` (only vouchers
+Audit has worked on), `.assign` (the manager: assignment queue, assigning), `.view_reports`, `.export`, `.manage_reminders`. Four ICT-assignable roles
 (not protected, not system roles, in **neither** `RoleGrantPolicy::HEAD_OFFICE_ROLES` nor `REGIONAL_ROLES`; roles are permissions,
 never reach: every one goes through `FinanceScope`, their own location only):
 - `finance_officer`: create, edit, send, resubmit, void, acknowledge, add/edit/import suppliers, reports, export. NO catalogue, NO
@@ -212,15 +218,16 @@ never reach: every one goes through `FinanceScope`, their own location only):
   `.deactivate_suppliers`. Reads EVERYTHING of its location (drafts, every status, events, files, suppliers, analytics) but cannot
   add, edit, send, resubmit, void or acknowledge: `PaymentVoucherWorkflowService` refuses (403) for a user without
   `finance.create_pv` / `.void_pv` / `.acknowledge`, and the create/edit routes answer 403. Buttons are hidden as a courtesy only.
-- `audit_officer`: `audit.view`, `.review`, `.view_reports`, `.export`.
-- `audit_manager`: `audit.view_reviewed`, `.view_reports`, `.export`, `.manage_reminders`; NO `audit.review`, so never a tick,
-  query or withdrawal. Sees ONLY the vouchers with at least one `audit_acknowledged`, `queried` or `tick_withdrawn` event, with the
-  full timeline and who did each action. This is ONE condition in `FinanceScope::pvs()` (`auditReach()` is `all` for `audit.view` /
-  `audit.review`, `worked` for `audit.view_reviewed`, `none` otherwise; the `worked` case adds a `whereExists` on
+- `audit_officer`: `audit.view`, `.review`, `.view_reports`, `.export`. Reads and reviews only what is assigned to them (10.2).
+- `audit_manager`: `audit.view_reviewed`, `.view_reports`, `.export`, `.manage_reminders`, `.assign`; NO `audit.review`, so never a tick,
+  query or withdrawal. Assigns (10.2) and reads the minimal assignment queue; opens ONLY a voucher with at least one
+  `audit_acknowledged`, `queried` or `tick_withdrawn` event, with the full timeline and who did each action. This is ONE condition in
+  `FinanceScope::pvs()` (`auditReach()` is `all` for super_admin, `assigned` for `audit.review`, `worked` for `audit.assign` /
+  `audit.view_reviewed` / a read-only `audit.view`, `none` otherwise; the `worked` case adds a `whereExists` on
   `FinPvEvent::REVIEWING`). The register, detail screen, file route, timeline, queue search and the waiting export all start from
   `pvs()`, so a With Audit voucher nobody has reviewed answers 404 there. Figures and "how many are waiting" are location-wide totals
-  (`FinanceScope::pvsForTotals()`, used ONLY by `PvAnalyticsService`; never list or open rows from it) but the waiting list names only
-  vouchers the viewer may open.
+  (`FinanceScope::pvsForTotals()` and `batchesForTotals()`, used ONLY by `PvAnalyticsService`; never list or open rows from them) but the
+  waiting list names only vouchers the viewer may open.
 - `super_admin` everything. Audit has NO catalogue screen, control, route or menu entry (`audit.categories` answers 403).
 Routes: `finance.*` (`module:finance`) and `audit.*` (`module:audit`) with `permission:` per screen (`audit.view,audit.view_reviewed`
 for the review list and detail).
@@ -302,9 +309,11 @@ are `ModuleReminderSettings`; `FinanceSettings` and `AuditSettings` are bound as
   (`finance_repeat_days` 3). Command `finance:remind` (`FinanceReminderService`). Recipients: active people BASED AT the voucher's
   location holding `finance.create_pv` (a query, a draft) or `finance.acknowledge` (a tick).
 - **Audit reminders** (Audit > Settings > Reminders, `audit.reminder-settings`, `audit.manage_reminders`): on/off
-  (`audit_remind_enabled`), days With Audit before Audit officers are reminded (`audit_wait_days` 3, which is also what the Reports
-  call overdue for vouchers With Audit), repeat interval (`audit_repeat_days` 3). Command `audit:remind` (`AuditReminderService`).
-  Recipients: active `audit.review` holders based at the voucher's location.
+  (`audit_remind_enabled`), days a sent voucher may stay UNASSIGNED before the Audit manager is reminded (`audit_unassigned_days` 1),
+  days an officer's voucher may wait for their tick or query (`audit_wait_days` 3, which is also what the Reports call overdue for
+  vouchers With Audit), repeat interval (`audit_repeat_days` 3). Command `audit:remind` (`AuditReminderService`): an unassigned voucher
+  reminds the location's `audit.assign` holders; an assigned one reminds ONLY the officer it is assigned to, counted from the later of the
+  wait's start and the assignment (a reassignment is a fresh wait). Both are `PvBacklog::auditItems()` (kinds `unassigned` / `officer`).
 - A finance_manager cannot see or change the Audit set and the audit_manager cannot see or change Finance's: the screen is ONE
   component (`Livewire/Finance/ReminderSettings`) whose `module` is set by the route and locked against the browser, the route needs
   the module's own permission, and the service's `save()` checks it again. Officers have no reminder settings. super_admin may do both
@@ -376,3 +385,115 @@ are `ModuleReminderSettings`; `FinanceSettings` and `AuditSettings` are bound as
   event model refuses them); suppliers ending " (Demo)" that no other voucher uses (those are kept and counted); location-owned catalogue rows
   named "... (Demo)" and the overrides the demo accounts made; the demo accounts, their notices, the audit rows they wrote and their staff records.
   `FinanceDemoDataTest` proves a normal run and a removal leave every non-demo row exactly as it was.
+  Since change request 2 it also makes five **batches** per location and a second Audit officer (10.7).
+
+## 10. Batches, assignment by the Audit manager, and printing (change request 2, steps F-J)
+
+### 10.1 A batch is a container, not an approval
+
+A batch (`fin_pv_batches`, model `FinPvBatch`) is a container for sending, assigning, tracking and printing a group of vouchers. Audit
+still ticks or queries **each voucher on its own**, with its own event, actor and reason. A voucher is in at most one batch
+(`fin_pvs.batch_id`) or in none; it can still be sent alone.
+- **Number:** `BT-<HO or the region's letter prefix>-<year>-<NNNN>`, made by `BatchWorkflowService` under `lockForUpdate` from
+  `fin_batch_counters` (per location and year), never typed. The cap is `gwl.fin_batch_max_vouchers` (100).
+- **State is computed in ONE place**, `FinPvBatch::computeState()` (no SQL twin; screens, counts, exports and analytics all call it):
+  Draft; Awaiting assignment (sent, and some voucher that is neither Completed nor Voided has no officer); In progress (n of m done, done =
+  Completed or Voided); Completed (every voucher Completed or Voided); Cancelled. There is no stored progress. The Assignments worklist
+  filter ("needs an officer now") is a worklist, not the state.
+- **Rules** (`BatchWorkflowService`, the same pattern as the voucher service: permission, `lockForUpdate` re-read, authorise on that copy,
+  rule, immutable `fin_batch_events` row, `AuditLog` with ids and counts only, books version and events after the commit): create from
+  selected Drafts of the creator's location that are in no batch; add/remove only while the batch is a draft (membership is frozen once
+  sent; a stale screen is a `PvConflictException`); send is ALL OR NOTHING (`PaymentVoucherWorkflowService::sendProblems()` is checked for
+  every voucher first, one `BatchSendException` lists each failing voucher; each voucher then gets its own `submitted` event carrying the
+  batch id); cancel only a draft batch, with a reason (vouchers are released, nothing is deleted). A voucher in a draft batch cannot be sent
+  alone or voided (take it out first). The shared "can this voucher be batched" sentence is `FinPaymentVoucher::batchBlocker()`.
+- **Existing data:** vouchers already sent when migration `2026_11_15_000001` ran have no officer, so they show as Awaiting assignment and
+  are invisible to officers until the manager assigns them. Nothing is assigned automatically.
+
+### 10.2 Assignment and what each Audit role reads
+
+- **The manager assigns** (`audit.assign`: audit_manager, or super_admin for a location they chose). `PaymentVoucherWorkflowService::assign()`
+  gives a voucher that is With Audit to an officer or moves it (an `assigned` / `reassigned` event with who, from, to and an optional note);
+  `BatchWorkflowService::assignBatch()` / `assignVouchers()` do a whole batch or a selection (so one batch can be split across officers).
+  Giving it to the officer who already holds it writes nothing. The officer must be an active `audit.review` holder BASED AT the voucher's
+  location who did not send it to Audit in any round (`FinanceScope::assignableOfficers()`, also the picker's list).
+- **Tick, query and withdraw need `audit.review` AND `assigned_to_user_id` = the actor.** No exceptions, `super_admin` included (nothing is
+  ever assigned to them). An unassigned or someone else's voucher is a 404 to an officer (invisible); a voucher the officer worked on but
+  that was since reassigned stays readable to them and answers "assigned to another Audit officer". A corrected voucher stays with the same
+  officer (round + 1); the manager can reassign it. Separation of duties still holds (a submitter is never assignable or able to act).
+- **Reach, decided only in `FinanceScope`:** an officer reads vouchers assigned to them plus any they ticked, queried or withdrew a tick on
+  (`REVIEWING` events by them; a voucher they merely SENT is not theirs to read); the manager and read-only roles read vouchers an officer has
+  worked on; `assignmentQueue()` / `assignmentBatches()` are the manager's list of EVERY sent voucher/batch of the location with
+  `QUEUE_COLUMNS` only (no payee, details, remarks, creator or file), and never a draft. The queue is a list, not a door: opening a voucher
+  still goes through `pvs()`, so the manager gets 404 on one nobody has acted on. `batches($user, $as)` is the batch twin of `pvs()` (Finance
+  every status; Audit sent only, the manager and super_admin all of them, an officer only batches holding a voucher they may open).
+- **Finance:** `finance_officer` sees the batches of the location and creates/sends them (`finance.create_pv`); `finance_manager` reads every
+  batch read-only (no create, edit, send, cancel or acknowledge).
+- **Bulk:** an officer's "Acknowledge all remaining" (`acknowledgeRemaining()`) ticks, one voucher and one event at a time, every With Audit
+  voucher of the batch assigned to them; a voucher they can see but not act on is skipped and listed, ones they cannot see are only counted. A
+  query is never bulk. Finance's "Acknowledge all" (`financeAcknowledgeAll()`) acknowledges the Audit-acknowledged vouchers one event each.
+
+### 10.3 Screens
+
+- **Finance:** the voucher list has a tick box on each row for people who can prepare vouchers (only a Draft in no batch can be ticked; a
+  row that cannot says why, a tooltip and screen-reader text from `batchBlocker()`), "Select page", and "Create batch from selected" (title
+  and remarks optional, count and total shown; the ids are re-read inside the user's reach). **Finance > Batches** lists batches (number, title,
+  count, total, state, officers, date sent; filter by the batch's own status) and the batch page shows the vouchers with their Audit and Finance
+  marks and popovers, progress "x of y", add/remove/edit/send/cancel while a draft, "Acknowledge all" after Audit, and the batch's history. A voucher
+  shows its batch (a link in Finance) and its officer ("Awaiting assignment" until given).
+- **Audit:** **Assignments** (the manager; the Audit tab opens here for them) lists sent batches and single vouchers with the minimal columns and
+  who holds each and since when; pick vouchers and batches, pick an officer in the combobox (only eligible officers, each with their open
+  workload), assign or reassign in one transaction. **Batches** and the **batch page**: the manager sees every voucher but only the minimal
+  columns of one nobody has worked on ("Opens after an officer has acted on it"), assigns the whole batch or ticked vouchers; an officer sees
+  only their own vouchers of it (count, total and state are theirs), with marks, popovers and "Acknowledge all remaining". **My work** is the
+  officer's list (Reviewed vouchers for the manager and read-only roles).
+
+### 10.4 Printing (`PvPrintService`, `FinancePrintController`)
+
+Dompdf directly (A4 portrait). **All wording lives in `PvPrintService`**; the Blade view only lays out its arrays (a test checks no words are
+left in the view).
+- **Voucher print:** copy label ("Finance copy" / "Audit copy" by the door), location, voucher no., batch, date, payee and kind, category and type
+  (effective names), details, amount in figures and words (the words reuse `LeaveLetterService::numberToWords()` per group of thousands), remarks,
+  Audit officer, and the timeline by round (who sent, assigned, ticked or queried with reason and comment, who acknowledged, dates and times).
+  A draft prints with a DRAFT banner, a voided one VOIDED. No attachment. Footer: printed by, date and time, "printed n times" (this print counts)
+  and "Page x of y" (drawn on the canvas, `isPhpEnabled` stays off).
+- **Batch print:** a cover sheet (number, title, location, date sent, state, officers, count, total, vouchers by status) and a table of every voucher
+  the user may list with the Audit and Finance mark and who, and a total; `?pages=1` adds each voucher the user may open on its own page.
+- **Who prints what** is the screens' own reach (`FinanceScope`), nothing wider: Finance its location (drafts included; the Finance manager reads
+  the same); an officer only what they may open (a batch print counts only their vouchers and names no other officer); the manager only vouchers an
+  officer has worked on (minimal rows, no payee, for the rest). Outside reach is a 404.
+- **Record:** after the PDF exists, one audit row (`finance.pv_printed`, `audit.pv_printed`, `{module}.pvs_printed`, `{module}.batch_printed`: ids and
+  counts only) and one added to `print_count` on every voucher and batch printed (a voucher listed only in a batch's table is not "printed"; one with
+  its own page is). Over `gwl.fin_print_max_vouchers` (200) nothing is printed or counted. "Print selected" uses a one-use token (`PrintSelection`),
+  never the URL, and ends in a link to open (no pop-up).
+
+### 10.5 Analytics (`PvAnalyticsService`, still the only evaluator)
+
+New blocks beside the unchanged ones: `assignment` (average days from sending to assignment and from assignment to the officer's first tick or query,
+and the vouchers waiting for an officer now with how many are past the limit), `batches` (batches created in the period, vouchers per batch, how many
+in each computed state; Audit counts sent ones only) and `officers` (per Audit officer: assigned, done, open, average days to first action, queried and
+the query rate). `officers` is the Audit manager's and the Finance manager's view only (`seesOfficers()`; anyone else gets null, and the cache key
+separates them); everything is location-wide totals. The Reports screens and the summary export show all three.
+
+### 10.6 Reminders
+
+See section 7b. `AuditSettings::UNASSIGNED_WAIT` is new (`audit_unassigned_days`, config `fin_audit_unassigned_wait_days`), changed only by the Audit
+manager; the Finance set is unchanged.
+
+### 10.7 Demo data
+
+`finance:demo-data` now also makes a second Audit officer per location (`DEMO-<LOC>-AO2`) and five batches per location through the real services,
+built from vouchers the plan already had (so the status mix and the ageing buckets are unchanged): a draft batch, one sent and awaiting assignment, one
+assigned and in progress, one completed (assigned, acknowledged by the officer in bulk, acknowledged by Finance in bulk) and one split across the two
+officers; some single vouchers stay unassigned. `--remove` deletes the demo batches and their events and puts the batch-number counters back, so the
+next real batch is numbered as it would have been. The demo accounts are active while the history is made (an assignment needs an active officer) and
+switched off at the end unless `--with-users`.
+
+### 10.8 Decisions made that the brief did not state
+
+The brief's `fin_payment_vouchers` is `fin_pvs`; the model is `FinPvBatch`. Assignment only while With Audit; assigning the same officer is a no-op;
+a batch assignment is all-or-nothing on eligibility and skips vouchers that are not With Audit. An officer's "own events" are their tick, query and
+withdraw only. A read-only `audit.view` holder reads like the manager. Only a draft batch can be cancelled. A draft voucher in a draft batch cannot be
+voided. The single send now also refuses an incomplete draft (`sendProblems()`). Officers never see a batch's remarks, other officers or its history.
+The tick box for printing is a second column so batching keeps its own rules. "Printed n times" is in the footer for one voucher or one batch and on each
+voucher's page otherwise.

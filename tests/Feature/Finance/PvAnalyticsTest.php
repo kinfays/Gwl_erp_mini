@@ -57,17 +57,20 @@ class PvAnalyticsTest extends FinanceTestCase
 
         // V1: sent 6 Oct, ticked 8 Oct (2 days), acknowledged 9 Oct (1 day): completed after 3 days.
         $v1 = $this->at('2026-10-06 09:00', fn () => $this->who($fin) ?? $this->workflow()->submit($fin, $this->workflow()->createDraft($fin, $make('V1', '2026-10-05', '100.00', $medical)), 1));
+        $this->at('2026-10-06 09:30', fn () => $this->assignTo($v1, $aud));
         $this->at('2026-10-08 09:00', fn () => $this->who($aud) ?? $this->workflow()->auditAcknowledge($aud, $v1));
         $this->at('2026-10-09 09:00', fn () => $this->who($fin) ?? $this->workflow()->financeAcknowledge($fin, $v1));
 
         // V2: sent 21 Oct, queried 23 Oct (2 days), resubmitted 24 Oct (1 day), ticked 25 Oct (1 day), still waiting for Finance.
         $v2 = $this->at('2026-10-21 09:00', fn () => $this->who($fin) ?? $this->workflow()->submit($fin, $this->workflow()->createDraft($fin, $make('V2', '2026-10-20', '50.00', $stationery)), 1));
+        $this->at('2026-10-21 09:30', fn () => $this->assignTo($v2, $aud));
         $v2 = $this->at('2026-10-23 09:00', fn () => $this->who($aud) ?? $this->workflow()->auditQuery($aud, $v2, 'missing_document', 'Receipt missing'));
         $v2 = $this->at('2026-10-24 09:00', fn () => $this->who($fin) ?? $this->workflow()->resubmit($fin, $v2, $v2->lock_version));
         $this->at('2026-10-25 09:00', fn () => $this->who($aud) ?? $this->workflow()->auditAcknowledge($aud, $v2));
 
         // V3: sent 3 Nov, still With Audit. A draft, and a voucher sent and then voided.
         $v3 = $this->at('2026-11-03 09:00', fn () => $this->who($fin) ?? $this->workflow()->submit($fin, $this->workflow()->createDraft($fin, $make('V3', '2026-11-02', '25.00', $medical)), 1));
+        $this->at('2026-11-03 09:30', fn () => $this->assignTo($v3, $aud));
         $this->at('2026-11-04 09:00', fn () => $this->who($fin) ?? $this->workflow()->createDraft($fin, $make('DRAFT', '2026-11-04', '999.00', $medical)));
         $v5 = $this->at('2026-11-02 09:00', fn () => $this->who($fin) ?? $this->workflow()->submit($fin, $this->workflow()->createDraft($fin, $make('V5', '2026-11-01', '500.00', $medical)), 1));
         $this->at('2026-11-02 10:00', fn () => $this->workflow()->void($fin, $v5, 'Entered twice'));

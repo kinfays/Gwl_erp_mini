@@ -50,6 +50,20 @@ class FinanceController extends Controller
         return view('finance.show', ['pv' => $pv]);
     }
 
+    public function batches(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.batches');
+    }
+
+    public function batch(Request $request, int $batch): View
+    {
+        $this->enforceModule($request, Permission::MODULE_FINANCE);
+
+        return view('finance.batch', ['batch' => $batch]);
+    }
+
     public function settings(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_FINANCE);

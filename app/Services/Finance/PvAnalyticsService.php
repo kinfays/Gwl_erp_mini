@@ -3,6 +3,7 @@
 namespace App\Services\Finance;
 
 use App\Models\FinPaymentVoucher as Pv;
+use App\Models\FinPvBatch;
 use App\Models\FinPvEvent;
 use App\Models\FinSupplier;
 use App\Models\User;
@@ -46,8 +47,8 @@ class PvAnalyticsService
             [$from, $to] = [$to, $from];
         }
 
-        $key = 'fin_analytics:v1:'.md5(json_encode([
-            $this->scope->keyFor($actor), $as, $as === FinanceScope::AS_AUDIT ? $this->scope->auditReach($actor) : '', FinanceBooksVersion::unitKey($location), FinanceBooksVersion::current($location), $from->toDateString(), $to->toDateString(), $location['district_id'] ?? null,
+        $key = 'fin_analytics:v2:'.md5(json_encode([
+            $this->scope->keyFor($actor), $as, $this->seesOfficers($actor, $as), $as === FinanceScope::AS_AUDIT ? $this->scope->auditReach($actor) : '', FinanceBooksVersion::unitKey($location), FinanceBooksVersion::current($location), $from->toDateString(), $to->toDateString(), $location['district_id'] ?? null,
         ]));
 
         return Cache::remember($key, max(1, (int) config('gwl.fin_analytics_cache_seconds', 300)), fn () => $this->build($actor, $as, $location, $from, $to));
@@ -64,7 +65,7 @@ class PvAnalyticsService
         $listable = fn (array $ids) => $this->scope->atLocation($this->scope->pvs($actor, $as), $location)->whereIn('fin_pvs.id', $ids)->pluck('fin_pvs.id')->all();
         $inPeriod = fn () => $reach()->whereDate('fin_pvs.pv_date', '>=', $from->toDateString())->whereDate('fin_pvs.pv_date', '<=', $to->toDateString());
 
-        $rows = $inPeriod()->get(['fin_pvs.id', 'fin_pvs.pv_date', 'fin_pvs.amount', 'fin_pvs.status', 'fin_pvs.round', 'fin_pvs.payee_kind', 'fin_pvs.supplier_id', 'fin_pvs.payee_name', 'fin_pvs.category_id', 'fin_pvs.type_id']);
+        $rows = $inPeriod()->get(['fin_pvs.id', 'fin_pvs.pv_date', 'fin_pvs.amount', 'fin_pvs.status', 'fin_pvs.round', 'fin_pvs.payee_kind', 'fin_pvs.supplier_id', 'fin_pvs.payee_name', 'fin_pvs.category_id', 'fin_pvs.type_id', 'fin_pvs.assigned_to_user_id']);
         $live = $rows->reject(fn (Pv $pv) => in_array($pv->status, [Pv::DRAFT, Pv::VOIDED], true));
 
         $events = FinPvEvent::query()
@@ -106,7 +107,27 @@ class PvAnalyticsService
             'months' => $this->byMonth($live, $from, $to),
             'suppliers' => $this->topSuppliers($live),
             'waiting' => $this->waiting($reach(), $listable),
+            'assignment' => $this->assignment($events, $liveIds, $reach),
+            'batches' => $this->batchFigures($actor, $as, $location, $from, $to),
+            // Per officer: the Audit manager's and the Finance manager's view only (the same payload is never served to anyone else).
+            'officers' => $this->seesOfficers($actor, $as) ? $this->officers($live, $events) : null,
         ];
+    }
+
+    /** Whether the viewer is a manager (of Audit when seen as Audit, of Finance when seen as Finance) or super_admin: who may read the officers' workload. */
+    public function seesOfficers(User $actor, string $as): bool
+    {
+        if ($this->scope->seesAll($actor)) {
+            return true;
+        }
+
+        foreach ($as === FinanceScope::AS_AUDIT ? ['audit.assign', 'audit.manage_reminders'] : ['finance.manage_categories', 'finance.manage_reminders'] as $permission) {
+            if ($this->scope->can($actor, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return list<array{status: string, label: string, count: int}> */
@@ -316,6 +337,138 @@ class PvAnalyticsService
                 'since' => $item['since']->toDateString(), 'days' => $item['days'], 'overdue' => $item['overdue'],
             ])->values()->all(),
         ];
+    }
+
+    /**
+     * Assignment by the Audit manager. Over the vouchers of the period that went ahead: the average days from first sending to the first
+     * assignment, and from that assignment to the officer's first tick or query. Right now (whatever the period): the vouchers still
+     * waiting for an officer, and how many are past the location's limit (PvBacklog::auditItems, the one definition).
+     *
+     * @return array{days_to_assign: array{days: float|null, count: int}, days_to_first_action: array{days: float|null, count: int}, unassigned: array{count: int, overdue: int, oldest_days: int|null, threshold: int|null}}
+     */
+    protected function assignment($events, array $liveIds, callable $reach): array
+    {
+        $toAssign = [];
+        $toAction = [];
+
+        foreach ($events as $pvId => $list) {
+            if (! in_array($pvId, $liveIds, true)) {
+                continue;
+            }
+
+            $waits = $this->assignmentWaits($list);
+
+            if ($waits['assign'] !== null) {
+                $toAssign[] = $waits['assign'];
+            }
+
+            if ($waits['action'] !== null) {
+                $toAction[] = $waits['action'];
+            }
+        }
+
+        $unassigned = $this->backlog->auditItems($reach())->where('kind', PvBacklog::UNASSIGNED);
+        $average = fn (array $values) => ['days' => $values === [] ? null : round(array_sum($values) / count($values), 1), 'count' => count($values)];
+
+        return [
+            'days_to_assign' => $average($toAssign),
+            'days_to_first_action' => $average($toAction),
+            'unassigned' => [
+                'count' => $unassigned->count(),
+                'overdue' => $unassigned->where('overdue', true)->count(),
+                'oldest_days' => $unassigned->isEmpty() ? null : (int) $unassigned->max('days'),
+                'threshold' => $unassigned->isEmpty() ? null : (int) $unassigned->first()['threshold'],
+            ],
+        ];
+    }
+
+    /**
+     * One voucher's two waits, in days: first sending to the first assignment, and that assignment to the first tick or query after it.
+     *
+     * @return array{assign: float|null, action: float|null}
+     */
+    protected function assignmentWaits($list): array
+    {
+        $days = fn ($start, $end) => max(0, $end->getTimestamp() - $start->getTimestamp()) / 86400;
+        $sent = $list->first(fn ($event) => $event->action === FinPvEvent::SUBMITTED);
+        $assigned = $list->first(fn ($event) => $event->action === FinPvEvent::ASSIGNED);
+        $action = $assigned ? $list->first(fn ($event) => in_array($event->action, [FinPvEvent::QUERIED, FinPvEvent::AUDIT_ACKNOWLEDGED], true) && $event->created_at->gte($assigned->created_at)) : null;
+
+        return [
+            'assign' => $sent && $assigned ? $days($sent->created_at, $assigned->created_at) : null,
+            'action' => $assigned && $action ? $days($assigned->created_at, $action->created_at) : null,
+        ];
+    }
+
+    /**
+     * Batches created in the period (Audit: only sent ones): how many, how many vouchers each holds, and how many are in each computed
+     * state. The state is FinPvBatch::computeState(), never worked out here.
+     *
+     * @return array{count: int, vouchers: int, average_vouchers: float|null, largest: int|null, states: list<array{key: string, label: string, count: int}>}
+     */
+    protected function batchFigures(User $actor, string $as, array $location, Carbon $from, Carbon $to): array
+    {
+        $batches = $this->scope->atLocation($this->scope->batchesForTotals($actor, $as), $location)
+            ->whereDate('fin_pv_batches.created_at', '>=', $from->toDateString())->whereDate('fin_pv_batches.created_at', '<=', $to->toDateString())
+            ->get(['fin_pv_batches.id', 'fin_pv_batches.status']);
+        $members = $batches->isEmpty() ? collect() : Pv::query()->whereIn('batch_id', $batches->pluck('id'))->get(['id', 'batch_id', 'status', 'assigned_to_user_id'])->groupBy('batch_id');
+
+        $counts = [];
+        $sizes = [];
+
+        foreach ($batches as $batch) {
+            $own = $members->get($batch->id, collect());
+            $state = FinPvBatch::computeState((string) $batch->status, $own)['key'];
+            $counts[$state] = ($counts[$state] ?? 0) + 1;
+
+            if ($batch->status !== FinPvBatch::CANCELLED) {
+                $sizes[] = $own->count();
+            }
+        }
+
+        return [
+            'count' => $batches->count(),
+            'vouchers' => array_sum($sizes),
+            'average_vouchers' => $sizes === [] ? null : round(array_sum($sizes) / count($sizes), 1),
+            'largest' => $sizes === [] ? null : max($sizes),
+            'states' => collect(FinPvBatch::STATES)
+                ->reject(fn (string $label, string $key) => $as === FinanceScope::AS_AUDIT && in_array($key, [FinPvBatch::STATE_DRAFT, FinPvBatch::STATE_CANCELLED], true))
+                ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label, 'count' => (int) ($counts[$key] ?? 0)])->values()->all(),
+        ];
+    }
+
+    /**
+     * Each Audit officer's workload over the vouchers of the period that went ahead and are assigned: how many, how many they have
+     * ticked (done), how many are still waiting for them (open), the average days from assignment to their first action, and how many
+     * of their vouchers they queried (the query rate). Aggregates for a location's managers.
+     *
+     * @return list<array{user_id: int, name: string, assigned: int, done: int, open: int, queried: int, query_rate: float|null, average_days: float|null}>
+     */
+    protected function officers($live, $events): array
+    {
+        $assigned = $live->whereNotNull('assigned_to_user_id');
+
+        if ($assigned->isEmpty()) {
+            return [];
+        }
+
+        $names = User::query()->whereIn('id', $assigned->pluck('assigned_to_user_id')->unique()->all())->pluck('full_name', 'id');
+
+        return $assigned->groupBy('assigned_to_user_id')->map(function ($group, $userId) use ($events, $names) {
+            $queried = $group->filter(fn (Pv $pv) => ($events->get($pv->id) ?? collect())->contains('action', FinPvEvent::QUERIED))->count();
+            $waits = $group->map(fn (Pv $pv) => $this->assignmentWaits($events->get($pv->id) ?? collect())['action'])->filter(fn ($value) => $value !== null);
+
+            return [
+                'user_id' => (int) $userId,
+                'name' => (string) ($names[$userId] ?? 'Unknown user'),
+                'assigned' => $group->count(),
+                'done' => $group->whereIn('status', [Pv::AUDIT_ACKNOWLEDGED, Pv::COMPLETED])->count(),
+                'open' => $group->where('status', Pv::WITH_AUDIT)->count(),
+                'queried' => $queried,
+                'query_rate' => $this->pct($queried, $group->count()),
+                'average_days' => $waits->isEmpty() ? null : round($waits->avg(), 1),
+            ];
+        })->sortBy([['open', 'desc'], ['name', 'asc']])->values()->all();
     }
 
     protected function pct(int $part, int $whole): ?float

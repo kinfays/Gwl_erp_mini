@@ -27,7 +27,7 @@ class FinanceAuditScreensTest extends FinanceTestCase
         $this->actingAs($fin)->get(route('finance.pvs.create'))->assertOk();
         $this->actingAs($fin)->get(route('finance.settings'))->assertForbidden();
         $this->actingAs($this->financeManager('FM1', $this->sowutuom))->get(route('finance.settings'))->assertOk()->assertSee('Staff Claims');
-        $this->actingAs($aud)->get(route('audit.home'))->assertOk()->assertSee('Audit review');
+        $this->actingAs($aud)->get(route('audit.home'))->assertOk()->assertSee('My work');
         $this->actingAs($aud)->get(route('audit.categories'))->assertForbidden();
 
         // Audit has no door into Finance and the other way round; an ordinary employee has neither.
@@ -43,7 +43,7 @@ class FinanceAuditScreensTest extends FinanceTestCase
         $ash = $this->finance('A1', $this->kumasi);
         $aud = $this->audit('AU1', $this->sowutuom);
         $this->draft($west, ['pv_no' => 'WEST-DRAFT']);
-        $sent = $this->sent($west, ['pv_no' => 'WEST-SENT']);
+        $sent = $this->sentAndAssigned($west, $aud, ['pv_no' => 'WEST-SENT']);
         $this->draft($ash, ['pv_no' => 'ASH-ONLY']);
 
         $this->actingAs($aud);
@@ -70,12 +70,14 @@ class FinanceAuditScreensTest extends FinanceTestCase
         $aud = $this->audit('AU1', $this->sowutuom);
         $this->draft($fin, ['pv_no' => 'STILL-DRAFT']);
         Carbon::setTestNow('2026-11-03 09:00:00');
-        $this->sent($fin, ['pv_no' => 'OLDER']);
+        $this->sentAndAssigned($fin, $aud, ['pv_no' => 'OLDER']);
         Carbon::setTestNow('2026-11-06 09:00:00');
-        $this->sent($fin, ['pv_no' => 'NEWER']);
+        $this->sentAndAssigned($fin, $aud, ['pv_no' => 'NEWER']);
         $this->sent($this->finance('F9', $this->kumasi), ['pv_no' => 'KUMASI-ONE']);
+        $this->sent($fin, ['pv_no' => 'UNASSIGNED']);
 
         Livewire::actingAs($aud)->test(Queue::class)
+            ->assertDontSee('UNASSIGNED')
             ->assertDontSee('STILL-DRAFT')
             ->assertDontSee('KUMASI-ONE')
             ->assertSeeInOrder(['OLDER', 'NEWER'])
@@ -144,6 +146,9 @@ class FinanceAuditScreensTest extends FinanceTestCase
         Livewire::actingAs($fin)->test(VoucherShow::class, ['pv' => $pv->id])->call('submit')->assertHasNoErrors();
         $this->assertSame(Pv::WITH_AUDIT, $pv->fresh()->status);
 
+        Livewire::actingAs($aud)->test(AuditVoucherShow::class, ['pv' => $pv->id])->assertNotFound();   // awaiting assignment
+        $this->assignTo($pv->fresh(), $aud);
+
         Livewire::actingAs($aud)->test(AuditVoucherShow::class, ['pv' => $pv->id])
             ->call('openQuery')
             ->set('reasonCode', 'duplicate')->set('comment', '')
@@ -160,8 +165,14 @@ class FinanceAuditScreensTest extends FinanceTestCase
 
     public function test_the_submitter_is_not_offered_the_review_buttons_and_a_forced_call_is_refused(): void
     {
+        $fin = $this->finance('F1', $this->sowutuom);
         $both = $this->both('B1', $this->sowutuom);
-        $pv = $this->sent($both);
+        $pv = $this->sentAndAssigned($fin, $both);
+
+        // The officer queries it, then (as Finance) corrects and resubmits it: they became a submitter in round 2.
+        $this->actingAs($both);
+        $pv = $this->workflow()->auditQuery($both, $pv, 'other', 'Check');
+        $this->workflow()->resubmit($both, $pv, $pv->lock_version);
 
         $component = Livewire::actingAs($both)->test(AuditVoucherShow::class, ['pv' => $pv->id])
             ->assertSee('you cannot review it')
@@ -170,6 +181,10 @@ class FinanceAuditScreensTest extends FinanceTestCase
 
         $component->call('tick')->assertHasErrors(['action.action']);
         $this->assertSame(Pv::WITH_AUDIT, $pv->fresh()->status);
+
+        // And someone who only ever sent a voucher cannot even open it in Audit.
+        $own = $this->sent($both, ['pv_no' => 'OWN-1']);
+        Livewire::actingAs($both)->test(AuditVoucherShow::class, ['pv' => $own->id])->assertNotFound();
     }
 
     public function test_a_voucher_of_another_location_or_a_draft_is_a_404_on_every_screen(): void

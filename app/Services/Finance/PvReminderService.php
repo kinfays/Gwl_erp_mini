@@ -16,7 +16,7 @@ use Illuminate\Support\Collection;
  * A voucher is reminded about at most once per repeat interval per wait: fin_reminder_states remembers when each wait (`since`)
  * was last reminded (so running the command every day tells nobody twice in a row, while a voucher that is queried AGAIN starts a
  * fresh wait and is reminded afresh). A location whose set is switched off is skipped entirely. The vouchers due at a location are
- * grouped by kind of wait and each recipient gets ONE notice for the group: the count, the longest wait and the PV numbers, never a
+ * grouped by kind of wait (and, for a wait that is one officer's, by that officer) and each recipient gets ONE notice for the group: the count, the longest wait and the PV numbers, never a
  * payee, amount or comment. Recipients are people based at the location holding the permission of the kind (never super_admin). This reads
  * every location on purpose (like transport:check-expiries): it has no signed-in user, and each person only ever gets the notice
  * of their own location.
@@ -76,7 +76,7 @@ abstract class PvReminderService
                 continue;
             }
 
-            $due->push($item + ['unit' => FinanceBooksVersion::unitKey($place)]);
+            $due->push($item + ['unit' => FinanceBooksVersion::unitKey($place)]);   // `recipient` (a user id) is set only for a wait that is one person's
         }
 
         $summary['reminded'] = $due->count();
@@ -86,7 +86,7 @@ abstract class PvReminderService
         }
 
         // One notice per recipient per location and kind of wait, then each voucher's wait is recorded as reminded.
-        foreach ($due->groupBy(fn (array $item) => $item['unit'].'|'.$item['kind']) as $group) {
+        foreach ($due->groupBy(fn (array $item) => $item['unit'].'|'.$item['kind'].'|'.($item['recipient'] ?? '')) as $group) {
             $summary['notifications'] += $this->notices->waiting($group, $group->first()['kind']);
 
             foreach ($group as $item) {

@@ -58,10 +58,10 @@ class FinanceExportTest extends FinanceTestCase
         $aud = $this->audit('AU1', $this->sowutuom);
         $ash = $this->finance('A1', $this->kumasi);
 
-        $one = $this->sent($fin, ['pv_no' => 'EX-1', 'pv_date' => '2026-10-05', 'amount' => '1250.50', 'details' => '=1+1']);
+        $one = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'EX-1', 'pv_date' => '2026-10-05', 'amount' => '1250.50', 'details' => '=1+1']);
         $this->actingAs($aud);
         $this->workflow()->auditAcknowledge($aud, $one);
-        $this->sent($fin, ['pv_no' => 'EX-2', 'pv_date' => '2026-10-20', 'amount' => '50.00']);
+        $this->sentAndAssigned($fin, $aud, ['pv_no' => 'EX-2', 'pv_date' => '2026-10-20', 'amount' => '50.00']);
         $this->draft($fin, ['pv_no' => 'EX-DRAFT', 'pv_date' => '2026-10-21']);
         $this->sent($ash, ['pv_no' => 'KUMASI-ONLY', 'pv_date' => '2026-10-10']);
 
@@ -101,7 +101,10 @@ class FinanceExportTest extends FinanceTestCase
 
         $summary = $this->exports()->build('summary', $fin, FinanceScope::AS_FINANCE, $this->west(), '2026-10-01', '2026-11-07', 'Accra West');
         $titles = array_column($summary['tables'], 'title');
-        $this->assertSame(['Headline', 'Spend by category', 'Spend by type', 'Spend by payee type', 'By month', 'Top suppliers', 'Why Audit queried', 'Turnaround', 'Waiting right now'], $titles);
+        $this->assertSame(['Headline', 'Spend by category', 'Spend by type', 'Spend by payee type', 'By month', 'Top suppliers', 'Why Audit queried', 'Turnaround', 'Waiting right now', 'Assignment to Audit officers', 'Batches created in the period'], $titles, 'an officer does not get the per-officer table');
+
+        $managerSummary = $this->exports()->build('summary', $this->financeManager('FM1', $this->sowutuom), FinanceScope::AS_FINANCE, $this->west(), '2026-10-01', '2026-11-07', 'Accra West');
+        $this->assertSame('Officer workload', array_column($managerSummary['tables'], 'title')[count($managerSummary['tables']) - 1], 'the Finance manager does');
 
         $headline = collect($summary['tables'][0]['rows'])->pluck(1, 0);
         $this->assertSame(2, $headline['Vouchers that went ahead']);

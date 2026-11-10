@@ -18,7 +18,7 @@ class FinanceRolesAndAccessTest extends FinanceTestCase
     {
         $finance = ['finance.view', 'finance.create_pv', 'finance.void_pv', 'finance.acknowledge', 'finance.manage_categories', 'finance.manage_suppliers',
             'finance.deactivate_suppliers', 'finance.import_suppliers', 'finance.view_reports', 'finance.export', 'finance.manage_reminders'];
-        $audit = ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export', 'audit.view_reviewed', 'audit.manage_reminders'];
+        $audit = ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export', 'audit.view_reviewed', 'audit.manage_reminders', 'audit.assign'];
 
         $this->assertEqualsCanonicalizing($finance, Permission::query()->where('module', 'finance')->pluck('name')->all());
         $this->assertEqualsCanonicalizing($audit, Permission::query()->where('module', 'audit')->pluck('name')->all());

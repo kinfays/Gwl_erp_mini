@@ -108,7 +108,11 @@ class PvAttachmentTest extends FinanceTestCase
         $this->actingAs($aud)->get(route('finance.pvs.attachment', [$pv->id, $attachment->id]))->assertRedirect(); // no finance module access
 
         $this->actingAs($fin);
-        $this->workflow()->submit($fin, $pv, $pv->lock_version);
+        $sent = $this->workflow()->submit($fin, $pv, $pv->lock_version);
+
+        // Sent but not yet assigned: Audit officers cannot open the file either.
+        $this->actingAs($aud)->get($audUrl)->assertNotFound();
+        $this->assignTo($sent, $aud);
 
         $this->actingAs($aud)->get($audUrl)->assertOk();
         $this->actingAs($audKumasi)->get($audUrl)->assertNotFound();

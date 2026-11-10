@@ -82,50 +82,72 @@ class PvReminderTest extends FinanceTestCase
 
     // ------------------------------------------------------------------ audit:remind
 
-    public function test_audit_officers_of_the_location_are_reminded_once_per_repeat_interval(): void
+    public function test_the_audit_manager_is_reminded_of_unassigned_vouchers_and_an_officer_only_of_their_own(): void
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $finTwo = $this->finance('F2', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
-        $audManager = $this->auditManager('AM1', $this->sowutuom);
-        $audOther = $this->audit('AU2', $this->kumasi);
-        $audHo = $this->audit('AU3', $this->headOffice);
+        $audTwo = $this->audit('AU4', $this->sowutuom);
+        $manager = $this->auditManager('AM1', $this->sowutuom);
+        $managerOther = $this->auditManager('AM2', $this->kumasi);
+        $managerHo = $this->auditManager('AM3', $this->headOffice);
 
-        $this->sentAt('2026-11-01 09:00', $fin, 'OLD-1');
+        $old = $this->sentAt('2026-11-01 09:00', $fin, 'OLD-1');
         $this->sentAt('2026-11-07 08:00', $fin, 'FRESH-1');
         Carbon::setTestNow('2026-11-07 09:00:00');
         Notification::fake();
 
+        // Nobody has an officer yet: the manager's limit (1 day) is what counts, and only the manager is told.
         $dry = $this->audRemind()->remind(dryRun: true);
         $this->assertSame(['waiting' => 2, 'overdue' => 1, 'reminded' => 1, 'notifications' => 0, 'skipped' => 0, 'disabled' => 0], $dry);
-        $this->assertSame([], $this->waitingNotices($aud));
+        $this->assertSame([], $this->waitingNotices($manager));
         $this->assertSame(0, FinReminderState::query()->count(), 'a dry run records nothing');
 
         $this->audRemind()->remind();
-        $notices = $this->waitingNotices($aud);
+        $notices = $this->waitingNotices($manager);
         $this->assertCount(1, $notices);
         $this->assertSame('pv_waiting', $notices[0]['type']);
-        $this->assertStringContainsString('1 voucher with Audit', $notices[0]['message']);
+        $this->assertSame('unassigned', $notices[0]['kind']);
+        $this->assertStringContainsString('1 voucher sent to Audit and still waiting to be given to an officer', $notices[0]['message']);
         $this->assertStringContainsString('6 days', $notices[0]['message']);
-        $this->assertSame([], $this->waitingNotices($fin), 'Finance is not told that Audit is slow');
-        $this->assertSame([], $this->waitingNotices($finTwo));
-        $this->assertSame([], $this->waitingNotices($audManager), 'the Audit manager manages the settings but does not review, so is not a recipient');
-        $this->assertSame([], $this->waitingNotices($audOther), 'another location');
-        $this->assertSame([], $this->waitingNotices($audHo), 'Head Office keeps its own books');
-
-        // The next day, and the day after: nobody is told again. Three days on (repeat 3) they are, and FRESH-1 has by then waited its 3 days too.
-        foreach (['2026-11-08 09:00', '2026-11-09 09:00'] as $day) {
-            Carbon::setTestNow($day);
-            $summary = $this->audRemind()->remind();
-            $this->assertSame(['reminded' => 0, 'skipped' => 1], ['reminded' => $summary['reminded'], 'skipped' => $summary['skipped']], $day);
+        foreach ([$aud, $audTwo, $fin, $finTwo, $managerOther, $managerHo] as $nobody) {
+            $this->assertSame([], $this->waitingNotices($nobody), 'only the manager of the location is told of an unassigned voucher');
         }
 
-        $this->assertCount(1, $this->waitingNotices($aud));
-        Carbon::setTestNow('2026-11-10 09:00');
+        // The next day FRESH-1 has waited its day too and is reminded (a new digest); OLD-1 is not told again. The day after, nobody is.
+        Carbon::setTestNow('2026-11-08 09:00');
+        $summary = $this->audRemind()->remind();
+        $this->assertSame(['reminded' => 1, 'skipped' => 1], ['reminded' => $summary['reminded'], 'skipped' => $summary['skipped']]);
+        Carbon::setTestNow('2026-11-09 09:00');
+        $summary = $this->audRemind()->remind();
+        $this->assertSame(['reminded' => 0, 'skipped' => 2], ['reminded' => $summary['reminded'], 'skipped' => $summary['skipped']]);
+
+        // The manager gives OLD-1 to an officer: the officer's wait starts then, not when it was sent.
+        Carbon::setTestNow('2026-11-09 10:00');
+        $this->workflow()->assign($manager, $old, $aud->id);
+        Carbon::setTestNow('2026-11-11 09:00');   // under 3 days since the assignment
+        Notification::fake();
         $this->audRemind()->remind();
-        $notices = $this->waitingNotices($aud);
-        $this->assertCount(2, $notices, 'one digest per run, not one per voucher');
-        $this->assertStringContainsString('2 vouchers with Audit', $notices[1]['message']);
+        $this->assertSame([], $this->waitingNotices($aud), 'two days with the officer is not yet overdue');
+
+        Carbon::setTestNow('2026-11-12 11:00');   // 3 days since the assignment
+        $this->audRemind()->remind();
+        $mine = $this->waitingNotices($aud);
+        $this->assertCount(1, $mine);
+        $this->assertSame('officer', $mine[0]['kind']);
+        $this->assertStringContainsString('1 voucher given to you and still waiting for a tick or a query', $mine[0]['message']);
+        $this->assertSame([], $this->waitingNotices($audTwo), 'another officer is not told about it');
+        $this->assertSame([], $this->waitingNotices($managerOther));
+
+        // A reassignment is a fresh wait for the new officer.
+        $this->workflow()->assign($manager, $old, $audTwo->id);
+        Carbon::setTestNow('2026-11-13 09:00');
+        $this->audRemind()->remind();
+        $this->assertSame([], $this->waitingNotices($audTwo));
+        Carbon::setTestNow('2026-11-15 12:00');
+        $this->audRemind()->remind();
+        $this->assertCount(1, $this->waitingNotices($audTwo));
+        $this->assertCount(1, $this->waitingNotices($aud), 'the first officer is not told again');
     }
 
     public function test_the_audit_command_does_not_touch_queried_ticked_or_draft_vouchers(): void
@@ -133,8 +155,8 @@ class PvReminderTest extends FinanceTestCase
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
         $this->draft($fin, ['pv_no' => 'D-1']);
-        $queried = $this->sentAt('2026-10-01 09:00', $fin, 'Q-1');
-        $ticked = $this->sentAt('2026-10-01 09:00', $fin, 'T-1');
+        $queried = $this->assignTo($this->sentAt('2026-10-01 09:00', $fin, 'Q-1'), $aud);
+        $ticked = $this->assignTo($this->sentAt('2026-10-01 09:00', $fin, 'T-1'), $aud);
         $this->actingAs($aud);
         $this->workflow()->auditQuery($aud, $queried, 'duplicate', 'Seen');
         $this->workflow()->auditAcknowledge($aud, $ticked);
@@ -153,7 +175,7 @@ class PvReminderTest extends FinanceTestCase
         $aud = $this->audit('AU1', $this->sowutuom);
         $this->actingAs($fin);
         $this->finSettings()->save($this->financeManager('FM1', $this->sowutuom), [FinanceSettings::REPEAT => 30], null);
-        $pv = $this->sentAt('2026-10-20 09:00', $fin, 'Q-1');
+        $pv = $this->assignTo($this->sentAt('2026-10-20 09:00', $fin, 'Q-1'), $aud);
 
         Carbon::setTestNow('2026-10-21 09:00');
         $this->actingAs($aud);
@@ -189,7 +211,7 @@ class PvReminderTest extends FinanceTestCase
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
         $manager = $this->financeManager('FM1', $this->sowutuom);
-        $pv = $this->sentAt('2026-11-01 09:00', $fin, 'T-1');
+        $pv = $this->assignTo($this->sentAt('2026-11-01 09:00', $fin, 'T-1'), $aud);
         Carbon::setTestNow('2026-11-02 09:00');
         $this->actingAs($aud);
         $this->workflow()->auditAcknowledge($aud, $pv);
@@ -216,7 +238,7 @@ class PvReminderTest extends FinanceTestCase
         $preparer = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
         $acknowledger = $this->finance('F2', $this->sowutuom);
-        $pv = $this->sentAt('2026-11-01 09:00', $preparer, 'T-1');
+        $pv = $this->assignTo($this->sentAt('2026-11-01 09:00', $preparer, 'T-1'), $aud);
         Carbon::setTestNow('2026-11-02 09:00');
         $this->actingAs($aud);
         $this->workflow()->auditAcknowledge($aud, $pv);
@@ -238,7 +260,7 @@ class PvReminderTest extends FinanceTestCase
     public function test_vouchers_due_together_arrive_as_one_digest_naming_the_pv_numbers_and_no_personal_data(): void
     {
         $fin = $this->finance('F1', $this->sowutuom);
-        $aud = $this->audit('AU1', $this->sowutuom);
+        $aud = $this->auditManager('AM1', $this->sowutuom);
         $this->sentAt('2026-11-01 09:00', $fin, 'PLAIN-1', ['amount' => '987654.32', 'details' => 'SECRET-DETAILS', 'remarks' => 'SECRET-REMARK']);
         $this->sentAt('2026-11-02 09:00', $fin, 'PLAIN-2');
         $this->sentAt('2026-11-03 09:00', $fin, 'PLAIN-3');
@@ -263,7 +285,7 @@ class PvReminderTest extends FinanceTestCase
     public function test_a_long_list_names_the_first_ten_and_counts_the_rest(): void
     {
         $fin = $this->finance('F1', $this->sowutuom);
-        $aud = $this->audit('AU1', $this->sowutuom);
+        $aud = $this->auditManager('AM1', $this->sowutuom);
 
         foreach (range(1, 13) as $i) {
             $this->sentAt('2026-11-01 09:'.str_pad((string) $i, 2, '0', STR_PAD_LEFT), $fin, 'LONG-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT));
@@ -286,8 +308,9 @@ class PvReminderTest extends FinanceTestCase
         $fin = $this->finance('F1', $this->sowutuom);
         $ash = $this->finance('A1', $this->kumasi);
         $aud = $this->audit('AU1', $this->sowutuom);
-        $audAsh = $this->audit('AU2', $this->kumasi);
-        $pvW = $this->sentAt('2026-10-01 09:00', $fin, 'W-1');
+        $audManagerW = $this->auditManager('AM9', $this->sowutuom);
+        $audAsh = $this->auditManager('AU2', $this->kumasi);
+        $pvW = $this->assignTo($this->sentAt('2026-10-01 09:00', $fin, 'W-1'), $aud);
         $this->sentAt('2026-10-01 09:00', $ash, 'K-1');
         $this->actingAs($aud);
         $this->workflow()->auditQuery($aud, $pvW, 'duplicate', 'Seen');
@@ -299,7 +322,7 @@ class PvReminderTest extends FinanceTestCase
 
         $audit = $this->audRemind()->remind();
         $this->assertSame(['overdue' => 1, 'reminded' => 1, 'disabled' => 0], ['overdue' => $audit['overdue'], 'reminded' => $audit['reminded'], 'disabled' => $audit['disabled']], 'only Ashanti\'s voucher is With Audit now');
-        $this->assertSame([], $this->waitingNotices($aud), 'switched off at Accra West');
+        $this->assertSame([], $this->waitingNotices($audManagerW), 'switched off at Accra West');
         $this->assertCount(1, $this->waitingNotices($audAsh), 'still on at Ashanti');
 
         // The Finance set of the same location is untouched by that switch.
@@ -317,9 +340,10 @@ class PvReminderTest extends FinanceTestCase
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $aud = $this->audit('AU1', $this->sowutuom);
+        $manager = $this->auditManager('AM7', $this->sowutuom);
         $pv = $this->sentAt('2026-10-01 09:00', $fin, 'V-1');
         $this->actingAs($aud);
-        $queried = $this->sentAt('2026-10-01 09:00', $fin, 'V-2');
+        $queried = $this->assignTo($this->sentAt('2026-10-01 09:00', $fin, 'V-2'), $aud);
         $this->workflow()->auditQuery($aud, $queried, 'other', 'x');
 
         // Audit repeats every 30 days, Finance every day (a limit of 1 day as well).
@@ -333,7 +357,7 @@ class PvReminderTest extends FinanceTestCase
             $this->finRemind()->remind();
         }
 
-        $this->assertCount(1, $this->waitingNotices($aud), 'Audit: once in 30 days');
+        $this->assertCount(1, $this->waitingNotices($manager), 'Audit: once in 30 days');
         $this->assertCount(3, $this->waitingNotices($fin), 'Finance: every day');
 
         // Values live under separate keys: one set never reads the other's.
@@ -346,18 +370,18 @@ class PvReminderTest extends FinanceTestCase
     {
         $fin = $this->finance('F1', $this->sowutuom);
         $ash = $this->finance('A1', $this->kumasi);
-        $aud = $this->audit('AU1', $this->sowutuom);
-        $audAsh = $this->audit('AU2', $this->kumasi);
+        $aud = $this->auditManager('AM1', $this->sowutuom);
+        $audAsh = $this->auditManager('AM2', $this->kumasi);
         $this->sentAt('2026-11-01 09:00', $fin, 'W-1');
         $this->sentAt('2026-11-01 09:00', $ash, 'K-1');
         Carbon::setTestNow('2026-11-07 09:00:00');
 
-        $this->audSettings()->save($this->auditManager('AM1', $this->sowutuom), [AuditSettings::WAIT => 10], null);
+        $this->audSettings()->save($this->auditManager('AM1', $this->sowutuom), [AuditSettings::UNASSIGNED_WAIT => 10], null);
         Notification::fake();
         $this->audRemind()->remind();
 
-        $this->assertSame([], $this->waitingNotices($aud), 'Accra West allows 10 days');
-        $this->assertCount(1, $this->waitingNotices($audAsh), 'Ashanti still has the standard 3');
+        $this->assertSame([], $this->waitingNotices($aud), 'Accra West allows 10 days before the manager is told');
+        $this->assertCount(1, $this->waitingNotices($audAsh), 'Ashanti still has the standard 1');
     }
 
     // ------------------------------------------------------------------ the commands

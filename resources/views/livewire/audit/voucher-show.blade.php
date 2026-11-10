@@ -1,7 +1,8 @@
 <div>
     <x-ui.page-header title="Voucher for review" description="Check the voucher and its documents, then acknowledge it (tick) or query it (X) with a reason.">
         <x-slot:actions>
-            <x-ui.button icon="arrow-left" :href="route('audit.home')">Review queue</x-ui.button>
+            <x-ui.button icon="arrow-left" :href="route('audit.home')">Back</x-ui.button>
+            <x-ui.button icon="printer" :href="route('audit.pvs.print', $pv->id)" target="_blank" rel="noopener">Print</x-ui.button>
             @if ($canWithdraw)<x-ui.button variant="warn" wire:click="openWithdraw">Withdraw tick</x-ui.button>@endif
             @if ($canQuery)<x-ui.button variant="danger" icon="x" wire:click="openQuery">Query</x-ui.button>@endif
             @if ($canTick)<x-ui.button variant="primary" icon="check" wire:click="tick" loading="tick">Acknowledge</x-ui.button>@endif

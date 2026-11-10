@@ -39,8 +39,9 @@ class SupplierFiguresTest extends FinanceTestCase
         $ash = $this->finance('A1', $this->kumasi);
         $supplier = $this->supplier('Shared Supplies Ltd');
 
-        $this->sentTo($supplier, $west, 'W-1', '100.00', '2026-10-05');
-        $this->sentTo($supplier, $west, 'W-2', '50.00', '2026-11-01');
+        $officer = $this->audit('AU1', $this->sowutuom);
+        $this->assignTo($this->sentTo($supplier, $west, 'W-1', '100.00', '2026-10-05'), $officer);
+        $this->assignTo($this->sentTo($supplier, $west, 'W-2', '50.00', '2026-11-01'), $officer);
         $this->sentTo($supplier, $ash, 'A-1', '250.00', '2026-11-03');
 
         $this->assertSame([$supplier->id], $this->directory()->suppliers()->pluck('id')->all(), 'both locations read the same list');
@@ -51,8 +52,8 @@ class SupplierFiguresTest extends FinanceTestCase
         $this->assertSame(['count' => 1, 'total' => 25000, 'last_date' => '2026-11-03'], $figures($ash));
         $this->assertSame(['count' => 3, 'total' => 40000, 'last_date' => '2026-11-03'], $figures($this->superAdmin()), 'super_admin reads every location');
 
-        // Audit of the same location sees the same vouchers, still nothing from elsewhere.
-        $this->assertSame(2, $figures($this->audit('AU1', $this->sowutuom), FinanceScope::AS_AUDIT)['count']);
+        // An Audit officer of the same location sees the vouchers given to them, still nothing from elsewhere.
+        $this->assertSame(2, $figures($officer, FinanceScope::AS_AUDIT)['count']);
         $this->assertSame([], $this->directory()->figures($this->finance('HO1', $this->headOffice), FinanceScope::AS_FINANCE, [$supplier->id]), 'Head Office is its own books');
     }
 

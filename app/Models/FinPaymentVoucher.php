@@ -73,7 +73,7 @@ class FinPaymentVoucher extends Model
         'region_id', 'district_id', 'pv_date', 'pv_no', 'pv_no_key', 'payee_kind', 'payee_name', 'payee_employee_id',
         'payee_district_id', 'supplier_id', 'category_id', 'type_id', 'details', 'amount', 'remarks', 'status', 'round',
         'lock_version', 'created_by', 'submitted_at', 'last_submitted_at', 'completed_at', 'submitted_snapshot',
-        'voided_at', 'voided_by', 'void_reason',
+        'voided_at', 'voided_by', 'void_reason', 'batch_id', 'assigned_to_user_id', 'assigned_by_user_id', 'assigned_at',
     ];
 
     protected $casts = [
@@ -93,6 +93,10 @@ class FinPaymentVoucher extends Model
         'last_submitted_at' => 'datetime',
         'completed_at' => 'datetime',
         'voided_at' => 'datetime',
+        'batch_id' => 'integer',
+        'assigned_to_user_id' => 'integer',
+        'assigned_by_user_id' => 'integer',
+        'assigned_at' => 'datetime',
         'submitted_snapshot' => 'array',
     ];
 
@@ -156,6 +160,27 @@ class FinPaymentVoucher extends Model
         return $this->belongsTo(District::class);
     }
 
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(FinPvBatch::class, 'batch_id');
+    }
+
+    /** The Audit officer the manager gave this voucher to (null = awaiting assignment, or never sent). */
+    public function assignedTo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to_user_id');
+    }
+
+    public function assignedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    public function isAssigned(): bool
+    {
+        return $this->assigned_to_user_id !== null;
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(FinPvEvent::class, 'pv_id')->orderBy('id');
@@ -190,6 +215,19 @@ class FinPaymentVoucher extends Model
     public function isEditable(): bool
     {
         return in_array($this->status, [self::DRAFT, self::QUERIED], true);
+    }
+
+    /**
+     * Why this voucher cannot go into a (new) batch, or null when it can: only a Draft that is in no batch. The ONE rule: the batch
+     * service refuses with this sentence and the Finance list uses it to say why a row cannot be ticked.
+     */
+    public function batchBlocker(): ?string
+    {
+        if ($this->status !== self::DRAFT) {
+            return $this->status === self::VOIDED ? 'is voided' : 'is not a draft (it has been sent to Audit)';
+        }
+
+        return $this->batch_id !== null ? 'is already in batch '.($this->batch?->batch_no ?? '') : null;
     }
 
     public function isVoidable(): bool
@@ -282,7 +320,8 @@ class FinPaymentVoucher extends Model
     /** @param \Illuminate\Support\Collection<int, FinPvEvent> $events */
     private function withdrawnAfterLastSubmission($events): bool
     {
-        $lastEvent = $events->last();
+        // An assignment in between does not change what Audit last did.
+        $lastEvent = $events->last(fn (FinPvEvent $event) => ! in_array($event->action, FinPvEvent::ASSIGNING, true));
 
         return $lastEvent !== null && $lastEvent->action === FinPvEvent::TICK_WITHDRAWN;
     }

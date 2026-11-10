@@ -12,7 +12,8 @@ use Illuminate\Database\Seeder;
  * accident:
  *  - finance_officer: prepares and sends vouchers, suppliers (not deactivating them), reports and exports; NO catalogue, NO reminders;
  *  - finance_manager: reads everything of its location, manages the catalogue and the reminders, deactivates suppliers; never writes a voucher;
- *  - audit_officer: the whole queue and the review; audit_manager: only vouchers an Audit officer worked on, reports, reminders;
+ *  - audit_officer: the review of the vouchers assigned to them; audit_manager: assigns vouchers and batches to officers, sees only
+ *    vouchers an Audit officer worked on (plus the assignment queue's minimal columns), reports, reminders;
  *  - super_admin: all of them.
  */
 class FinanceAuditRolePermissionSeeder extends Seeder
@@ -26,7 +27,7 @@ class FinanceAuditRolePermissionSeeder extends Seeder
             'finance_officer' => $finance->reject(fn (string $name) => in_array($name, ['finance.deactivate_suppliers', 'finance.manage_categories', 'finance.manage_reminders'], true))->all(),
             'finance_manager' => ['finance.view', 'finance.view_reports', 'finance.export', 'finance.manage_categories', 'finance.manage_reminders', 'finance.deactivate_suppliers'],
             'audit_officer' => ['audit.view', 'audit.review', 'audit.view_reports', 'audit.export'],
-            'audit_manager' => ['audit.view_reviewed', 'audit.view_reports', 'audit.export', 'audit.manage_reminders'],
+            'audit_manager' => ['audit.view_reviewed', 'audit.view_reports', 'audit.export', 'audit.manage_reminders', 'audit.assign'],
             'super_admin' => $finance->merge($audit)->all(),
         ];
 

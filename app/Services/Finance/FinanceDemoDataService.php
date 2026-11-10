@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\District;
 use App\Models\Employee;
 use App\Models\FinPaymentVoucher as Pv;
+use App\Models\FinPvBatch;
 use App\Models\FinPvCategory;
 use App\Models\FinPvType;
 use App\Models\JobTitle;
@@ -66,6 +67,21 @@ class FinanceDemoDataService
 
     protected Carbon $now;
 
+    /** Batches made in this run. */
+    protected int $batchCount = 0;
+
+    /**
+     * Which plan entries go into a batch instead of being made one by one: scenario => [[how many of that scenario to skip, how many to take, batch kind]].
+     * The vouchers keep their statuses (so the status mix of the demo data does not change); the oldest With Audit ones stay single so every
+     * ageing bucket is still filled, and some single vouchers stay unassigned.
+     */
+    protected const BATCH_SLOTS = [
+        'draft' => [[0, 3, 'draft']],
+        'with_audit' => [[4, 3, 'awaiting'], [7, 2, 'progress'], [9, 2, 'split']],
+        'ticked' => [[0, 1, 'progress'], [1, 2, 'split']],
+        'completed' => [[0, 3, 'complete']],
+    ];
+
     /** @var list<array{account: string, staff_id: string, password: string}> */
     protected array $credentials = [];
 
@@ -74,6 +90,7 @@ class FinanceDemoDataService
         protected PvCatalogService $catalogue,
         protected SupplierService $suppliers,
         protected FinanceScope $scope,
+        protected BatchWorkflowService $batches,
     ) {}
 
     // ------------------------------------------------------------------ guards
@@ -111,11 +128,12 @@ class FinanceDemoDataService
         $this->assertAllowed($withUsers);
         $say ??= fn (string $line) => null;
         $this->credentials = [];
+        $this->batchCount = 0;
 
         if ($this->exists()) {
             $say('Demo vouchers already exist, so nothing was added. Remove them first with --remove.');
 
-            return ['skipped' => true, 'locations' => 0, 'vouchers' => 0, 'suppliers' => 0, 'accounts' => 0, 'credentials' => []];
+            return ['skipped' => true, 'locations' => 0, 'vouchers' => 0, 'batches' => 0, 'suppliers' => 0, 'accounts' => 0, 'credentials' => []];
         }
 
         $locations = $this->locations();
@@ -150,13 +168,18 @@ class FinanceDemoDataService
                 $say("{$location['label']}: ".self::PER_LOCATION.' demo vouchers made.');
             }
         } finally {
+            // Even when the run failed half way: nobody can sign in as a demo account unless --with-users asked for it.
+            if (! $withUsers) {
+                User::query()->where('staff_id', 'like', self::PREFIX.'%')->update(['is_active' => false]);
+            }
+
             Carbon::setTestNow($originalNow);
             Notification::swap($originalNotifier);
             $originalUser ? Auth::setUser($originalUser) : Auth::forgetUser();
             FinanceBooksVersion::touchAll();
         }
 
-        return ['skipped' => false, 'locations' => count($locations), 'vouchers' => $vouchers, 'suppliers' => count($suppliers), 'accounts' => $accounts, 'credentials' => $this->credentials];
+        return ['skipped' => false, 'locations' => count($locations), 'vouchers' => $vouchers, 'batches' => $this->batchCount, 'suppliers' => count($suppliers), 'accounts' => $accounts, 'credentials' => $this->credentials];
     }
 
     /**
@@ -200,7 +223,7 @@ class FinanceDemoDataService
     /** @return array<string, User> fo, fm, ao, am */
     protected function makeAccounts(array $location, bool $withUsers): array
     {
-        $roles = ['fo' => ['finance_officer', 'Finance Officer'], 'fm' => ['finance_manager', 'Finance Manager'], 'ao' => ['audit_officer', 'Audit Officer'], 'am' => ['audit_manager', 'Audit Manager']];
+        $roles = ['fo' => ['finance_officer', 'Finance Officer'], 'fm' => ['finance_manager', 'Finance Manager'], 'ao' => ['audit_officer', 'Audit Officer'], 'ao2' => ['audit_officer', 'Audit Officer 2'], 'am' => ['audit_manager', 'Audit Manager']];
         $people = [];
 
         foreach ($roles as $short => [$role, $title]) {
@@ -209,7 +232,9 @@ class FinanceDemoDataService
             $user = User::query()->where('staff_id', $employee->staff_id)->firstOrFail();
             $password = Str::random(14);
 
-            $user->forceFill(['password' => $password, 'must_change_password' => true, 'is_active' => $withUsers])->save();
+            // Active while the history is made (the manager can only assign to an ACTIVE officer); seed() switches them off at the end
+            // unless the accounts are meant to be used.
+            $user->forceFill(['password' => $password, 'must_change_password' => true, 'is_active' => true])->save();
             $user->roles()->syncWithoutDetaching(Role::query()->whereIn('name', ['employee', $role])->pluck('id')->all());
 
             if ($withUsers) {
@@ -315,11 +340,29 @@ class FinanceDemoDataService
         $pools = ['employees' => $employees, 'retirees' => $retirees, 'districts' => $districts, 'suppliers' => $suppliers, 'leavers' => $leavers];
         $leaverVouchers = 0;
 
+        $seen = [];
+        $groups = [];
+
         foreach ($plan as $i => [$scenario, $age]) {
             $payee = $this->payee($i, $pools, $scenario, $leaverVouchers);
             $type = $types[$i % count($types)];
             $number = sprintf('%s%s-%04d', self::PREFIX, $location['key'], $i + 1);
+            $kind = $this->batchKind($scenario, $seen[$scenario] = ($seen[$scenario] ?? -1) + 1);
+
+            if ($kind !== null) {
+                $groups[$kind][] = compact('scenario', 'number', 'type', 'payee', 'i');
+
+                continue;
+            }
+
             $this->scenario($scenario, $age, $people, $number, $type, $payee, $i);
+        }
+
+        // The batches: a draft one, one sent and awaiting assignment, one in progress, one split across two officers, one completed.
+        foreach (['draft', 'awaiting', 'progress', 'split', 'complete'] as $kind) {
+            if (! empty($groups[$kind])) {
+                $this->makeBatch($people, $kind, $groups[$kind]);
+            }
         }
 
         // The two leavers resign AFTER the vouchers paid to them (so those vouchers are flagged "left service since").
@@ -399,35 +442,31 @@ class FinanceDemoDataService
     {
         $fo = $people['fo'];
         $ao = $people['ao'];
-        $final = $this->now->copy()->subDays($age)->subMinutes(20 + ($i * 7) % 400);
+        $am = $people['am'];
+        $final =$this->now->copy()->subDays($age)->subMinutes(20 + ($i * 7) % 400);
         $at = fn (float $daysBefore, int $minutes = 0) => $final->copy()->subMinutes((int) round($daysBefore * 1440))->addMinutes($minutes);
         $reasons = array_keys(Pv::QUERY_REASONS);
         $reason = $reasons[$i % count($reasons)];
         $other = $reasons[($i + 3) % count($reasons)];
 
-        $details = ['Quarterly claim', 'Supplies for the district store', 'Allowance for the period', 'Repairs and servicing', 'Training and workshop costs', 'Sitting allowance, board meeting', 'Transport for field staff', 'Office running costs'][$i % 8];
-        $amount = number_format(120 + (($i * 937 + 311) % 24800) + (($i * 37) % 100) / 100, 2, '.', '');
+        [$details, $amount] = $this->fields($i);
 
         $voucherAt = fn (float $daysBefore) => $at($daysBefore);
         $make = function (float $daysBefore) use ($fo, $number, $type, $payee, $details, $amount, $voucherAt): Pv {
-            $when = $voucherAt($daysBefore);
-            $this->as($fo, $when);
-
-            return $this->workflow->createDraft($fo, [
-                'pv_date' => $when->copy()->subDays(1 + ($daysBefore > 3 ? 1 : 0))->toDateString(),
-                'pv_no' => $number,
-                'category_id' => $type['category'],
-                'type_id' => $type['type'],
-                'details' => $details,
-                'amount' => $amount,
-                'remarks' => null,
-            ] + $payee);
+            return $this->createDemoDraft($fo, $number, $type, $payee, $details, $amount, $voucherAt($daysBefore), $daysBefore);
         };
         $send = function (Pv $pv, float $daysBefore) use ($fo, $voucherAt): Pv {
             $this->as($fo, $voucherAt($daysBefore)->addMinutes(10));
 
             return $this->workflow->submit($fo, $pv, $pv->lock_version);
         };
+        // The Audit manager gives a sent voucher to the Audit officer a few minutes after it was sent; nobody in Audit can work on it before.
+        $assign = function (Pv $pv, float $daysBefore) use ($am, $ao, $voucherAt): Pv {
+            $this->as($am, $voucherAt($daysBefore)->addMinutes(15));
+
+            return $this->workflow->assign($am, $pv, $ao->id);
+        };
+        $sendA = fn (Pv $pv, float $daysBefore): Pv => $assign($send($pv, $daysBefore), $daysBefore);
         $query = function (Pv $pv, float $daysBefore, string $code) use ($ao, $voucherAt): Pv {
             $this->as($ao, $voucherAt($daysBefore));
 
@@ -457,19 +496,124 @@ class FinanceDemoDataService
 
         match ($scenario) {
             'draft' => $make(0),
-            'with_audit' => $send($make(0.01), 0),
-            'queried' => $query($send($make(1.1), 1.1), 0, $reason),
-            'queried_twice' => $query($correct($query($send($make(6), 6), 5, $reason), 3), 0, $other),
-            'resubmitted' => $correct($query($send($make(5), 5), 3.5, $reason), 0),
-            'ticked' => $tick($send($make(2), 2), 0),
-            'completed' => $acknowledge($tick($send($make(6), 6), 4), 0),
-            'completed_query' => $acknowledge($tick($correct($query($send($make(8), 8), 6, $reason), 4), 2), 0),
-            'withdrawn_ticked' => $this->withdrawThenTick($tick($send($make(4), 4), 3), $ao, $voucherAt(2), $voucherAt(1)),
-            'withdrawn_completed' => $acknowledge($this->withdrawThenTick($tick($send($make(6), 6), 5), $ao, $voucherAt(4), $voucherAt(2)), 0),
+            'with_audit' => $i % 2 === 1 ? $sendA($make(0.01), 0) : $send($make(0.01), 0),
+            'queried' => $query($sendA($make(1.1), 1.1), 0, $reason),
+            'queried_twice' => $query($correct($query($sendA($make(6), 6), 5, $reason), 3), 0, $other),
+            'resubmitted' => $correct($query($sendA($make(5), 5), 3.5, $reason), 0),
+            'ticked' => $tick($sendA($make(2), 2), 0),
+            'completed' => $acknowledge($tick($sendA($make(6), 6), 4), 0),
+            'completed_query' => $acknowledge($tick($correct($query($sendA($make(8), 8), 6, $reason), 4), 2), 0),
+            'withdrawn_ticked' => $this->withdrawThenTick($tick($sendA($make(4), 4), 3), $ao, $voucherAt(2), $voucherAt(1)),
+            'withdrawn_completed' => $acknowledge($this->withdrawThenTick($tick($sendA($make(6), 6), 5), $ao, $voucherAt(4), $voucherAt(2)), 0),
             'void_draft' => $void($make(2), 0),
             'void_with_audit' => $void($send($make(3), 3), 0),
-            'void_queried' => $void($query($send($make(3), 3), 2, $reason), 0),
+            'void_queried' => $void($query($sendA($make(3), 3), 2, $reason), 0),
         };
+    }
+
+    /** @return array{0: string, 1: string} the details and the amount (cedis) of demo voucher number $i */
+    protected function fields(int $i): array
+    {
+        return [
+            ['Quarterly claim', 'Supplies for the district store', 'Allowance for the period', 'Repairs and servicing', 'Training and workshop costs', 'Sitting allowance, board meeting', 'Transport for field staff', 'Office running costs'][$i % 8],
+            number_format(120 + (($i * 937 + 311) % 24800) + (($i * 37) % 100) / 100, 2, '.', ''),
+        ];
+    }
+
+    /** A demo voucher saved as a draft by the finance officer at $when ($daysBefore only moves the PV date back a little). */
+    protected function createDemoDraft(User $fo, string $number, array $type, array $payee, string $details, string $amount, Carbon $when, float $daysBefore): Pv
+    {
+        $this->as($fo, $when);
+
+        return $this->workflow->createDraft($fo, [
+            'pv_date' => $when->copy()->subDays(1 + ($daysBefore > 3 ? 1 : 0))->toDateString(),
+            'pv_no' => $number,
+            'category_id' => $type['category'],
+            'type_id' => $type['type'],
+            'details' => $details,
+            'amount' => $amount,
+            'remarks' => null,
+        ] + $payee);
+    }
+
+    /** The batch the $nth voucher of a scenario goes into, or null when it is made on its own. */
+    protected function batchKind(string $scenario, int $nth): ?string
+    {
+        foreach (self::BATCH_SLOTS[$scenario] ?? [] as [$skip, $take, $kind]) {
+            if ($nth >= $skip && $nth < $skip + $take) {
+                return $kind;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One demo batch, played through the real services with the clock set back: the finance officer builds and sends it, the audit manager
+     * assigns it (a whole batch to one officer, or split across two), the officers tick, and for the completed one Finance acknowledges all.
+     *
+     * @param  array<string, User>  $people
+     * @param  list<array{scenario: string, number: string, type: array<string, int>, payee: array<string, mixed>, i: int}>  $members
+     */
+    protected function makeBatch(array $people, string $kind, array $members): void
+    {
+        [$fo, $ao, $ao2, $am] = [$people['fo'], $people['ao'], $people['ao2'], $people['am']];
+        $anchor = ['draft' => 5, 'awaiting' => 8, 'progress' => 5, 'split' => 3, 'complete' => 45][$kind];
+        $title = ['draft' => 'Draft batch', 'awaiting' => 'Awaiting assignment batch', 'progress' => 'In progress batch', 'split' => 'Split batch', 'complete' => 'Completed batch'][$kind].self::SUPPLIER_SUFFIX;
+        $t0 = $this->now->copy()->subDays($anchor)->subMinutes(240);
+
+        $vouchers = [];
+
+        foreach ($members as $k => $member) {
+            [$details, $amount] = $this->fields($member['i']);
+            $vouchers[$k] = $this->createDemoDraft($fo, $member['number'], $member['type'], $member['payee'], $details, $amount, $t0->copy()->subMinutes(60 - $k * 5), $anchor);
+        }
+
+        $this->as($fo, $t0->copy()->subMinutes(20));
+        $batch = $this->batches->create($fo, array_map(fn (Pv $pv) => $pv->id, $vouchers), $title);
+        $this->batchCount++;
+
+        if ($kind === 'draft') {
+            return;
+        }
+
+        $this->as($fo, $t0);
+        $this->batches->send($fo, $batch);
+
+        if ($kind === 'awaiting') {
+            return;
+        }
+
+        $this->as($am, $t0->copy()->addMinutes(45));
+        $tick = fn (User $officer, int $k) => [$this->as($officer, $t0->copy()->addDay()->addMinutes($k * 3)), $this->workflow->auditAcknowledge($officer, $vouchers[$k])];
+        $ticked = array_keys(array_filter($members, fn (array $m) => $m['scenario'] === 'ticked'));
+        $waiting = array_keys(array_filter($members, fn (array $m) => $m['scenario'] !== 'ticked'));
+
+        if ($kind === 'progress' || $kind === 'complete') {
+            $this->batches->assignBatch($am, $batch, $ao->id, 'Demo assignment');
+        }
+
+        if ($kind === 'progress') {
+            foreach ($ticked as $k) {
+                $tick($ao, $k);
+            }
+        }
+
+        if ($kind === 'split') {
+            // Each officer gets one voucher they have already ticked and one still waiting for them.
+            $this->batches->assignVouchers($am, [$vouchers[$ticked[0]]->id, $vouchers[$waiting[0]]->id], $ao->id, 'Demo assignment');
+            $this->as($am, $t0->copy()->addMinutes(50));
+            $this->batches->assignVouchers($am, [$vouchers[$ticked[1]]->id, $vouchers[$waiting[1]]->id], $ao2->id, 'Demo assignment');
+            $tick($ao, $ticked[0]);
+            $tick($ao2, $ticked[1]);
+        }
+
+        if ($kind === 'complete') {
+            $this->as($ao, $t0->copy()->addDay());
+            $this->batches->acknowledgeRemaining($ao, $batch);
+            $this->as($fo, $t0->copy()->addDays(2));
+            $this->batches->financeAcknowledgeAll($fo, $batch);
+        }
     }
 
     /** The Audit officer withdraws a tick, then ticks again after looking once more. */
@@ -510,6 +654,33 @@ class FinanceDemoDataService
     // ------------------------------------------------------------------ removal
 
     /**
+     * Puts the batch-number counters of the locations the demo run used back to what the REMAINING batches say (the highest number in
+     * use that year, or no counter row at all), so a real batch made afterwards gets the number it would have had without the demo.
+     *
+     * @param  list<string>  $units
+     */
+    protected function restoreBatchCounters(array $units): void
+    {
+        foreach ($units as $unit) {
+            foreach (DB::table('fin_batch_counters')->where('unit', $unit)->get() as $counter) {
+                $highest = 0;
+
+                foreach (FinPvBatch::query()->where('batch_no', 'like', '%-'.$counter->year.'-%')->pluck('batch_no') as $number) {
+                    $batch = FinPvBatch::query()->where('batch_no', $number)->first(['region_id', 'district_id']);
+
+                    if ($batch && FinanceBooksVersion::unitKey(['region_id' => $batch->region_id, 'district_id' => $batch->district_id]) === $unit && preg_match('/-(\d+)$/', $number, $m)) {
+                        $highest = max($highest, (int) $m[1]);
+                    }
+                }
+
+                $highest === 0
+                    ? DB::table('fin_batch_counters')->where('id', $counter->id)->delete()
+                    : DB::table('fin_batch_counters')->where('id', $counter->id)->update(['last_number' => $highest]);
+            }
+        }
+    }
+
+    /**
      * Deletes ONLY the demo rows. Returns what was removed.
      *
      * @param  callable(string): void|null  $say
@@ -520,12 +691,20 @@ class FinanceDemoDataService
         $this->assertAllowed(false);
         $say ??= fn (string $line) => null;
 
-        $summary = ['vouchers' => 0, 'suppliers' => 0, 'suppliers_kept' => 0, 'catalogue' => 0, 'accounts' => 0, 'staff' => 0];
+        $summary = ['vouchers' => 0, 'batches' => 0, 'suppliers' => 0, 'suppliers_kept' => 0, 'catalogue' => 0, 'accounts' => 0, 'staff' => 0];
         $userIds = User::query()->where('staff_id', 'like', self::PREFIX.'%')->pluck('id')->all();
 
         DB::transaction(function () use (&$summary, $userIds, $say) {
             // 1. Vouchers and everything that hangs off them (direct deletes: the event model refuses updates and deletes).
             $pvIds = Pv::query()->where('pv_no_key', 'like', self::PREFIX.'%')->pluck('id')->all();
+
+            // The demo batches (made by a demo account) and their trail, before the vouchers: the trail points at the vouchers.
+            $batchIds = FinPvBatch::query()->whereIn('created_by', $userIds)->pluck('id')->all();
+            $units = FinPvBatch::query()->whereIn('id', $batchIds)->get(['region_id', 'district_id'])->map(fn (FinPvBatch $batch) => FinanceBooksVersion::unitKey(['region_id' => $batch->region_id, 'district_id' => $batch->district_id]))->unique()->all();
+
+            foreach (array_chunk($batchIds, 500) as $chunk) {
+                DB::table('fin_batch_events')->whereIn('batch_id', $chunk)->delete();
+            }
 
             foreach (array_chunk($pvIds, 500) as $chunk) {
                 $files = DB::table('fin_pv_attachments')->whereIn('pv_id', $chunk)->pluck('path')->all();
@@ -537,8 +716,14 @@ class FinanceDemoDataService
                 DB::table('fin_pvs')->whereIn('id', $chunk)->delete();
             }
 
+            foreach (array_chunk($batchIds, 500) as $chunk) {
+                $summary['batches'] += DB::table('fin_pv_batches')->whereIn('id', $chunk)->delete();
+            }
+
+            $this->restoreBatchCounters($units);
+
             $summary['vouchers'] = count($pvIds);
-            $say("Removed {$summary['vouchers']} demo vouchers.");
+            $say("Removed {$summary['vouchers']} demo vouchers and {$summary['batches']} demo batches.");
 
             // 2. Demo suppliers no other voucher uses.
             $used = DB::table('fin_pvs')->whereNotNull('supplier_id')->select('supplier_id');

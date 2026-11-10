@@ -25,8 +25,8 @@ class FinanceDemoData extends Command
             if ($this->option('remove')) {
                 $result = $demo->remove(fn (string $line) => $this->line($line));
                 $this->info(sprintf(
-                    'Done: %d vouchers, %d suppliers, %d catalogue rows, %d accounts and %d demo staff records removed.%s',
-                    $result['vouchers'], $result['suppliers'], $result['catalogue'], $result['accounts'], $result['staff'],
+                    'Done: %d vouchers, %d batches, %d suppliers, %d catalogue rows, %d accounts and %d demo staff records removed.%s',
+                    $result['vouchers'], $result['batches'], $result['suppliers'], $result['catalogue'], $result['accounts'], $result['staff'],
                     $result['suppliers_kept'] ? " {$result['suppliers_kept']} demo supplier(s) kept because another voucher uses them." : ''
                 ));
 
@@ -44,7 +44,7 @@ class FinanceDemoData extends Command
             return self::SUCCESS;
         }
 
-        $this->info(sprintf('Done: %d locations, %d vouchers, %d suppliers, %d demo accounts.', $result['locations'], $result['vouchers'], $result['suppliers'], $result['accounts']));
+        $this->info(sprintf('Done: %d locations, %d vouchers, %d batches, %d suppliers, %d demo accounts.', $result['locations'], $result['vouchers'], $result['batches'], $result['suppliers'], $result['accounts']));
 
         if ($result['credentials'] !== []) {
             $this->newLine();

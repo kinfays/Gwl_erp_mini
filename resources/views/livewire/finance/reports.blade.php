@@ -182,5 +182,46 @@
                 @endforeach
             </x-ui.table>
         </x-ui.card>
+
+        @php($assignment = $report['assignment'])
+        @php($batchFigures = $report['batches'])
+        <div class="ui-grid dash-row">
+            <x-ui.card title="Assignment to Audit officers" description="Nobody in Audit can work on a voucher until the Audit manager gives it to an officer." :padded="false">
+                <x-ui.table label="Assignment" :sticky="false" dense>
+                    <x-slot:head><tr><th>Measure</th><th class="num">Value</th><th class="num">Based on</th></tr></x-slot:head>
+                    <tr><td>Sent to assigned (average)</td><td class="num">{{ $daysText($assignment['days_to_assign']) }}</td><td class="num">{{ $assignment['days_to_assign']['count'] }}</td></tr>
+                    <tr><td>Assigned to the officer's first tick or query (average)</td><td class="num">{{ $daysText($assignment['days_to_first_action']) }}</td><td class="num">{{ $assignment['days_to_first_action']['count'] }}</td></tr>
+                    <tr><td>Waiting for an officer right now</td><td class="num">{{ $assignment['unassigned']['count'] }}@if ($assignment['unassigned']['overdue']) <span class="cell-muted">{{ $assignment['unassigned']['overdue'] }} overdue</span>@endif</td><td class="num">{{ $assignment['unassigned']['oldest_days'] === null ? '' : 'longest '.$assignment['unassigned']['oldest_days'].' days' }}</td></tr>
+                </x-ui.table>
+            </x-ui.card>
+            <x-ui.card title="Batches" :description="'Batches created in this period: '.$batchFigures['count'].', holding '.$batchFigures['vouchers'].' vouchers'.($batchFigures['average_vouchers'] === null ? '' : ' ('.number_format($batchFigures['average_vouchers'], 1).' on average, the largest '.$batchFigures['largest'].')').'.'" :padded="false">
+                <x-ui.table label="Batches by state" :sticky="false" dense>
+                    <x-slot:head><tr><th>State</th><th class="num">Batches</th></tr></x-slot:head>
+                    @foreach ($batchFigures['states'] as $state)
+                        <tr><td>{{ $state['label'] }}</td><td class="num">{{ $state['count'] }}</td></tr>
+                    @endforeach
+                </x-ui.table>
+            </x-ui.card>
+        </div>
+
+        @if ($report['officers'] !== null)
+            <x-ui.card title="Officer workload" description="Vouchers of this period given to each Audit officer of the location. Open means still waiting for them." :padded="false" class="dash-row">
+                <x-ui.table label="Officer workload" :sticky="false" dense>
+                    <x-slot:head><tr><th>Officer</th><th class="num">Assigned</th><th class="num">Done</th><th class="num">Open</th><th class="num">Average days to first action</th><th class="num">Queried</th></tr></x-slot:head>
+                    @forelse ($report['officers'] as $officer)
+                        <tr wire:key="off-{{ $officer['user_id'] }}">
+                            <td>{{ $officer['name'] }}</td>
+                            <td class="num">{{ $officer['assigned'] }}</td>
+                            <td class="num">{{ $officer['done'] }}</td>
+                            <td class="num">{{ $officer['open'] }}</td>
+                            <td class="num">{{ $officer['average_days'] === null ? 'n/a' : number_format($officer['average_days'], 1) }}</td>
+                            <td class="num">{{ $officer['queried'] }} <span class="cell-muted">({{ $pct($officer['query_rate']) }})</span></td>
+                        </tr>
+                    @empty
+                        <x-ui.empty-row :colspan="6" icon="user-check" title="No voucher of this period has been given to an officer." />
+                    @endforelse
+                </x-ui.table>
+            </x-ui.card>
+        @endif
     @endif
 </div>

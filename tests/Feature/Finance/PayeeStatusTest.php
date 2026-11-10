@@ -120,6 +120,8 @@ class PayeeStatusTest extends FinanceTestCase
         $flagged = $this->paidTo($gone, $fin, 'FLAGGED-1');
         $clean = $this->paidTo($here, $fin, 'CLEAN-1');
         $this->leaves($gone, 'resigned', '2026-10-20');
+        $this->assignTo($flagged, $aud);
+        $this->assignTo($clean, $aud);
 
         Livewire::actingAs($aud)->test(AuditVoucherShow::class, ['pv' => $flagged->id])
             ->assertSee('Payee has left service')->assertSee('left service on 20 Oct 2026');

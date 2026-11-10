@@ -191,6 +191,7 @@ class PermissionSeeder extends Seeder
                 'audit.export',
                 'audit.view_reviewed',
                 'audit.manage_reminders',
+                'audit.assign',
             ],
         ];
 

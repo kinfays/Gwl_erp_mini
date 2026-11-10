@@ -8,6 +8,7 @@ use App\Models\District;
 use App\Models\Employee;
 use App\Models\FinPaymentVoucher as Pv;
 use App\Models\FinPvAttachment;
+use App\Models\FinPvBatch;
 use App\Models\FinPvCategory;
 use App\Models\FinPvEvent;
 use App\Models\FinPvType;
@@ -172,20 +173,103 @@ class PaymentVoucherWorkflowService
         return DB::transaction(function () use ($actor, $pv, $expectedVersion) {
             $fresh = $this->lockedPv($actor, $pv, FinanceScope::AS_FINANCE);
             $this->assertStatus($fresh, [Pv::DRAFT], 'Only a draft can be sent to Audit.');
+
+            if ($fresh->batch_id !== null) {
+                throw ValidationException::withMessages(['status' => 'This voucher is in a batch. Send the batch, or take the voucher out of it first.']);
+            }
+
             $this->assertVersion($fresh, $expectedVersion);
+            $this->assertSendable($fresh);
 
-            $from = $fresh->status;
-            $fresh->forceFill([
-                'status' => Pv::WITH_AUDIT,
-                'round' => 1,
-                'submitted_at' => now(),
-                'last_submitted_at' => now(),
-                'submitted_snapshot' => $fresh->contentSnapshot(),
-            ])->save();
+            $this->sendToAudit($fresh, $actor, null);
 
-            $this->record($fresh, FinPvEvent::SUBMITTED, $actor);
-            $this->audit('finance.pv_submitted', $fresh, 'finance', ['from' => $from, 'to' => $fresh->status]);
-            $this->afterCommit($fresh, FinPvEvent::SUBMITTED, $actor);
+            return $fresh;
+        });
+    }
+
+    /**
+     * The completeness every send checks, alone or inside a batch: it is still a draft and nothing the voucher needs is missing.
+     * Returns the problems in plain words (empty = ready). BatchWorkflowService asks it of every member before it sends any.
+     *
+     * @return list<string>
+     */
+    public function sendProblems(Pv $pv): array
+    {
+        $problems = [];
+
+        if ($pv->status !== Pv::DRAFT) {
+            return ['It is not a draft.'];
+        }
+
+        $payeeId = match ($pv->payee_kind) {
+            Pv::PAYEE_EMPLOYEE, Pv::PAYEE_RETIREE => $pv->payee_employee_id,
+            Pv::PAYEE_DISTRICT => $pv->payee_district_id,
+            Pv::PAYEE_SUPPLIER => $pv->supplier_id,
+            default => null,
+        };
+
+        foreach ([
+            'The PV number is missing.' => trim((string) $pv->pv_no) !== '',
+            'The PV date is missing.' => $pv->pv_date !== null,
+            'Who is being paid is missing.' => trim((string) $pv->payee_name) !== '' && $payeeId !== null,
+            'The category and type are missing.' => $pv->category_id !== null && $pv->type_id !== null,
+            'The details are missing.' => trim((string) $pv->details) !== '',
+            'The amount is missing.' => (int) $pv->amount >= 1,
+        ] as $problem => $ok) {
+            if (! $ok) {
+                $problems[] = $problem;
+            }
+        }
+
+        return $problems;
+    }
+
+    protected function assertSendable(Pv $pv): void
+    {
+        $problems = $this->sendProblems($pv);
+
+        if ($problems !== []) {
+            throw ValidationException::withMessages(['status' => $problems]);
+        }
+    }
+
+    /** The one Draft -> With Audit transition (round 1), for a single send and for each voucher of a batch send. */
+    protected function sendToAudit(Pv $locked, User $actor, ?FinPvBatch $batch): void
+    {
+        $from = $locked->status;
+        $locked->forceFill([
+            'status' => Pv::WITH_AUDIT,
+            'round' => 1,
+            'submitted_at' => now(),
+            'last_submitted_at' => now(),
+            'submitted_snapshot' => $locked->contentSnapshot(),
+        ])->save();
+
+        $this->record($locked, FinPvEvent::SUBMITTED, $actor, batchId: $batch?->id);
+        $this->audit('finance.pv_submitted', $locked, 'finance', ['from' => $from, 'to' => $locked->status, 'batch_id' => $batch?->id]);
+
+        // A voucher sent inside a batch is announced by ONE notice for the batch (BatchWorkflowService), not one per voucher.
+        $this->afterCommit($locked, $batch ? null : FinPvEvent::SUBMITTED, $actor);
+    }
+
+    /**
+     * Draft -> With Audit for ONE voucher of a batch being sent. Used only by BatchWorkflowService, inside its own transaction and
+     * after it has checked every member: the voucher is re-read with a lock, must still be a draft of THIS batch and complete.
+     */
+    public function submitForBatch(User $actor, Pv|int $pv, FinPvBatch $batch): Pv
+    {
+        $this->authorise($actor, 'finance.create_pv');
+
+        return DB::transaction(function () use ($actor, $pv, $batch) {
+            $fresh = $this->lockedPv($actor, $pv, FinanceScope::AS_FINANCE);
+            $this->assertStatus($fresh, [Pv::DRAFT], 'Only a draft can be sent to Audit.');
+
+            if ((int) $fresh->batch_id !== (int) $batch->id) {
+                throw ValidationException::withMessages(['status' => 'This voucher is not in the batch being sent.']);
+            }
+
+            $this->assertSendable($fresh);
+            $this->sendToAudit($fresh, $actor, $batch);
 
             return $fresh;
         });
@@ -250,6 +334,10 @@ class PaymentVoucherWorkflowService
         return DB::transaction(function () use ($actor, $pv, $reason) {
             $fresh = $this->lockedPv($actor, $pv, FinanceScope::AS_FINANCE);
 
+            if ($fresh->status === Pv::DRAFT && $fresh->batch_id !== null) {
+                throw ValidationException::withMessages(['reason' => 'This draft is in a batch. Take it out of the batch first, then void it.']);
+            }
+
             if (! $fresh->isVoidable()) {
                 throw ValidationException::withMessages(['reason' => match ($fresh->status) {
                     Pv::AUDIT_ACKNOWLEDGED => 'Audit has acknowledged this voucher. Ask Audit to withdraw its tick before it is voided.',
@@ -280,6 +368,7 @@ class PaymentVoucherWorkflowService
             $fresh = $this->lockedPv($actor, $pv, FinanceScope::AS_AUDIT);
             $this->assertStatus($fresh, [Pv::WITH_AUDIT], 'This voucher is not waiting for Audit.');
             $this->assertNotSubmitter($actor, $fresh);
+            $this->assertAssignedTo($actor, $fresh);
 
             $from = $fresh->status;
             $fresh->forceFill(['status' => Pv::AUDIT_ACKNOWLEDGED])->save();
@@ -307,6 +396,7 @@ class PaymentVoucherWorkflowService
             $fresh = $this->lockedPv($actor, $pv, FinanceScope::AS_AUDIT);
             $this->assertStatus($fresh, [Pv::WITH_AUDIT], 'This voucher is not waiting for Audit.');
             $this->assertNotSubmitter($actor, $fresh);
+            $this->assertAssignedTo($actor, $fresh);
 
             $from = $fresh->status;
             $fresh->forceFill(['status' => Pv::QUERIED])->save();
@@ -331,6 +421,7 @@ class PaymentVoucherWorkflowService
                 ? 'Finance has already acknowledged this voucher, so the tick can no longer be withdrawn.'
                 : 'There is no Audit tick to withdraw on this voucher.');
             $this->assertNotSubmitter($actor, $fresh);
+            $this->assertAssignedTo($actor, $fresh);
 
             $from = $fresh->status;
             $fresh->forceFill(['status' => Pv::WITH_AUDIT, 'last_submitted_at' => now()])->save();
@@ -341,6 +432,74 @@ class PaymentVoucherWorkflowService
 
             return $fresh;
         });
+    }
+
+    // ------------------------------------------------------------------ Audit manager: assignment
+
+    /**
+     * Gives a voucher that is With Audit to an Audit officer, or moves it from one officer to another (an `assigned` or `reassigned`
+     * event: who did it, the officer it left and the one it went to, and an optional note). Needs audit.assign (audit_manager, or
+     * super_admin for a location they chose). The officer must be an active audit.review holder BASED AT the voucher's location who
+     * did not send the voucher to Audit in any round. Giving it to the officer who already holds it changes nothing and writes nothing.
+     * $notify is false when a batch assignment sends one notice for the whole group.
+     */
+    public function assign(User $actor, Pv|int $pv, int $officerId, ?string $note = null, bool $notify = true): Pv
+    {
+        $this->authorise($actor, 'audit.assign');
+        $note = $this->optionalText($note, 500, 'note');
+
+        return DB::transaction(function () use ($actor, $pv, $officerId, $note, $notify) {
+            $fresh = $this->lockedForAssignment($actor, $pv);
+            $this->assertStatus($fresh, [Pv::WITH_AUDIT], 'Only a voucher that is with Audit can be assigned or reassigned.');
+
+            $place = ['region_id' => (int) $fresh->region_id, 'district_id' => $fresh->district_id !== null ? (int) $fresh->district_id : null];
+            $officer = $this->scope->assignableOfficers($place, [$fresh->id])->whereKey($officerId)->first();
+
+            if (! $officer) {
+                throw ValidationException::withMessages(['officer' => 'Choose an active Audit officer of this location who did not send this voucher to Audit.']);
+            }
+
+            $previous = $fresh->assigned_to_user_id;
+
+            if ($previous !== null && (int) $previous === (int) $officer->id) {
+                return $fresh;
+            }
+
+            $fresh->forceFill([
+                'assigned_to_user_id' => $officer->id,
+                'assigned_by_user_id' => $actor->id,
+                'assigned_at' => now(),
+            ])->save();
+
+            $action = $previous === null ? FinPvEvent::ASSIGNED : FinPvEvent::REASSIGNED;
+
+            $this->record($fresh, $action, $actor, comment: $note, batchId: $fresh->batch_id, fromUserId: $previous, toUserId: $officer->id);
+            $this->audit('audit.pv_'.$action, $fresh, 'audit', ['from_user_id' => $previous, 'to_user_id' => $officer->id, 'batch_id' => $fresh->batch_id]);
+            $this->afterCommit($fresh, $notify ? $action : null, $actor);
+
+            return $fresh;
+        });
+    }
+
+    /** Re-reads the voucher with a lock and checks it is in the manager's assignment queue (a sent voucher of the location): 404 otherwise. */
+    protected function lockedForAssignment(User $actor, Pv|int $pv): Pv
+    {
+        $row = Pv::query()->lockForUpdate()->find($pv instanceof Pv ? $pv->id : $pv);
+        abort_unless($row && $this->scope->assignmentQueue($actor)->whereKey($row->id)->exists(), 404);
+
+        return $row;
+    }
+
+    /** Tick, query and withdraw belong to the officer the voucher is assigned to, and to nobody else (super_admin included). */
+    protected function assertAssignedTo(User $actor, Pv $pv): void
+    {
+        if ($pv->assigned_to_user_id === null) {
+            throw ValidationException::withMessages(['action' => 'This voucher is awaiting assignment. The Audit manager must give it to an Audit officer first.']);
+        }
+
+        if ((int) $pv->assigned_to_user_id !== (int) $actor->id) {
+            throw ValidationException::withMessages(['action' => 'This voucher is assigned to another Audit officer.']);
+        }
     }
 
     /** Whether the person submitted this voucher in any round (so may not review it). Used by screens to hide the buttons. */
@@ -609,8 +768,17 @@ class PaymentVoucherWorkflowService
 
     // ------------------------------------------------------------------ writing the trail
 
-    protected function record(Pv $pv, string $action, User $actor, ?string $comment = null, ?string $reasonCode = null, ?array $changes = null): FinPvEvent
-    {
+    protected function record(
+        Pv $pv,
+        string $action,
+        User $actor,
+        ?string $comment = null,
+        ?string $reasonCode = null,
+        ?array $changes = null,
+        ?int $batchId = null,
+        ?int $fromUserId = null,
+        ?int $toUserId = null,
+    ): FinPvEvent {
         return FinPvEvent::query()->create([
             'pv_id' => $pv->id,
             'round' => $pv->round,
@@ -619,6 +787,9 @@ class PaymentVoucherWorkflowService
             'comment' => $comment,
             'query_reason_code' => $reasonCode,
             'changes' => $changes === [] ? null : $changes,
+            'batch_id' => $batchId,
+            'from_user_id' => $fromUserId,
+            'to_user_id' => $toUserId,
         ]);
     }
 

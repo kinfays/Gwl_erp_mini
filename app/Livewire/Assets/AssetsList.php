@@ -265,7 +265,7 @@ class AssetsList extends Component
             'form.assigned_to_employee_id' => 'assigned to',
             'form.is_general_use' => 'general use',
             'form.department_id' => 'department',
-            'form.tag_no' => 'tag number',
+            'form.tag_no' => 'asset tag',
             'form.district_id' => 'location',
             'form.actual_location' => 'actual location',
             'form.purchased_at' => 'date',

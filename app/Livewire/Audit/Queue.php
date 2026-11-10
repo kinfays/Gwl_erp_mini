@@ -3,6 +3,7 @@
 namespace App\Livewire\Audit;
 
 use App\Livewire\Concerns\EnforcesModuleAccess;
+use App\Livewire\Finance\Concerns\PreparesPrint;
 use App\Livewire\Finance\Concerns\ScopesFinanceByActor;
 use App\Models\FinPaymentVoucher;
 use App\Services\Finance\PvCatalogService;
@@ -18,6 +19,7 @@ use Livewire\WithPagination;
 class Queue extends Component
 {
     use EnforcesModuleAccess;
+    use PreparesPrint;
     use ScopesFinanceByActor;
     use WithPagination;
 
@@ -30,6 +32,11 @@ class Queue extends Component
     public string $to = '';
 
     public string $categoryId = '';
+
+    protected function printAs(): string
+    {
+        return FinanceScope::AS_AUDIT;
+    }
 
     public function mount(): void
     {
@@ -61,7 +68,7 @@ class Queue extends Component
         $term = trim($this->search);
 
         $rows = $this->pvs(FinanceScope::AS_AUDIT)
-            ->with(['events.actor', 'category', 'type', 'region', 'district'])
+            ->with(['events.actor', 'category', 'type', 'region', 'district', 'batch:id,batch_no'])
             ->when($this->status !== '', fn ($query) => $query->where('fin_pvs.status', $this->status))
             ->when($this->categoryId !== '', fn ($query) => $query->where('fin_pvs.category_id', (int) $this->categoryId))
             ->when($this->from !== '', fn ($query) => $query->whereDate('fin_pvs.pv_date', '>=', $this->from))
@@ -82,6 +89,9 @@ class Queue extends Component
             'statuses' => collect(FinPaymentVoucher::STATUSES)->except(FinPaymentVoucher::DRAFT)->all(),
             'categories' => $catalogue->effective($this->workingLocation()),
             'showRoute' => 'audit.pvs.show',
+            'batchRoute' => 'audit.batches.show',
+            'printable' => true,
+            'mine' => $this->can('audit.review'),
             'party' => 'audit',
             'payeeFlags' => app(\App\Services\Finance\PayeeStatusService::class)->warningsFor($rows->items()),
         ] + $this->locationView());

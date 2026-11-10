@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\FinCatalogOverride;
 use App\Models\FinPaymentVoucher as Pv;
+use App\Models\FinBatchEvent;
+use App\Models\FinPvBatch;
 use App\Models\FinPvEvent;
 use App\Models\FinPvType;
 use App\Models\FinSupplier;
@@ -47,6 +49,8 @@ class FinanceDemoDataTest extends FinanceTestCase
             'users' => User::query()->where('staff_id', 'not like', 'DEMO-%')->orderBy('id')->get()->map(fn (User $u) => $u->only(['id', 'staff_id', 'is_active', 'full_name']))->all(),
             'vouchers' => Pv::query()->where('pv_no_key', 'not like', 'DEMO-%')->orderBy('id')->get()->map->getAttributes()->all(),
             'events' => FinPvEvent::query()->whereIn('pv_id', Pv::query()->where('pv_no_key', 'not like', 'DEMO-%')->select('id'))->orderBy('id')->get()->map->getAttributes()->all(),
+            'batches' => FinPvBatch::query()->where('title', 'not like', '%(Demo)')->orWhereNull('title')->orderBy('id')->get()->map->getAttributes()->all(),
+            'batch_events' => FinBatchEvent::query()->whereIn('batch_id', FinPvBatch::query()->where('title', 'not like', '%(Demo)')->orWhereNull('title')->select('id'))->orderBy('id')->get()->map->getAttributes()->all(),
             'suppliers' => FinSupplier::query()->where('name', 'not like', '% (Demo)')->orderBy('id')->get()->map->getAttributes()->all(),
             'types' => FinPvType::query()->where('name', 'not like', '%(Demo)')->orderBy('id')->get()->map->getAttributes()->all(),
             'overrides' => FinCatalogOverride::query()->whereIn('updated_by', User::query()->where('staff_id', 'not like', 'DEMO-%')->select('id'))->orderBy('id')->get()->map->getAttributes()->all(),
@@ -104,8 +108,8 @@ class FinanceDemoDataTest extends FinanceTestCase
         foreach ($this->keys() as $key) {
             $mine = Pv::query()->where('pv_no_key', 'like', "DEMO-{$key}-%");
             $this->assertSame(60, (clone $mine)->count(), $key);
-            $this->assertSame('DEMO-'.$key.'-0001', (clone $mine)->orderBy('id')->value('pv_no'));
-            $this->assertSame('DEMO-'.$key.'-0060', (clone $mine)->orderByDesc('id')->value('pv_no'));
+            $this->assertSame('DEMO-'.$key.'-0001', (clone $mine)->orderBy('pv_no_key')->value('pv_no'));
+            $this->assertSame('DEMO-'.$key.'-0060', (clone $mine)->orderByDesc('pv_no_key')->value('pv_no'));
 
             $byStatus = (clone $mine)->selectRaw('status, COUNT(*) as n')->groupBy('status')->pluck('n', 'status')->all();
             foreach (array_keys(Pv::STATUSES) as $status) {
@@ -228,7 +232,7 @@ class FinanceDemoDataTest extends FinanceTestCase
         $this->demo()->remove();
         $loud = $this->seedDemo(true);
 
-        $this->assertCount(12, $loud['credentials'], 'four accounts in each of three locations');
+        $this->assertCount(15, $loud['credentials'], 'five accounts in each of three locations');
         foreach ($loud['credentials'] as $row) {
             $user = User::query()->where('staff_id', $row['staff_id'])->firstOrFail();
             $this->assertTrue($user->is_active);
@@ -239,7 +243,7 @@ class FinanceDemoDataTest extends FinanceTestCase
             $this->assertStringContainsString('Demo', $user->full_name, 'clearly marked');
         }
 
-        $this->assertSame(12, count(array_unique(array_column($loud['credentials'], 'password'))), 'a different password for each');
+        $this->assertSame(15, count(array_unique(array_column($loud['credentials'], 'password'))), 'a different password for each');
     }
 
     public function test_the_demo_accounts_hold_the_real_roles_and_work_in_their_own_location(): void
@@ -251,13 +255,57 @@ class FinanceDemoDataTest extends FinanceTestCase
 
         $this->assertSame(60, $scope->pvs($fo)->count());
         $ao = User::query()->where('staff_id', 'DEMO-HO-AO')->firstOrFail();
-        $this->assertSame(60 - 6 - 1, $scope->pvs($ao, FinanceScope::AS_AUDIT)->count(), 'Finance reads drafts (6, and a voided draft); Audit never does');
+        // Finance reads 6 drafts and a voided draft that Audit never does; and the officer reads only what the manager gave them.
+        $this->assertSame(Pv::query()->where('pv_no_key', 'like', 'DEMO-HO-%')->where('assigned_to_user_id', $ao->id)->count(), $scope->pvs($ao, FinanceScope::AS_AUDIT)->count());
+        $this->assertGreaterThan(0, Pv::query()->where('pv_no_key', 'like', 'DEMO-HO-%')->where('status', Pv::WITH_AUDIT)->whereNull('assigned_to_user_id')->count(), 'some vouchers are left awaiting assignment');
+        $this->assertLessThan(60 - 6 - 1, $scope->pvs($ao, FinanceScope::AS_AUDIT)->count());
         $this->assertSame(0, $scope->pvs($this->person('X1', $this->kumasi, ['employee', 'finance_officer']))->where('pv_no', 'like', 'DEMO-HO-%')->count());
 
         // The Audit manager sees only vouchers an Audit officer worked on.
         $unreviewed = Pv::query()->where('pv_no_key', 'like', 'DEMO-HO-%')->where('status', Pv::WITH_AUDIT)->whereNotIn('id', FinPvEvent::query()->whereIn('action', FinPvEvent::REVIEWING)->select('pv_id'))->count();
         $this->assertGreaterThan(0, $unreviewed);
         $this->assertSame(0, $scope->pvs($am, FinanceScope::AS_AUDIT)->whereIn('id', Pv::query()->where('status', Pv::WITH_AUDIT)->whereNotIn('id', FinPvEvent::query()->whereIn('action', FinPvEvent::REVIEWING)->select('pv_id'))->select('id'))->count());
+    }
+
+    public function test_each_location_gets_the_five_kinds_of_batch_made_through_the_real_services_and_removal_takes_them_away(): void
+    {
+        $this->seedDemo();
+        $this->assertSame(15, FinPvBatch::query()->count());
+        $this->assertSame(0, FinPvBatch::query()->where('title', 'not like', '%(Demo)')->count(), 'every demo batch is marked');
+
+        foreach ($this->keys() as $key) {
+            $batches = FinPvBatch::query()->whereIn('id', Pv::query()->where('pv_no_key', 'like', "DEMO-{$key}-%")->whereNotNull('batch_id')->select('batch_id'))->orderBy('id')->get();
+            $this->assertCount(5, $batches, $key);
+            $this->assertSame(['awaiting_assignment', 'completed', 'draft', 'in_progress', 'in_progress'], $batches->map(fn (FinPvBatch $b) => $b->state()['key'])->sort()->values()->all(), "{$key}: a draft batch, one awaiting assignment, two in progress, one completed");
+            $this->assertMatchesRegularExpression('/^BT-[A-Z0-9]+-\d{4}-000[1-5]$/', $batches->first()->batch_no);
+
+            $split = $batches->first(fn (FinPvBatch $b) => str_starts_with((string) $b->title, 'Split'));
+            $officers = Pv::query()->where('batch_id', $split->id)->pluck('assigned_to_user_id')->unique();
+            $this->assertCount(2, $officers, "{$key}: the split batch is with two officers");
+            $this->assertSame(['audit_officer'], User::query()->whereIn('id', $officers)->get()->flatMap(fn (User $u) => $u->roles->pluck('name'))->reject(fn ($n) => $n === 'employee')->unique()->values()->all());
+
+            // Single vouchers are left unassigned too, and every assignment is an event by the demo audit manager.
+            $this->assertGreaterThan(0, Pv::query()->where('pv_no_key', 'like', "DEMO-{$key}-%")->whereNull('batch_id')->where('status', Pv::WITH_AUDIT)->whereNull('assigned_to_user_id')->count(), "{$key}: some single vouchers wait for an officer");
+            $this->assertSame(
+                [User::query()->where('staff_id', "DEMO-{$key}-AM")->value('id')],
+                FinPvEvent::query()->whereIn('pv_id', Pv::query()->where('batch_id', $split->id)->select('id'))->whereIn('action', FinPvEvent::ASSIGNING)->pluck('actor_user_id')->unique()->values()->all(),
+            );
+        }
+
+        $this->assertGreaterThan(0, FinBatchEvent::query()->count());
+
+        // The analytics read them: batches by state and the officers' workload (for the Audit manager).
+        $manager = User::query()->where('staff_id', 'DEMO-HO-AM')->firstOrFail();
+        $report = app(PvAnalyticsService::class)->report($manager, FinanceScope::AS_AUDIT, ['region_id' => $manager->employee->region_id, 'district_id' => $manager->employee->district_id], now()->subMonths(8)->toDateString(), now()->toDateString());
+        $this->assertSame(3, collect($report['batches']['states'])->where('count', '>', 0)->count(), 'Audit sees awaiting assignment, in progress and completed (never a draft batch)');
+        $this->assertGreaterThan(0, count($report['officers']));
+        $this->assertNotNull($report['assignment']['days_to_assign']['days']);
+
+        $removed = $this->demo()->remove();
+        $this->assertSame(15, $removed['batches']);
+        $this->assertSame(0, FinPvBatch::query()->count());
+        $this->assertSame(0, FinBatchEvent::query()->count());
+        $this->assertSame(0, DB::table('fin_batch_counters')->count());
     }
 
     // ------------------------------------------------------------------ re-running and removing
@@ -290,7 +338,10 @@ class FinanceDemoDataTest extends FinanceTestCase
         $kept = app(\App\Services\Finance\SupplierService::class)->create($realFin, ['name' => 'Used Elsewhere (Demo)']);
         $this->actingAs($realFin);
         $this->sent($realFin, ['pv_no' => 'REAL-PV-2', 'payee_kind' => 'supplier', 'supplier_id' => $kept->id]);
+        $realBatch = app(\App\Services\Finance\BatchWorkflowService::class)->create($realFin, [$this->draft($realFin, ['pv_no' => 'REAL-PV-3'])->id], 'Real batch');
         auth()->logout();
+        $counters = fn () => DB::table('fin_batch_counters')->orderBy('id')->get(['unit', 'year', 'last_number'])->map(fn ($row) => (array) $row)->all();
+        $countersBefore = $counters();
 
         $before = $this->realWorld();
         $this->assertNotEmpty($before['vouchers']);
@@ -324,16 +375,18 @@ class FinanceDemoDataTest extends FinanceTestCase
         $this->assertSame($before['audit'], $after['audit']);
         $this->assertSame($before['types'], $after['types']);
         $this->assertSame(Pv::query()->whereIn('id', [$pv->id])->count(), 1);
-        $this->assertSame(2, Pv::query()->count());
+        $this->assertSame(3, Pv::query()->count());
+        $this->assertSame([$realBatch->id], FinPvBatch::query()->pluck('id')->all(), 'only the real batch is left');
+        $this->assertSame($countersBefore, $counters(), 'the batch-number counters are back where they were, so the next real batch is not numbered after the demo ones');
     }
 
     public function test_removing_when_there_is_nothing_to_remove_is_harmless_and_a_run_after_removal_works_again(): void
     {
         $empty = $this->demo()->remove();
-        $this->assertSame(['vouchers' => 0, 'suppliers' => 0, 'suppliers_kept' => 0, 'catalogue' => 0, 'accounts' => 0, 'staff' => 0], $empty);
+        $this->assertSame(['vouchers' => 0, 'batches' => 0, 'suppliers' => 0, 'suppliers_kept' => 0, 'catalogue' => 0, 'accounts' => 0, 'staff' => 0], $empty);
 
         $this->seedDemo();
-        $this->artisan('finance:demo-data', ['--remove' => true])->expectsOutputToContain('Done: 180 vouchers')->assertExitCode(0);
+        $this->artisan('finance:demo-data', ['--remove' => true])->expectsOutputToContain('Done: 180 vouchers, 15 batches')->assertExitCode(0);
         $this->assertSame(0, Pv::query()->count());
 
         $this->assertFalse($this->seedDemo()['skipped']);

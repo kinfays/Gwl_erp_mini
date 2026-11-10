@@ -4,7 +4,9 @@ namespace App\Livewire\Finance\Concerns;
 
 use App\Models\District;
 use App\Models\FinPaymentVoucher;
+use App\Models\FinPvBatch;
 use App\Models\User;
+use App\Services\Finance\BatchWorkflowService;
 use App\Services\Finance\FinanceScope;
 use App\Services\Finance\PaymentVoucherWorkflowService;
 use App\Services\Finance\PvConflictException;
@@ -69,6 +71,23 @@ trait ScopesFinanceByActor
     protected function pvs(string $as): Builder
     {
         return $this->scope()->pvs($this->actor(), $as);
+    }
+
+    protected function batchService(): BatchWorkflowService
+    {
+        return app(BatchWorkflowService::class);
+    }
+
+    /** The batches the user reaches, as Finance (every status) or as Audit (sent ones). */
+    protected function batches(string $as): Builder
+    {
+        return $this->scope()->batches($this->actor(), $as);
+    }
+
+    /** One batch by id inside the user's reach: 404 outside it. */
+    protected function batchOrFail(int $id, string $as): FinPvBatch
+    {
+        return $this->batches($as)->findOrFail($id);
     }
 
     /** One voucher by id inside the user's reach: 404 outside it. */

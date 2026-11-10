@@ -14,6 +14,9 @@ class AuditSettings extends ModuleReminderSettings
 
     public const WAIT = 'audit_wait_days';
 
+    /** Days a sent voucher may stay unassigned before the Audit manager is reminded. */
+    public const UNASSIGNED_WAIT = 'audit_unassigned_days';
+
     public const REPEAT = 'audit_repeat_days';
 
     public function module(): string
@@ -36,7 +39,8 @@ class AuditSettings extends ModuleReminderSettings
     {
         return [
             self::ENABLED => $this->toggle('Send Audit reminders', 'Switch off to stop Audit reminders for this location.', 'gwl.audit_remind_enabled'),
-            self::WAIT => $this->days('Remind after', 'A voucher that has been With Audit this long without a tick or a query is reminded about to the Audit officers of the location.', 'gwl.fin_audit_wait_days'),
+            self::UNASSIGNED_WAIT => $this->days('Remind the Audit manager after', 'A voucher or batch that has been sent to Audit this long without being given to an officer is reminded about to the Audit managers of the location.', 'gwl.fin_audit_unassigned_wait_days'),
+            self::WAIT => $this->days('Remind the officer after', 'A voucher given to an officer that has waited this long for a tick or a query (counted from when it was given to them) is reminded about to that officer. Also what the Reports call overdue.', 'gwl.fin_audit_wait_days'),
             self::REPEAT => $this->days('Remind again after', 'The same voucher is reminded about at most once in this many days.', 'gwl.audit_remind_repeat_days'),
         ];
     }

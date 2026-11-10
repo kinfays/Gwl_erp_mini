@@ -22,6 +22,27 @@ class AuditController extends Controller
         return view('audit.home');
     }
 
+    public function assignments(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.assignments');
+    }
+
+    public function batches(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.batches');
+    }
+
+    public function batch(Request $request, int $batch): View
+    {
+        $this->enforceModule($request, Permission::MODULE_AUDIT);
+
+        return view('audit.batch', ['batch' => $batch]);
+    }
+
     public function show(Request $request, int $pv): View
     {
         $this->enforceModule($request, Permission::MODULE_AUDIT);

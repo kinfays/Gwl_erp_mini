@@ -10,7 +10,7 @@ use Livewire\Livewire;
 use Tests\Feature\Assets\Concerns\BuildsAssetFixtures;
 use Tests\TestCase;
 
-/** The optional "Tag No." (GWCL/FOE/YEAR/NUMBER) on the Assets form, shown right after Department. */
+/** The optional "Asset Tag" (GWCL/FOE/YEAR/NUMBER) on the Assets form, shown right after Department. */
 class AssetTagNumberTest extends TestCase
 {
     use BuildsAssetFixtures;
@@ -24,9 +24,9 @@ class AssetTagNumberTest extends TestCase
 
         $html = Livewire::test(AssetsList::class)->call('openCreate')->html();
 
-        $this->assertStringContainsString('Tag No.', $html);
+        $this->assertStringContainsString('Asset Tag', $html);
         $this->assertStringContainsString('placeholder="GWCL/FOE/YEAR/NUMBER"', $html);
-        $this->assertLessThan(strpos($html, 'Tag No.'), strpos($html, 'Select department'));
+        $this->assertLessThan(strpos($html, 'Asset Tag'), strpos($html, 'Select department'));
     }
 
     public function test_a_tag_number_is_saved_trimmed_and_found_by_search(): void

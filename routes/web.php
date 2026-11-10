@@ -44,6 +44,7 @@ use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\Finance\AuditController;
 use App\Http\Controllers\Finance\FinanceController;
 use App\Http\Controllers\Finance\FinanceExportController;
+use App\Http\Controllers\Finance\FinancePrintController;
 use App\Http\Controllers\GWater\GwaterController;
 use App\Http\Controllers\GWater\GwaterExportController;
 use App\Http\Controllers\Transport\TransportExpenseExportController;
@@ -787,6 +788,11 @@ if (config('gwl.finance_audit_enabled')) {
             Route::get('/pvs/{pv}/edit', [FinanceController::class, 'edit'])->whereNumber('pv')->middleware('permission:finance.create_pv')->name('pvs.edit');
             Route::get('/pvs/{pv}', [FinanceController::class, 'show'])->whereNumber('pv')->middleware('permission:finance.view')->name('pvs.show');
             Route::get('/pvs/{pv}/attachments/{attachment}', [FinanceController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:finance.view')->name('pvs.attachment');
+            Route::get('/pvs/{pv}/print', [FinancePrintController::class, 'financeVoucher'])->whereNumber('pv')->middleware('permission:finance.view')->name('pvs.print');
+            Route::get('/print/{token}', [FinancePrintController::class, 'financeSelected'])->where('token', '[A-Za-z0-9]{32}')->middleware('permission:finance.view')->name('print-selected');
+            Route::get('/batches/{batch}/print', [FinancePrintController::class, 'financeBatch'])->whereNumber('batch')->middleware('permission:finance.view')->name('batches.print');
+            Route::get('/batches', [FinanceController::class, 'batches'])->middleware('permission:finance.view')->name('batches');
+            Route::get('/batches/{batch}', [FinanceController::class, 'batch'])->whereNumber('batch')->middleware('permission:finance.view')->name('batches.show');
             Route::get('/categories', [FinanceController::class, 'settings'])->middleware('permission:finance.manage_categories')->name('settings');
             Route::get('/reports', [FinanceController::class, 'reports'])->middleware('permission:finance.view_reports')->name('reports');
             Route::get('/export/{report}/{format}', [FinanceExportController::class, 'finance'])
@@ -809,6 +815,13 @@ if (config('gwl.finance_audit_enabled')) {
             Route::get('/', [AuditController::class, 'home'])->middleware('permission:audit.view,audit.view_reviewed')->name('home');
             Route::get('/pvs/{pv}', [AuditController::class, 'show'])->whereNumber('pv')->middleware('permission:audit.view,audit.view_reviewed')->name('pvs.show');
             Route::get('/pvs/{pv}/attachments/{attachment}', [AuditController::class, 'attachment'])->whereNumber(['pv', 'attachment'])->middleware('permission:audit.view,audit.view_reviewed')->name('pvs.attachment');
+            // The Audit manager's assignment queue, and batches (an officer reads the batches that hold their vouchers).
+            Route::get('/pvs/{pv}/print', [FinancePrintController::class, 'auditVoucher'])->whereNumber('pv')->middleware('permission:audit.view,audit.view_reviewed,audit.assign')->name('pvs.print');
+            Route::get('/print/{token}', [FinancePrintController::class, 'auditSelected'])->where('token', '[A-Za-z0-9]{32}')->middleware('permission:audit.view,audit.view_reviewed,audit.assign')->name('print-selected');
+            Route::get('/batches/{batch}/print', [FinancePrintController::class, 'auditBatch'])->whereNumber('batch')->middleware('permission:audit.view,audit.view_reviewed,audit.assign')->name('batches.print');
+            Route::get('/assignments', [AuditController::class, 'assignments'])->middleware('permission:audit.assign')->name('assignments');
+            Route::get('/batches', [AuditController::class, 'batches'])->middleware('permission:audit.view,audit.view_reviewed,audit.assign')->name('batches');
+            Route::get('/batches/{batch}', [AuditController::class, 'batch'])->whereNumber('batch')->middleware('permission:audit.view,audit.view_reviewed,audit.assign')->name('batches.show');
             // Audit has no say over categories and types any more: the route stays only to answer 403 to an old bookmark.
             Route::get('/categories', [AuditController::class, 'categories'])->name('categories');
             Route::get('/reports', [AuditController::class, 'reports'])->middleware('permission:audit.view_reports')->name('reports');

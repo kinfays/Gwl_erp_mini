@@ -57,7 +57,7 @@ class FinanceManagersTest extends FinanceTestCase
             $this->slugs('finance_manager')
         );
         $this->assertEqualsCanonicalizing(
-            ['audit.view_reviewed', 'audit.view_reports', 'audit.export', 'audit.manage_reminders'],
+            ['audit.view_reviewed', 'audit.view_reports', 'audit.export', 'audit.manage_reminders', 'audit.assign'],
             $this->slugs('audit_manager')
         );
 
@@ -79,7 +79,7 @@ class FinanceManagersTest extends FinanceTestCase
         }
 
         $super = $this->slugs('super_admin');
-        foreach (['finance.manage_reminders', 'audit.manage_reminders', 'audit.view_reviewed'] as $permission) {
+        foreach (['finance.manage_reminders', 'audit.manage_reminders', 'audit.view_reviewed', 'audit.assign'] as $permission) {
             $this->assertContains($permission, $super);
         }
     }
@@ -150,7 +150,7 @@ class FinanceManagersTest extends FinanceTestCase
 
         $draft = $this->draft($fin, ['pv_no' => 'DRAFT-1']);
         $withAudit = $this->sent($fin, ['pv_no' => 'WA-1']);
-        $queried = $this->sent($fin, ['pv_no' => 'Q-1']);
+        $queried = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'Q-1']);
         $this->actingAs($aud);
         $this->workflow()->auditQuery($aud, $queried, 'duplicate', 'Seen');
         $voided = $this->draft($fin, ['pv_no' => 'VOID-1']);
@@ -178,8 +178,8 @@ class FinanceManagersTest extends FinanceTestCase
         $manager = $this->financeManager('FM1', $this->sowutuom);
 
         $draft = $this->draft($fin, ['pv_no' => 'D-1']);
-        $queried = $this->sent($fin, ['pv_no' => 'Q-1']);
-        $ticked = $this->sent($fin, ['pv_no' => 'T-1']);
+        $queried = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'Q-1']);
+        $ticked = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'T-1']);
         $this->actingAs($aud);
         $queried = $this->workflow()->auditQuery($aud, $queried, 'duplicate', 'Seen');
         $ticked = $this->workflow()->auditAcknowledge($aud, $ticked);
@@ -246,13 +246,14 @@ class FinanceManagersTest extends FinanceTestCase
         $aud = $this->audit('AU1', $this->sowutuom);
 
         $draft = $this->draft($fin, ['pv_no' => 'DRAFT']);
-        $unreviewed = $this->sent($fin, ['pv_no' => 'UNREVIEWED']);
-        $ticked = $this->sent($fin, ['pv_no' => 'TICKED']);
-        $queried = $this->sent($fin, ['pv_no' => 'QUERIED']);
-        $requeried = $this->sent($fin, ['pv_no' => 'RESUBMITTED']);
-        $withdrawn = $this->sent($fin, ['pv_no' => 'WITHDRAWN']);
-        $completed = $this->sent($fin, ['pv_no' => 'COMPLETED']);
-        $voidedAfterQuery = $this->sent($fin, ['pv_no' => 'VOIDED-QUERIED']);
+        // UNREVIEWED is assigned to the officer but nobody has acted on it; VOIDED-NEVER was sent and voided before it was assigned.
+        $unreviewed = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'UNREVIEWED']);
+        $ticked = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'TICKED']);
+        $queried = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'QUERIED']);
+        $requeried = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'RESUBMITTED']);
+        $withdrawn = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'WITHDRAWN']);
+        $completed = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'COMPLETED']);
+        $voidedAfterQuery = $this->sentAndAssigned($fin, $aud, ['pv_no' => 'VOIDED-QUERIED']);
         $voidedUnreviewed = $this->sent($fin, ['pv_no' => 'VOIDED-NEVER']);
 
         $this->actingAs($aud);
@@ -281,9 +282,9 @@ class FinanceManagersTest extends FinanceTestCase
         $mine = $this->scope()->pvs($manager, FinanceScope::AS_AUDIT)->pluck('pv_no')->sort()->values()->all();
         $this->assertSame(['COMPLETED', 'QUERIED', 'RESUBMITTED', 'TICKED', 'VOIDED-QUERIED', 'WITHDRAWN'], $mine);
 
-        // The queue officer sees the same location in full (drafts never): the unreviewed ones too.
+        // The officer reads what is assigned to them (the unreviewed one too) but not a voucher nobody assigned (VOIDED-NEVER).
         $officer = $this->scope()->pvs($b['aud'], FinanceScope::AS_AUDIT)->pluck('pv_no')->sort()->values()->all();
-        $this->assertSame(['COMPLETED', 'QUERIED', 'RESUBMITTED', 'TICKED', 'UNREVIEWED', 'VOIDED-NEVER', 'VOIDED-QUERIED', 'WITHDRAWN'], $officer);
+        $this->assertSame(['COMPLETED', 'QUERIED', 'RESUBMITTED', 'TICKED', 'UNREVIEWED', 'VOIDED-QUERIED', 'WITHDRAWN'], $officer);
 
         // The same single condition covers the timeline and the files.
         $this->assertSame(0, $this->scope()->events($manager, FinanceScope::AS_AUDIT)->where('pv_id', $b['unreviewed']->id)->count());
@@ -311,7 +312,10 @@ class FinanceManagersTest extends FinanceTestCase
         $this->actingAs($manager)->get(route('audit.pvs.attachment', [$pv->id, $attachment->id]))->assertNotFound();
         Livewire::actingAs($manager)->test(Queue::class)->set('search', 'WITH-FILE')->assertDontSee('WITH-FILE');
         Livewire::actingAs($manager)->test(Queue::class)->set('status', Pv::WITH_AUDIT)->assertDontSee('WITH-FILE');
+        $this->actingAs($aud)->get(route('audit.pvs.show', $pv->id))->assertNotFound();   // not assigned yet: invisible to officers too
+        $this->assignTo($pv, $aud);
         $this->actingAs($aud)->get(route('audit.pvs.show', $pv->id))->assertOk();
+        $this->actingAs($manager)->get(route('audit.pvs.show', $pv->id))->assertNotFound();   // assigned, still nobody has acted: not the manager's to open
 
         // Once an Audit officer has worked on it, the manager sees it, the timeline with who did what, and the file.
         $this->actingAs($aud);
@@ -388,17 +392,17 @@ class FinanceManagersTest extends FinanceTestCase
         $this->assertContains('UNREVIEWED', array_column($again['waiting']['items'], 'pv_no'));
     }
 
-    public function test_a_login_with_no_audit_right_reads_nothing_of_audit_and_an_officer_still_reads_the_whole_queue(): void
+    public function test_a_login_with_no_audit_right_reads_nothing_of_audit_and_an_officer_reads_what_is_theirs(): void
     {
         $b = $this->books();
         $financeOnly = $this->finance('F2', $this->sowutuom);
 
         $this->assertSame(0, $this->scope()->pvs($financeOnly, FinanceScope::AS_AUDIT)->count());
         $this->assertSame(0, $this->scope()->pvsForTotals($financeOnly, FinanceScope::AS_AUDIT)->count());
-        $this->assertSame(FinanceScope::AUDIT_ALL, $this->scope()->auditReach($b['aud']));
+        $this->assertSame(FinanceScope::AUDIT_ASSIGNED, $this->scope()->auditReach($b['aud']));
         $this->assertSame(FinanceScope::AUDIT_ALL, $this->scope()->auditReach($this->superAdmin()));
         $this->assertSame(FinanceScope::AUDIT_WORKED, $this->scope()->auditReach($this->auditManager('AM1', $this->sowutuom)));
-        $this->assertSame(FinanceScope::AUDIT_ALL, $this->scope()->auditReach($this->both('B1', $this->sowutuom)), 'a person who is also an Audit officer keeps the full queue');
+        $this->assertSame(FinanceScope::AUDIT_ASSIGNED, $this->scope()->auditReach($this->both('B1', $this->sowutuom)), 'a person who is also an Audit officer is an officer');
     }
 
     public function test_the_audit_menu_has_no_category_entry_and_the_manager_gets_the_review_list_and_reports(): void
@@ -409,7 +413,16 @@ class FinanceManagersTest extends FinanceTestCase
 
         $routes = fn ($user) => collect($navigation->build($user, 'audit')['sidebar'])->pluck('route')->filter()->values()->all();
 
-        $this->assertEqualsCanonicalizing(['audit.home', 'audit.reports', 'audit.reminder-settings'], $routes($manager));
-        $this->assertEqualsCanonicalizing(['audit.home', 'audit.suppliers', 'audit.reports'], $routes($officer));
+        $this->assertEqualsCanonicalizing(['audit.assignments', 'audit.home', 'audit.batches', 'audit.reports', 'audit.reminder-settings'], $routes($manager));
+        $this->assertEqualsCanonicalizing(['audit.home', 'audit.batches', 'audit.suppliers', 'audit.reports'], $routes($officer));
+
+        $labels = fn ($user) => collect($navigation->build($user, 'audit')['sidebar'])->pluck('label')->filter()->all();
+        $this->assertContains('Reviewed vouchers', $labels($manager));
+        $this->assertContains('My work', $labels($officer));
+
+        // The Audit tab opens the assignment queue for the manager, the list for everyone else.
+        $this->assertSame('audit.assignments', $navigation->auditLandingRoute($manager));
+        $this->assertSame('audit.home', $navigation->auditLandingRoute($officer));
+        $this->assertSame('audit.home', $navigation->auditLandingRoute($this->superAdmin()));
     }
 }

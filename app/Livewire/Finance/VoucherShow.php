@@ -88,7 +88,7 @@ class VoucherShow extends Component
     public function render()
     {
         $pv = $this->pvOrFail($this->pvId, FinanceScope::AS_FINANCE);
-        $pv->load(['events.actor', 'category', 'type', 'attachments', 'creator']);
+        $pv->load(['events.actor', 'events.toUser:id,full_name', 'category', 'type', 'attachments', 'creator', 'batch:id,batch_no,title', 'assignedTo:id,full_name', 'assignedBy:id,full_name']);
 
         return view('livewire.finance.voucher-show', [
             'pv' => $pv,
@@ -98,6 +98,7 @@ class VoucherShow extends Component
             'canAcknowledge' => $pv->status === $pv::AUDIT_ACKNOWLEDGED && $this->can('finance.acknowledge'),
             'canVoid' => $pv->isVoidable() && $this->can('finance.void_pv'),
             'attachmentRoute' => 'finance.pvs.attachment',
+            'batchRoute' => 'finance.batches.show',
             'payeeWarning' => app(\App\Services\Finance\PayeeStatusService::class)->warningFor($pv),
         ]);
     }

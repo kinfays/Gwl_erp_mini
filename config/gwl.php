@@ -105,6 +105,10 @@ return [
     'fin_attachment_max_per_pv' => (int) env('GWL_FIN_ATTACHMENT_MAX_PER_PV', 10),
     // Most rows one supplier import file may hold (the file is read into memory).
     'fin_supplier_import_max_rows' => (int) env('GWL_FIN_SUPPLIER_IMPORT_MAX_ROWS', 2000),
+    // Most vouchers one batch may hold (a batch is a container for sending, assigning and printing, never a unit of approval).
+    'fin_batch_max_vouchers' => (int) env('GWL_FIN_BATCH_MAX_VOUCHERS', 100),
+    // Most vouchers one printed PDF may hold (rows of a batch table, or voucher pages when each is on its own page).
+    'fin_print_max_vouchers' => (int) env('GWL_FIN_PRINT_MAX_VOUCHERS', 200),
     // Reminders: TWO independent sets, each changed only by its own manager and per location (Finance > Settings > Reminders needs
     // finance.manage_reminders; Audit > Settings > Reminders needs audit.manage_reminders). A voucher that has waited longer than
     // the threshold is reminded about, then again after the repeat interval while it still waits.
@@ -118,6 +122,8 @@ return [
     // Audit set (audit:remind): on/off, days With Audit before Audit officers are reminded, repeat interval.
     'audit_remind_enabled' => (bool) env('GWL_AUDIT_REMIND_ENABLED', true),
     'fin_audit_wait_days' => (int) env('GWL_FIN_AUDIT_WAIT_DAYS', 3),
+    // Days a sent voucher may stay without an Audit officer before the Audit manager is reminded (nobody in Audit can work on it until then).
+    'fin_audit_unassigned_wait_days' => (int) env('GWL_FIN_AUDIT_UNASSIGNED_WAIT_DAYS', 1),
     'audit_remind_repeat_days' => (int) env('GWL_AUDIT_REMIND_REPEAT_DAYS', 3),
     // Seconds the analytics payload of one location is kept (it is also dropped the moment a voucher changes).
     'fin_analytics_cache_seconds' => (int) env('GWL_FIN_ANALYTICS_CACHE_SECONDS', 300),

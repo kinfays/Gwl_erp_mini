@@ -111,7 +111,7 @@ if (! function_exists('dashboardModules')) {
                 'title' => 'Audit',
                 'description' => 'Review payment vouchers from Finance: tick them off or query them',
                 'icon' => 'AU',
-                'route' => route('audit.home'),
+                'route' => route(app(\App\Support\ErpNavigation::class)->auditLandingRoute($user)),
             ]] : []),
             [
                 'slug' => 'uac',

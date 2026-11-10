@@ -19,6 +19,30 @@
         <div><dt>Type</dt><dd>{{ $pv->type_label }}</dd></div>
         <div><dt>Amount (GH¢)</dt><dd>{{ $pv->amountFormatted() }}</dd></div>
         <div><dt>Prepared by</dt><dd>{{ $pv->creator?->full_name }}</dd></div>
+        @if ($pv->batch)
+            <div>
+                <dt>Batch</dt>
+                <dd>
+                    @if (! empty($batchRoute))<a href="{{ route($batchRoute, $pv->batch_id) }}" class="mono">{{ $pv->batch->batch_no }}</a>@else<span class="mono">{{ $pv->batch->batch_no }}</span>@endif
+                    @if (filled($pv->batch->title)) <span class="cell-muted">{{ $pv->batch->title }}</span>@endif
+                </dd>
+            </div>
+        @endif
+        @if ($pv->reachedAudit())
+            <div>
+                <dt>Audit officer</dt>
+                <dd>
+                    @if ($pv->assignedTo)
+                        {{ $pv->assignedTo->full_name }}
+                        <span class="cell-muted">assigned by {{ $pv->assignedBy?->full_name ?? 'the Audit manager' }}@if ($pv->assigned_at), {{ $pv->assigned_at->format('d M Y H:i') }}@endif</span>
+                    @elseif ($pv->status === \App\Models\FinPaymentVoucher::WITH_AUDIT)
+                        <span class="cell-muted">Awaiting assignment: nobody in Audit can work on it until the Audit manager gives it to an officer.</span>
+                    @else
+                        <span class="cell-muted">-</span>
+                    @endif
+                </dd>
+            </div>
+        @endif
         <div><dt>Details</dt><dd style="white-space: pre-line">{{ $pv->details }}</dd></div>
         @if (filled($pv->remarks))
             <div><dt>Finance's remarks</dt><dd style="white-space: pre-line">{{ $pv->remarks }}</dd></div>
@@ -70,7 +94,7 @@
         <ol class="fin-timeline">
             @foreach ($events as $event)
                 <li wire:key="ev-{{ $event->id }}">
-                    <strong>{{ $event->label() }}</strong>
+                    <strong>{{ $event->label() }}</strong>@if ($event->toUser) <span>to {{ $event->toUser->full_name }}</span>@endif
                     <span class="cell-muted">by {{ $event->actorName() }}, {{ $event->created_at->format('d M Y H:i') }}</span>
                     @if ($event->reasonLabel())<div>Reason: {{ $event->reasonLabel() }}</div>@endif
                     @if (filled($event->comment))<div style="white-space: pre-line">{{ $event->comment }}</div>@endif

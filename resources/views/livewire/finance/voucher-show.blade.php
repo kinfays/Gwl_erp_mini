@@ -2,6 +2,7 @@
     <x-ui.page-header title="Payment voucher" description="The voucher, what Audit and Finance have done with it, and what happens next.">
         <x-slot:actions>
             <x-ui.button icon="arrow-left" :href="route('finance.home')">All vouchers</x-ui.button>
+            <x-ui.button icon="printer" :href="route('finance.pvs.print', $pv->id)" target="_blank" rel="noopener">Print</x-ui.button>
             @if ($canEdit)<x-ui.button icon="pencil" :href="route('finance.pvs.edit', $pv->id)">Edit</x-ui.button>@endif
             @if ($canVoid)<x-ui.button variant="danger" wire:click="openVoid">Void</x-ui.button>@endif
             @if ($canAcknowledge)<x-ui.button variant="primary" icon="check" wire:click="acknowledge" loading="acknowledge">Acknowledge</x-ui.button>@endif

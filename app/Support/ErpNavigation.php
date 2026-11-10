@@ -67,6 +67,10 @@ class ErpNavigation
                     $module['route'] = $this->safeRoute($this->assetsLandingRoute($user));
                 }
 
+                if ($module['slug'] === Permission::MODULE_AUDIT) {
+                    $module['route'] = $this->safeRoute($this->auditLandingRoute($user));
+                }
+
                 return $module;
             })
             ->values()
@@ -89,6 +93,17 @@ class ErpNavigation
                 ])->filter()->join(' - ') ?: 'Location not assigned',
             ],
         ];
+    }
+
+    /**
+     * Where the Audit tab opens: the Audit manager's work is the assignment queue, everyone else's the list of vouchers they can
+     * open (an officer's "My work", super_admin's whole list).
+     */
+    public function auditLandingRoute(User $user): string
+    {
+        $managerOnly = $user->hasPermission('audit.assign') && ! $user->hasPermission('audit.review') && ! $user->hasRoles('super_admin');
+
+        return $managerOnly ? 'audit.assignments' : 'audit.home';
     }
 
     /**
@@ -1281,6 +1296,14 @@ class ErpNavigation
                 'can' => $can('finance.view'),
             ],
             [
+                'label' => 'Batches',
+                'route' => 'finance.batches',
+                'active' => ['finance.batches', 'finance.batches.show'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'layers',
+                'can' => $can('finance.view'),
+            ],
+            [
                 'label' => 'New voucher',
                 'route' => 'finance.pvs.create',
                 'active' => ['finance.pvs.create'],
@@ -1343,12 +1366,29 @@ class ErpNavigation
 
         return [
             [
-                'label' => 'Review queue',
+                'label' => 'Assignments',
+                'route' => 'audit.assignments',
+                'active' => ['audit.assignments'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'user-check',
+                'can' => $can('audit.assign'),
+            ],
+            [
+                // An officer's own list; for the manager and read-only roles it is the vouchers an officer has worked on.
+                'label' => $can('audit.review')($user) ? 'My work' : 'Reviewed vouchers',
                 'route' => 'audit.home',
                 'active' => ['audit.home', 'audit.pvs.show'],
                 'icon' => $this->icon('list'),
                 'icon_name' => 'circle-check',
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('audit.view') || $currentUser->hasPermission('audit.view_reviewed'),
+            ],
+            [
+                'label' => 'Batches',
+                'route' => 'audit.batches',
+                'active' => ['audit.batches', 'audit.batches.show'],
+                'icon' => $this->icon('list'),
+                'icon_name' => 'layers',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('audit.view') || $currentUser->hasPermission('audit.view_reviewed') || $currentUser->hasPermission('audit.assign'),
             ],
             [
                 'label' => 'Suppliers',
