@@ -77,7 +77,7 @@ class IctScopeTest extends TestCase
 
     public function test_a_regional_ict_user_cannot_assign_roles_that_are_not_ict_assignable(): void
     {
-        foreach (['admin', 'managing_director', 'ict_team', 'credit_union_officer', 'credit_union_committee', 'super_admin'] as $role) {
+        foreach (['admin', 'managing_director', 'ict_team', 'commercial_officer', 'commercial_manager', 'super_admin'] as $role) {
             $this->patchRoles($this->regionalIct, $this->temaUser, [$role])->assertSessionHasErrors('roles.0');
             $this->assertFalse($this->temaUser->fresh()->hasRoles($role), $role);
         }
@@ -260,7 +260,7 @@ class IctScopeTest extends TestCase
         $globalAdmin = $offered($this->globalAdmin, 'EMP004');
         $this->assertContains('admin', $globalAdmin);
         $this->assertContains('managing_director', $globalAdmin);
-        $this->assertContains('credit_union_officer', $globalAdmin);
+        $this->assertContains('commercial_officer', $globalAdmin);
         $this->assertNotContains('super_admin', $globalAdmin);
     }
 

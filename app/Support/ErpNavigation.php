@@ -168,13 +168,6 @@ class ErpNavigation
                 'route' => $this->safeRoute('transport.home'),
             ],
             [
-                'slug' => Permission::MODULE_CREDIT_UNION,
-                'title' => 'Credit Union',
-                'short' => 'Credit Union',
-                'icon_name' => 'landmark',
-                'route' => $this->safeRoute('credit-union.home'),
-            ],
-            [
                 'slug' => Permission::MODULE_COMMERCIAL,
                 'title' => 'Commercial',
                 'short' => 'Commercial',
@@ -221,7 +214,6 @@ class ErpNavigation
         return array_values(array_filter(
             $definitions,
             fn (array $def) => match ($def['slug']) {
-                Permission::MODULE_CREDIT_UNION => (bool) config('gwl.credit_union_module_enabled'),
                 Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
                 Permission::MODULE_GWATER => (bool) config('gwl.gwater_module_enabled'),
@@ -241,7 +233,6 @@ class ErpNavigation
             Permission::MODULE_VISITORS => $this->visitorsSidebar($user),
             Permission::MODULE_ASSETS => $this->assetsSidebar($user),
             Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
-            Permission::MODULE_CREDIT_UNION => $this->creditUnionSidebar($user),
             Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
             Permission::MODULE_GWATER => $this->gwaterSidebar($user),
@@ -898,119 +889,6 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'car',
                 'can' => $canManageCatalog,
-            ],
-        ];
-    }
-
-    protected function creditUnionSidebar(User $user): array
-    {
-        $canManageMembers = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_members');
-        $canSeeApplications = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_members')
-            || $currentUser->hasPermission('credit_union.approve_membership');
-        $canApply = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.apply_membership');
-        $canManageDeductions = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_deductions');
-        $canSeeLoans = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_loans')
-            || $currentUser->hasPermission('credit_union.approve_loans');
-        $canSeeWithdrawals = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_withdrawals')
-            || $currentUser->hasPermission('credit_union.approve_withdrawals');
-        $canManageRefunds = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_refunds');
-        $canManageReceipts = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_receipts');
-        $canSeeInterestDistributions = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('credit_union.manage_interest_distribution')
-            || $currentUser->hasPermission('credit_union.approve_interest_distribution');
-
-        return [
-            [
-                'label' => 'Members',
-                'route' => 'credit-union.members',
-                'active' => ['credit-union.members', 'credit-union.members.show'],
-                'icon' => $this->icon('list'),
-                'icon_name' => 'users',
-                'can' => $canManageMembers,
-            ],
-            [
-                'label' => 'Applications',
-                'route' => 'credit-union.members.applications',
-                'active' => ['credit-union.members.applications'],
-                'icon' => $this->icon('check'),
-                'icon_name' => 'clipboard-check',
-                'can' => $canSeeApplications,
-            ],
-            [
-                'type' => 'section',
-                'label' => 'Contributions',
-            ],
-            [
-                'label' => 'Deductions',
-                'route' => 'credit-union.deductions',
-                'active' => ['credit-union.deductions', 'credit-union.deductions.show'],
-                'icon' => $this->icon('stack'),
-                'icon_name' => 'layers',
-                'can' => $canManageDeductions,
-            ],
-            [
-                'label' => 'Loans',
-                'route' => 'credit-union.loans',
-                'active' => ['credit-union.loans', 'credit-union.loans.show'],
-                'icon' => $this->icon('bars'),
-                'icon_name' => 'hand-coins',
-                'can' => $canSeeLoans,
-            ],
-            [
-                'label' => 'Receipts',
-                'route' => 'credit-union.receipts',
-                'active' => ['credit-union.receipts'],
-                'icon' => $this->icon('plus-circle'),
-                'icon_name' => 'receipt',
-                'can' => $canManageReceipts,
-            ],
-            [
-                'type' => 'section',
-                'label' => 'Payouts',
-            ],
-            [
-                'label' => 'Withdrawals',
-                'route' => 'credit-union.withdrawals',
-                'active' => ['credit-union.withdrawals', 'credit-union.withdrawals.show'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'banknote',
-                'can' => $canSeeWithdrawals,
-            ],
-            [
-                'label' => 'Refunds',
-                'route' => 'credit-union.refunds',
-                'active' => ['credit-union.refunds'],
-                'icon' => $this->icon('spark'),
-                'icon_name' => 'undo-2',
-                'can' => $canManageRefunds,
-            ],
-            [
-                'label' => 'Interest Distribution',
-                'route' => 'credit-union.interest-distributions',
-                'active' => ['credit-union.interest-distributions', 'credit-union.interest-distributions.show'],
-                'icon' => $this->icon('grid'),
-                'icon_name' => 'percent',
-                'can' => $canSeeInterestDistributions,
-            ],
-            [
-                'type' => 'section',
-                'label' => 'Self Service',
-            ],
-            [
-                'label' => 'Apply for Membership',
-                'route' => 'credit-union.apply',
-                'active' => ['credit-union.apply'],
-                'icon' => $this->icon('user-plus'),
-                'icon_name' => 'user-plus',
-                'can' => $canApply,
             ],
         ];
     }

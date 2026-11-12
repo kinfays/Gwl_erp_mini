@@ -182,27 +182,6 @@
             'in_service' => ['success'],
             'decommissioned' => ['muted'],
         ],
-        'credit-union' => [
-            'draft' => ['muted'],
-            'pending' => ['warning'],
-            'awaiting_guarantor' => ['warning', 'Awaiting Guarantor'],
-            'imported' => ['info'],
-            'computed' => ['info'],
-            'approved' => ['success'],
-            'accepted' => ['success'],
-            'disbursed' => ['info'],
-            'active' => ['success'],
-            'posted' => ['success'],
-            'reconciled' => ['success'],
-            'paid' => ['success'],
-            'completed' => ['muted'],
-            'exited' => ['muted'],
-            'inactive' => ['muted'],
-            'variance' => ['warning'],
-            'rejected' => ['danger'],
-            'declined' => ['danger'],
-            'defaulted' => ['danger'],
-        ],
     ];
 
     // Fallback for values used outside a declared domain.

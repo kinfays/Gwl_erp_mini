@@ -5,6 +5,8 @@
 > Verified against the real code (`DeductionImportService`, `Deductions` Livewire component, `Permission`, `ErpNavigation`, `routes/web.php`, `config/gwl.php`, `Employee`/`District`/`Region`, the Assets `Summary` + `AssetSummaryService`) and against the two sample files the user supplied. Where the design depends on something not yet confirmed with the Commercial team, it is listed in §10 rather than assumed.
 >
 > Follows the same approach as `credit-union-module-design.md` (batch header + line rows, preview → validate → post) and `ict-assets-analytics-roadmap.md` (one service feeding the screen and the exports; every number drills into real rows).
+>
+> **Note (2026-11-12):** the Credit Union module this design was modelled on has been removed from the ERP. Every mention of it below is kept as a record of where the pattern came from, not as somewhere to go and read: its files no longer exist. For a living example of the same shape, read the Transport module; for the originals, use git history before the removal commit (migration `2026_11_12_000001_drop_credit_union_module_tables.php`).
 
 ---
 
@@ -259,13 +261,13 @@ Everything is computed by services from **effective** rows (§2.3) and takes the
 
 ```
 Implement Phase 1 of the Commercial module for this ERP, per commercial-module-design.md
-(sections 1, 2, 3 and the Phase 1 line of section 5). Read first: CLAUDE.md, the Credit Union
-module as the closest precedent — app/Services/CreditUnion/DeductionImportService.php,
-app/Livewire/CreditUnion/Deductions.php and DeductionBatchShow.php,
-database/migrations/2026_09_11_000001_create_credit_union_deduction_tables.php and
-2026_09_10_000002_seed_credit_union_module_access.php — plus app/Models/Permission.php,
-app/Support/ErpNavigation.php (moduleDefinitions(), sidebarFor(), creditUnionSidebar()),
-the credit-union route group in routes/web.php (around line 408), config/gwl.php,
+(sections 1, 2, 3 and the Phase 1 line of section 5). Read first: CLAUDE.md, the Transport
+module as the closest surviving precedent for a module's shape (the Credit Union module was
+the original model for this design but has since been removed from the ERP - see the
+removal migration 2026_11_12_000001_drop_credit_union_module_tables.php, or git history before
+that commit, if you need the originals) - plus app/Models/Permission.php,
+app/Support/ErpNavigation.php (moduleDefinitions(), sidebarFor(), commercialSidebar()),
+the commercial route group in routes/web.php, config/gwl.php,
 app/Imports/RawRowsImport.php, app/Livewire/Assets/Concerns/ScopesAssetsByActor.php,
 and the Employee / District / Region models. Follow CLAUDE.md conventions throughout.
 

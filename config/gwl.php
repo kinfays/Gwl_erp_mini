@@ -50,11 +50,6 @@ return [
 
     'visitor_kiosk_reset_seconds' => (int) env('GWL_VISITOR_KIOSK_RESET_SECONDS', 5),
     'max_import_failure_percent' => (int) env('GWL_MAX_IMPORT_FAILURE_PERCENT', 20),
-    'credit_union_module_enabled' => (bool) env('GWL_CREDIT_UNION_MODULE_ENABLED', false),
-    'credit_union_membership_form_fee' => (float) env('GWL_CREDIT_UNION_MEMBERSHIP_FORM_FEE', 20),
-    'credit_union_initial_share_amount' => (float) env('GWL_CREDIT_UNION_INITIAL_SHARE_AMOUNT', 200),
-    'credit_union_loan_annual_interest_rate_percent' => (float) env('GWL_CREDIT_UNION_LOAN_INTEREST_RATE', 15.0),
-    'credit_union_loan_multiple_without_guarantor' => (float) env('GWL_CREDIT_UNION_LOAN_MULTIPLE_WITHOUT_GUARANTOR', 2),
 
     // Health & Safety (incident reporting now; equipment and PPE later): off by default; when off the routes don't register
     // and the module is hidden from navigation (docs/health-safety-module-design.md).

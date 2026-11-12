@@ -234,7 +234,7 @@ If actor is ICT Team without Global Admin/super_admin, they work in one scope (`
 
 - User visibility and employee search are constrained to that scope.
 - Can only assign/remove roles flagged `ict_assignable`, only to users in that scope.
-- Cannot assign admin (Global Admin), ict_team, managing_director or credit union roles.
+- Cannot assign admin (Global Admin), ict_team or managing_director roles.
 - Cannot update own roles, edit role permissions, create or delete roles.
 
 ### Audit log visibility

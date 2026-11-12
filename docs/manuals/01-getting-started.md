@@ -188,7 +188,7 @@ None at portal level. Bulk user and staff imports are covered in manuals 02 and 
 - **Five wrong attempts** lock you out for about **two minutes** ("try again in 2 minutes time"). The lock is per Staff ID and computer.
 - **Roles decide the tabs.** The portal shows the tabs your role may open. A role grants *module access*; inside a module, finer *permissions* decide which buttons and pages you get.
 - **Everyone has Leave** and (when switched on) **Health & Safety** and the **Blog**.
-- **Some modules may be switched off** for the whole organisation: Credit Union, Commercial, Health & Safety, G-Water, Finance and Audit, and the Blog each have an on/off switch. When off, no tab appears for anyone and their addresses answer "not found". Parts of Assets (Mobile device management), the Commercial Customer List and Commercial SMS have their own extra switches.
+- **Some modules may be switched off** for the whole organisation: Commercial, Health & Safety, G-Water, Finance and Audit, and the Blog each have an on/off switch. When off, no tab appears for anyone and their addresses answer "not found". Parts of Assets (Mobile device management), the Commercial Customer List and Commercial SMS have their own extra switches.
 - **Location matters.** Head Office is treated as its own district. Regional staff see their own region. Records belonging to another location look as if they do not exist ("not found"), not "forbidden".
 - **Nothing important is deleted.** Most records are voided or deactivated with a reason, so there is always a trail.
 - **Super Admin** accounts are invisible to ordinary users everywhere (user lists, audit logs).

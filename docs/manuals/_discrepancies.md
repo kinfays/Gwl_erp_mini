@@ -46,11 +46,7 @@ Found while writing the end-user manuals. The code was treated as the source of 
 19. **Audit Manager and Suppliers.** The Audit Suppliers route needs `audit.view`, which the Audit Manager does not hold (only `view_reviewed`), so the manager has no Suppliers screen. Check intent.
 20. **Finance Manager exports/prints.** Finance Manager holds `export` and `view_reports` but not `create_pv`; printing is open to anyone with `finance.view`.
 
-## Credit Union
-
-21. **No documentation.** There is no `docs/` page or section for the Credit Union module and `APP_DOCUMENTATION.md` predates it. Rules (loan limits, interest method, sources, who sees reports) were taken from labels and validation rules only. The module has `credit_union.manage_settings` but no Settings route was found among the routes or sidebar.
-
 ## Documentation structure
 
-22. `CLAUDE.md` still says the older docs (`APP_DOCUMENTATION.md`, `docs/`) predate Assets and Transport; this is still true for Assets, and `docs/18` and `docs/19` cover Transport scoping and catalogue only, not the screens.
-23. `docs/17-g-water-build-prompt.md`, `17-g-water-phases-2-4-prompt.md` and `17-transport-region-scope-prompt.md` are build prompts rather than documentation; they can be moved to an archive folder.
+21. `CLAUDE.md` still says the older docs (`APP_DOCUMENTATION.md`, `docs/`) predate Assets and Transport; this is still true for Assets, and `docs/18` and `docs/19` cover Transport scoping and catalogue only, not the screens.
+22. `docs/17-g-water-build-prompt.md`, `17-g-water-phases-2-4-prompt.md` and `17-transport-region-scope-prompt.md` are build prompts rather than documentation; they can be moved to an archive folder.

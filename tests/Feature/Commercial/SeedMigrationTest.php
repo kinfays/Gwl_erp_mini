@@ -46,7 +46,7 @@ class SeedMigrationTest extends CommercialTestCase
             $this->assertTrue($can($role), "{$role} should have access");
         }
 
-        foreach (['employee', 'admin', 'ict_team', 'hr_headoffice', 'hr_region', 'manager', 'departmental_manager', 'secretary', 'receptionist', 'driver', 'transport_manager', 'managing_director', 'credit_union_officer'] as $role) {
+        foreach (['employee', 'admin', 'ict_team', 'hr_headoffice', 'hr_region', 'manager', 'departmental_manager', 'secretary', 'receptionist', 'driver', 'transport_manager', 'managing_director'] as $role) {
             $this->assertFalse($can($role), "{$role} should not have access");
         }
     }

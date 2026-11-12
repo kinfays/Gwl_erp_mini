@@ -28,7 +28,7 @@ return new class extends Migration
                 ['name' => $slug],
                 [
                     'display_name' => $displayName,
-                    'module' => Permission::MODULE_CREDIT_UNION,
+                    'module' => 'credit_union',
                     'description' => $displayName.' permission for CREDIT_UNION module',
                     'created_at' => $now,
                     'updated_at' => $now,

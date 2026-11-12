@@ -78,7 +78,7 @@ class GlobalAdminTest extends TestCase
 
         $this->assertSame('Global Admin', $this->role('admin')->display_name);
         $this->assertTrue($this->role('hr_region')->ict_assignable);
-        $this->assertFalse($this->role('credit_union_officer')->ict_assignable);
+        $this->assertFalse($this->role('commercial_officer')->ict_assignable);
         $this->assertTrue($this->role('admin')->is_protected);
         $this->assertFalse($this->role('ict_team')->is_protected);
     }
@@ -339,10 +339,10 @@ class GlobalAdminTest extends TestCase
         $headOffice = $this->person('EMP021', $this->headOffice);
 
         // Anywhere: regional and Head Office staff, including roles ICT can't hand out.
-        $this->patchRoles($this->globalAdmin, $regional, ['regional_chief_manager', 'credit_union_officer', 'managing_director', 'ict_team'])
+        $this->patchRoles($this->globalAdmin, $regional, ['regional_chief_manager', 'commercial_officer', 'managing_director', 'ict_team'])
             ->assertSessionHasNoErrors();
         $this->assertEqualsCanonicalizing(
-            ['regional_chief_manager', 'credit_union_officer', 'managing_director', 'ict_team'],
+            ['regional_chief_manager', 'commercial_officer', 'managing_director', 'ict_team'],
             $regional->fresh()->roles->pluck('name')->all()
         );
 

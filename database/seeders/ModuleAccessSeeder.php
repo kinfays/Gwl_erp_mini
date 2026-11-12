@@ -17,7 +17,6 @@ class ModuleAccessSeeder extends Seeder
                 Permission::MODULE_UAC,
                 Permission::MODULE_ASSETS,
                 Permission::MODULE_TRANSPORT,
-                Permission::MODULE_CREDIT_UNION,
                 Permission::MODULE_COMMERCIAL,
                 Permission::MODULE_GWATER,
                 Permission::MODULE_FINANCE,
@@ -32,8 +31,6 @@ class ModuleAccessSeeder extends Seeder
             'ict_team' => [Permission::MODULE_UAC, Permission::MODULE_ASSETS],
             'transport_manager' => [Permission::MODULE_TRANSPORT],
             'driver' => [Permission::MODULE_TRANSPORT],
-            'credit_union_officer' => [Permission::MODULE_CREDIT_UNION],
-            'credit_union_committee' => [Permission::MODULE_CREDIT_UNION],
             'commercial_officer' => [Permission::MODULE_COMMERCIAL],
             'commercial_manager' => [Permission::MODULE_COMMERCIAL],
             'hs_officer' => [],
@@ -53,7 +50,7 @@ class ModuleAccessSeeder extends Seeder
             'chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS, Permission::MODULE_COMMERCIAL],
             'regional_chief_manager' => [Permission::MODULE_LEAVE, Permission::MODULE_STAFF, Permission::MODULE_LETTERS, Permission::MODULE_COMMERCIAL],
             'managing_director' => [Permission::MODULE_LEAVE],
-            'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT, Permission::MODULE_CREDIT_UNION],
+            'employee' => [Permission::MODULE_LEAVE, Permission::MODULE_TRANSPORT],
             'receptionist' => [Permission::MODULE_VISITORS],
         ];
 

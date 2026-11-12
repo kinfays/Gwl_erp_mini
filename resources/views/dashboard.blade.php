@@ -11,7 +11,6 @@
             'visitors' => 'door-open',
             'assets' => 'monitor',
             'transport' => 'car',
-            'credit_union' => 'landmark',
             'commercial' => 'chart-column',
             'health_safety' => 'triangle-alert',
             'gwater' => 'droplets',

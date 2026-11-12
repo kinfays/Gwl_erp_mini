@@ -22,7 +22,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 /**
  * Bring an existing register of fire extinguishers or first aid kits in from Excel: preview, then confirm, in the shape of
- * the Credit Union deduction import (errors, warnings, counts, a failure threshold) but with no stored batch: confirming
+ * a preview/validate/confirm import (errors, warnings, counts, a failure threshold) but with no stored batch: confirming
  * reads the file again and inserts the usable rows in one transaction.
  *
  * Create-only. An asset code that already exists is skipped with a warning, never updated. The import never creates a

@@ -19,7 +19,7 @@ Every module manual has the same twelve sections, in this order, so you can find
 
 Each manual ends with a **To confirm** list: points that looked unfinished, ambiguous, or different from older design notes. They are not described as working features.
 
-Some manuals (Assets and Commercial) are longer because they contain a second part (MDM; Customer List and SMS) that has its own on/off switch. Credit Union has no design notes at all; its manual is the thinnest and has the longest "To confirm" list.
+Some manuals (Assets and Commercial) are longer because they contain a second part (MDM; Customer List and SMS) that has its own on/off switch.
 
 ## Writing style
 

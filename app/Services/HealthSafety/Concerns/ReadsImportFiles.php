@@ -12,7 +12,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 /**
  * Reading an Excel sheet of rows for the Health & Safety imports (equipment, PPE issues): the file as raw rows, tolerant
- * headings, tidy cell text and dates. The cell handling was copied from the Credit Union deduction import, not shared with
+ * headings, tidy cell text and dates. The cell handling was copied from an earlier import service, not shared with
  * it; the two Health & Safety imports share this.
  */
 trait ReadsImportFiles

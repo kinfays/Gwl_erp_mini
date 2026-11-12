@@ -1,6 +1,6 @@
 # Credit Union Module — Design Spec
 
-Status: draft for review · Prepared: 2026-09-10, revised 2026-09-11 (two rounds) · Source data: `INDIVIDUAL PRIVATE.xlsx` (per-member passbook), `PRIVATE CUA LEDGER 2026.xlsx` (union master workbook), plus policy clarifications supplied by the credit union committee on 2026-09-11
+Status: **module removed from the ERP on 2026-11-12; retained as the reference spec for the standalone Credit Union app.** Originally prepared: 2026-09-10, revised 2026-09-11 (two rounds) · Source data: `INDIVIDUAL PRIVATE.xlsx` (per-member passbook), `PRIVATE CUA LEDGER 2026.xlsx` (union master workbook), plus policy clarifications supplied by the credit union committee on 2026-09-11
 
 This document analyzes the credit union's current Excel-based record-keeping and proposes a `credit_union` module for the ERP that follows the conventions already established in `CLAUDE.md` and verified directly against the current codebase (`app/Models/Permission.php`, `routes/web.php`, the Transport module's migrations, etc.).
 
@@ -829,3 +829,42 @@ were doing by hand.
 ---
 
 *Prepared from a direct read of `app/Models/Permission.php`, `app/Models/ModuleAccess.php`, `app/Models/AuditLog.php`, `app/Support/Audit.php`, both `EnforcesModuleAccess` traits, `config/gwl.php`/`gwcl.php`, `routes/web.php`, `app/Models/Employee.php`, the Transport module's two migrations, and — for §8/§9 — the actual Phase 1–4 implementation already on disk (`CreditUnionMember.php`, `CreditUnionLedgerEntry.php`, `CreditUnionLoan.php`, `LedgerService.php`, `LoanService.php`, the live `credit-union.` route group, and every phased migration through `2026_09_13_000003`), via the linked device bridge into `C:\laragon\www\erp_project`.*
+
+---
+
+## 10. Status: removed from the ERP (2026-11-12)
+
+The module was built in full (Phases 1–5 above) and then put behind the feature flag
+`GWL_CREDIT_UNION_MODULE_ENABLED`, defaulted to `false`, while a standalone Credit Union app
+was considered. **That flag-based hide has now been superseded by full removal.** On
+2026-11-12 the decision was taken to delete the module from the ERP rather than keep it
+switched off, and it was removed in one change set:
+
+- all module code (models, services, Livewire components, controller, form request, views,
+  PDF statement template, factories, tests, the `CreditUnionRolePermissionSeeder` and the
+  `credit-union:post-deferred-loan-repayments` console command);
+- every reference from the shared files (`routes/web.php`, `routes/console.php`,
+  `ErpNavigation`, `Permission::MODULES`, `config/gwl.php`, `app/helpers.php`, the role,
+  permission, module-access and database seeders, the dashboard icon map, the status-pill
+  colour map, `.env.example` and `phpunit.xml`);
+- the end-user manual `docs/manuals/15-credit-union.md`;
+- the twelve `credit_union_*` tables, the 17 `credit_union.*` permissions, their
+  `role_permissions` rows, the `credit_union_officer` and `credit_union_committee` roles and
+  their `module_access` rows, dropped by migration
+  `2026_11_12_000001_drop_credit_union_module_tables.php`. That migration's `down()` is a
+  deliberate no-op: the removal is irreversible and recovery is from a database backup.
+
+The module's original create/seed migrations were **not** deleted (they had already run in
+other environments); the drop migration undoes their effect instead. `audit_logs` rows with
+`module = 'credit_union'` were left in place as the historical record — the audit screen reads
+the module as free text and falls back to `general`, so nothing there depends on the module
+still existing.
+
+**This document is kept as the reference spec for the standalone Credit Union app.** The
+business rules in §§1–3 (the two workbooks, the 2× savings guarantor cap, 15% straight-line
+interest, associate members and their `P`-prefixed numbers, the three membership routes, the
+20-cedi form fee and 200-cedi initial share, pro-rata interest distribution) were all confirmed
+with the credit union committee and remain the authority on how the union actually works. The
+phase prompts in §§5–9 describe an ERP-specific implementation and should be read as a worked
+example, not as instructions to run again. The deleted source is recoverable from git history
+immediately before the removal commit.

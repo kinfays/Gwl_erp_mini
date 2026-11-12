@@ -78,7 +78,6 @@ Deltas are neutral unless the metric has a known good direction. Put tiles in `<
 | `hs-ppe-state` | staff against an entitlement: missing/overdue → danger · short/replacement_due → warning · ok → success |
 | `hs-expiry` | expiry register buckets: overdue/critical → danger · due_soon → warning · later → muted |
 | `hs-kit` | missing / item_expired / check_failed → danger · item_expiring / incomplete / check_overdue → warning · ok → success; decommissioned → muted |
-| `credit-union` | draft/completed/exited → muted · pending/variance → warning · approved/posted/paid → success · rejected/declined/defaulted → danger |
 
 The pill always shows a text label; colour is never the only signal. Unknown values render as a neutral
 pill with the stored value. `label` / `tone` override the mapping; `live` adds a halo for "happening now".

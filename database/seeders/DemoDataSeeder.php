@@ -64,7 +64,7 @@ use RuntimeException;
  *
  * Idempotent: master data is keyed on natural fields (region/district/department/
  * job title names, staff_id, ref_no, serial_number); transactional blocks skip
- * requesters/hosts that already have demo records. Transport and Credit Union are
+ * requesters/hosts that already have demo records. Transport is
  * intentionally untouched.
  */
 class DemoDataSeeder extends Seeder
@@ -2086,7 +2086,7 @@ class DemoDataSeeder extends Seeder
                 ."{$c('asset_maintenance_created')} maintenance logs, {$c('asset_issues_created')} issue reports"],
             ['Audit logs', "{$c('audit_logs')} written"],
             ['Notifications', "{$c('notifications')} general (bell) notifications from the leave workflow"],
-            ['Skipped', 'Transport and Credit Union (not touched)'.(empty($this->counts['skipped']) ? '' : '; '.implode('; ', $this->counts['skipped']))],
+            ['Skipped', 'Transport (not touched)'.(empty($this->counts['skipped']) ? '' : '; '.implode('; ', $this->counts['skipped']))],
         ]);
 
         $rows = [];

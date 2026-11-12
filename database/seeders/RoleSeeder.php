@@ -10,7 +10,7 @@ class RoleSeeder extends Seeder
 {
     /**
      * Roles the ICT team may assign (Role::$ict_assignable), always within their own location scope. Everything
-     * else — admin, super_admin, managing_director, ict_team, credit_union_* — is Global Admin / super_admin only.
+     * else — admin, super_admin, managing_director, ict_team — is Global Admin / super_admin only.
      * The same list is applied to existing databases by migration 2026_09_30_000001.
      */
     public const ICT_ASSIGNABLE = [
@@ -53,8 +53,6 @@ class RoleSeeder extends Seeder
             'ict_team',
             'transport_manager',
             'driver',
-            'credit_union_officer',
-            'credit_union_committee',
             'commercial_officer',
             'commercial_manager',
             'hs_officer',
@@ -74,8 +72,6 @@ class RoleSeeder extends Seeder
                 'admin' => 'Global Admin',
                 'ict_team' => 'ICT Team',
                 'transport_manager' => 'Transport Manager',
-                'credit_union_officer' => 'Credit Union Officer',
-                'credit_union_committee' => 'Credit Union Committee',
                 'commercial_officer' => 'Commercial Officer',
                 'commercial_manager' => 'Commercial Manager',
                 'hs_officer' => 'Health & Safety Officer',

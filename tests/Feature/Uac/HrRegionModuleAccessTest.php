@@ -48,7 +48,6 @@ class HrRegionModuleAccessTest extends TestCase
             Permission::MODULE_UAC,
             Permission::MODULE_ASSETS,
             Permission::MODULE_TRANSPORT,
-            Permission::MODULE_CREDIT_UNION,
             Permission::MODULE_COMMERCIAL,
             Permission::MODULE_GWATER,
             Permission::MODULE_FINANCE,

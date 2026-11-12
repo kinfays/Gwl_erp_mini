@@ -71,13 +71,6 @@ if (! function_exists('dashboardModules')) {
                 'icon' => 'TR',
                 'route' => route('transport.home'),
             ],
-            ...(config('gwl.credit_union_module_enabled') ? [[
-                'slug' => 'credit_union',
-                'title' => 'Credit Union',
-                'description' => 'Register members, post shares and savings, and issue statements',
-                'icon' => 'CU',
-                'route' => route('credit-union.home'),
-            ]] : []),
             ...(config('gwl.commercial_module_enabled') ? [[
                 'slug' => 'commercial',
                 'title' => 'Commercial',

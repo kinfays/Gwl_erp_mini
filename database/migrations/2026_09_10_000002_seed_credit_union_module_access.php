@@ -56,7 +56,7 @@ return new class extends Migration
                 ['name' => $slug],
                 [
                     'display_name' => $displayName,
-                    'module' => Permission::MODULE_CREDIT_UNION,
+                    'module' => 'credit_union',
                     'description' => $displayName.' permission for CREDIT_UNION module',
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -92,7 +92,7 @@ return new class extends Migration
             }
 
             DB::table('module_access')->updateOrInsert(
-                ['role_id' => $roleId, 'module' => Permission::MODULE_CREDIT_UNION],
+                ['role_id' => $roleId, 'module' => 'credit_union'],
                 [
                     'can_access' => $canAccess,
                     'created_at' => $now,
@@ -102,7 +102,7 @@ return new class extends Migration
         }
 
         $permissionIds = DB::table('permissions')
-            ->where('module', Permission::MODULE_CREDIT_UNION)
+            ->where('module', 'credit_union')
             ->pluck('id', 'name');
 
         $baselinePermissions = [
@@ -163,8 +163,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::table('module_access')->where('module', Permission::MODULE_CREDIT_UNION)->delete();
-        DB::table('permissions')->where('module', Permission::MODULE_CREDIT_UNION)->delete();
+        DB::table('module_access')->where('module', 'credit_union')->delete();
+        DB::table('permissions')->where('module', 'credit_union')->delete();
         DB::table('roles')->whereIn('name', ['credit_union_officer', 'credit_union_committee'])->delete();
     }
 };

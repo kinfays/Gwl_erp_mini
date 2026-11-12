@@ -1,9 +1,7 @@
 <?php
 
 use App\Events\Transport\DocumentExpiryDetected;
-use App\Models\CreditUnionLoan;
 use App\Models\Vehicle;
-use App\Services\CreditUnion\LoanService;
 use App\Services\Leave\AnnualEntitlementService;
 use App\Services\Commercial\Customers\CustomerUploadReminders;
 use App\Services\Commercial\Sms\SmsAccess;
@@ -306,19 +304,3 @@ if (config('gwl.health_safety_module_enabled')) {
     Schedule::command('health-safety:send-alerts --group=acknowledgement')->hourly()->withoutOverlapping();
     Schedule::command('health-safety:send-alerts --group=all')->dailyAt('06:30')->withoutOverlapping();
 }
-
-Artisan::command('credit-union:post-deferred-loan-repayments', function (LoanService $loans) {
-    $posted = 0;
-
-    CreditUnionLoan::query()
-        ->outstanding()
-        ->with('member')
-        ->orderBy('id')
-        ->chunkById(100, function ($chunk) use ($loans, &$posted): void {
-            foreach ($chunk as $loan) {
-                $posted += $loans->postDeferredDeductionRepayments($loan);
-            }
-        });
-
-    $this->info($posted.' deferred payroll loan repayment(s) posted.');
-})->purpose('Post payroll loan repayments captured on deduction batches before their loan existed');

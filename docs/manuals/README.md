@@ -22,7 +22,6 @@ These manuals explain how to use every module of the GWL Staff Portal. They are 
 | 12 | [G-Water](12-g-water.md) | G-Water role |
 | 13 | [Finance (payment vouchers)](13-finance-payment-vouchers.md) | Finance Officers and Managers |
 | 14 | [Audit (voucher review)](14-audit-payment-voucher-review.md) | Audit Officers and Manager |
-| 15 | [Credit Union](15-credit-union.md) | Credit Union team, Committee, members |
 
 Other files: [00-conventions.md](00-conventions.md) (how the manuals are written and common terms) and [_discrepancies.md](_discrepancies.md) (notes for the development team, not for end users).
 
@@ -32,7 +31,7 @@ Start with **01** whatever your job. Then:
 
 | If you are… | Read |
 |---|---|
-| Any member of staff | 01, 04 (apply for leave), 10 (report an incident), 11 (read the Blog), 15 (if the Credit Union is on) |
+| Any member of staff | 01, 04 (apply for leave), 10 (report an incident), 11 (read the Blog) |
 | A manager, departmental manager or district manager | 01, 03 (view staff), 04 (approvals), 05 (letters), 09 (district managers: Commercial views), 10 |
 | A chief manager or regional chief manager | 01, 03, 04, 05, 09, 10 (approve closures) |
 | Managing Director | 01, 04 (final approval of chiefs' leave) |
@@ -49,42 +48,39 @@ Start with **01** whatever your job. Then:
 | G-Water role | 01, 12 |
 | Finance Officer or Manager | 01, 13 |
 | Audit Officer or Manager | 01, 14 |
-| Credit Union Officer or Committee member | 01, 15 |
 
 ## Role quick-reference: which tabs does each role open?
 
-A dot (●) means the role opens that module by default. Reading the dot as "can open the tab" is only the start: inside each module, **permissions** and your **location** decide what you can do and see (see the "Who can do what" section of each manual). Switched-off modules (Credit Union, Commercial and its Customer List/SMS parts, Health & Safety, G-Water, Finance/Audit, MDM, Blog) show no tab for anyone while off.
+A dot (●) means the role opens that module by default. Reading the dot as "can open the tab" is only the start: inside each module, **permissions** and your **location** decide what you can do and see (see the "Who can do what" section of each manual). Switched-off modules (Commercial and its Customer List/SMS parts, Health & Safety, G-Water, Finance/Audit, MDM, Blog) show no tab for anyone while off.
 
-| Role | Staff | Leave | Letters | Visitors | Assets | Transport | Credit Union | Commercial | H&S | G-Water | Finance | Audit | Access Ctrl | Blog |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Transport Manager |  | ● |  |  |  | ● |  |  | ● |  |  |  |  | ● |
-| Driver |  | ● |  |  |  | ● |  |  | ● |  |  |  |  | ● |
-| Credit Union Officer |  | ● |  |  |  |  | ● |  | ● |  |  |  |  | ● |
-| Credit Union Committee |  | ● |  |  |  |  | ● |  | ● |  |  |  |  | ● |
-| Managing Director |  | ● |  |  |  |  |  |  | ● |  |  |  |  | ● |
-| Commercial Officer |  | ● |  |  |  |  |  | ● | ● |  |  |  |  | ● |
-| Commercial Manager |  | ● |  |  |  |  |  | ● | ● |  |  |  |  | ● |
-| Health & Safety Officer |  | ● |  |  |  |  |  |  | ● |  |  |  |  | ● |
-| Health & Safety Manager |  | ● |  |  |  |  |  |  | ● |  |  |  |  | ● |
-| Public Relations Officer |  | ● |  |  |  |  |  |  | ● |  |  |  |  | ● |
-| G-Water |  | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |
-| Finance Officer |  | ● |  |  |  |  |  |  | ● |  | ● |  |  | ● |
-| Audit Officer |  | ● |  |  |  |  |  |  | ● |  |  | ● |  | ● |
-| Finance Manager |  | ● |  |  |  |  |  |  | ● |  | ● |  |  | ● |
-| Audit Manager |  | ● |  |  |  |  |  |  | ● |  |  | ● |  | ● |
-| Super Admin | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |
-| Global Admin |  | ● |  |  | ● |  |  |  | ● |  |  |  | ● | ● |
-| Hr Headoffice | ● | ● | ● | ● |  |  |  |  | ● |  |  |  |  | ● |
-| Manager | ● | ● | ● |  |  |  |  |  | ● |  |  |  |  | ● |
-| Departmental Manager | ● | ● | ● |  |  |  |  |  | ● |  |  |  |  | ● |
-| Hr Region | ● | ● | ● | ● |  |  |  |  | ● |  |  |  |  | ● |
-| District Manager | ● | ● | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
-| Chief Manager | ● | ● | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
-| Regional Chief Manager | ● | ● | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
-| Employee |  | ● |  |  |  | ● | ● |  | ● |  |  |  |  | ● |
-| ICT Team |  | ● |  |  | ● |  |  |  | ● |  |  |  | ● | ● |
-| Secretary |  | ● | ● |  |  |  |  |  | ● |  |  |  |  | ● |
-| Receptionist |  | ● |  | ● |  |  |  |  | ● |  |  |  |  | ● |
+| Role | Staff | Leave | Letters | Visitors | Assets | Transport | Commercial | H&S | G-Water | Finance | Audit | Access Ctrl | Blog |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Transport Manager |  | ● |  |  |  | ● |  | ● |  |  |  |  | ● |
+| Driver |  | ● |  |  |  | ● |  | ● |  |  |  |  | ● |
+| Managing Director |  | ● |  |  |  |  |  | ● |  |  |  |  | ● |
+| Commercial Officer |  | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
+| Commercial Manager |  | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
+| Health & Safety Officer |  | ● |  |  |  |  |  | ● |  |  |  |  | ● |
+| Health & Safety Manager |  | ● |  |  |  |  |  | ● |  |  |  |  | ● |
+| Public Relations Officer |  | ● |  |  |  |  |  | ● |  |  |  |  | ● |
+| G-Water |  | ● |  |  |  |  |  | ● | ● |  |  |  | ● |
+| Finance Officer |  | ● |  |  |  |  |  | ● |  | ● |  |  | ● |
+| Audit Officer |  | ● |  |  |  |  |  | ● |  |  | ● |  | ● |
+| Finance Manager |  | ● |  |  |  |  |  | ● |  | ● |  |  | ● |
+| Audit Manager |  | ● |  |  |  |  |  | ● |  |  | ● |  | ● |
+| Super Admin | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |
+| Global Admin |  | ● |  |  | ● |  |  | ● |  |  |  | ● | ● |
+| Hr Headoffice | ● | ● | ● | ● |  |  |  | ● |  |  |  |  | ● |
+| Manager | ● | ● | ● |  |  |  |  | ● |  |  |  |  | ● |
+| Departmental Manager | ● | ● | ● |  |  |  |  | ● |  |  |  |  | ● |
+| Hr Region | ● | ● | ● | ● |  |  |  | ● |  |  |  |  | ● |
+| District Manager | ● | ● | ● |  |  |  | ● | ● |  |  |  |  | ● |
+| Chief Manager | ● | ● | ● |  |  |  | ● | ● |  |  |  |  | ● |
+| Regional Chief Manager | ● | ● | ● |  |  |  | ● | ● |  |  |  |  | ● |
+| Employee |  | ● |  |  |  | ● |  | ● |  |  |  |  | ● |
+| ICT Team |  | ● |  |  | ● |  |  | ● |  |  |  | ● | ● |
+| Secretary |  | ● | ● |  |  |  |  | ● |  |  |  |  | ● |
+| Receptionist |  | ● |  | ● |  |  |  | ● |  |  |  |  | ● |
 
 Notes on the matrix:
 
