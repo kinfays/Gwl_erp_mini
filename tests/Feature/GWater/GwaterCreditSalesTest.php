@@ -47,6 +47,60 @@ class GwaterCreditSalesTest extends GwaterTestCase
 
     // ---------------------------------------------------------------- recording
 
+    public function test_money_received_on_credit_is_cash_or_momo(): void
+    {
+        $sale = $this->credit('Mama Efua', 10, '2026-10-02');   // 260.00 owed
+
+        $plain = $this->receive($sale, 10000, '2026-10-03');
+        $momo = $this->receive($sale, 6000, '2026-10-04', ['method' => 'MoMo']);
+
+        $this->assertSame(['cash', 'momo'], [$plain->method, $momo->method]);
+        $this->assertSame(['Cash', 'MoMo'], [$plain->methodLabel(), $momo->methodLabel()]);
+        $this->assertSame(10000, $sale->fresh()->balanceOwed(), 'both methods reduce what is owed the same way');
+        $this->assertSame('momo', AuditLog::query()->where('action', 'gwater.sale_payment_received')->orderByDesc('id')->firstOrFail()->metadata['method']);
+
+        try {
+            $this->receive($sale, 1000, '2026-10-05', ['method' => 'cheque']);
+            $this->fail('Only cash or MoMo.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('method', $exception->errors());
+            $this->assertSame(2, GwSaleReceipt::count());
+        }
+
+        // The receive window offers the choice, and the list says how each payment came in.
+        Livewire::actingAs($this->user)->test(DailySales::class)
+            ->call('openReceive', $sale->id)
+            ->assertSee('Paid by')
+            ->set('receipt.amount', '40.00')->set('receipt.method', 'momo')->call('receive')->assertHasNoErrors()
+            ->assertSee('MoMo');
+        $this->assertSame('momo', GwSaleReceipt::query()->orderByDesc('id')->firstOrFail()->method);
+    }
+
+    public function test_a_momo_sale_is_paid_at_once_like_cash_and_owes_nothing(): void
+    {
+        $momo = $this->workflow()->recordSale($this->user, $this->saleData(10, '2026-10-02') + ['payment_type' => 'MoMo', 'customer_name' => 'Ignored Name']);
+
+        $this->assertSame(['momo', null, null, 0, 26000], [$momo->payment_type, $momo->customer_name, $momo->customer_phone, $momo->balanceOwed(), $momo->amount]);
+        $this->assertSame('MoMo', \App\Models\GwSale::paymentLabel($momo->payment_type));
+
+        // It counts as money collected, not as a debt, and a receipt can never be recorded against it.
+        $report = app(\App\Services\GWater\GwaterProfitService::class)->report(
+            ['region_id' => $this->accraWest->id, 'district_id' => $this->sowutuom->id], '2026-10-01', '2026-10-31', $this->user
+        )['combined'];
+        $this->assertSame([26000, 0, 26000, 0], [$report['revenue'], $report['credit_sales'], $report['cash_collected'], $report['owed_by_customers']]);
+
+        try {
+            $this->receive($momo, 1000, '2026-10-03');
+            $this->fail('A MoMo sale was paid at once: nothing is owed on it.');
+        } catch (ValidationException) {
+            $this->assertSame(0, \App\Models\GwSaleReceipt::count());
+        }
+
+        // The form offers Cash and MoMo, and the list says how each sale was paid.
+        Livewire::actingAs($this->user)->test(\App\Livewire\GWater\DailySales::class)
+            ->assertSee('MoMo')->assertSee('>Cash<', false)->assertDontSee('At once (cash)');
+    }
+
     public function test_a_sale_is_cash_unless_it_is_put_on_credit_with_a_customer(): void
     {
         $cash = $this->workflow()->recordSale($this->user, $this->saleData(10, '2026-10-02') + ['customer_name' => 'Ignored Name']);
@@ -315,7 +369,7 @@ class GwaterCreditSalesTest extends GwaterTestCase
             ->set('form.customer_name', 'Mama Efua')
             ->set('form.customer_phone', '0244000000')
             ->call('save')->assertHasNoErrors()
-            ->assertSee('Credit (owed)')->assertSee('Mama Efua')->assertSee('Unpaid')->assertSee('260.00')->assertSee('Who owes');
+            ->assertSee('Credit (owed)')->assertSee('Mama Efua')->assertSee('Pending')->assertSee('260.00')->assertSee('Who owes');
 
         $sale = GwSale::query()->where('customer_name', 'Mama Efua')->firstOrFail();
 
@@ -326,7 +380,7 @@ class GwaterCreditSalesTest extends GwaterTestCase
             ->assertSee('Part paid')->assertSee('160.00')->assertSee('MM-9');
 
         $page->call('openReceive', $sale->id)->set('receipt.amount', '999')->call('receive')->assertHasErrors(['receipt.amount']);
-        $page->set('receipt.amount', '160')->call('receive')->assertHasNoErrors()->assertSee('Paid in full');
+        $page->set('receipt.amount', '160')->call('receive')->assertHasNoErrors()->assertSee('Completed')->assertDontSee('Part paid');
         $this->assertSame(0, $sale->fresh()->balanceOwed());
 
         $receipt = GwSaleReceipt::query()->firstOrFail();
@@ -406,7 +460,7 @@ class GwaterCreditSalesTest extends GwaterTestCase
         $this->assertSame(['credit', 'cash'], GwSale::query()->orderBy('id')->where('sale_date', '>=', '2026-10-02')->pluck('payment_type')->all());
         $this->assertSame(10400, app(GwaterSummaryService::class)->owedByCustomers($this->place)['total']);
         $this->assertStringContainsString('customer', $result['errors'][0]['message']);
-        $this->assertStringContainsString('not yes or no', $result['errors'][1]['message']);
+        $this->assertStringContainsString('not yes, no or momo', $result['errors'][1]['message']);
     }
 
     private function workbook(array $sheets): \Illuminate\Http\UploadedFile

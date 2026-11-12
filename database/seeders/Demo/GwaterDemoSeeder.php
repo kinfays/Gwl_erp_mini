@@ -392,7 +392,7 @@ class GwaterDemoSeeder extends Seeder
                     if ($kind === 'receipt') {
                         // A customer comes to pay what they owe, all or part of it.
                         $this->actingAt($day, $recorder);
-                        $this->workflow->recordSaleReceipt($recorder, $id, ['amount' => $amount, 'received_on' => $day->toDateString(), 'reference' => $reference]);
+                        $this->workflow->recordSaleReceipt($recorder, $id, ['amount' => $amount, 'received_on' => $day->toDateString(), 'method' => $id % 2 === 0 ? 'momo' : 'cash', 'reference' => $reference]);
                         $this->counts['receipts']++;
                     } else {
                         // Someone other than the person who recorded the trip, as the rule demands.

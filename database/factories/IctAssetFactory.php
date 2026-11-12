@@ -20,7 +20,8 @@ class IctAssetFactory extends Factory
     public function definition(): array
     {
         return [
-            'asset_name' => $this->faker->randomElement(['Laptop', 'Desktop', 'Printer']).' – '.$this->faker->randomElement(['Accounts', 'Front Desk', 'Secretariat']),
+            // Asset names are unique, and 9 random combinations collide often (a flaky test), so every name ends in a number.
+            'asset_name' => $this->faker->randomElement(['Laptop', 'Desktop', 'Printer']).' – '.$this->faker->randomElement(['Accounts', 'Front Desk', 'Secretariat']).' '.$this->faker->unique()->numerify('#####'),
             'serial_number' => strtoupper($this->faker->unique()->bothify('??########')),
             'asset_type' => $this->faker->randomElement(array_keys(IctAsset::ASSET_TYPES[IctAsset::DEVICE_CATEGORY_ASSET])),
             'device_category' => IctAsset::DEVICE_CATEGORY_ASSET,

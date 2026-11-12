@@ -59,7 +59,7 @@ class GwaterWorkflowService
      * One line of a day's sales. The selling price is the one in force on that day at the location and cannot be overridden
      * here (a different price is a new row on the Prices screen); a second entry the same day is simply another line.
      *
-     * A sale is paid at once ('cash', the default) or on credit for a named customer who pays later (payment_type 'credit',
+     * A sale is paid at once ('cash', the default, or 'momo') or on credit for a named customer who pays later (payment_type 'credit',
      * customer_name required, customer_phone optional); the money that comes in afterwards is recordSaleReceipt(). Stock and
      * revenue are the same either way.
      *
@@ -76,8 +76,8 @@ class GwaterWorkflowService
         $type = strtolower(trim((string) ($data['payment_type'] ?? GwSale::CASH))) ?: GwSale::CASH;
         $customer = $this->text($data['customer_name'] ?? null, 120);
 
-        if (! in_array($type, [GwSale::CASH, GwSale::CREDIT], true)) {
-            throw ValidationException::withMessages(['payment_type' => 'A sale is paid in cash or on credit.']);
+        if (! in_array($type, GwSale::PAYMENT_TYPES, true)) {
+            throw ValidationException::withMessages(['payment_type' => 'A sale is paid in cash, by MoMo or on credit.']);
         }
 
         if ($type === GwSale::CREDIT && ($customer === null || mb_strlen($customer) < 2)) {
@@ -127,7 +127,7 @@ class GwaterWorkflowService
      * Money received from a customer against a credit sale. At most what is still owed, not before the sale's day, not in the
      * future; as many receipts as it takes to clear the sale. Needs gwater.record.
      *
-     * @param  array{amount?: mixed, received_on?: mixed, reference?: mixed, note?: mixed}  $data  amount in pesewas
+     * @param  array{amount?: mixed, received_on?: mixed, method?: mixed, reference?: mixed, note?: mixed}  $data  amount in pesewas; method cash (the default) or momo
      */
     public function recordSaleReceipt(User $actor, GwSale|int $sale, array $data): GwSaleReceipt
     {
@@ -135,12 +135,17 @@ class GwaterWorkflowService
 
         $date = $this->date($data['received_on'] ?? null, 'received_on');
         $amount = $this->amount($data['amount'] ?? null, 'amount');
+        $method = strtolower(trim((string) ($data['method'] ?? GwSale::CASH))) ?: GwSale::CASH;
 
         if ($amount < 1) {
             throw ValidationException::withMessages(['amount' => 'Enter the amount received.']);
         }
 
-        return DB::transaction(function () use ($actor, $sale, $date, $amount, $data) {
+        if (! in_array($method, GwSaleReceipt::METHODS, true)) {
+            throw ValidationException::withMessages(['method' => 'The money was received in cash or by MoMo.']);
+        }
+
+        return DB::transaction(function () use ($actor, $sale, $date, $amount, $method, $data) {
             $this->stock->lock();
             $fresh = $this->lockedOwnRow(GwSale::class, $sale instanceof GwSale ? $sale->id : $sale, $actor);
 
@@ -165,6 +170,7 @@ class GwaterWorkflowService
                 'sale_id' => $fresh->id,
                 'received_on' => $date->toDateString(),
                 'amount' => $amount,
+                'method' => $method,
                 'reference' => $this->text($data['reference'] ?? null, 60),
                 'note' => $this->text($data['note'] ?? null, 255),
                 'status' => 'posted',
@@ -172,7 +178,7 @@ class GwaterWorkflowService
             ]);
 
             // The customer's name is in the sale, never in the audit row.
-            $this->audit('gwater.sale_payment_received', $receipt, ['sale_id' => $fresh->id, 'amount' => $amount, 'balance_after' => $owed - $amount, 'received_on' => $date->toDateString()]);
+            $this->audit('gwater.sale_payment_received', $receipt, ['sale_id' => $fresh->id, 'amount' => $amount, 'method' => $method, 'balance_after' => $owed - $amount, 'received_on' => $date->toDateString()]);
 
             return $receipt;
         });

@@ -200,8 +200,7 @@
                         model="form.assigned_to_employee_id"
                         search="searchEmployees"
                         :initial-label="$assignedToLabel"
-                        placeholder="Search by name or staff ID"
-                        required
+                        placeholder="Unassigned: search by name or staff ID"
                         :live="(bool) $editingAssetId"
                     />
                 @endunless
@@ -268,6 +267,20 @@
                 <button type="button" wire:click="closeForm" class="btn btn-secondary">Cancel</button>
                 <button type="button" wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                     {{ $editingAssetId ? 'Update Asset' : 'Create Asset' }}
+                </button>
+            </x-slot:footer>
+        </x-ui.modal>
+    @endif
+
+    @if ($showForm && $confirmNoAssignee)
+        <x-ui.modal title="Nobody is assigned to this asset" description="Assigned To is empty and General use is not ticked." close="dismissNoAssigneeWarning()" icon="triangle-alert" tone="warning">
+            <p>
+                {{ $editingAssetId ? 'Update' : 'Create' }} it anyway? It will show as Unassigned on the dashboard until someone is assigned or it is marked General use.
+            </p>
+            <x-slot:footer>
+                <button type="button" wire:click="dismissNoAssigneeWarning" class="btn btn-secondary">Go back</button>
+                <button type="button" wire:click="saveWithoutAssignee" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveWithoutAssignee">
+                    {{ $editingAssetId ? 'Update anyway' : 'Create anyway' }}
                 </button>
             </x-slot:footer>
         </x-ui.modal>

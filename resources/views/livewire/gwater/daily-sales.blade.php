@@ -1,5 +1,5 @@
 <div>
-    <x-ui.page-header title="Daily sales" description="A day's packs per product at the selling price in force that day. A sale is paid at once or on credit, for a customer who pays later. To change a price, add it on the Prices screen." />
+    <x-ui.page-header title="Daily sales" description="A day's packs per product at the selling price in force that day. A sale is paid in cash or by MoMo, or on credit for a customer who pays later. To change a price, add it on the Prices screen." />
 
     @include('livewire.gwater.partials.location-picker')
     @include('livewire.gwater.partials.exports')
@@ -22,7 +22,8 @@
                         <input id="f-sale-amount" class="form-input" readonly value="{{ $price !== null && (int) $form['packs'] > 0 ? \App\Services\GWater\Money::format($price * (int) $form['packs']) : '' }}">
                     </x-ui.field>
                     <x-ui.select label="Paid" wire:model.live="form.payment_type">
-                        <option value="cash">At once (cash)</option>
+                        <option value="cash">Cash</option>
+                        <option value="momo">MoMo</option>
                         <option value="credit">On credit: the customer pays later</option>
                     </x-ui.select>
                     @if ($form['payment_type'] === 'credit')
@@ -95,7 +96,7 @@
                                 {{ $sale->customer_name }}
                                 @if ($sale->customer_phone)<div class="cell-muted mono">{{ $sale->customer_phone }}</div>@endif
                             @else
-                                <span class="cell-muted">Paid at once</span>
+                                <span class="cell-muted">{{ \App\Models\GwSale::paymentLabel($sale->payment_type) }}</span>
                             @endif
                         </td>
                         <td class="num">
@@ -103,14 +104,13 @@
                                 @if ($sale->isVoided())
                                     <span class="cell-muted">-</span>
                                 @elseif ($owed === 0)
-                                    <x-ui.badge tone="success">Paid in full</x-ui.badge>
+                                    <span class="cell-muted">0.00</span>
                                 @else
                                     <strong>{{ \App\Services\GWater\Money::format($owed) }}</strong>
-                                    <div><x-ui.badge tone="{{ $sale->receivedAmount() > 0 ? 'warning' : 'danger' }}">{{ $sale->receivedAmount() > 0 ? 'Part paid' : 'Unpaid' }}</x-ui.badge></div>
                                 @endif
                                 @foreach ($sale->receipts as $receipt)
                                     <div class="cell-muted" wire:key="rc-{{ $receipt->id }}">
-                                        {{ $receipt->received_on->format('d M') }}: {{ \App\Services\GWater\Money::format($receipt->amount) }}@if ($receipt->reference) ({{ $receipt->reference }})@endif
+                                        {{ $receipt->received_on->format('d M') }}: {{ \App\Services\GWater\Money::format($receipt->amount) }} {{ $receipt->methodLabel() }}@if ($receipt->reference) ({{ $receipt->reference }})@endif
                                         @if ($canVoid)<button type="button" class="btn btn-ghost btn-sm" wire:click="openVoidReceipt({{ $receipt->id }})" title="Void this payment">void</button>@endif
                                     </div>
                                 @endforeach
@@ -124,7 +124,8 @@
                                 <x-ui.badge tone="danger" title="{{ $sale->void_reason }}">Voided</x-ui.badge>
                                 <div class="cell-muted">{{ $sale->void_reason }}</div>
                             @else
-                                <x-ui.badge tone="success">Posted</x-ui.badge>
+                                @php($state = $sale->paymentStatus())
+                                <x-ui.badge :tone="['completed' => 'success', 'partial' => 'warning', 'pending' => 'danger'][$state]">{{ ['completed' => 'Completed', 'partial' => 'Part paid', 'pending' => 'Pending'][$state] }}</x-ui.badge>
                             @endif
                         </td>
                         <td class="nowrap">
@@ -162,6 +163,10 @@
             <div class="ui-form-grid">
                 <x-ui.input label="Amount received (GH¢)" wire:model.defer="receipt.amount" inputmode="decimal" />
                 <x-ui.input label="Received on" type="date" wire:model.defer="receipt.received_on" :max="today()->toDateString()" />
+                <x-ui.select label="Paid by" wire:model.defer="receipt.method">
+                    <option value="cash">Cash</option>
+                    <option value="momo">MoMo</option>
+                </x-ui.select>
                 <x-ui.input label="Reference (optional)" wire:model.defer="receipt.reference" maxlength="60" hint="Receipt number, mobile money reference..." />
                 <x-ui.input label="Note (optional)" wire:model.defer="receipt.note" maxlength="255" />
             </div>

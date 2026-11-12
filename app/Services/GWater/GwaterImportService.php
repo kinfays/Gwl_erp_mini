@@ -443,7 +443,7 @@ class GwaterImportService
             ?? throw new \RuntimeException('Staff ID "'.$staffId.'" is not a member of staff at this location.');
     }
 
-    /** The "on_credit" cell: yes / credit / 1 / true for a credit sale, blank / no / cash for a sale paid at once. */
+    /** The "on_credit" cell: yes / credit / 1 / true for a credit sale, momo for a sale paid by mobile money, blank / no / cash for a cash sale. */
     protected function paymentType(mixed $cell): string
     {
         $text = mb_strtolower($this->text($cell));
@@ -451,7 +451,8 @@ class GwaterImportService
         return match (true) {
             in_array($text, ['', 'no', 'n', 'false', '0', 'cash'], true) => 'cash',
             in_array($text, ['yes', 'y', 'true', '1', 'credit'], true) => 'credit',
-            default => throw new \RuntimeException('on_credit "'.$this->text($cell).'" is not yes or no.'),
+            in_array($text, ['momo', 'mobile money'], true) => 'momo',
+            default => throw new \RuntimeException('on_credit "'.$this->text($cell).'" is not yes, no or momo.'),
         };
     }
 
@@ -473,7 +474,7 @@ class GwaterImportService
             ['Money', 'Amounts in cedis, at most two decimals (for example 1430.00). Prices are never typed: they come from the Prices screen for the date of the row. In Purchases, the optional unit cost columns must agree with it.'],
             ['Packs', 'Whole numbers. One column per product (bottle_packs, sachet_packs).'],
             ['Product', 'In Daily sales and Damages: bottle or sachet.'],
-            ['Credit sales', 'In Daily sales put yes in on_credit and the customer_name (customer_phone is optional) for a sale the customer pays for later. Payments received since are recorded on the Daily sales screen, not in this file.'],
+            ['Credit sales', 'In Daily sales put momo in on_credit for a sale paid by mobile money (blank or no = cash), or yes in on_credit and the customer_name (customer_phone is optional) for a sale the customer pays for later. Payments received since are recorded on the Daily sales screen, not in this file.'],
             ['Damages', 'stage is transit, loading, offloading or storage. waybill_no ties the damage to a trip (optional).'],
             ['Expenses', 'category is fuel, loading (the one loading / offloading payment) or other. paid_by_staff_id (fuel only) is the staff ID of the person who paid out of pocket.'],
             ['Payments', 'Give the packs and the amount is worked out, or only the amount. paid_on makes it a payment already made; leave it empty for a request.'],

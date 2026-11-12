@@ -49,7 +49,7 @@ class GeneralUseAssetTest extends TestCase
             ->assertSeeHtml('searchEmployees');
     }
 
-    public function test_a_general_use_asset_can_be_saved_without_a_holder_but_a_normal_one_still_needs_one(): void
+    public function test_a_general_use_asset_is_saved_without_a_holder_and_without_a_warning_but_a_normal_one_is_warned(): void
     {
         $this->seedCoreAssetsAccess();
         $district = $this->makeDistrict('Accra Central District', 'Greater Accra');
@@ -57,7 +57,9 @@ class GeneralUseAssetTest extends TestCase
 
         $this->fillForm(Livewire::test(AssetsList::class)->call('openCreate'), $district, 'Shared Printer', 'PRT')
             ->call('save')
-            ->assertHasErrors(['form.assigned_to_employee_id' => 'required']);
+            ->assertHasNoErrors()
+            ->assertSet('confirmNoAssignee', true);
+        $this->assertSame(0, IctAsset::query()->where('asset_name', 'Shared Printer')->count());
 
         $this->fillForm(Livewire::test(AssetsList::class)->call('openCreate'), $district, 'Shared Printer', 'PRT')
             ->set('form.is_general_use', true)
@@ -117,12 +119,13 @@ class GeneralUseAssetTest extends TestCase
         $log = AuditLog::query()->where('action', 'update_asset')->where('target_id', $asset->id)->latest('id')->firstOrFail();
         $this->assertStringContainsString('is_general_use', json_encode($log->toArray()));
 
-        // Unticking brings the holder rule back.
+        // Unticking brings the "nobody assigned" warning back (and nothing is saved until it is confirmed).
         Livewire::test(AssetsList::class)->call('openEdit', $asset->id)
             ->assertSet('form.is_general_use', true)
             ->set('form.is_general_use', false)
             ->call('save')
-            ->assertHasErrors(['form.assigned_to_employee_id' => 'required']);
+            ->assertSet('confirmNoAssignee', true);
+        $this->assertTrue($asset->fresh()->is_general_use);
     }
 
     public function test_a_general_use_asset_is_never_unassigned_but_an_ordinary_one_is(): void

@@ -44,7 +44,7 @@ class DailySales extends Component
 
     public ?int $receivingId = null;
 
-    public array $receipt = ['amount' => '', 'received_on' => '', 'reference' => '', 'note' => ''];
+    public array $receipt = ['amount' => '', 'received_on' => '', 'method' => 'cash', 'reference' => '', 'note' => ''];
 
     public ?int $voidingReceiptId = null;
 
@@ -122,7 +122,7 @@ class DailySales extends Component
         $sale = $this->books(GwSale::query())->with('receipts')->findOrFail($saleId);
 
         $this->receivingId = $saleId;
-        $this->receipt = ['amount' => Money::input($sale->balanceOwed()), 'received_on' => today()->toDateString(), 'reference' => '', 'note' => ''];
+        $this->receipt = ['amount' => Money::input($sale->balanceOwed()), 'received_on' => today()->toDateString(), 'method' => 'cash', 'reference' => '', 'note' => ''];
         $this->resetErrorBag();
     }
 

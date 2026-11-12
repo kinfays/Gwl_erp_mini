@@ -193,6 +193,8 @@ It adds the Accra West people it needs (`GWA001` recorder and `GWA002` approver,
 
 ## 16. Credit sales (added after Phase 4)
 
+> A sale is paid by **cash**, **MoMo** (mobile money, `payment_type = 'momo'`: paid at once exactly like cash, it only records how) or on **credit**. The Daily sales form's "Paid" list offers Cash / MoMo / On credit; the list shows Cash or MoMo for a sale paid at once. Money received later on a credit sale also records how it came in (`gw_sale_receipts.method`, `cash` or `momo`, default cash; migration `2026_11_11_000001_add_method_to_gwater_sale_receipts`; "Paid by" in the Receive payment window; the audit row carries the method). The Daily sales **Status** column reads Completed (paid at once, or a credit sale paid in full), Part paid (some of a credit sale has come in), Pending (nothing yet) or Voided; it is `GwSale::paymentStatus()`, worked out from the sale and its receipts (the stored status is still posted/voided), and replaces the old Posted label and the Unpaid / Part paid / Paid in full badges. A MoMo sale takes no customer, owes nothing, counts in `cash_collected`, and cannot take a receipt. The import's `on_credit` cell accepts `momo`.
+
 For customers who take water now and pay later. Migration `2026_10_21_000001_add_credit_to_gwater_sales` (`gw_sales.payment_type` / `customer_name` / `customer_phone`, table `gw_sale_receipts`); `GwaterWorkflowService::recordSale()` (payment type), `recordSaleReceipt()`, `voidSaleReceipt()`; `GwaterSummaryService::creditSalesOwing()`, `owedByCustomers()`, `owingByCustomer()`; the **Daily sales** screen; the Overview tile, the P&L cash rows and the `receivables` export.
 
 **Rules and decisions:**

@@ -39,10 +39,11 @@ class AssetsFormTest extends TestCase
                 'form.serial_number' => 'required',
                 'form.asset_type' => 'required',
                 'form.ict_asset_model_id' => 'required',
-                'form.assigned_to_employee_id' => 'required',
                 'form.district_id' => 'required',
                 'form.department_id' => 'required',
-            ]);
+            ])
+            // Assigned To is optional: it never produces a validation error.
+            ->assertHasNoErrors('form.assigned_to_employee_id');
 
         $this->assertSame(0, IctAsset::query()->count());
     }
@@ -69,7 +70,6 @@ class AssetsFormTest extends TestCase
             'serial number' => ['serial_number'],
             'type' => ['asset_type'],
             'model' => ['ict_asset_model_id'],
-            'assigned to' => ['assigned_to_employee_id'],
             'location' => ['district_id'],
         ];
     }

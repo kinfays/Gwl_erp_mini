@@ -64,6 +64,9 @@ class AssetsList extends Component
 
     public ?string $previousAssignedLabel = null;
 
+    /** True while the "nobody is assigned" warning is open; the save goes ahead only after it is confirmed. */
+    public bool $confirmNoAssignee = false;
+
     /**
      * form.region_id is display-only. It has no validation rule, so it never
      * reaches save(), which always stamps the actor's own region instead.
@@ -180,11 +183,28 @@ class AssetsList extends Component
     {
         $this->showForm = false;
         $this->editingAssetId = null;
+        $this->confirmNoAssignee = false;
         $this->closeNewModel();
         $this->resetForm();
     }
 
-    public function save(): void
+    /** "Go back" on the warning: back to the form, nothing saved. */
+    public function dismissNoAssigneeWarning(): void
+    {
+        $this->confirmNoAssignee = false;
+    }
+
+    /** "Save anyway" on the warning. Everything is validated again, so nothing is skipped but the warning itself. */
+    public function saveWithoutAssignee(): void
+    {
+        $this->save(true);
+    }
+
+    /**
+     * "Assigned To" is not required. A device that is issued to a person (IctAsset::PERSONALLY_ASSIGNED_TYPES), is not
+     * general use and has nobody assigned only raises a warning first, which the user confirms or goes back from.
+     */
+    public function save(bool $confirmedNoAssignee = false): void
     {
         $permission = $this->editingAssetId ? 'assets.edit' : 'assets.create';
         $this->authorizeAction($permission);
@@ -194,6 +214,14 @@ class AssetsList extends Component
         $validated = $this->validate($this->rules())['form'];
         $validated['region_id'] = $regionId;
 
+        if (! $confirmedNoAssignee && $this->lacksNeededAssignee($validated)) {
+            $this->confirmNoAssignee = true;
+
+            return;
+        }
+
+        $this->confirmNoAssignee = false;
+
         $existing = $this->editingAssetId
             ? $this->scopeAssetsForActor(IctAsset::query())->where('device_category', self::CATEGORY)->findOrFail($this->editingAssetId)
             : null;
@@ -202,6 +230,14 @@ class AssetsList extends Component
 
         $this->dispatch('toast', type: 'success', message: $existing ? 'Asset updated successfully.' : 'Asset created successfully.');
         $this->closeForm();
+    }
+
+    /** The same test the dashboard's "Unassigned" card uses: a personally issued type, not general use, no holder. */
+    protected function lacksNeededAssignee(array $validated): bool
+    {
+        return IctAsset::isPersonallyAssignedType($validated['asset_type'] ?? null)
+            && ! ($validated['is_general_use'] ?? false)
+            && blank($validated['assigned_to_employee_id'] ?? null);
     }
 
     protected function rules(): array
@@ -228,9 +264,8 @@ class AssetsList extends Component
             'form.cpu_name' => ['nullable', 'string', 'max:255'],
             'form.is_general_use' => ['boolean'],
             // A general-use asset has no holder: any assignee sent is ignored (and cleared by AssetRecordService).
-            'form.assigned_to_employee_id' => ($this->form['is_general_use'] ?? false)
-                ? ['nullable']
-                : ['required', 'integer', 'exists:employees,id'],
+            // Optional: nobody assigned only raises the warning in save().
+            'form.assigned_to_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'form.department_id' => ['required', 'integer', 'exists:departments,id'],
             'form.tag_no' => ['nullable', 'string', 'max:100'],
             'form.district_id' => ['required', 'integer', $this->actorRegionDistrictRule()],
