@@ -46,29 +46,6 @@ class DefaultPasswordChangeTest extends TestCase
         $this->assertTrue(Hash::check('abc12', $user->fresh()->password));
     }
 
-    public function test_employee_account_cannot_delete_itself(): void
-    {
-        $user = $this->createDefaultPasswordUser([
-            'password' => Hash::make('abc12'),
-            'must_change_password' => false,
-        ]);
-        $employeeRole = Role::query()->create([
-            'name' => 'employee',
-            'display_name' => 'Employee',
-            'is_system' => true,
-        ]);
-        $user->roles()->attach($employeeRole);
-
-        $response = $this->actingAs($user)->delete(route('profile.destroy'), [
-            'password' => 'abc12',
-        ]);
-
-        $response->assertForbidden();
-        $this->assertDatabaseHas('users', [
-            'id' => $user->id,
-        ]);
-    }
-
     public function test_profile_shows_employee_details_without_name_or_delete_controls(): void
     {
         $employee = Employee::withoutEvents(fn () => $this->createEmployee());
@@ -94,9 +71,18 @@ class DefaultPasswordChangeTest extends TestCase
             ->assertSee($employee->full_name)
             ->assertSee('Save Email')
             ->assertSee('Save Password')
-            ->assertSee('Employee accounts are managed by UAC')
-            ->assertDontSee('name="name"', false)
-            ->assertDontSee('>Delete Account</button>', false);
+            ->assertDontSee('Account Deletion')
+            ->assertDontSee('name="name"', false);
+    }
+
+    public function test_profile_delete_route_no_longer_exists(): void
+    {
+        $user = $this->createDefaultPasswordUser(['must_change_password' => false]);
+
+        $status = $this->actingAs($user)->delete('/profile', ['password' => 'password'])->getStatusCode();
+
+        $this->assertContains($status, [404, 405]);
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
     }
 
     protected function createDefaultPasswordUser(array $overrides = []): User

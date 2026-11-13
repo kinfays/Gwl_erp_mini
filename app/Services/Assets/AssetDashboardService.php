@@ -19,7 +19,7 @@ class AssetDashboardService
     protected const CARD_TYPES = [
         'computers' => ['PC', 'AIO'],
         'laptops' => ['Laptop'],
-        'printers' => ['PRT', 'PTC'],
+        'printers' => ['PRT', 'PTC', 'TPR'],
         'phones' => ['POS', 'SIM', 'Ph'],
         'servers' => ['Server'],
         'network' => ['RT', 'SW', 'AP', 'MiFi', 'P2P', '4GRT'],

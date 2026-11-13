@@ -51,6 +51,7 @@ class RoleSeeder extends Seeder
             'managing_director',
             'employee',
             'ict_team',
+            'ict_manager',
             'transport_manager',
             'driver',
             'commercial_officer',
@@ -71,6 +72,7 @@ class RoleSeeder extends Seeder
             $displayName = match ($role) {
                 'admin' => 'Global Admin',
                 'ict_team' => 'ICT Team',
+                'ict_manager' => 'ICT Manager',
                 'transport_manager' => 'Transport Manager',
                 'commercial_officer' => 'Commercial Officer',
                 'commercial_manager' => 'Commercial Manager',

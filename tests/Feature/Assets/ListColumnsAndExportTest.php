@@ -155,7 +155,7 @@ class ListColumnsAndExportTest extends TestCase
         $toggleable = fn (string $list) => array_keys(array_filter(AssetListColumns::manifest($list), fn ($c) => ! ($c['locked'] ?? false)));
 
         $this->assertSame(['asset', 'actions'], $locked('assets'));
-        $this->assertSame(['type_model', 'processor', 'location', 'assigned_to', 'status', 'ups'], $toggleable('assets'));
+        $this->assertSame(['type_model', 'processor', 'department', 'location', 'assigned_to', 'status', 'ups'], $toggleable('assets'));
         $this->assertSame(['device', 'actions'], $locked('phones'));
         $this->assertSame(['type_model', 'numbers', 'assigned_to', 'status'], $toggleable('phones'));
         $this->assertSame(['device', 'actions'], $locked('network'));
@@ -171,7 +171,7 @@ class ListColumnsAndExportTest extends TestCase
         $this->asset(['asset_name' => 'Wide', 'asset_type' => 'PC']);
 
         // Defaults first: Livewire's test helper keeps query parameters set by an earlier call.
-        $this->assertSame(['Asset', 'Type / Model', 'Processor', 'Location', 'Assigned To', 'Status', 'UPS', 'Action'], $this->tableHeaders(Livewire::test(AssetsList::class)->html()));
+        $this->assertSame(['Asset', 'Type / Model', 'Processor', 'Department', 'Location', 'Assigned To', 'Status', 'UPS', 'Action'], $this->tableHeaders(Livewire::test(AssetsList::class)->html()));
 
         Livewire::withQueryParams(['cols' => 'asset,status,bogus'])->test(AssetsList::class)
             ->assertViewHas('visibleColumns', ['asset', 'status', 'actions']);
@@ -183,9 +183,9 @@ class ListColumnsAndExportTest extends TestCase
     {
         Livewire::test(AssetsList::class)
             ->call('toggleColumn', 'status')
-            ->assertSet('colsParam', 'asset,type_model,processor,location,assigned_to,ups,actions')
+            ->assertSet('colsParam', 'asset,type_model,processor,department,location,assigned_to,ups,actions')
             ->call('toggleColumn', 'status')
-            ->assertSet('colsParam', 'asset,type_model,processor,location,assigned_to,status,ups,actions')
+            ->assertSet('colsParam', 'asset,type_model,processor,department,location,assigned_to,status,ups,actions')
             ->call('toggleColumn', 'asset')
             ->call('toggleColumn', 'actions')
             ->call('toggleColumn', 'not_a_column')
@@ -237,7 +237,7 @@ class ListColumnsAndExportTest extends TestCase
         Livewire::test(AssetsList::class)
             ->assertViewHas('columnMode', 'default')
             ->call('showAllColumns')
-            ->assertSet('colsParam', 'asset,type_model,processor,location,assigned_to,status,ups,actions')
+            ->assertSet('colsParam', 'asset,type_model,processor,department,location,assigned_to,status,ups,actions')
             ->assertViewHas('columnMode', 'all')
             ->call('toggleColumn', 'ups')
             ->assertViewHas('columnMode', 'custom')
@@ -389,13 +389,13 @@ class ListColumnsAndExportTest extends TestCase
         $sheet = $this->readSheet($response);
 
         // Locked identity column first, actions never exported, the rest in manifest order.
-        $this->assertSame(['Asset Name', 'Serial Number', 'Assigned To', 'Status'], $sheet[0]);
-        $this->assertSame(['Boardroom PC', 'EX-1', 'Kwame Mensah', 'Active'], $sheet[1]);
+        $this->assertSame(['Asset Name', 'Serial Number', 'Asset Tag', 'Assigned To', 'Status'], $sheet[0]);
+        $this->assertSame(['Boardroom PC', 'EX-1', null, 'Kwame Mensah', 'Active'], $sheet[1]);
         $this->assertCount(2, $sheet);
 
         // No cols parameter: every default column except actions.
         $all = $this->readSheet($this->get(route('assets.assets.export.excel')));
-        $this->assertSame(['Asset Name', 'Serial Number', 'Type', 'Model', 'Processor', 'District', 'Region', 'Assigned To', 'Status', 'On UPS', 'UPS Condition'], $all[0]);
+        $this->assertSame(['Asset Name', 'Serial Number', 'Asset Tag', 'Type', 'Manufacturer', 'Model', 'Processor', 'Department', 'District', 'Region', 'Actual Location', 'Assigned To', 'Status', 'On UPS', 'UPS Condition'], $all[0]);
     }
 
     public function test_pdf_has_only_the_selected_columns_headings_and_rows(): void
@@ -411,8 +411,8 @@ class ListColumnsAndExportTest extends TestCase
 
         $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF', $response->getContent());
-        $this->assertSame(['Asset Name', 'Serial Number', 'Status'], $data['headings']);
-        $this->assertSame([['Pdf PC', 'PD-1', 'Active']], $data['rows']->map(fn ($r) => array_values($r))->all());
+        $this->assertSame(['Asset Name', 'Serial Number', 'Asset Tag', 'Status'], $data['headings']);
+        $this->assertSame([['Pdf PC', 'PD-1', '', 'Active']], $data['rows']->map(fn ($r) => array_values($r))->all());
         $this->assertSame(1, $data['rowCount']);
         $this->assertSame('Assets', $data['title']);
     }
@@ -427,7 +427,7 @@ class ListColumnsAndExportTest extends TestCase
         IctAssetIssueReport::query()->create(['title' => 'T', 'issue_type' => 'Computer', 'issue_subtype' => 'Battery', 'status' => 'Open']);
 
         $assets = $this->readSheet($this->get(route('assets.assets.export.excel')));
-        $this->assertSame(['Lap', 'SP-1', 'Laptop', 'Latitude 5420', 'Ultra 7'], array_slice($assets[1], 0, 5));
+        $this->assertSame(['Lap', 'SP-1', null, 'Laptop', 'Dell', 'Latitude 5420', 'Ultra 7'], array_slice($assets[1], 0, 7));
 
         $phones = $this->readSheet($this->get(route('assets.phones.export.excel')));
         $this->assertSame(['Device Name', 'Serial Number', 'IMEI', 'Type', 'Model', 'Device Number', 'User Number', 'Assigned To', 'Status'], $phones[0]);
@@ -594,7 +594,7 @@ class ListColumnsAndExportTest extends TestCase
         $this->assertSame($this->admin->id, $excel->user_id);
 
         $pdf = AuditLog::query()->where('action', 'export_assets_pdf')->firstOrFail();
-        $this->assertSame(['asset', 'type_model', 'processor', 'location', 'assigned_to', 'status', 'ups'], $pdf->new_values['columns']);
+        $this->assertSame(['asset', 'type_model', 'processor', 'department', 'location', 'assigned_to', 'status', 'ups'], $pdf->new_values['columns']);
 
         $this->assertSame(0, AuditLog::query()->where('action', 'export_phones_excel')->firstOrFail()->new_values['rows']);
         $this->assertSame('ict_asset_issue_reports', AuditLog::query()->where('action', 'export_issue_reports_excel')->firstOrFail()->target_type);
@@ -628,11 +628,11 @@ class ListColumnsAndExportTest extends TestCase
         $this->assertSame(0, AuditLog::query()->where('action', 'export_reports_excel')->count());
     }
 
-    public function test_the_permissions_are_granted_to_super_admin_and_ict_team_only(): void
+    public function test_the_permissions_are_granted_to_super_admin_ict_team_and_ict_manager_only(): void
     {
         foreach (['assets.export_inventory', 'assets.export_reports'] as $permission) {
             $roles = Role::query()->whereHas('permissions', fn ($q) => $q->where('name', $permission))->pluck('name')->sort()->values()->all();
-            $this->assertSame(['ict_team', 'super_admin'], $roles, $permission);
+            $this->assertSame(['ict_manager', 'ict_team', 'super_admin'], $roles, $permission);
         }
     }
 

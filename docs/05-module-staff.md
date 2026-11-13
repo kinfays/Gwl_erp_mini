@@ -53,7 +53,7 @@ Staff Management is the first module (Leave is second) and owns the **HR Dashboa
 
 | Grade | Category it fixes |
 |---|---|
-| Junior Gd. Level 1-6 | Junior Staff |
+| Junior Gd. Level 1-7 | Junior Staff |
 | Charwoman | Contract (no leave) |
 | Snr. Gd. Level 1-4 | Senior Staff |
 | Mgt. Gd. Level 1-4 | Management |
@@ -61,6 +61,7 @@ Staff Management is the first module (Leave is second) and owns the **HR Dashboa
 - The **category is derived from the grade** (`Employee::saving`), never stored as something else, and the form shows it instead of asking for it. Staff recorded before grades keep their category (including the old "Senior Management") until they are graded.
 - The Grade dropdown is **required for new staff**; an existing record without a grade can still be edited until HR grades it. A grade can't be cleared once set.
 - Every grade change is audited (`employee_grade_changed`, old and new grade and category) from whichever screen made it, and it recalculates the employee's annual entitlement (see `docs/06-module-leave.md`).
+- **Profile page:** there is no self-deletion (the `profile.destroy` route was removed; UAC manages accounts). Its read-only "My ICT Assets" card is built in `ProfileController::myAssets()` from `ict_assets.assigned_to_employee_id` for the signed-in user's own employee only (no id is ever taken from the request), shows no price, IMEI or link into Assets, and needs no module permission.
 - The grade is on the staff list (with a **Grade** filter, including "No grade set", and a Category filter where "Management" includes the old "Senior Management"), the profile drawer and the employee export. The list's filters live in the URL, so a dashboard card can link straight to a filtered list (`staff.index?grade=none&status=active`).
 
 ## Import: the Grade column
@@ -75,7 +76,7 @@ The employee template has an optional `grade` column after `category`. Any case 
 
 ## Staff Reports
 
-`App\Livewire\Staff\StaffReports` / `App\Services\Staff\StaffReportService` (permission `staff.view_reports`; scope: Head Office HR and super_admin see every region, regional HR their own; staff holding the super_admin role are not counted for anyone but a super_admin viewer, as in the staff list). Besides the leave charts it shows the active staff **by category** (the four categories, with the pre-grade categories grouped under the one they became), **Senior and Management by level 1-4, Junior by level 1-6**, and a **No grade set** row; each count links to the filtered staff list. **Export Excel** (`staff.reports.export`) writes Summary, By Grade, By District (with the staff by category and the number with no grade), On Leave Now and Staff sheets (grade columns included) from the same payload the page shows.
+`App\Livewire\Staff\StaffReports` / `App\Services\Staff\StaffReportService` (permission `staff.view_reports`; scope: Head Office HR and super_admin see every region, regional HR their own; staff holding the super_admin role are not counted for anyone but a super_admin viewer, as in the staff list). Besides the leave charts it shows the active staff **by category** (the four categories, with the pre-grade categories grouped under the one they became), **Senior and Management by level 1-4, Junior by level 1-7**, and a **No grade set** row; each count links to the filtered staff list. **Export Excel** (`staff.reports.export`) writes Summary, By Grade, By District (with the staff by category and the number with no grade), On Leave Now and Staff sheets (grade columns included) from the same payload the page shows.
 
 ## Key Files
 

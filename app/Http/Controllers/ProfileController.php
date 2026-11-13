@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\Employee;
-use App\Models\User;
+use App\Models\IctAsset;
 use Carbon\Carbon;
 use DateTimeInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -38,7 +38,7 @@ class ProfileController extends Controller
             'user' => $user,
             'employee' => $employee,
             'employeeDetails' => $this->employeeDetails($employee),
-            'canDeleteAccount' => ! $this->isEmployeeAccount($user),
+            'myAssets' => $this->myAssets($employee),
             'mustChangePassword' => (bool) $user->must_change_password,
         ]);
     }
@@ -73,26 +73,19 @@ class ProfileController extends Controller
     }
 
     /**
-     * Delete the user's account.
+     * The signed-in employee's own ICT assets (read only; the holder column is the only key used).
      */
-    public function destroy(Request $request): RedirectResponse
+    protected function myAssets(?Employee $employee): Collection
     {
-        abort_if($this->isEmployeeAccount($request->user()), 403, 'Employee accounts cannot be self-deleted.');
+        if (! $employee) {
+            return collect();
+        }
 
-        $request->validateWithBag('userDeletion', [
-            'password' => ['required', 'current_password'],
-        ]);
-
-        $user = $request->user();
-
-        Auth::logout();
-
-        $user->delete();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return Redirect::to('/');
+        return IctAsset::query()
+            ->where('assigned_to_employee_id', $employee->id)
+            ->with(['assetModel', 'district'])
+            ->orderBy('asset_name')
+            ->get();
     }
 
     protected function employeeDetails(?Employee $employee): array
@@ -133,11 +126,4 @@ class ProfileController extends Controller
         return Carbon::parse($value)->format('d M Y');
     }
 
-    protected function isEmployeeAccount(User $user): bool
-    {
-        $user->loadMissing(['roles', 'employee', 'employeeByStaffId']);
-
-        return (bool) ($user->employee ?? $user->employeeByStaffId)
-            || $user->roles->contains('name', 'employee');
-    }
 }

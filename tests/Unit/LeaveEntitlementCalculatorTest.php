@@ -50,10 +50,11 @@ class LeaveEntitlementCalculatorTest extends TestCase
             'junior L1, no hire date' => ['Junior Gd. Level 1', null, 2026, 31],
             'junior L2, tenure crosses ten years next year' => ['Junior Gd. Level 2', '2016-06-15', 2027, 31],
             'junior L2, leap-day hire, nine years at 1 Jan 2026' => ['Junior Gd. Level 2', '2016-02-29', 2026, 26],
-            // Junior Gd. Level 4-6: 31 whatever the tenure.
+            // Junior Gd. Level 4-7: 31 whatever the tenure.
             'junior L4, new joiner' => ['Junior Gd. Level 4', '2026-02-01', 2026, 31],
             'junior L5' => ['Junior Gd. Level 5', '2020-02-01', 2026, 31],
             'junior L6, long serving' => ['Junior Gd. Level 6', '1999-02-01', 2026, 31],
+            'junior L7, short serving' => ['Junior Gd. Level 7', '2024-02-01', 2026, 31],
             // Senior and Management: 36 at every level.
             'senior L1, new joiner' => ['Snr. Gd. Level 1', '2026-01-10', 2026, 36],
             'senior L4' => ['Snr. Gd. Level 4', '2010-01-10', 2026, 36],

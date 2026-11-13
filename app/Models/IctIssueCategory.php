@@ -19,7 +19,7 @@ class IctIssueCategory extends Model
      */
     public const ASSET_TYPE_NARROWING = [
         'Computer' => ['PC', 'AIO', 'Laptop', 'Server'],
-        'Printer/Photocopier' => ['PRT', 'PTC'],
+        'Printer/Photocopier' => ['PRT', 'PTC', 'TPR'],
     ];
 
     protected $table = 'ict_issue_categories';

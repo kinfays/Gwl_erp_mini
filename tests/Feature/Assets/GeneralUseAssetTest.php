@@ -157,7 +157,7 @@ class GeneralUseAssetTest extends TestCase
         Excel::fake();
         $this->get(route('assets.assets.export.excel', ['cols' => 'asset,assigned_to']))->assertOk();
         Excel::assertDownloaded('assets_'.now()->format('Y_m_d').'.xlsx', function (ListExport $export) {
-            $cells = $export->collection()->pluck(2, 0)->all(); // asset name => assigned to
+            $cells = $export->collection()->pluck(3, 0)->all(); // asset name => assigned to
             $this->assertSame('General use', $cells['Lobby PC']);
             $this->assertSame('Unassigned', $cells['Loose laptop']);
 

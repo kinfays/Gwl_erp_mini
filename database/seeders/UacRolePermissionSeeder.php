@@ -37,6 +37,13 @@ class UacRolePermissionSeeder extends Seeder
                 'uac.edit_users',
                 'uac.assign_roles',
             ],
+            // Same UAC grants as the ICT team; what sets the ICT Manager apart is the tier rules in RoleGrantPolicy.
+            User::ROLE_ICT_MANAGER => [
+                'uac.view_users',
+                'uac.create_users',
+                'uac.edit_users',
+                'uac.assign_roles',
+            ],
         ];
 
         foreach ($map as $roleName => $slugs) {

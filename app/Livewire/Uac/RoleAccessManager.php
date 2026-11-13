@@ -63,7 +63,12 @@ class RoleAccessManager extends Component
     public function mount(): void
     {
         $this->enforceLivewireModule('uac');
-        abort_unless($this->policy()->canAdministerRoles($this->actor()), 403, 'Only a Global Admin or Super Admin can manage roles.');
+        // Global Admin and super_admin manage roles; an ICT Manager only reads the list of roles they may hand out.
+        abort_unless(
+            $this->policy()->canAdministerRoles($this->actor()) || $this->actor()->isIctManager(),
+            403,
+            'Only a Global Admin or Super Admin can manage roles.'
+        );
 
         $this->loadRoles();
 
@@ -147,8 +152,8 @@ class RoleAccessManager extends Component
     public function selectRole(int $roleId): void
     {
         $this->selectedRoleId = $roleId;
-        $role = Role::with(['permissions', 'moduleAccesses'])
-            ->visibleTo($this->actor())
+        $role = $this->policy()->rolesQueryFor($this->actor())
+            ->with(['permissions', 'moduleAccesses'])
             ->findOrFail($roleId);
 
         $this->selectedPermissionIds = $role->permissions->pluck('id')->toArray();
@@ -436,14 +441,13 @@ class RoleAccessManager extends Component
     protected function selectedRole(): ?Role
     {
         return $this->selectedRoleId
-            ? Role::query()->visibleTo($this->actor())->find($this->selectedRoleId)
+            ? $this->policy()->rolesQueryFor($this->actor())->find($this->selectedRoleId)
             : null;
     }
 
     protected function loadRoles(): void
     {
-        $this->roles = Role::query()
-            ->visibleTo($this->actor())
+        $this->roles = $this->policy()->rolesQueryFor($this->actor())
             ->orderBy('display_name')
             ->get()
             ->map(fn ($r) => [

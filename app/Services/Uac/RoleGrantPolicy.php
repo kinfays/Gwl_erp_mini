@@ -13,8 +13,12 @@ use Illuminate\Support\Collection;
  * Who may do what to roles and to the users who hold them. Every UAC entry point (UacController, the roles
  * screen, the users import, the Head Office transfer rule) asks this class instead of testing role names itself.
  *
- * Tiers, highest first: super_admin > Global Admin (slug `admin`) > ICT team > everyone else. Nobody grants a role
- * above their own tier, and only a super_admin touches super_admin.
+ * Tiers, highest first: super_admin > Global Admin (slug `admin`) > ICT Manager > ICT team > everyone else. Nobody
+ * grants a role above their own tier, and only a super_admin touches super_admin. ICT Manager and ICT team both work
+ * inside one location scope; an ICT Manager additionally never sees Global Admin / super_admin accounts, roles or
+ * audit rows (the visibleTo scopes), never changes their own roles or another ICT Manager's, and never grants a tiered,
+ * protected or Head Office-only role (ictManagerRoleDenial()). Only a Global Admin or super_admin gives or changes
+ * an ICT Manager's roles.
  *
  * Location. Head Office is a district, not a region; its staff have location_type = HeadOffice and still carry the
  * Head Office district's region_id. A scoped ICT user therefore works in exactly one scope: Head Office, or one
@@ -61,9 +65,43 @@ class RoleGrantPolicy
         return match ($role instanceof Role ? $role->name : $role) {
             User::ROLE_SUPER_ADMIN => User::TIER_SUPER_ADMIN,
             User::ROLE_ADMIN => User::TIER_GLOBAL_ADMIN,
+            User::ROLE_ICT_MANAGER => User::TIER_ICT_MANAGER,
             User::ROLE_ICT_TEAM => User::TIER_ICT,
             default => User::TIER_STAFF,
         };
+    }
+
+    /**
+     * Roles an ICT Manager may never grant or remove, on top of the general rules: the tiered roles (this one, ICT
+     * Team, Global Admin, super_admin), anything protected, and the Head Office-only roles. Whatever the
+     * `ict_assignable` flag says.
+     */
+    protected function ictManagerRoleDenial(User $actor, Role $role, string $verb): ?string
+    {
+        if (! $actor->isIctManager()) {
+            return null;
+        }
+
+        if ($this->roleTier($role) >= User::TIER_ICT || $role->is_protected || in_array($role->name, self::HEAD_OFFICE_ROLES, true)) {
+            return "{$role->display_name} can only be {$verb} by a Global Admin.";
+        }
+
+        return null;
+    }
+
+    /**
+     * The roles shown on the roles screen and in its count: whatever the viewer may see, and for an ICT Manager only
+     * the roles they could hand out (a read-only list).
+     */
+    public function rolesQueryFor(User $actor): Builder
+    {
+        $query = Role::query()->visibleTo($actor);
+
+        if (! $actor->isIctManager()) {
+            return $query;
+        }
+
+        return $query->whereKey($this->assignableRolesFor($actor)->pluck('id')->all());
     }
 
     /** Users $actor may see and manage: super_admin accounts only for a super_admin, ICT within its location scope. */
@@ -143,6 +181,11 @@ class RoleGrantPolicy
             return 'You cannot change your own roles.';
         }
 
+        // Nobody below Global Admin manages an ICT Manager: not the ICT team, and not another ICT Manager.
+        if ($user && $actor->tier() < User::TIER_GLOBAL_ADMIN && $user->hasRoles(User::ROLE_ICT_MANAGER)) {
+            return 'Only a Global Admin or Super Admin can manage an ICT Manager.';
+        }
+
         return null;
     }
 
@@ -164,6 +207,11 @@ class RoleGrantPolicy
 
         if ($target->tier() > $actor->tier()) {
             return 'You cannot change the status of an account above your own level.';
+        }
+
+        // An ICT Manager does not switch another ICT Manager on or off either.
+        if ($actor->tier() < User::TIER_GLOBAL_ADMIN && $target->hasRoles(User::ROLE_ICT_MANAGER) && ! $actor->is($target)) {
+            return 'Only a Global Admin or Super Admin can change the status of an ICT Manager.';
         }
 
         return null;
@@ -235,6 +283,10 @@ class RoleGrantPolicy
             return "{$role->display_name} can only be assigned by a Global Admin.";
         }
 
+        if ($denial = $this->ictManagerRoleDenial($actor, $role, 'assigned')) {
+            return $denial;
+        }
+
         if ($target !== null && ($denial = $this->locationDenial($role, $this->resolveTarget($target)[1]))) {
             return $denial;
         }
@@ -265,7 +317,7 @@ class RoleGrantPolicy
             return "{$role->display_name} can only be removed by a Global Admin.";
         }
 
-        return null;
+        return $this->ictManagerRoleDenial($actor, $role, 'removed');
     }
 
     public function canRemoveRole(User $actor, Role $role, User $target): bool

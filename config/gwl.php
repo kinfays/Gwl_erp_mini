@@ -20,7 +20,7 @@ return [
         // Junior Gd. Levels 1-3: fewer days until they have served `leave_junior_lower_tenure_years` years.
         'junior_lower_short_tenure' => (int) env('GWL_LEAVE_DAYS_JUNIOR_LOWER_SHORT', 26),
         'junior_lower_long_tenure' => (int) env('GWL_LEAVE_DAYS_JUNIOR_LOWER_LONG', 31),
-        // Junior Gd. Levels 4-6.
+        // Junior Gd. Levels 4-7.
         'junior_upper' => (int) env('GWL_LEAVE_DAYS_JUNIOR_UPPER', 31),
         // Snr. Gd. and Mgt. Gd., every level.
         'senior_and_management' => (int) env('GWL_LEAVE_DAYS_SENIOR_MANAGEMENT', 36),
@@ -194,6 +194,10 @@ return [
     // narrow the filters; the PDF is far heavier to build, so it has its own, lower cap.
     'assets_list_export_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_MAX_ROWS', 5000),
     'assets_list_export_pdf_max_rows' => (int) env('GWL_ASSETS_LIST_EXPORT_PDF_MAX_ROWS', 1500),
+    // Asset bulk upload (Assets > Assets > Upload assets): the biggest .xlsx accepted, in MB (keep at or below PHP's
+    // upload_max_filesize / post_max_size), and the most data rows one file may hold (the file is read into memory).
+    'assets_import_max_mb' => (int) env('GWL_ASSETS_IMPORT_MAX_MB', 5),
+    'assets_import_max_rows' => (int) env('GWL_ASSETS_IMPORT_MAX_ROWS', 1000),
     // The same two caps for the Maintenance log export (Excel / PDF).
     'assets_maintenance_export_max_rows' => (int) env('GWL_ASSETS_MAINTENANCE_EXPORT_MAX_ROWS', 5000),
     'assets_maintenance_export_pdf_max_rows' => (int) env('GWL_ASSETS_MAINTENANCE_EXPORT_PDF_MAX_ROWS', 1500),

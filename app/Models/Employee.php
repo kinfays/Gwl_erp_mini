@@ -260,7 +260,16 @@ class Employee extends Model
     /** Employees $viewer may see in the UAC and staff contexts (see User::scopeVisibleTo()). */
     public function scopeVisibleTo($query, ?User $viewer)
     {
-        return $viewer?->isSuperAdmin() ? $query : $query->visibleInErp();
+        if ($viewer?->isSuperAdmin()) {
+            return $query;
+        }
+
+        $query->visibleInErp();
+
+        // An ICT Manager also never sees the staff record behind a Global Admin account.
+        return $viewer?->isIctManager()
+            ? $query->whereDoesntHave('userByStaffId.roles', fn ($roleQuery) => $roleQuery->whereIn('name', User::ABOVE_ICT_ROLES))
+            : $query;
     }
 
     public function scopeAtLocation($query, string $locationType)

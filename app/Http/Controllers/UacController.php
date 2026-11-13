@@ -51,7 +51,7 @@ class UacController extends Controller
         return view('uac.index', [
             'stats' => [
                 'users' => (clone $usersQuery)->count(),
-                'roles' => Role::query()->visibleTo($viewer)->count(),
+                'roles' => $this->policy->rolesQueryFor($viewer)->count(),
                 'permissions' => Permission::count(),
                 'audit_logs' => (clone $logsQuery)->count(),
             ],

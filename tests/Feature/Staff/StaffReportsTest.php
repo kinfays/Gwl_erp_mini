@@ -178,7 +178,7 @@ class StaffReportsTest extends TestCase
             collect($breakdown['senior'])->pluck('count', 'grade')->all()
         );
         $this->assertSame(
-            ['Junior Gd. Level 1' => 0, 'Junior Gd. Level 2' => 3, 'Junior Gd. Level 3' => 0, 'Junior Gd. Level 4' => 0, 'Junior Gd. Level 5' => 0, 'Junior Gd. Level 6' => 1],
+            ['Junior Gd. Level 1' => 0, 'Junior Gd. Level 2' => 3, 'Junior Gd. Level 3' => 0, 'Junior Gd. Level 4' => 0, 'Junior Gd. Level 5' => 0, 'Junior Gd. Level 6' => 1, 'Junior Gd. Level 7' => 0],
             collect($breakdown['junior'])->pluck('count', 'grade')->all()
         );
         $this->assertSame(

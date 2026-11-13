@@ -25,7 +25,7 @@ class UnassignedNeedsAssigneeTest extends TestCase
     private const CLASSIFICATION = [
         'PC' => true, 'AIO' => true, 'Laptop' => true, 'PRT' => true, 'PTC' => true,
         'Ph' => true, 'SIM' => true,
-        'POS' => false, 'Server' => false,
+        'POS' => false, 'Server' => false, 'TPR' => false,
         'RT' => false, 'SW' => false, 'AP' => false, 'MiFi' => false, 'P2P' => false, '4GRT' => false,
     ];
 

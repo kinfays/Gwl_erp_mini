@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
 use App\Http\Controllers\Assets\AssetAuditExportController;
+use App\Http\Controllers\Assets\AssetImportController;
 use App\Http\Controllers\Assets\AssetModuleController;
 use App\Http\Controllers\Assets\AssetsListExportController;
 use App\Http\Controllers\Assets\IssueReportsExportController;
@@ -62,7 +63,7 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'active'])
     ->name('dashboard');
 
-Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin,ict_team'])
+Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin,ict_team,ict_manager'])
     ->prefix('uac')
     ->name('uac.')
     ->group(function () {
@@ -77,7 +78,7 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin,ict_t
         Route::get('/employees/search', [UacController::class, 'searchEmployees'])->name('employees.search');
 
         Route::get('/roles', [UacController::class, 'rolesPermissions'])
-            ->middleware('role:admin,super_admin')
+            ->middleware('role:admin,super_admin,ict_manager')
             ->name('roles');
 
         Route::get('/import', [ImportController::class, 'uac'])
@@ -108,7 +109,6 @@ Route::middleware(['auth', 'active', 'module:uac', 'role:admin,super_admin,ict_t
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 Route::middleware(['auth', 'active', 'module:leave'])
@@ -244,7 +244,7 @@ Route::middleware(['auth', 'active', 'module:letters'])
         });
     });
 
-Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team'])
+Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team,ict_manager'])
     ->prefix('assets')
     ->name('assets.')
     ->group(function () {
@@ -280,6 +280,15 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/assets', [AssetModuleController::class, 'assets'])
             ->middleware('permission:assets.view_inventory')
             ->name('assets');
+
+        // Bulk upload of assets (create-only; the run reads the stored file again).
+        Route::middleware('permission:assets.import')->group(function () {
+            Route::get('/import', [AssetImportController::class, 'index'])->name('import');
+            Route::get('/import/template', [AssetImportController::class, 'template'])->name('import.template');
+            Route::post('/import/preview', [AssetImportController::class, 'preview'])->name('import.preview');
+            Route::post('/import/run', [AssetImportController::class, 'run'])->name('import.run');
+            Route::post('/import/clear', [AssetImportController::class, 'clear'])->name('import.clear');
+        });
 
         Route::get('/phones/export/excel', [PhonesListExportController::class, 'excel'])
             ->middleware('permission:assets.export_inventory')
@@ -388,7 +397,7 @@ if (config('gwl.mdm_enabled')) {
         ->middleware('throttle:mdm-webhook')
         ->name('webhooks.android-management');
 
-    Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,admin,ict_team'])
+    Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,admin,ict_team,ict_manager'])
         ->prefix('assets/mdm')
         ->name('assets.mdm.')
         ->group(function () {

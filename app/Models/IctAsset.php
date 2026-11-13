@@ -77,6 +77,9 @@ class IctAsset extends Model
             'Server' => 'Server',
             'PRT' => 'Printer',
             'PTC' => 'Photocopier',
+            // Receipt/label printer: shared equipment (a counter or a vehicle), so not in PERSONALLY_ASSIGNED_TYPES, and
+            // small enough that it is not on the building UPS (not in UPS_ASSET_TYPES). Counted in the Printers card.
+            'TPR' => 'Thermal Printer',
         ],
         self::DEVICE_CATEGORY_PHONE => [
             'POS' => 'POS Terminal',

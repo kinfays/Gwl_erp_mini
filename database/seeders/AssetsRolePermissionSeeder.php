@@ -22,6 +22,28 @@ class AssetsRolePermissionSeeder extends Seeder
             'assets.mdm_wipe',
         ];
 
+        // What the ICT team and the ICT Manager hold in Assets (the ICT Manager's UAC grants are in UacRolePermissionSeeder).
+        $ictAssets = [
+            'assets.view_dashboard',
+            'assets.view_inventory',
+            'assets.create',
+            'assets.edit',
+            'assets.manage_maintenance',
+            'assets.manage_reports',
+            'assets.agent_ingest',
+            'assets.view_network_secrets',
+            'assets.manage_issue_categories',
+            'assets.manage_audits',
+            'assets.export_audits',
+            'assets.export_inventory',
+            'assets.export_reports',
+            'assets.export_maintenance',
+            'assets.import',
+            'assets.mdm_view',
+            'assets.mdm_enroll',
+            'assets.mdm_command',
+        ];
+
         $map = [
             'super_admin' => [
                 'assets.view_dashboard',
@@ -43,30 +65,14 @@ class AssetsRolePermissionSeeder extends Seeder
                 'assets.export_inventory',
                 'assets.export_reports',
                 'assets.export_maintenance',
+                'assets.import',
                 'assets.view_network_secrets',
                 ...$mdmAll,
             ],
             // admin only ever holds the MDM permissions inside Assets (see the mdm permissions migration).
             'admin' => $mdmAll,
-            'ict_team' => [
-                'assets.view_dashboard',
-                'assets.view_inventory',
-                'assets.create',
-                'assets.edit',
-                'assets.manage_maintenance',
-                'assets.manage_reports',
-                'assets.agent_ingest',
-                'assets.view_network_secrets',
-                'assets.manage_issue_categories',
-                'assets.manage_audits',
-                'assets.export_audits',
-                'assets.export_inventory',
-                'assets.export_reports',
-                'assets.export_maintenance',
-                'assets.mdm_view',
-                'assets.mdm_enroll',
-                'assets.mdm_command',
-            ],
+            'ict_team' => $ictAssets,
+            'ict_manager' => $ictAssets,
         ];
 
         foreach ($map as $roleName => $slugs) {

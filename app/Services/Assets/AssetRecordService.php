@@ -38,8 +38,9 @@ class AssetRecordService
      * The holder (assigned_to_employee_id) is never written here: it is handed to AssetAssignmentService, which keeps
      * the assignment history. Swapping one holder for another needs $assignmentChange ('reassigned' | 'correction');
      * a save without it is refused. Assigning an empty device, clearing the holder and creating a device need none.
+     * $audit = false skips the per-asset audit row of a CREATE (only the asset import passes it, and writes its own summary).
      */
-    public function save(array $data, string $category, ?IctAsset $existing = null, ?string $assignmentChange = null): IctAsset
+    public function save(array $data, string $category, ?IctAsset $existing = null, ?string $assignmentChange = null, bool $audit = true): IctAsset
     {
         if (! in_array($category, IctAsset::DEVICE_CATEGORIES, true)) {
             throw ValidationException::withMessages([
@@ -99,16 +100,16 @@ class AssetRecordService
         unset($data['assigned_to_employee_id'], $data['previous_assigned_to_employee_id']);
 
         try {
-            return $this->persist($data, $category, $existing, $changesHolder, $newHolder ? (int) $newHolder : null, $assignmentChange);
+            return $this->persist($data, $category, $existing, $changesHolder, $newHolder ? (int) $newHolder : null, $assignmentChange, $audit);
         } catch (UniqueConstraintViolationException $e) {
             // Lost a race with another save of the same name (the index is the final word).
             throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
         }
     }
 
-    protected function persist(array $data, string $category, ?IctAsset $existing, bool $changesHolder, ?int $newHolder, ?string $assignmentChange): IctAsset
+    protected function persist(array $data, string $category, ?IctAsset $existing, bool $changesHolder, ?int $newHolder, ?string $assignmentChange, bool $audit = true): IctAsset
     {
-        return DB::transaction(function () use ($data, $category, $existing, $changesHolder, $newHolder, $assignmentChange) {
+        return DB::transaction(function () use ($data, $category, $existing, $changesHolder, $newHolder, $assignmentChange, $audit) {
             if ($existing) {
                 $old = $existing->toArray();
                 $existing->update($data);
@@ -141,14 +142,17 @@ class AssetRecordService
                 $asset->refresh();
             }
 
-            AuditLog::record(
-                action: "create_{$category}",
-                module: Permission::MODULE_ASSETS,
-                targetType: 'ict_assets',
-                targetId: $asset->id,
-                old: null,
-                new: $this->redact($asset->toArray()),
-            );
+            // A bulk import ($audit = false) writes ONE audit row for the whole file, never one per asset with its name.
+            if ($audit) {
+                AuditLog::record(
+                    action: "create_{$category}",
+                    module: Permission::MODULE_ASSETS,
+                    targetType: 'ict_assets',
+                    targetId: $asset->id,
+                    old: null,
+                    new: $this->redact($asset->toArray()),
+                );
+            }
 
             return $asset;
         });

@@ -504,8 +504,8 @@ class ErpNavigation
                 'active' => ['uac.roles'],
                 'icon' => $this->icon('shield'),
                 'icon_name' => 'key-round',
-                // Global Admin and super_admin; the ICT team never sees the roles screen.
-                'can' => fn (User $currentUser) => $currentUser->tier() >= User::TIER_GLOBAL_ADMIN,
+                // Global Admin and super_admin; an ICT Manager gets a read-only list of the roles they may hand out. The ICT team never sees the screen.
+                'can' => fn (User $currentUser) => $currentUser->tier() >= User::TIER_GLOBAL_ADMIN || $currentUser->isIctManager(),
             ],
             [
                 'label' => 'Bulk Import',

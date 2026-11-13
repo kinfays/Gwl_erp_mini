@@ -28,7 +28,7 @@ class AgentReportController extends Controller
         }
 
         if (
-            ! $user->hasRoles('super_admin', 'admin', 'ict_team')
+            ! $user->hasRoles('super_admin', 'admin', 'ict_team', 'ict_manager')
             && ! $user->hasPermission('assets.agent_ingest')
         ) {
             return response()->json(['message' => 'Forbidden.'], 403);

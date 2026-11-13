@@ -89,7 +89,7 @@ class EmployeeGradeTest extends TestCase
         $groups = Livewire::test(EmployeeForm::class)->viewData('gradeGroups');
 
         $this->assertSame(['Junior Staff', 'Contract', 'Senior Staff', 'Management'], array_keys($groups));
-        $this->assertCount(6, $groups['Junior Staff']);
+        $this->assertCount(7, $groups['Junior Staff']);
         $this->assertSame(['Charwoman'], $groups['Contract']);
         $this->assertCount(4, $groups['Senior Staff']);
         $this->assertCount(4, $groups['Management']);

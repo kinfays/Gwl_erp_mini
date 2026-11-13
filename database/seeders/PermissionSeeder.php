@@ -82,6 +82,7 @@ class PermissionSeeder extends Seeder
                 'assets.export_inventory',
                 'assets.export_reports',
                 'assets.export_maintenance',
+                'assets.import',
                 'assets.view_network_secrets',
                 'assets.mdm_view',
                 'assets.mdm_manage_policies',

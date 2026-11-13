@@ -28,6 +28,7 @@ class AssetListColumns
                 'asset' => ['label' => 'Asset', 'default' => true, 'locked' => true],
                 'type_model' => ['label' => 'Type / Model', 'default' => true],
                 'processor' => ['label' => 'Processor', 'default' => true],
+                'department' => ['label' => 'Department', 'default' => true],
                 'location' => ['label' => 'Location', 'default' => true],
                 'assigned_to' => ['label' => 'Assigned To', 'default' => true],
                 'status' => ['label' => 'Status', 'default' => true],
@@ -69,7 +70,7 @@ class AssetListColumns
     public static function relations(string $list): array
     {
         return match ($list) {
-            self::ASSETS => ['assetModel', 'assignedTo', 'district', 'region'],
+            self::ASSETS => ['assetModel.manufacturer', 'assignedTo', 'department', 'district', 'region'],
             self::PHONES => ['assetModel', 'assignedTo'],
             self::NETWORK => ['assetModel', 'district'],
             self::REPORTS => ['asset', 'district', 'region'],
@@ -87,10 +88,13 @@ class AssetListColumns
     {
         return match ($list) {
             self::ASSETS => match ($key) {
-                'asset' => ['Asset Name' => 'name', 'Serial Number' => 'serial'],
-                'type_model' => ['Type' => 'type', 'Model' => 'model'],
+                'asset' => ['Asset Name' => 'name', 'Serial Number' => 'serial', 'Asset Tag' => 'tag'],
+                'type_model' => ['Type' => 'type', 'Manufacturer' => 'manufacturer', 'Model' => 'model'],
                 'processor' => ['Processor' => 'processor'],
-                'location' => ['District' => 'district', 'Region' => 'region'],
+                'department' => ['Department' => 'department'],
+                // "Actual Location" is where the asset physically is (ict_assets.actual_location, typed in the form), not
+                // the district/region it is booked to and not the assignee's work location.
+                'location' => ['District' => 'district', 'Region' => 'region', 'Actual Location' => 'location_note'],
                 'assigned_to' => ['Assigned To' => 'assigned_to'],
                 'status' => ['Status' => 'status'],
                 'ups' => ['On UPS' => 'has_ups', 'UPS Condition' => 'ups_status'],
@@ -171,6 +175,10 @@ class AssetListColumns
             'imei' => (string) $row->imei,
             'type' => IctAsset::ASSET_TYPES[$row->device_category][$row->asset_type] ?? (string) $row->asset_type,
             'model' => (string) $row->assetModel?->name,
+            // The model's manufacturer; the plain-text column the agent fills in is only a fallback for unlinked devices.
+            'manufacturer' => (string) ($row->assetModel?->manufacturer?->name ?: $row->manufacturer),
+            'department' => (string) $row->department?->department_name,
+            'tag' => (string) $row->tag_no,
             'processor' => IctAsset::supportsProcessor($row->device_category, $row->asset_type) ? (string) $row->cpu_name : '',
             'district' => (string) $row->district?->district_name,
             'region' => (string) $row->region?->region_name,

@@ -15,7 +15,7 @@ use Carbon\Carbon;
  *   gross       by grade (config gwl.leave_annual_days):
  *                 Junior Gd. L1-3, under 10 years' service  26   (the threshold is gwl.leave_junior_lower_tenure_years)
  *                 Junior Gd. L1-3, 10 years or more         31
- *                 Junior Gd. L4-6                           31
+ *                 Junior Gd. L4-7                           31
  *                 Snr. Gd. and Mgt. Gd., every level        36
  *                 no grade yet                              31   (the flat entitlement from before grades)
  *                 Charwoman (contract)                       0   not eligible for leave

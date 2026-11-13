@@ -468,11 +468,11 @@ class IssueTaxonomyTest extends TestCase
         Livewire::test(IssueCategoriesManager::class)->assertForbidden();
     }
 
-    public function test_the_permission_is_granted_to_super_admin_and_ict_team(): void
+    public function test_the_permission_is_granted_to_super_admin_ict_team_and_ict_manager(): void
     {
         $granted = Role::query()->whereHas('permissions', fn ($q) => $q->where('name', 'assets.manage_issue_categories'))->pluck('name')->sort()->values()->all();
 
-        $this->assertSame(['ict_team', 'super_admin'], $granted);
+        $this->assertSame(['ict_manager', 'ict_team', 'super_admin'], $granted);
     }
 
     public function test_switching_a_category_off_removes_it_from_the_form_and_is_audited(): void

@@ -25,7 +25,7 @@ class MdmAccessGuard
 {
     public function isOperator(User $user): bool
     {
-        return $user->hasRoles(User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_ICT_TEAM);
+        return $user->hasRoles(User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_ICT_TEAM, User::ROLE_ICT_MANAGER);
     }
 
     public function isRegionScopedIct(User $user): bool

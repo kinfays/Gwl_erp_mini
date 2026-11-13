@@ -165,6 +165,7 @@ class DataImportService
                     'districts' => [$this->upsertDistrict($row)],
                     'job_titles' => [$this->upsertJobTitle($row)],
                     'employees' => [$this->upsertEmployee($row, $actor)],
+                    'staff_grades' => [$this->updateGrade($row, $actor)],
                     'users' => [$this->upsertUser($row, $actor)],
                     default => [false],
                 };
@@ -212,8 +213,13 @@ class DataImportService
             ->mapWithKeys(fn ($value, $key) => [$key => is_string($value) ? trim($value) : $value])
             ->all();
 
-        if (in_array($type, ['employees', 'users'], true)) {
+        if (in_array($type, ['employees', 'users', 'staff_grades'], true)) {
             $normalized['staff_id'] = $this->normalizeCellText($normalized['staff_id'] ?? null);
+        }
+
+        if ($type === 'staff_grades') {
+            $grade = $this->normalizeCellText($normalized['grade'] ?? null);
+            $normalized['grade'] = $grade === '' ? '' : (StaffGrade::fromInput($grade)?->value ?? $grade);
         }
 
         if ($type === 'employees') {
@@ -373,6 +379,31 @@ class DataImportService
                 'unit' => ['nullable', 'string', 'max:255'],
                 'present_appointment' => ['nullable', 'date'],
             ],
+            'staff_grades' => [
+                'staff_id' => [
+                    'required',
+                    'string',
+                    'max:50',
+                    function (string $attribute, mixed $value, Closure $fail) use ($actor): void {
+                        $employee = Employee::query()->where('staff_id', $value)->first();
+                        $actor ??= Auth::user();
+
+                        // The same reach as the staff list: someone outside it is reported like a staff ID that doesn't exist.
+                        if (! $employee || ($actor && ! $this->directory->canAccess($actor, $employee))) {
+                            $fail('No staff member with this staff ID was found in your scope.');
+                        }
+                    },
+                ],
+                'grade' => [
+                    'required',
+                    'string',
+                    function (string $attribute, mixed $value, Closure $fail): void {
+                        if (! StaffGrade::tryFrom((string) $value)) {
+                            $fail('The grade "'.$value.'" is not recognised. Use one of: '.implode(', ', StaffGrade::values()).'.');
+                        }
+                    },
+                ],
+            ],
             'users' => [
                 'staff_id' => [
                     'required',
@@ -422,21 +453,40 @@ class DataImportService
                 'staff_id' => 'staff ID',
                 'role_slugs' => 'roles',
             ],
+            'staff_grades' => [
+                'staff_id' => 'staff ID',
+            ],
             default => [],
         };
     }
 
     protected function readRows(UploadedFile $file): Collection
     {
+        return $this->readPath($file->getPathname(), strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'xlsx'));
+    }
+
+    /**
+     * The rows of a workbook that is already on disk (for example a file an import kept so that confirming can read it
+     * again): the same reader, and the same temp copy, as an upload. Cells come back as the reader gives them, so a
+     * formula is its "=..." text, never a calculated value.
+     *
+     * @return Collection<int, Collection<int, mixed>>
+     */
+    public function readStoredFile(string $path, string $extension = 'xlsx'): Collection
+    {
+        return $this->readPath($path, $extension);
+    }
+
+    protected function readPath(string $source, string $extension): Collection
+    {
         // Excel 4.x opens an UploadedFile through getRealPath(), which is false for PHP's upload temp file on some
         // Windows setups ("Path must not be empty"). Read a copy kept under storage instead, where realpath() works.
         $directory = storage_path('app/private/import-tmp');
         File::ensureDirectoryExists($directory);
 
-        $extension = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'xlsx');
         $path = $directory.DIRECTORY_SEPARATOR.Str::uuid().'.'.$extension;
 
-        if (! @copy($file->getPathname(), $path)) {
+        if (! @copy($source, $path)) {
             throw new RuntimeException('The uploaded file could not be read. Please upload it again.');
         }
 
@@ -648,6 +698,28 @@ class DataImportService
         return $employee->wasRecentlyCreated;
     }
 
+    /**
+     * Sets the grade of an existing employee. Saved through Eloquent so the grade fixes the category (Employee::saving)
+     * and the observer recalculates the annual leave entitlement. Never creates anyone, so it always counts as an update.
+     */
+    protected function updateGrade(array $row, ?User $actor): bool
+    {
+        $actor ??= Auth::user();
+        $employee = Employee::query()->where('staff_id', $row['staff_id'])->first();
+        $grade = StaffGrade::tryFrom((string) ($row['grade'] ?? ''));
+
+        if (! $employee || ! $grade || ($actor && ! $this->directory->canAccess($actor, $employee))) {
+            throw ValidationException::withMessages([
+                'import' => 'Staff grade import data changed. Please preview the file again.',
+            ]);
+        }
+
+        $employee->grade = $grade->value;
+        $employee->save();
+
+        return false;
+    }
+
     protected function upsertUser(array $row, ?User $actor): bool
     {
         if (! $actor) {
@@ -739,6 +811,14 @@ class DataImportService
                 'optional_headings' => ['title', 'grade'],
                 'sample_rows' => [
                     ['EMP001', 'Akosua Mensah', 'Ms.', 'Female', 'Management', 'Mgt. Gd. Level 2', 'akosua.mensah@example.com', 'HR Officer', 'Administration', 'Accra West Regional Office', 'Greater Accra', '1990-04-12', '2020-09-01', 'HR Operations', '2024-01-15'],
+                ],
+            ],
+            'staff_grades' => [
+                'label' => 'Staff grades',
+                'description' => 'Set or change the grade of staff already in the system (staff_id and grade only). The category follows the grade. Grades: '.implode(', ', StaffGrade::values()).'.',
+                'headings' => ['staff_id', 'grade'],
+                'sample_rows' => [
+                    ['EMP001', 'Mgt. Gd. Level 2'],
                 ],
             ],
             'departments' => [

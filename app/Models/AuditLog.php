@@ -83,9 +83,34 @@ class AuditLog extends Model
             return $query;
         }
 
-        return $query->where(fn ($visible) => $visible
+        $query->where(fn ($visible) => $visible
             ->where('audit_logs.actor_is_super_admin', false)
             ->orWhereIn('audit_logs.action', self::ROLE_ACCESS_ACTIONS));
+
+        return $viewer?->isIctManager() ? $this->withoutAboveIct($query) : $query;
+    }
+
+    /**
+     * An ICT Manager sees nothing done by, or done to, a Global Admin or super_admin account, and nothing about those
+     * two roles. (super_admin rows are already filtered above; this adds the Global Admin ones.)
+     */
+    protected function withoutAboveIct($query)
+    {
+        $hiddenUsers = User::query()
+            ->whereHas('roles', fn ($roles) => $roles->whereIn('name', User::ABOVE_ICT_ROLES))
+            ->select('users.id');
+        $hiddenRoles = Role::query()->whereIn('name', User::ABOVE_ICT_ROLES)->select('roles.id');
+
+        return $query
+            ->where(fn ($rows) => $rows->whereNull('audit_logs.user_id')->orWhereNotIn('audit_logs.user_id', $hiddenUsers))
+            ->where(fn ($rows) => $rows->whereNull('audit_logs.target_type')
+                ->orWhere('audit_logs.target_type', '!=', 'users')
+                ->orWhereNull('audit_logs.target_id')
+                ->orWhereNotIn('audit_logs.target_id', $hiddenUsers))
+            ->where(fn ($rows) => $rows->whereNull('audit_logs.target_type')
+                ->orWhere('audit_logs.target_type', '!=', 'roles')
+                ->orWhereNull('audit_logs.target_id')
+                ->orWhereNotIn('audit_logs.target_id', $hiddenRoles));
     }
 
     /** The actor as $viewer should see them: a super_admin's name is never shown to anyone else. */

@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Auth;
  *   1. the feature flag — a component can be reached without its route (a Livewire update request), so a
  *      disabled feature 404s here too;
  *   2. Assets module access (the Livewire EnforcesModuleAccess trait);
- *   3. an MDM operator role (super_admin / admin / ict_team) and the screen's permission.
+ *   3. an MDM operator role (super_admin / admin / ict_team / ict_manager) and the screen's permission.
  *
  * Region scope is not decided here: components resolve every device / asset through MdmAccessGuard, which is the
  * service-level twin of ScopesAssetsByActor. Ids held in public properties are #[Locked] and re-resolved per action.

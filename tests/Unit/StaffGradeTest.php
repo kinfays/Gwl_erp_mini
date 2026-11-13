@@ -10,7 +10,7 @@ class StaffGradeTest extends TestCase
 {
     public function test_the_allowed_grades_are_defined_once_and_in_full(): void
     {
-        $this->assertCount(15, StaffGrade::cases());
+        $this->assertCount(16, StaffGrade::cases());
         $this->assertSame('Junior Gd. Level 1', StaffGrade::values()[0]);
         $this->assertContains('Charwoman', StaffGrade::values());
         $this->assertContains('Mgt. Gd. Level 4', StaffGrade::values());
@@ -76,12 +76,13 @@ class StaffGradeTest extends TestCase
             'short level' => ['Snr Gd L2', StaffGrade::SeniorLevel2],
             'junior' => ['Junior Gd. Level 3', StaffGrade::JuniorLevel3],
             'jnr' => ['jnr gd lvl 6', StaffGrade::JuniorLevel6],
+            'junior level 7' => ['Junior Gd. Level 7', StaffGrade::JuniorLevel7],
             'management' => ['Management Grade Level 4', StaffGrade::ManagementLevel4],
             'mgt' => ['MGT. GD. LEVEL 1', StaffGrade::ManagementLevel1],
             'padded' => ['  Mgt.   Gd.  Level 3 ', StaffGrade::ManagementLevel3],
             'charwoman' => ['charwoman', StaffGrade::Charwoman],
             'a level that does not exist' => ['Snr. Gd. Level 5', null],
-            'junior level 7' => ['Junior Gd. Level 7', null],
+            'junior level 8' => ['Junior Gd. Level 8', null],
             'management level 0' => ['Mgt. Gd. Level 0', null],
             'rubbish' => ['Director', null],
             'blank' => ['', null],

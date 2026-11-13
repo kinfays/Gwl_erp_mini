@@ -1,7 +1,7 @@
 <x-uac-layout>
     @php
         $viewer = auth()->user();
-        $canManageRoles = $viewer->tier() >= \App\Models\User::TIER_GLOBAL_ADMIN;
+        $canManageRoles = $viewer->tier() >= \App\Models\User::TIER_GLOBAL_ADMIN || $viewer->isIctManager();
         $canSeeAudit = $viewer->hasRoles('super_admin');
     @endphp
 

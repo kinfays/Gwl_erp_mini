@@ -399,7 +399,7 @@ class AssetsList extends Component
     public function render()
     {
         $assets = $this->scopeAssetsForViewing(
-            IctAsset::query()->with(['assetModel', 'assignedTo', 'district', 'region'])
+            IctAsset::query()->with(['assetModel.manufacturer', 'assignedTo', 'department', 'district', 'region'])
         )
             ->tap(fn ($query) => app(AssetListQuery::class)->assets($query, self::CATEGORY, $this->listFilters()))
             ->latest()

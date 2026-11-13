@@ -18,13 +18,22 @@ class User extends Authenticatable
     public const ROLE_ADMIN = 'admin';
     public const ROLE_EMPLOYEE = 'employee';
     public const ROLE_ICT_TEAM = 'ict_team';
+    public const ROLE_ICT_MANAGER = 'ict_manager';
     public const ROLE_TRANSPORT_MANAGER = 'transport_manager';
     public const ROLE_DRIVER = 'driver';
 
-    public const TIER_SUPER_ADMIN = 3;
-    public const TIER_GLOBAL_ADMIN = 2;
+    /** Ranks only compare (a higher tier may manage a lower one); nothing stores these numbers. */
+    public const TIER_SUPER_ADMIN = 4;
+    public const TIER_GLOBAL_ADMIN = 3;
+    public const TIER_ICT_MANAGER = 2;
     public const TIER_ICT = 1;
     public const TIER_STAFF = 0;
+
+    /** The two ICT roles that work inside one location scope (Head Office or one region). */
+    public const ICT_ROLES = [self::ROLE_ICT_TEAM, self::ROLE_ICT_MANAGER];
+
+    /** Accounts and roles an ICT Manager must never see or touch. */
+    public const ABOVE_ICT_ROLES = [self::ROLE_SUPER_ADMIN, self::ROLE_ADMIN];
 
     protected $fillable = [
         'full_name',
@@ -137,23 +146,31 @@ class User extends Authenticatable
     }
 
     /**
-     * How much user/role management power the account has: super_admin > Global Admin > ICT team > everyone else.
-     * Nobody may grant a role above their own tier.
+     * How much user/role management power the account has: super_admin > Global Admin > ICT Manager > ICT team >
+     * everyone else. Nobody may grant a role above their own tier.
      */
     public function tier(): int
     {
         return match (true) {
             $this->isSuperAdmin() => self::TIER_SUPER_ADMIN,
             $this->isGlobalAdmin() => self::TIER_GLOBAL_ADMIN,
+            $this->hasRoles(self::ROLE_ICT_MANAGER) => self::TIER_ICT_MANAGER,
             $this->hasRoles(self::ROLE_ICT_TEAM) => self::TIER_ICT,
             default => self::TIER_STAFF,
         };
     }
 
-    /** ICT team without Global Admin / super_admin: confined to one location scope (Head Office, or one region). */
+    /** ICT team or ICT Manager without Global Admin / super_admin: confined to one location scope (Head Office, or one region). */
     public function isScopedIct(): bool
     {
-        return $this->hasRoles(self::ROLE_ICT_TEAM)
+        return $this->hasRoles(self::ICT_ROLES)
+            && ! $this->hasRoles(self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN);
+    }
+
+    /** A scoped ICT Manager: the account that may never see Global Admin or super_admin accounts and roles. */
+    public function isIctManager(): bool
+    {
+        return $this->hasRoles(self::ROLE_ICT_MANAGER)
             && ! $this->hasRoles(self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN);
     }
 
@@ -260,6 +277,15 @@ class User extends Authenticatable
      */
     public function scopeVisibleTo($query, ?User $viewer)
     {
-        return $viewer?->isSuperAdmin() ? $query : $query->visibleInErp();
+        if ($viewer?->isSuperAdmin()) {
+            return $query;
+        }
+
+        $query->visibleInErp();
+
+        // An ICT Manager also never sees a Global Admin account.
+        return $viewer?->isIctManager()
+            ? $query->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->whereIn('name', self::ABOVE_ICT_ROLES))
+            : $query;
     }
 }

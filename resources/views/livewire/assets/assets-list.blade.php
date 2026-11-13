@@ -3,11 +3,18 @@
         $viewer = auth()->user();
         $canCreate = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.create');
         $canEdit = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.edit');
+        $canImport = $canCreate && ($viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.import'));
     @endphp
 
     <x-ui.page-header title="Assets" description="Computers, laptops, printers, photocopiers, all-in-ones and servers.">
         @if ($canCreate)
             <x-slot:actions>
+                @if ($canImport)
+                    <a href="{{ route('assets.import') }}" class="btn btn-secondary">
+                        <x-ui.icon name="upload" />
+                        Upload assets
+                    </a>
+                @endif
                 <button type="button" wire:click="openCreate" class="btn btn-primary">
                     <x-ui.icon name="plus" />
                     Add Asset
@@ -73,6 +80,9 @@
                         @if (in_array('processor', $visibleColumns))
                             <th>Processor</th>
                         @endif
+                        @if (in_array('department', $visibleColumns))
+                            <th>Department</th>
+                        @endif
                         @if (in_array('location', $visibleColumns))
                             <th>Location</th>
                         @endif
@@ -100,13 +110,16 @@
                             <span class="ui-cell-stack">
                                 <a href="{{ route('assets.show', $asset) }}" class="ui-person-name">{{ $asset->asset_name }}</a>
                                 <span class="ui-person-sub mono">{{ $asset->serial_number ?: 'No serial' }}</span>
+                                @if (filled($asset->tag_no))
+                                    <span class="ui-person-sub mono">Tag: {{ $asset->tag_no }}</span>
+                                @endif
                             </span>
                         </td>
                         @if (in_array('type_model', $visibleColumns))
                             <td>
                             <span class="ui-cell-stack">
                                 <span>{{ $assetTypes[$asset->asset_type] ?? $asset->asset_type }}</span>
-                                <span class="ui-person-sub">{{ $asset->assetModel?->name ?: 'No model' }}</span>
+                                <span class="ui-person-sub">{{ $asset->assetModel ? trim(($asset->assetModel->manufacturer?->name ?? '').' '.$asset->assetModel->name) : 'No model' }}</span>
                             </span>
                         </td>
                         @endif
@@ -116,6 +129,9 @@
                                 <span class="mono">{{ $asset->cpu_name ?: '—' }}</span>
                             @endif
                         </td>
+                        @endif
+                        @if (in_array('department', $visibleColumns))
+                            <td>{{ $asset->department?->department_name ?: '—' }}</td>
                         @endif
                         @if (in_array('location', $visibleColumns))
                             <td>

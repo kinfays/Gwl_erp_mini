@@ -6,7 +6,7 @@ namespace App\Enums;
  * A member of staff's grade. The one place the allowed grades live: the staff form, the import, the reports and the
  * leave entitlement all read it, and a grade fixes the employee's category (so the category is never stored twice).
  *
- *   Junior Gd. Level 1..6  -> Junior Staff
+ *   Junior Gd. Level 1..7  -> Junior Staff
  *   Charwoman              -> Contract (contract workers: no leave)
  *   Snr. Gd. Level 1..4    -> Senior Staff
  *   Mgt. Gd. Level 1..4    -> Management
@@ -21,6 +21,7 @@ enum StaffGrade: string
     case JuniorLevel4 = 'Junior Gd. Level 4';
     case JuniorLevel5 = 'Junior Gd. Level 5';
     case JuniorLevel6 = 'Junior Gd. Level 6';
+    case JuniorLevel7 = 'Junior Gd. Level 7';
     case Charwoman = 'Charwoman';
     case SeniorLevel1 = 'Snr. Gd. Level 1';
     case SeniorLevel2 = 'Snr. Gd. Level 2';

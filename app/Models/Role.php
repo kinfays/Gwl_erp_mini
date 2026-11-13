@@ -80,6 +80,11 @@ class Role extends Model
             $query->where('roles.name', '!=', User::ROLE_SUPER_ADMIN);
         }
 
+        // An ICT Manager never sees the Global Admin role either.
+        if ($viewer?->isIctManager()) {
+            $query->whereNotIn('roles.name', User::ABOVE_ICT_ROLES);
+        }
+
         return $query;
     }
 }

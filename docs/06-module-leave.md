@@ -110,7 +110,7 @@ audited (`leave_hr_contact_*`). This is the only place HR emails are configured:
 
 ## Annual entitlement (by grade)
 
-An employee's Annual entitlement for a leave year comes from their **grade** (`employees.grade`, the `App\Enums\StaffGrade` enum: Junior Gd. Level 1-6, Charwoman, Snr. Gd. Level 1-4, Mgt. Gd. Level 1-4) and years of service. `App\Services\Leave\LeaveEntitlementCalculator` is the pure calculator; the numbers are config (`config/gwl.php`: `leave_annual_days`, `leave_junior_lower_tenure_years`).
+An employee's Annual entitlement for a leave year comes from their **grade** (`employees.grade`, the `App\Enums\StaffGrade` enum: Junior Gd. Level 1-7, Charwoman, Snr. Gd. Level 1-4, Mgt. Gd. Level 1-4) and years of service. `App\Services\Leave\LeaveEntitlementCalculator` is the pure calculator; the numbers are config (`config/gwl.php`: `leave_annual_days`, `leave_junior_lower_tenure_years`).
 
 | Grade | Gross days |
 |---|---|
