@@ -35,7 +35,7 @@ Answered by the Commercial lead on 2026-10-10 unless marked *open*:
 11. **Merge fields:** `{account_no}`, `{balance}` (e.g. `GHS 1,234.50`, or `GHS 20.00 credit`; plain ASCII because the cedi sign is not in GSM-7) and `{name}` — **only for people who hold `view_customer_details`**. A message with merge fields is sent one request per customer.
 12. **One campaign at a time per region** (the provider's rate limit). A second one waits.
 13. **Who may use it:** staff whose employee record is in Accra West (and not Head Office) with the permission, plus super_admin. Global Admin is *not* let in unless they work in Accra West. Head Office staff are not let in even though Head Office shares Accra West's region id.
-14. **Role:** the **Commercial Officer** (`commercial_officer`) gets `send_sms`, `view_sms_balance`, `view_sms_reports`. `commercial_manager` and every other role get nothing. `manage_sms_settings` is super_admin only.
+14. **Role:** the **Commercial Officer** (`commercial_officer`) and, since 2026-10-18, the **Commercial Manager** get `send_sms`, `view_sms_balance`, `view_sms_reports`. Every other role gets nothing. `manage_sms_settings` is super_admin only. **A district user has no SMS at all (Phase 8a):** anyone limited to their own district (no `commercial.view_all_districts`) is refused by `SmsAccess` whatever permissions they hold; see `docs/commercial-module-design.md` 8.30.
 15. **Sender IDs:** at most 11 characters, the first in `GWL_ARKESEL_SENDER_ID` is the default.
 16. **Retention:** recipient rows (customer id + status) are kept for ever by default (`commercial_sms_recipient_retention_days = 0`); a purge keeps the campaign totals.
 
@@ -62,12 +62,14 @@ Arkesel's own documentation (developers.arkesel.com) is a JavaScript app that co
 
 ## 5. Permissions
 
-| Slug | super_admin | commercial_officer | everyone else |
-|---|---|---|---|
-| `commercial.send_sms` | yes | yes | no |
-| `commercial.view_sms_balance` | yes | yes | no |
-| `commercial.view_sms_reports` | yes | yes | no |
-| `commercial.manage_sms_settings` | yes | no | no |
+| Slug | super_admin | commercial_officer | commercial_manager | everyone else |
+|---|---|---|---|---|
+| `commercial.send_sms` | yes | yes | yes | no |
+| `commercial.view_sms_balance` | yes | yes | yes | no |
+| `commercial.view_sms_reports` | yes | yes | yes | no |
+| `commercial.manage_sms_settings` | yes | no | no | no |
+
+A **district-limited** user (Phase 8a: no `commercial.view_all_districts`, so they see only the district on their employee record, e.g. the *District Commercial Viewer* role) is refused every one of these, even if a role grants them: the check is `CommercialScope::isDistrictLimited()` inside `SmsAccess::userMay()`, and the audience resolver refuses such an actor as well.
 
 Seeded inside migration `2026_10_15_000001_seed_commercial_sms_permissions` and mirrored in `PermissionSeeder` / `CommercialRolePermissionSeeder`. Holding a permission is never enough: `SmsAccess` also checks the flag and the region. Exporting a report needs `view_sms_reports` **and** `commercial.export_reports`; names in lists and exports need `view_customer_details`, and phones are masked everywhere (no reveal path).
 

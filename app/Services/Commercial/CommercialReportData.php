@@ -100,6 +100,12 @@ class CommercialReportData
 
         if ($canReading) {
             $stats = $this->filteredReadingStats()->get();
+
+            // a district user whose district has too few CCAs gets no reading figure that would be those people's own
+            if ($this->districtGroupTooSmall($stats)) {
+                $stats = collect();
+            }
+
             $trend = $this->reading->monthlyTrend($stats, $this->filteredStrengths()->get(), $asOf);
             $unmatched = $stats->where('match_status', 'unmatched')->pluck('reader_staff_id')->unique()->count();
         }
@@ -107,7 +113,8 @@ class CommercialReportData
         $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get();
 
         $summary = $this->insights->executiveSummary([
-            'overdue' => app(UploadReminderService::class)->overdue($batches, $asOf),
+            // (the overdue list is a region-wide status: a district user does not have it)
+            'overdue' => $this->actorDistrictLimited() ? [] : app(UploadReminderService::class)->overdue($batches, $asOf),
             'trend' => $trend,
             'unmatched_readers' => $unmatched,
             'snapshot' => $snapshot,
@@ -141,7 +148,7 @@ class CommercialReportData
         $stats = $this->filteredReadingStats($snapshot['region_id'])->with(['district:id,district_name'])->get();
 
         $family = array_values(array_filter($snapshots, fn (array $s) => $s['is_single_month'] && $s['region_id'] === $snapshot['region_id'] && $s['segment'] === $snapshot['segment']));
-        $byBatch = $family === [] ? collect() : CommercialBillingRoute::query()->whereIn('batch_id', array_column($family, 'id'))->get()->groupBy('batch_id');
+        $byBatch = $family === [] ? collect() : $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->whereIn('batch_id', array_column($family, 'id')))->get()->groupBy('batch_id');
 
         return [
             'scorecard' => $this->insights->districtScorecard($snapshot, $routes, $stats, $asOf, $this->hideSmallGroups(), $this->minReadersForDistricts()),
@@ -167,7 +174,7 @@ class CommercialReportData
 
         // A district filter shows ONE home district's figures: for a user who may not see individual readers, a district
         // with too few active readers would be those people's own figures.
-        if ($districtId !== null && $this->hideSmallGroups()) {
+        if (($districtId !== null || $this->actorDistrictLimited()) && $this->hideSmallGroups()) {
             $active = $stats->where('visited_count', '>', 0)->pluck('reader_staff_id')->unique()->count();
 
             if ($active < $min) {
@@ -220,11 +227,84 @@ class CommercialReportData
     }
 
     /**
-     * Everything on the Billing screen for one snapshot (optionally one district).
+     * A DATE RANGE of billing (Phase 8a, CommercialPeriods): the uploads of the snapshot's region and segment that lie inside it, chosen
+     * by the period rules, with their routes added up (flows summed, stocks from the latest period). Null when no range is typed.
+     *
+     * @param  array<string, mixed>  $snapshot  the snapshot that names the region and segment (the default or the picked one)
+     * @return array{meta: array<string, mixed>, routes: Collection<int, CommercialBillingRoute>, notes: list<string>, batch_ids: list<int>, selection: array<string, mixed>}|null
+     */
+    public function billingRange(array $snapshot, ?string $from, ?string $to): ?array
+    {
+        $start = CommercialPeriods::bound($from, false);
+        $end = CommercialPeriods::bound($to, true);
+
+        if ($start === null && $end === null) {
+            return null;
+        }
+
+        $periods = new CommercialPeriods;
+        $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)->notVoided()
+            ->where('region_id', $snapshot['region_id'])
+            ->when($snapshot['segment'] === null, fn ($q) => $q->whereNull('customer_segment'), fn ($q) => $q->where('customer_segment', $snapshot['segment']))
+            ->get()->keyBy('id');
+
+        $selection = $periods->select($batches->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->values()->all(), $start?->toDateString(), $end?->toDateString());
+        $chosen = array_map('intval', $selection['chosen']);
+        $routesByBatch = $chosen === [] ? collect() : $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->whereIn('batch_id', $chosen))->with('district:id,district_name')->get()->groupBy('batch_id');
+        $routes = $chosen === [] ? collect() : $periods->combineBillingRoutes($routesByBatch->all(), $chosen);
+
+        $label = CommercialPeriods::describe($selection['from'] ?? now()->toDateString(), $selection['to'] ?? now()->toDateString());
+        $notes = [];
+
+        if (count($chosen) > 1) {
+            $notes[] = count($chosen).' uploads that do not overlap are added up (batch '.implode(', ', array_map(fn ($id) => '#'.$id, $chosen)).'): flows (billing, payments, volume) are summed, and the closing balance and customer counts are the latest upload\'s.';
+        } elseif (count($chosen) === 1) {
+            $notes[] = 'One upload lies inside this range (batch #'.$chosen[0].').';
+        } else {
+            $notes[] = 'No upload lies inside this range.';
+        }
+
+        if ($selection['gaps'] !== [] && $chosen !== []) {
+            $notes[] = 'No upload covers '.CommercialPeriods::describeIntervals($selection['gaps']).' of the range ('.$selection['covered_days'].' of '.$selection['range_days'].' days are covered).';
+        }
+
+        foreach ($selection['overlaps'] as $overlap) {
+            $notes[] = 'Batch #'.$overlap['dropped'].' overlaps batch #'.$overlap['kept'].' and is left out of this view (both are kept): the newest upload is used first.';
+        }
+
+        foreach ($selection['shadowed'] as $shadow) {
+            if ($batches->has($shadow['id']) && $this->periodsInRange($batches[$shadow['id']], $selection)) {
+                $notes[] = 'Batch #'.$shadow['id'].' is replaced by the newer batch #'.$shadow['by'].' ('.($shadow['reason'] === 'identical' ? 'the same period' : 'a period that contains it').').';
+            }
+        }
+
+        if ($selection['partly_outside'] !== []) {
+            $notes[] = 'Left out because their period is only partly inside the range: '.implode(', ', array_map(fn ($id) => '#'.$id.' ('.CommercialPeriods::describe($batches[$id]->period_from, $batches[$id]->period_to).')', $selection['partly_outside'])).'.';
+        }
+
+        $meta = [
+            'id' => 'range', 'batch' => null, 'is_range' => true, 'range_from' => $selection['from'], 'range_to' => $selection['to'], 'batch_ids' => $chosen,
+            'region_id' => $snapshot['region_id'], 'region' => $snapshot['region'], 'segment' => $snapshot['segment'], 'segment_label' => $snapshot['segment_label'],
+            'period_from' => $selection['from'], 'period_to' => $selection['to'], 'month' => $selection['from'] ? substr($selection['from'], 0, 7).'-01' : null,
+            'period_label' => $label, 'is_single_month' => false,
+            'label' => $snapshot['region'].' · '.$snapshot['segment_label'].' · '.$label.(count($chosen) > 1 ? ' ('.count($chosen).' uploads added up)' : ''),
+        ];
+
+        return ['meta' => $meta, 'routes' => $routes, 'notes' => $notes, 'batch_ids' => $chosen, 'selection' => $selection];
+    }
+
+    /** True when a batch's period overlaps the selected range (so a note about it is relevant). */
+    protected function periodsInRange(CommercialImportBatch $batch, array $selection): bool
+    {
+        return $selection['from'] !== null && $batch->period_to->toDateString() >= $selection['from'] && $batch->period_from->toDateString() <= $selection['to'];
+    }
+
+    /**
+     * Everything on the Billing screen for one snapshot (optionally one district), or for a date range when $from / $to are given.
      *
      * @return array<string, mixed>|null
      */
-    public function billingSnapshot(?string $snapshotId, string $district = ''): ?array
+    public function billingSnapshot(?string $snapshotId, string $district = '', ?string $from = null, ?string $to = null): ?array
     {
         $snapshot = $this->snapshot($snapshotId);
 
@@ -232,7 +312,16 @@ class CommercialReportData
             return null;
         }
 
-        $all = $this->routesOf($snapshot['id']);
+        $range = $this->billingRange($snapshot, $from, $to);
+
+        if ($range !== null) {
+            $snapshot = $range['meta'];
+            $all = $range['routes'];
+            $bandsBatch = $range['batch_ids'] === [] ? null : max($range['batch_ids']);
+        } else {
+            $all = $this->routesOf($snapshot['id']);
+            $bandsBatch = $snapshot['id'];
+        }
         $routes = $district !== '' && $all->contains('district_label_raw', $district) ? $all->where('district_label_raw', $district)->values() : $all;
 
         return [
@@ -243,7 +332,8 @@ class CommercialReportData
             'collections' => $this->billing->collections($routes),
             'balances' => $this->billing->balances($routes),
             'estimation' => $this->billing->estimationAndUnbilled($routes),
-            'bands' => $this->billing->bands(CommercialBillingBand::query()->where('batch_id', $snapshot['id'])->get()),
+            'bands' => $this->billing->bands($this->actorDistrictLimited() || $bandsBatch === null ? collect() : CommercialBillingBand::query()->where('batch_id', $bandsBatch)->get()),
+            'range_notes' => $range['notes'] ?? [],
             'exceptions' => $this->billing->exceptions($routes),
         ];
     }
@@ -275,8 +365,8 @@ class CommercialReportData
         $rows = $this->scopeReadingStatsForActor(\App\Models\CommercialReadingStat::query()->readers())
             ->whereHas('batch', fn ($batch) => $batch->notVoided()
                 ->when($regionId !== null && $this->actorSeesAllRegions(), fn ($query) => $query->where('region_id', $regionId)))
-            ->when(self::monthBound((string) $from, false), fn ($query, Carbon $date) => $query->whereDate('month', '>=', $date->toDateString()))
-            ->when(self::monthBound((string) $to, true), fn ($query, Carbon $date) => $query->whereDate('month', '<=', $date->toDateString()))
+            ->when(is_array(self::monthRange($from, $to)), fn ($query) => $query->whereDate('month', '>=', self::monthRange($from, $to)[0]->toDateString())->whereDate('month', '<=', self::monthRange($from, $to)[1]->toDateString()))
+            ->when(self::monthRange($from, $to) === false, fn ($query) => $query->whereRaw('1 = 0'))
             ->selectRaw('batch_id, month, sum(read_count) as read_total, sum(skipped_count) as skipped_total, sum(visited_count) as visited_total')
             ->groupBy('batch_id', 'month')
             ->get()
@@ -334,7 +424,8 @@ class CommercialReportData
             return $base + ['empty' => true, 'months' => [], 'districts' => [], 'total' => null, 'district_options' => []];
         }
 
-        $card = $this->kpi->scorecard($picked);
+        // a district user's KPI table holds only their district: no 'All districts' row, no other district's figure
+        $card = $this->kpi->scorecard($picked, $this->actorDistrictIds());
         $options = collect($card['districts'])->mapWithKeys(fn (array $d) => [($d['id'] ?? 'x'.crc32($d['name'])) => $d['name']])->all();
 
         if ($districtId !== null) {
@@ -353,6 +444,6 @@ class CommercialReportData
     /** @return Collection<int, CommercialBillingRoute> */
     protected function routesOf(int $batchId): Collection
     {
-        return CommercialBillingRoute::query()->where('batch_id', $batchId)->with('district:id,district_name')->get();
+        return $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->where('batch_id', $batchId))->with('district:id,district_name')->get();
     }
 }

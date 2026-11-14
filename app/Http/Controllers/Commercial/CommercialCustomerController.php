@@ -127,31 +127,32 @@ class CommercialCustomerController extends Controller
 
         $user = $request->user();
         $restriction = CustomerScope::regionRestriction($user);
+        $districtIds = CustomerScope::districtIds($user);
         $districtId = ctype_digit((string) $request->query('district')) && $request->query('district') !== '' ? (int) $request->query('district') : null;
         $periodKey = is_string($request->query('period')) && $request->query('period') !== '' ? (string) $request->query('period') : null;
 
-        $batches = $snapshots->current($restriction, null, $districtId, $periodKey);
+        $batches = $snapshots->current($restriction, null, $districtId, $periodKey, $districtIds);
         abort_if($districtId !== null && ! $batches->has($districtId), 404);
 
         return match ($report) {
-            'summary' => $this->summary($batches, $restriction, $snapshots, $analytics, $exports, $districtId),
-            'list' => $this->listExport($request, $batches, $restriction, $exports, $lists, $districtId),
+            'summary' => $this->summary($batches, $restriction, $snapshots, $analytics, $exports, $districtId, $districtIds),
+            'list' => $this->listExport($request, $batches, $restriction, $exports, $lists, $districtId, $districtIds),
             default => abort(404),
         };
     }
 
-    protected function summary($batches, ?int $restriction, CustomerSnapshots $snapshots, CustomerAnalyticsService $analytics, CustomerExportService $exports, ?int $districtId)
+    protected function summary($batches, ?int $restriction, CustomerSnapshots $snapshots, CustomerAnalyticsService $analytics, CustomerExportService $exports, ?int $districtId, ?array $districtIds = null)
     {
         if ($batches->isEmpty()) {
             return back()->with('error', 'There is nothing to export yet.');
         }
 
-        $filters = $snapshots->filters($batches, $restriction, ['district_id' => $districtId]);
+        $filters = $snapshots->filters($batches, $restriction, ['district_id' => $districtId], $districtIds);
         $report = $exports->summary([
             'overview' => $analytics->overview($filters), 'receivables' => $analytics->receivables($filters), 'meters' => $analytics->meters($filters, 'district'),
             'dormancy' => $analytics->dormancy($filters), 'quality' => $analytics->quality($filters), 'coverage' => $analytics->coverage($filters),
         ], [
-            'Scope' => $districtId ? (DB::table('districts')->where('id', $districtId)->value('district_name') ?? 'District') : ($restriction === null ? 'Every region' : 'Your region'),
+            'Scope' => $districtId ? (DB::table('districts')->where('id', $districtId)->value('district_name') ?? 'District') : ($districtIds !== null ? 'Your district' : ($restriction === null ? 'Every region' : 'Your region')),
             'Districts' => (string) $batches->count(),
             'Data as of' => Carbon::parse($batches->max('as_of_date'))->format('d M Y'),
         ], $batches->max('period_key'));
@@ -167,7 +168,7 @@ class CommercialCustomerController extends Controller
         return Excel::download(new CommercialReportExport($report, now()), 'commercial_customer_summary_'.now()->format('Ymd').'.xlsx');
     }
 
-    protected function listExport(Request $request, $batches, ?int $restriction, CustomerExportService $exports, CustomerListService $lists, ?int $districtId)
+    protected function listExport(Request $request, $batches, ?int $restriction, CustomerExportService $exports, CustomerListService $lists, ?int $districtId, ?array $districtIds = null)
     {
         abort_if($districtId === null, 404);
 
@@ -186,7 +187,7 @@ class CommercialCustomerController extends Controller
         ];
 
         $cap = (int) config('gwl.commercial_customer_export_max_rows', 100000);
-        $estimate = $exports->estimate($filters + ['restriction' => $restriction]);
+        $estimate = $exports->estimate($filters + ['restriction' => $restriction, 'district_ids' => $districtIds]);
 
         if ($estimate !== null && $estimate > $cap) {
             return back()->with('error', 'This list has about '.number_format($estimate).' customers, over the export limit of '.number_format($cap).'. Narrow it to a route or a category group and try again.');
@@ -201,7 +202,7 @@ class CommercialCustomerController extends Controller
 
         $path = storage_path('app/private/commercial-export-'.uniqid().'.xlsx');
         @mkdir(dirname($path), 0775, true);
-        $result = $exports->writeList($path, $filters + ['restriction' => $restriction], $details, $cap, $lists);
+        $result = $exports->writeList($path, $filters + ['restriction' => $restriction, 'district_ids' => $districtIds], $details, $cap, $lists);
 
         Audit::log(action: 'commercial.export_customer_list_excel', module: Permission::MODULE_COMMERCIAL, metadata: ['filters' => $filters, 'rows' => $result['rows'], 'truncated' => $result['truncated'], 'with_details' => $details, 'queued' => false]);
 

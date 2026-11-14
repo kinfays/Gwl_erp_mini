@@ -137,12 +137,13 @@ class CustomerHousekeepingTest extends CustomerTestCase
 
     public function test_a_pending_category_is_reviewed_on_the_lookups_screen(): void
     {
-        $this->loadCustomers(['routes' => [['name' => '1001', 'customers' => [ReportWorkbooks::customer(1, ['category' => '999'])]]]]);
-        $id = (int) DB::table('commercial_customer_categories')->where('code', '999')->value('id');
+        // 998 is new; 999, the status CNTL and the blank-status UNKNOWN are already seeded PENDING (Phase 8a), so they are in the list too
+        $this->loadCustomers(['routes' => [['name' => '1001', 'customers' => [ReportWorkbooks::customer(1, ['category' => '998'])]]]]);
+        $id = (int) DB::table('commercial_customer_categories')->where('code', '998')->value('id');
         $this->assertTrue((bool) DB::table('commercial_customer_categories')->where('id', $id)->value('is_pending'));
 
         $page = Livewire::actingAs($this->superAdmin())->test(Lookups::class);
-        $page->assertSee('New in a file')->assertSee('1 code(s) found in uploaded files');
+        $page->assertSee('New in a file')->assertSee('4 code(s) found in uploaded files');
         $page->set("categories.{$id}.name", 'WORKSHOP SALES')->set("categories.{$id}.group", 'commercial')->call('saveCategories');
 
         $row = DB::table('commercial_customer_categories')->where('id', $id)->first();
@@ -257,15 +258,29 @@ class CustomerHousekeepingTest extends CustomerTestCase
 
     public function test_the_lookups_are_seeded_with_the_reference_data_and_the_unconfirmed_statuses_flagged(): void
     {
-        $this->assertSame(27, DB::table('commercial_customer_categories')->whereNotNull('code')->count());
+        $this->assertSame(28, DB::table('commercial_customer_categories')->whereNotNull('code')->count(), '27 known categories and the pending 999');
+        $this->assertTrue((bool) DB::table('commercial_customer_categories')->where('code', '999')->value('is_pending'), 'category 999 is unexplained: pending, nothing guessed');
         $this->assertSame(1, DB::table('commercial_customer_categories')->where('is_unknown', true)->count());
         $this->assertSame('domestic', DB::table('commercial_customer_categories')->where('code', '611')->value('category_group'));
         $this->assertTrue((bool) DB::table('commercial_customer_categories')->where('code', '611')->value('group_is_proposed'), 'the grouping is a proposal');
 
         $statuses = DB::table('commercial_customer_statuses')->get()->keyBy('code');
-        $this->assertSame(8, $statuses->count());
+        $this->assertSame(13, $statuses->count(), '8 original + HOLD, DISN, NSC, CNTL, UNKNOWN');
         $this->assertTrue((bool) $statuses['ACTB']->is_billing);
         $this->assertTrue((bool) $statuses['ACTB']->meaning_confirmed);
+
+        // Phase 8a: the three confirmed meanings, with flags set like their neighbours
+        $this->assertEquals([true, false, true], [(bool) $statuses['HOLD']->is_active, (bool) $statuses['HOLD']->is_billing, (bool) $statuses['HOLD']->meaning_confirmed], 'billing paused: connected, not billing (like ACTN)');
+        $this->assertEquals([false, false, true], [(bool) $statuses['DISN']->is_active, (bool) $statuses['DISN']->is_billing, (bool) $statuses['DISN']->meaning_confirmed], 'same group as DISC');
+        $this->assertSame([(bool) $statuses['DISC']->is_active, (bool) $statuses['DISC']->is_billing], [(bool) $statuses['DISN']->is_active, (bool) $statuses['DISN']->is_billing]);
+        $this->assertEquals([true, false, true], [(bool) $statuses['NSC']->is_active, (bool) $statuses['NSC']->is_billing, (bool) $statuses['NSC']->meaning_confirmed], 'new, not yet billing');
+
+        // still unexplained: pending, never guessed
+        foreach (['CNTL', 'UNKNOWN'] as $code) {
+            $this->assertTrue((bool) $statuses[$code]->is_pending, "{$code} is pending");
+            $this->assertFalse((bool) $statuses[$code]->is_billing);
+            $this->assertFalse((bool) $statuses[$code]->meaning_confirmed);
+        }
 
         foreach (['TRFR', 'VACN', 'DISO', 'NFLO'] as $code) {
             $this->assertFalse((bool) $statuses[$code]->meaning_confirmed, "{$code} must stay unconfirmed");

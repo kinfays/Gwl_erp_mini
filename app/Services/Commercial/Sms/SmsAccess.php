@@ -5,6 +5,7 @@ namespace App\Services\Commercial\Sms;
 use App\Models\CommercialSmsCampaign;
 use App\Models\Region;
 use App\Models\User;
+use App\Services\Commercial\CommercialScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\DB;
  *  - Only super_admin and staff whose employee record is in one of those regions can use it. Head Office is a DISTRICT whose
  *    staff share a region_id, so a region id alone proves nothing: location_type 'HeadOffice' is never let in (the rule of
  *    ScopesCommercialByActor / CustomerScope, which is why Global Admin is not let in either unless they work in the region).
+ *  - A DISTRICT-LIMITED user (CommercialScope: no commercial.view_all_districts, so they see only their own district) has no SMS in
+ *    any form, whatever roles or permissions they hold: SMS messages the customers of a whole region, which is not theirs to reach.
  *  - Holding the permission is checked here too (allows()), so one call answers "may this person do this".
  *
  * Jobs have no Auth::user(): they call creatorMay() with the campaign, which re-checks the person who created it.
@@ -69,6 +72,11 @@ final class SmsAccess
     public static function userMay(?User $user): bool
     {
         if (! $user || ! self::enabled()) {
+            return false;
+        }
+
+        // Phase 8a: closed to district users, before anything else (a role grant cannot open it)
+        if (CommercialScope::for($user)->isDistrictLimited()) {
             return false;
         }
 

@@ -3,6 +3,8 @@
 namespace App\Services\Commercial\Sms;
 
 use App\Models\CommercialSmsCampaign;
+use App\Models\User;
+use App\Services\Commercial\CommercialScope;
 use App\Services\Commercial\Customers\CustomerSnapshots;
 use App\Services\Commercial\Customers\CustomerValues;
 use Illuminate\Database\Query\Builder;
@@ -306,8 +308,9 @@ class SmsAudienceResolver
      *         matched = accounts the rules pick; reachable = of them, with a valid number; numbers = unique numbers (= recipients);
      *         sharing = reachable accounts that share their first number with another; without_number = matched - reachable
      */
-    public function counts(array $spec, array $regionIds): array
+    public function counts(array $spec, array $regionIds, ?User $actor = null): array
     {
+        $this->refuseDistrictLimited($actor);
         $prepared = $this->prepare($spec, $regionIds);
         $matched = (int) $this->customers($spec, $prepared)->count();
 
@@ -324,6 +327,17 @@ class SmsAudienceResolver
         }
 
         return ['matched' => $matched, 'reachable' => $reachable, 'numbers' => $numbers, 'sharing' => max(0, $reachable - $firstNumbers), 'without_number' => max(0, $matched - $reachable)];
+    }
+
+    /**
+     * A district-limited person (they see only their own district) has no SMS audience at all (Phase 8a). SmsAccess already denies
+     * them everywhere above this class; this is the second lock, for any code that reaches the resolver with an actor.
+     */
+    protected function refuseDistrictLimited(?User $actor): void
+    {
+        if ($actor !== null && CommercialScope::for($actor)->isDistrictLimited()) {
+            abort(403, 'SMS is not available to district users.');
+        }
     }
 
     /** Counts for a campaign (its own region, only while that region is locked-in). */
@@ -431,8 +445,9 @@ class SmsAudienceResolver
      * @param  list<int>  $regionIds
      * @return array{ids: list<int>, invalid: int, not_found: int, outside: int, duplicates: int}
      */
-    public function parseAccountList(string $text, array $regionIds): array
+    public function parseAccountList(string $text, array $regionIds, ?User $actor = null): array
     {
+        $this->refuseDistrictLimited($actor);
         $tokens = preg_split('/[\s,;]+/', trim($text)) ?: [];
         $tokens = array_values(array_filter($tokens, fn (string $token) => $token !== ''));
         $max = (int) config('gwl.commercial_sms_max_selected', 2000);
@@ -492,8 +507,9 @@ class SmsAudienceResolver
      * @param  list<int>  $regionIds
      * @return array{inside: int, outside: int}
      */
-    public function checkSelected(array $ids, array $regionIds): array
+    public function checkSelected(array $ids, array $regionIds, ?User $actor = null): array
     {
+        $this->refuseDistrictLimited($actor);
         $inside = 0;
 
         foreach (array_chunk(array_values(array_unique(array_map('intval', $ids))), 1000) as $part) {
@@ -509,8 +525,9 @@ class SmsAudienceResolver
      * @param  list<int>  $regionIds
      * @return list<array{account_no: string, name: string|null, mobile: string}>
      */
-    public function sample(array $spec, array $regionIds, bool $details, int $limit = 3): array
+    public function sample(array $spec, array $regionIds, bool $details, int $limit = 3, ?User $actor = null): array
     {
+        $this->refuseDistrictLimited($actor);
         $prepared = $this->prepare($spec, $regionIds);
         $rows = $this->customers($spec, $prepared)->join('commercial_customer_contacts as ct', 'ct.customer_id', '=', 'c.id')
             ->whereNotNull('ct.phone_primary')->orderBy('c.id')->limit($limit)->get(['c.account_no', 'ct.phone_primary', 'ct.account_name']);

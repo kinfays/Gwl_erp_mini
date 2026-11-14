@@ -9,6 +9,7 @@ use App\Models\CommercialBillingRoute;
 use App\Models\CommercialImportBatch;
 use App\Models\Permission;
 use App\Services\Commercial\BillingAnalyticsService;
+use App\Services\Commercial\CommercialReportData;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -53,6 +54,19 @@ class Billing extends Component
     #[Url(as: 'compare')]
     public string $compare = '';
 
+    /**
+     * An exact DATE RANGE (YYYY-MM-DD, or a month YYYY-MM) instead of one snapshot (Phase 8a, CommercialPeriods): the uploads inside it
+     * that do not overlap are added up. Empty = the snapshot picked above (by default the latest uploaded period).
+     */
+    #[Url(as: 'from')]
+    public string $dateFrom = '';
+
+    #[Url(as: 'to')]
+    public string $dateTo = '';
+
+    /** The month shortcut: picking one sets the two dates to that whole month. */
+    public string $preset = '';
+
     public function mount(): void
     {
         $this->enforceLivewireModule(Permission::MODULE_COMMERCIAL);
@@ -61,7 +75,18 @@ class Billing extends Component
 
     public function clearFilters(): void
     {
-        $this->reset('district');
+        $this->reset('district', 'dateFrom', 'dateTo', 'preset');
+    }
+
+    public function updatedPreset(string $value): void
+    {
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value)) {
+            $this->dateFrom = $value.'-01';
+            $this->dateTo = \Illuminate\Support\Carbon::parse($value.'-01')->endOfMonth()->toDateString();
+        } else {
+            $this->dateFrom = '';
+            $this->dateTo = '';
+        }
     }
 
     protected function activeTab(): string
@@ -81,7 +106,7 @@ class Billing extends Component
     /** @return Collection<int, CommercialBillingRoute> */
     protected function routesOf(int $batchId): Collection
     {
-        return CommercialBillingRoute::query()->where('batch_id', $batchId)->with('district:id,district_name')->get();
+        return $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->where('batch_id', $batchId))->with('district:id,district_name')->get();
     }
 
     public function render(BillingAnalyticsService $billing)
@@ -97,7 +122,18 @@ class Billing extends Component
             ]);
         }
 
-        $allRoutes = $this->routesOf($chosen['id']);
+        // a typed date range replaces the single snapshot: the same analyses, over the uploads inside the range added up
+        $range = app(CommercialReportData::class)->billingRange($chosen, $this->dateFrom, $this->dateTo);
+        $bandsBatch = $chosen['id'];
+
+        if ($range !== null) {
+            $chosen = $range['meta'];
+            $allRoutes = $range['routes'];
+            $bandsBatch = $range['batch_ids'] === [] ? null : max($range['batch_ids']);
+        } else {
+            $allRoutes = $this->routesOf($chosen['id']);
+        }
+
         $districts = $allRoutes->pluck('district_label_raw')->unique()->sort()->values();
         $districtKey = $this->district !== '' && $districts->contains($this->district) ? $this->district : '';
         $routes = $districtKey === '' ? $allRoutes : $allRoutes->where('district_label_raw', $districtKey)->values();
@@ -110,7 +146,8 @@ class Billing extends Component
             'collections' => ['collections' => $billing->collections($routes)],
             'balances' => ['balances' => $billing->balances($routes)],
             'estimation' => ['estimation' => $billing->estimationAndUnbilled($routes)],
-            'bands' => ['bands' => $billing->bands(CommercialBillingBand::query()->where('batch_id', $chosen['id'])->get())],
+            // the consumption bands are one table for the whole region: a district user has no region-wide row
+            'bands' => ['bands' => $billing->bands($this->actorDistrictLimited() || $bandsBatch === null ? collect() : CommercialBillingBand::query()->where('batch_id', $bandsBatch)->get())],
             'exceptions' => ['exceptions' => $billing->exceptions($routes)],
             'compare' => $this->compareData($billing, $snapshots, $chosen, $allRoutes),
         };
@@ -118,6 +155,9 @@ class Billing extends Component
         return view('livewire.commercial.billing', [
             'snapshots' => $snapshots,
             'chosen' => $chosen,
+            'rangeNotes' => $range['notes'] ?? [],
+            'rangeEmpty' => $range !== null && $range['batch_ids'] === [],
+            'monthPresets' => collect($snapshots)->where('is_single_month', true)->pluck('period_label', 'month')->mapWithKeys(fn ($label, $month) => [substr($month, 0, 7) => $label])->all(),
             'activeTab' => $tab,
             'tabs' => self::TABS,
             'rankings' => self::RANKINGS,
@@ -179,7 +219,7 @@ class Billing extends Component
             return array_map(fn (array $meta) => ['meta' => $meta, 'routes' => collect()], $family);
         }
 
-        $byBatch = CommercialBillingRoute::query()->whereIn('batch_id', array_column($family, 'id'))->get()->groupBy('batch_id');
+        $byBatch = $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->whereIn('batch_id', array_column($family, 'id')))->get()->groupBy('batch_id');
 
         return array_map(fn (array $meta) => ['meta' => $meta, 'routes' => $byBatch[$meta['id']] ?? collect()], $family);
     }

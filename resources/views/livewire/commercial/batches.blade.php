@@ -66,7 +66,13 @@
                             <span style="color:#A36A2D">{{ $preview['unmatched_count'] }} unmatched</span>
                         @endif
                         @if (($preview['system_count'] ?? 0) > 0)
-                            <span style="color:var(--color-text-secondary)">{{ $preview['system_count'] }} system-account rows (kept, never ranked)</span>
+                            <span style="color:var(--color-text-secondary)">excluded (system account): {{ $preview['system_count'] }} rows, not imported</span>
+                        @endif
+                        @if (($preview['skipped_districts']['rows'] ?? 0) > 0)
+                            <span style="color:var(--color-text-secondary)">{{ number_format($preview['skipped_districts']['rows']) }} rows of other districts skipped, not imported</span>
+                        @endif
+                        @if (! empty($preview['flagged']['routes']) || ! empty($preview['flagged']['districts']))
+                            <span style="color:#A36A2D">{{ count($preview['flagged']['routes'] ?? []) }} route(s) and {{ count($preview['flagged']['districts'] ?? []) }} district figure(s) flagged (the file still imports)</span>
                         @endif
                         <span style="color:#A32D2D">{{ $preview['error_count'] }} blocking</span>
                         <span style="color:#A36A2D">{{ $preview['warning_count'] }} warnings</span>

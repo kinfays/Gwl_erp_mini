@@ -10,6 +10,7 @@ use App\Models\CommercialReadingStrength;
 use App\Models\District;
 use App\Models\Permission;
 use App\Models\Region;
+use App\Services\Commercial\CommercialPeriods;
 use App\Services\Commercial\CommercialReportData;
 use App\Services\Commercial\ReadingAnalyticsService;
 use Illuminate\Database\Eloquent\Builder;
@@ -52,6 +53,16 @@ class Reading extends Component
     #[Url]
     public string $to = '';
 
+    /**
+     * An exact date range (Phase 8a): YYYY-MM-DD. When typed it replaces the month shortcuts above. A month counts only when the WHOLE
+     * month lies inside the range (CommercialPeriods rule 5); a month partly outside is excluded and listed under the filters.
+     */
+    #[Url(as: 'df')]
+    public string $dateFrom = '';
+
+    #[Url(as: 'dt')]
+    public string $dateTo = '';
+
     public function mount(): void
     {
         $this->enforceLivewireModule(Permission::MODULE_COMMERCIAL);
@@ -60,7 +71,53 @@ class Reading extends Component
 
     public function clearFilters(): void
     {
-        $this->reset('region', 'district', 'from', 'to');
+        $this->reset('region', 'district', 'from', 'to', 'dateFrom', 'dateTo');
+    }
+
+    /** The range in force: the typed dates, else the month shortcuts (Y-m), else none. */
+    protected function rangeFrom(): string
+    {
+        return trim($this->dateFrom) !== '' ? trim($this->dateFrom) : $this->from;
+    }
+
+    protected function rangeTo(): string
+    {
+        return trim($this->dateTo) !== '' ? trim($this->dateTo) : $this->to;
+    }
+
+    /**
+     * What the typed range counts and what it leaves out: the months of data inside it, the days of it that have no data, and the
+     * months partly outside it (excluded, listed). Null when no range is typed.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function rangeSummary(): ?array
+    {
+        $start = CommercialPeriods::bound($this->rangeFrom(), false);
+        $end = CommercialPeriods::bound($this->rangeTo(), true);
+
+        if ($start === null && $end === null) {
+            return null;
+        }
+
+        $months = $this->filteredReadingStats($this->regionId(), $this->districtId())->distinct()->orderBy('month')->pluck('month')
+            ->map(fn ($month) => Carbon::parse($month)->startOfMonth())->unique(fn (Carbon $m) => $m->toDateString())->values();
+
+        if ($months->isEmpty()) {
+            return null;
+        }
+
+        $units = $months->map(fn (Carbon $m) => ['id' => $m->format('Y-m'), 'from' => $m->toDateString(), 'to' => $m->copy()->endOfMonth()->toDateString(), 'order' => 1])->all();
+        $selection = (new CommercialPeriods)->select($units, $start?->toDateString() ?? $months->first()->toDateString(), $end?->toDateString() ?? $months->last()->copy()->endOfMonth()->toDateString());
+
+        return [
+            'range' => CommercialPeriods::describe($selection['from'], $selection['to']),
+            'counted' => array_map(fn (string $id) => Carbon::parse($id.'-01')->format('M Y'), array_map('strval', $selection['chosen'])),
+            'partly_outside' => array_map(fn (string $id) => Carbon::parse($id.'-01')->format('M Y'), array_map('strval', $selection['partly_outside'])),
+            'gaps' => $selection['gaps'] === [] ? null : CommercialPeriods::describeIntervals($selection['gaps']),
+            'covered_days' => $selection['covered_days'],
+            'range_days' => $selection['range_days'],
+        ];
     }
 
     /** @return array<string, string> the tabs this user may open */
@@ -98,12 +155,12 @@ class Reading extends Component
 
     protected function statsQuery(): Builder
     {
-        return $this->filteredReadingStats($this->regionId(), $this->districtId(), $this->from, $this->to);
+        return $this->filteredReadingStats($this->regionId(), $this->districtId(), $this->rangeFrom(), $this->rangeTo());
     }
 
     protected function strengthsQuery(): Builder
     {
-        return $this->filteredStrengths($this->regionId(), $this->from, $this->to);
+        return $this->filteredStrengths($this->regionId(), $this->rangeFrom(), $this->rangeTo());
     }
 
     /** @return array<string, string> "2026-09" => "Sep 2026" for each month the user's uploads cover, oldest first, plus any month already chosen */
@@ -132,7 +189,7 @@ class Reading extends Component
         if ($hasData && $tab === 'trend') {
             // The same path the reading-trend export takes, so the page and the file cannot disagree (and a small district
             // is held back from a user who may not see individual readers).
-            $result = $reportData->readingTrend($this->regionId(), $this->districtId(), $this->from, $this->to);
+            $result = $reportData->readingTrend($this->regionId(), $this->districtId(), $this->rangeFrom(), $this->rangeTo());
 
             $data = [
                 'trend' => $result['trend'],
@@ -141,7 +198,7 @@ class Reading extends Component
                 'smallGroup' => $result['small_group'],
                 'minReaders' => $result['min_readers'],
                 // R14: months uploaded more than once (weekly uploads), at each upload.
-                'paceCards' => $reportData->paceCards($this->regionId(), $this->from, $this->to),
+                'paceCards' => $reportData->paceCards($this->regionId(), $this->rangeFrom(), $this->rangeTo()),
             ];
         } elseif ($hasData) {
             // Reader screens: names and home districts are loaded once, so a table of 70 readers is not 70 queries.
@@ -164,7 +221,7 @@ class Reading extends Component
             };
         }
 
-        $districts = District::query()
+        $districts = $this->scopeDistrictsForActor(District::query())
             ->when(! $this->actorSeesAllRegions(), fn ($query) => $query->where('region_id', $this->actorRegionId() ?? 0))
             ->when($this->regionId(), fn ($query, int $region) => $query->where('region_id', $region))
             ->orderBy('district_name')
@@ -186,7 +243,10 @@ class Reading extends Component
                 'skip' => (float) config('gwl.commercial_target_skip_rate_pct'),
                 'coverage' => (float) config('gwl.commercial_target_coverage_pct'),
             ],
-            'filtered' => $this->region !== '' || $this->district !== '' || $this->from !== '' || $this->to !== '',
+            'filtered' => $this->region !== '' || $this->district !== '' || $this->from !== '' || $this->to !== '' || trim($this->dateFrom) !== '' || trim($this->dateTo) !== '',
+            'rangeFrom' => $this->rangeFrom(),
+            'rangeTo' => $this->rangeTo(),
+            'rangeSummary' => $this->rangeSummary(),
             ...$data,
         ]);
     }

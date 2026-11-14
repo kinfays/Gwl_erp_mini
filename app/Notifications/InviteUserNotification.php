@@ -22,12 +22,15 @@ class InviteUserNotification extends Notification
 
     public function toMail($notifiable): MailMessage
     {
+        $minutes = (int) config('auth.passwords.users.expire', 60);
+        $window = $minutes.' minutes';
+
         return (new MailMessage)
             ->subject('Welcome to GWL Mini Portal - Set Your Password')
             ->greeting('Hello!')
             ->line("An account has been created for you on GWL Mini Portal.")
             ->line("Staff ID: {$this->staffId}")
             ->action('Set Your Password', $this->setPasswordUrl)
-            ->line('This link will expire after a short period. If it expires, request a new invite from your administrator.');
+            ->line("This link will expire after {$window}. If it expires, request a new invite from your administrator.");
     }
 }

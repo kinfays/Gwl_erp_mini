@@ -53,7 +53,8 @@ class CommercialExportsTest extends CommercialTestCase
     protected function userWith(string $staffId, array $permissions, ?\App\Models\Region $region = null): User
     {
         $role = Role::query()->create(['name' => 'custom_'.$staffId, 'display_name' => 'Custom '.$staffId, 'is_system' => false]);
-        $role->permissions()->attach(Permission::query()->whereIn('name', $permissions)->pluck('id'));
+        // Phase 8a: these helpers model existing roles, which keep seeing every district of their region (view_all_districts)
+        $role->permissions()->attach(Permission::query()->whereIn('name', [...$permissions, 'commercial.view_all_districts'])->pluck('id'));
         ModuleAccess::query()->create(['role_id' => $role->id, 'module' => Permission::MODULE_COMMERCIAL, 'can_access' => true]);
 
         $user = $this->userWithRoles($staffId, [], $region);

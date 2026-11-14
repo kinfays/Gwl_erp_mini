@@ -46,7 +46,8 @@ class Kpis extends Component
         $months = in_array($this->months, ['2', '3', '4', '6', '12'], true) ? (int) $this->months : 6;
         $kpis = $data->kpis(ctype_digit($this->region) ? (int) $this->region : null, $this->segment !== '' ? $this->segment : null, $months, ctype_digit($this->district) ? (int) $this->district : null);
 
-        $charts = $kpis['empty'] ? null : app(CommercialKpiService::class)->charts($kpis, ctype_digit($this->district) ? (int) $this->district : null);
+        // (no charts when there is nothing to draw: no data, or a district the viewer may not see leaves no district at all)
+        $charts = $kpis['empty'] || ($kpis['total'] === null && $kpis['districts'] === []) ? null : app(CommercialKpiService::class)->charts($kpis, ctype_digit($this->district) ? (int) $this->district : null);
 
         return view('livewire.commercial.kpis', [
             'kpis' => $kpis,

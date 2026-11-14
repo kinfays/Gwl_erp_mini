@@ -146,6 +146,11 @@ class UploadReminderService
                     return false;
                 }
 
+                // Phase 8a: an overdue upload is a region-wide status; a district user (who sees only their own district) is not told it
+                if (CommercialScope::for($user)->isDistrictLimited()) {
+                    return false;
+                }
+
                 $employee = $user->employee ?? $user->employeeByStaffId;
 
                 return $user->hasRoles('admin')

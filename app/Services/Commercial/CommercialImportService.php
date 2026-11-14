@@ -20,8 +20,9 @@ class CommercialImportService
 
     /**
      * @param  int|null  $restrictToRegionId  when set, a report for any other region is blocked
+     * @param  list<int>|null  $districtIds  a district user keeps only their own district's rows (the rest are skipped and counted)
      */
-    public function preview(UploadedFile $file, ?int $restrictToRegionId = null): array
+    public function preview(UploadedFile $file, ?int $restrictToRegionId = null, ?array $districtIds = null): array
     {
         // The customer list is far too big for this importer (and holds personal data): say where it goes, without loading it.
         if (config('gwl.commercial_customer_list_enabled') && $this->looksLikeCustomerList($file)) {
@@ -34,8 +35,8 @@ class CommercialImportService
         $sheets = $this->reader->readSheets($file);
 
         return match ($this->reader->detectType($sheets)) {
-            CommercialImportBatch::TYPE_READING_SUMMARY => $this->reading->preview($file, $restrictToRegionId, $sheets),
-            CommercialImportBatch::TYPE_BILLING_SUMMARY => $this->billing->preview($file, $restrictToRegionId, $sheets),
+            CommercialImportBatch::TYPE_READING_SUMMARY => $this->reading->preview($file, $restrictToRegionId, $sheets, $districtIds),
+            CommercialImportBatch::TYPE_BILLING_SUMMARY => $this->billing->preview($file, $restrictToRegionId, $sheets, $districtIds),
             default => $this->unrecognised(),
         };
     }

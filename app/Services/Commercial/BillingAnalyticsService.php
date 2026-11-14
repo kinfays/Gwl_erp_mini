@@ -49,22 +49,29 @@ class BillingAnalyticsService
     // ---------------------------------------------------------------- snapshots
 
     /**
-     * The effective billing batches: for each (region, customer segment, period) the newest non-voided one, so a replaced
-     * (superseded) batch never shows. Newest period first. Pass the batches ALREADY scoped to the actor's regions.
+     * The effective billing batches: for each (region, customer segment) the batches the period rules leave standing
+     * (CommercialPeriods rules 1 and 2): of two with the SAME period the newest wins, and a newer batch whose period contains an
+     * older one's shadows it, so a replaced batch never shows. Newest period first. Pass the batches ALREADY scoped to the actor's
+     * regions.
      *
      * @return list<array<string, mixed>>
      */
     public function snapshots(Builder $batches): array
     {
+        $periods = new CommercialPeriods;
+
         $effective = $batches
             ->where('report_type', CommercialImportBatch::TYPE_BILLING_SUMMARY)
             ->where('status', '!=', CommercialImportBatch::STATUS_VOIDED)
             ->with('region:id,region_name')
             ->get()
-            ->groupBy(fn (CommercialImportBatch $batch) => implode('|', [
-                $batch->region_id, $batch->customer_segment, $batch->period_from->toDateString(), $batch->period_to->toDateString(),
-            ]))
-            ->map(fn (Collection $group) => $group->sortByDesc('id')->first());
+            ->groupBy(fn (CommercialImportBatch $batch) => $batch->region_id.'|'.$batch->customer_segment)
+            ->flatMap(function (Collection $family) use ($periods): Collection {
+                $units = $family->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->all();
+                $shadowed = array_column($periods->select($units)['shadowed'], 'id');
+
+                return $family->reject(fn (CommercialImportBatch $b) => in_array($b->id, $shadowed, true));
+            });
 
         return $effective
             ->sort(fn (CommercialImportBatch $a, CommercialImportBatch $b) => [$b->period_to->toDateString(), $b->id] <=> [$a->period_to->toDateString(), $a->id])

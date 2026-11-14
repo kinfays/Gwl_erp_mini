@@ -74,10 +74,12 @@ abstract class CustomerTestCase extends CommercialTestCase
     }
 
     /** A user holding exactly the given commercial permissions (and nothing else), in the given region. */
-    protected function userWith(string $staffId, array $permissions, ?Region $region = null, ?District $district = null): User
+    protected function userWith(string $staffId, array $permissions, ?Region $region = null, ?District $district = null, bool $districtLimited = false): User
     {
         $role = Role::query()->firstOrCreate(['name' => 'custom_'.$staffId], ['display_name' => 'Custom '.$staffId, 'is_system' => false]);
-        $role->permissions()->syncWithoutDetaching(Permission::query()->whereIn('name', $permissions)->pluck('id'));
+        // Phase 8a: existing roles keep seeing every district of their region; $districtLimited builds a district user instead
+        $names = $districtLimited ? $permissions : [...$permissions, 'commercial.view_all_districts'];
+        $role->permissions()->syncWithoutDetaching(Permission::query()->whereIn('name', $names)->pluck('id'));
         ModuleAccess::query()->updateOrCreate(['role_id' => $role->id, 'module' => Permission::MODULE_COMMERCIAL], ['can_access' => true]);
 
         $user = $this->userWithRoles($staffId, [], $region, $district);

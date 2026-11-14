@@ -41,7 +41,14 @@ class Uploads extends Component
     protected function scopedBatches()
     {
         $restriction = $this->customerRestriction();
+        $districtIds = $this->customerDistrictIds();
         $query = CommercialCustomerBatch::query();
+
+        // Phase 8a: a district user sees the uploads of their own district (and their own parked ones), never another district's
+        if ($districtIds !== null) {
+            return $query->where(fn ($w) => ($districtIds === [] ? $w->whereRaw('1 = 0') : $w->whereIn('district_id', $districtIds))
+                ->orWhere(fn ($own) => $own->whereNull('district_id')->where('imported_by', auth()->id())));
+        }
 
         if ($restriction === null) {
             return $query;
@@ -61,7 +68,8 @@ class Uploads extends Component
             'batches' => $batches,
             'statuses' => CommercialCustomerBatch::STATUSES,
             'working' => $batches->contains(fn (CommercialCustomerBatch $batch) => $batch->isWorking() || $batch->phase === 'voiding'),
-            'overdue' => $reminders->overdue(now(), $this->customerRestriction()),
+            // the overdue list names districts across the region: a district user does not have it
+            'overdue' => $this->actorDistrictLimited() ? [] : $reminders->overdue(now(), $this->customerRestriction()),
             'canUpload' => $this->actorCan('commercial.upload_reports'),
             'maxMb' => (int) config('gwl.commercial_customer_import_max_mb', 200),
             'canLookups' => $this->actorCan('commercial.manage_settings'),

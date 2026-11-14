@@ -29,8 +29,9 @@ class ReadingSummaryImportService extends ReportImportService
     /**
      * @param  list<array{name: string, rows: array<int, array<int, mixed>>}>|null  $sheets  already-read sheets, to avoid reading twice
      * @param  int|null  $restrictToRegionId  when set, a file for any other region is blocked (regional users)
+     * @param  list<int>|null  $districtIds  a district user keeps only their own district's rows (others are skipped, counted, never stored)
      */
-    public function preview(UploadedFile $file, ?int $restrictToRegionId = null, ?array $sheets = null): array
+    public function preview(UploadedFile $file, ?int $restrictToRegionId = null, ?array $sheets = null, ?array $districtIds = null): array
     {
         $sheets ??= $this->reader->readSheets($file);
 
@@ -137,11 +138,21 @@ class ReadingSummaryImportService extends ReportImportService
         $sums = [];
         $visitedOff = [];
         $statRows = [];
+        $excluded = [];   // the excluded account(s) (Settings): counted and shown, never stored, never matched, never a warning
 
         foreach ($readerSheets as $sheet) {
+            $isExcluded = self::isExcludedAccount((string) $sheet['reader']['staff_id'], (string) $sheet['reader']['name']);
+
+            if ($isExcluded) {
+                $excluded[$sheet['reader']['staff_id']] ??= ['staff_id' => (string) $sheet['reader']['staff_id'], 'rows' => 0, 'read' => 0, 'skipped' => 0, 'visited' => 0];
+            }
+
             foreach ($sheet['months'] as $monthKey => $values) {
                 $monthKeys[$monthKey] = true;
-                $strengthVotes[$monthKey][(int) $values['strength']] = ($strengthVotes[$monthKey][(int) $values['strength']] ?? 0) + 1;
+
+                if (! $isExcluded) {
+                    $strengthVotes[$monthKey][(int) $values['strength']] = ($strengthVotes[$monthKey][(int) $values['strength']] ?? 0) + 1;
+                }
 
                 foreach (['read', 'skipped', 'visited'] as $measure) {
                     $sums[$monthKey][$measure] = ($sums[$monthKey][$measure] ?? 0) + $values[$measure];
@@ -149,6 +160,16 @@ class ReadingSummaryImportService extends ReportImportService
 
                 if (abs($values['visited'] - ($values['read'] + $values['skipped'])) > self::VISITED_TOLERANCE) {
                     $visitedOff[] = "{$sheet['reader']['staff_id']} in ".Carbon::parse($monthKey)->format('M Y')." (visited {$values['visited']}, read {$values['read']} + skipped {$values['skipped']})";
+                }
+
+                if ($isExcluded) {
+                    $excluded[$sheet['reader']['staff_id']]['rows']++;
+
+                    foreach (['read', 'skipped', 'visited'] as $measure) {
+                        $excluded[$sheet['reader']['staff_id']][$measure] += $values[$measure];
+                    }
+
+                    continue;
                 }
 
                 $statRows[] = [
@@ -195,7 +216,7 @@ class ReadingSummaryImportService extends ReportImportService
                         $readerTotal += $fromReaders;
                         $grandTotal += $fromGrand;
 
-                        if ($fromReaders !== $fromGrand) {
+                        if ($this->beyondGrandTolerance((float) $fromReaders, (float) $fromGrand)) {
                             $mismatches[] = Carbon::parse($monthKey)->format('M Y').": CCA sheets total ".number_format($fromReaders).' but the grand-total sheet shows '.number_format($fromGrand);
                         }
                     }
@@ -204,7 +225,7 @@ class ReadingSummaryImportService extends ReportImportService
                     $readerTotal = array_sum(array_column($sums, $measure));
                     $grandTotal = (int) ($grand['overall'][$measure] ?? 0);
 
-                    if ($readerTotal !== $grandTotal) {
+                    if ($this->beyondGrandTolerance((float) $readerTotal, (float) $grandTotal)) {
                         $mismatches[] = 'overall: CCA sheets total '.number_format($readerTotal).' but the grand-total sheet shows '.number_format($grandTotal);
                     }
                 }
@@ -251,6 +272,21 @@ class ReadingSummaryImportService extends ReportImportService
             $statRows[$index] = [...$row, ...$this->resolveReader($row['reader_staff_id'], $row['reader_name_raw'], $employees)];
         }
 
+        // --- A district user keeps only their own district's rows; the rest are skipped, counted here, never stored. ---
+        $skippedDistricts = ['rows' => 0, 'readers' => 0];
+
+        if ($districtIds !== null) {
+            $outside = array_filter($statRows, fn (array $row) => ! in_array((int) ($row['district_id'] ?? 0), $districtIds, true));
+            $skippedDistricts = ['rows' => count($outside), 'readers' => count(array_unique(array_column($outside, 'reader_staff_id')))];
+            $statRows = array_values(array_filter($statRows, fn (array $row) => in_array((int) ($row['district_id'] ?? 0), $districtIds, true)));
+            // the verified strength is one figure for the whole region: it is not a district user's to write
+            $strengths = [];
+
+            if ($statRows === [] && $readerSheets !== []) {
+                $errors[] = ['row' => 'File', 'message' => 'None of the CCAs in this file belong to your district, so nothing can be imported. Rows of other districts are skipped.'];
+            }
+        }
+
         foreach ($statRows as $row) {
             $readerSummaries[$row['reader_staff_id']] = [
                 'name' => $row['reader_name_raw'],
@@ -284,8 +320,20 @@ class ReadingSummaryImportService extends ReportImportService
             }
         }
 
+        // the period rules (CommercialPeriods): a partial overlap with another batch's period keeps both
+        if ($region && $months !== []) {
+            $first = $months[0];
+            $last = Carbon::parse(end($months))->endOfMonth()->toDateString();
+            $others = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_READING_SUMMARY)->notVoided()->where('region_id', $region->id)->get()->keyBy('id');
+            $effect = (new CommercialPeriods)->effectOfUpload($first, $last, $others->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->values()->all());
+
+            foreach ($effect['overlaps'] as $id) {
+                $warnings[] = ['row' => 'Existing data', 'message' => "This report's period overlaps batch #{$id} (".CommercialPeriods::describe($others[$id]->period_from, $others[$id]->period_to).') only in part. Both are kept; for the months in both, the newer upload is used.'];
+            }
+        }
+
         $matchedRows = collect($statRows)->where('match_status', CommercialReadingStat::MATCH_MATCHED)->count();
-        $systemRows = collect($statRows)->where('match_status', CommercialReadingStat::MATCH_SYSTEM_ACCOUNT)->count();
+        $systemRows = (int) array_sum(array_column($excluded, 'rows'));
         $reconciliationPassed = $errors === [] && $grand !== null && collect($checks)->every(fn (array $check) => $check['passed']);
 
         $attributes = [
@@ -300,14 +348,15 @@ class ReadingSummaryImportService extends ReportImportService
             'source_filename' => $file->getClientOriginalName(),
             'file_hash' => $this->reader->fileHash($file),
             'row_count' => count($statRows),
-            // Rows that need no matching work: found in the directory, or the system account (kept, never matched).
-            'matched_count' => $matchedRows + $systemRows,
+            // Rows that need no matching work: found in the directory. (The excluded account is not stored at all.)
+            'matched_count' => $matchedRows,
             'warning_count' => count($warnings),
             'reconciliation_passed' => $reconciliationPassed,
             'control_totals' => [
                 'grand_total_sheet' => $grand ? $grand['sheet'] : null,
                 'grand_totals' => $grand ? ($grand['months'] !== [] ? $this->monthTotals($grand['months']) : ['overall' => $grand['overall']]) : [],
                 'reader_totals' => $this->monthTotals($sums),
+                'excluded' => array_values($excluded),
                 'checks' => $checks,
                 'warnings' => array_map(fn (array $warning) => $warning['message'], array_slice($warnings, 0, 100)),
             ],
@@ -329,7 +378,9 @@ class ReadingSummaryImportService extends ReportImportService
             'matched_count' => $matchedRows,
             'unmatched_count' => $unmatchedReaders->count(),
             'system_count' => $systemRows,
-            'reader_count' => count($seenReaders),
+            'excluded' => array_values($excluded),
+            'skipped_districts' => $skippedDistricts,
+            'reader_count' => count($seenReaders) - count($excluded),
             'region' => ['raw' => $regionLabel, 'id' => $region?->id, 'name' => $region?->region_name],
             'unresolved_region' => $unresolvedRegion,
             'period' => ['from' => $attributes['period_from'], 'to' => $attributes['period_to']],
@@ -402,6 +453,7 @@ class ReadingSummaryImportService extends ReportImportService
                         'matched' => (clone $stats)->where('match_status', CommercialReadingStat::MATCH_MATCHED)->count(),
                         'unmatched' => (clone $stats)->where('match_status', CommercialReadingStat::MATCH_UNMATCHED)->count(),
                         'system_account' => (clone $stats)->where('match_status', CommercialReadingStat::MATCH_SYSTEM_ACCOUNT)->count(),
+                        'excluded_rows' => (int) array_sum(array_column($attributes['control_totals']['excluded'] ?? [], 'rows')),
                         'warnings' => $batch->warning_count,
                         'reconciliation_passed' => $batch->reconciliation_passed,
                         'control_totals' => [
@@ -472,11 +524,6 @@ class ReadingSummaryImportService extends ReportImportService
      */
     protected function resolveReader(string $staffId, ?string $name, $employees): array
     {
-        // The 00000 System Administrator account has real counts but is no reader: kept, never ranked or counted.
-        if (preg_match('/^0+$/', $staffId) || preg_match('/system\s*administrator/i', (string) $name)) {
-            return ['employee_id' => null, 'district_id' => null, 'match_status' => CommercialReadingStat::MATCH_SYSTEM_ACCOUNT];
-        }
-
         $employee = $employees[$staffId] ?? null;
 
         if (! $employee) {

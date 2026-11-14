@@ -139,7 +139,7 @@ class Batches extends Component
         }
 
         // Parse and reconcile again from the uploaded file itself: the import never trusts what the browser holds.
-        $result = $imports->preview($this->file, $this->uploadRegionRestriction());
+        $result = $imports->preview($this->file, $this->uploadRegionRestriction(), $this->actorDistrictIds());
         $this->preview = Arr::except($result, ['parsed']);
 
         if (! empty($result['blocked'])) {
@@ -179,7 +179,7 @@ class Batches extends Component
             return;
         }
 
-        $this->preview = Arr::except($imports->preview($this->file, $restriction), ['parsed']);
+        $this->preview = Arr::except($imports->preview($this->file, $restriction, $this->actorDistrictIds()), ['parsed']);
     }
 
     protected function resetUpload(): void
@@ -193,9 +193,10 @@ class Batches extends Component
 
     public function render(UploadReminderService $reminders)
     {
-        $overdue = $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get(), now());
+        // (the overdue list is a region-wide status: a district user does not have it)
+        $overdue = $this->actorDistrictLimited() ? [] : $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get(), now());
 
-        $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())
+        $batches = $this->scopeUploadsForActor(CommercialImportBatch::query())
             ->with(['region', 'importer'])
             ->when($this->typeFilter !== '', fn ($query) => $query->where('report_type', $this->typeFilter))
             ->when($this->statusFilter !== '', fn ($query) => $query->where('status', $this->statusFilter))

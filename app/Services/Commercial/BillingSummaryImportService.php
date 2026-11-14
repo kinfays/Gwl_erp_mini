@@ -65,8 +65,9 @@ class BillingSummaryImportService extends ReportImportService
     /**
      * @param  list<array{name: string, rows: array<int, array<int, mixed>>}>|null  $sheets  already-read sheets, to avoid reading twice
      * @param  int|null  $restrictToRegionId  when set, a file for any other region is blocked (regional users)
+     * @param  list<int>|null  $districtIds  a district user keeps only their own district's routes (others are skipped, counted, never stored)
      */
-    public function preview(UploadedFile $file, ?int $restrictToRegionId = null, ?array $sheets = null): array
+    public function preview(UploadedFile $file, ?int $restrictToRegionId = null, ?array $sheets = null, ?array $districtIds = null): array
     {
         $sheets ??= $this->reader->readSheets($file);
 
@@ -156,10 +157,27 @@ class BillingSummaryImportService extends ReportImportService
             $warnings[] = ['row' => 'District '.$name, 'message' => "District '{$name}' ({$count} routes) does not match any district".($region ? " in {$region->region_name}" : '').'. The batch can still be imported; resolve it on the batch screen.'];
         }
 
-        // --- Reconciliation. ---
+        // --- Reconciliation (on the WHOLE file: it is checked against its own totals whoever uploads it). ---
         $reconciliation = $this->reconcile($blocks, $reportTotals);
         $errors = [...$errors, ...$reconciliation['errors']];
+        $warnings = [...$warnings, ...$reconciliation['warnings']];
         $checks = $reconciliation['checks'];
+        $flagged = $reconciliation['flagged'];
+
+        // --- A district user keeps only their own district's routes; the rest are skipped, counted here, never stored. ---
+        $skippedDistricts = ['rows' => 0, 'districts' => 0];
+
+        if ($districtIds !== null) {
+            $outside = array_filter($routeRows, fn (array $row) => ! in_array((int) ($row['district_id'] ?? 0), $districtIds, true));
+            $skippedDistricts = ['rows' => count($outside), 'districts' => count(array_unique(array_column($outside, 'district_label_raw')))];
+            $routeRows = array_values(array_filter($routeRows, fn (array $row) => in_array((int) ($row['district_id'] ?? 0), $districtIds, true)));
+            // the consumption bands are one table for the whole region: not a district user's to write
+            $bands = [];
+
+            if ($routeRows === [] && $blocks !== []) {
+                $errors[] = ['row' => 'File', 'message' => 'None of the routes in this file belong to your district, so nothing can be imported. Rows of other districts are skipped.'];
+            }
+        }
 
         if ($periodFrom) {
             $checks[] = ['label' => 'Bill period read', 'passed' => true, 'detail' => $periodFrom->format('M Y').($multiMonth ? ' to '.$periodTo->format('M Y') : '')];
@@ -184,9 +202,22 @@ class BillingSummaryImportService extends ReportImportService
             if ($replaces) {
                 $warnings[] = ['row' => 'Existing data', 'message' => "Batch #{$replaces->id} already covers this region, segment and period ({$replaces->routes()->count()} routes). This file will replace it; the earlier batch stays on record."];
             }
+
+            // the period rules (CommercialPeriods): a period that contains an older one shadows it; a partial overlap keeps both
+            $others = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)->notVoided()->where('region_id', $region->id)
+                ->when($segment === null, fn ($q) => $q->whereNull('customer_segment'), fn ($q) => $q->where('customer_segment', $segment))->get()->keyBy('id');
+            $effect = (new CommercialPeriods)->effectOfUpload($periodFrom->toDateString(), $periodTo->toDateString(), $others->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->values()->all());
+
+            foreach ($effect['shadows'] as $id) {
+                $warnings[] = ['row' => 'Existing data', 'message' => "This period contains batch #{$id} (".CommercialPeriods::describe($others[$id]->period_from, $others[$id]->period_to).'): this newer file replaces it in every view. That batch stays on record.'];
+            }
+
+            foreach ($effect['overlaps'] as $id) {
+                $warnings[] = ['row' => 'Existing data', 'message' => "This period overlaps batch #{$id} (".CommercialPeriods::describe($others[$id]->period_from, $others[$id]->period_to).') only in part. Both are kept; a view that includes both uses the newest upload first, so some days may then be left to the older one.'];
+            }
         }
 
-        if ($routeRows === [] && $walk['errors'] === []) {
+        if ($routeRows === [] && $walk['errors'] === [] && $districtIds === null) {
             $errors[] = ['row' => 'File', 'message' => 'No route rows were found, so there is nothing to import.'];
         }
 
@@ -206,8 +237,9 @@ class BillingSummaryImportService extends ReportImportService
             'row_count' => count($routeRows),
             'matched_count' => $matchedRoutes,
             'warning_count' => count($warnings),
-            'reconciliation_passed' => $errors === [],
+            'reconciliation_passed' => $errors === [] && $flagged['routes'] === [] && $flagged['districts'] === [],
             'control_totals' => [
+                'flagged' => $flagged,
                 'report_totals' => $reportTotals,
                 'district_totals' => collect($blocks)->mapWithKeys(fn (array $block) => [$block['name'] => $block['totals']])->all(),
                 'checks' => $checks,
@@ -231,6 +263,8 @@ class BillingSummaryImportService extends ReportImportService
             'unmatched_count' => count($unmatchedDistricts),
             'system_count' => 0,
             'district_count' => count($blocks),
+            'flagged' => $flagged,
+            'skipped_districts' => $skippedDistricts,
             'region' => ['raw' => $regionLabel, 'id' => $region?->id, 'name' => $region?->region_name],
             'unresolved_region' => $unresolvedRegion,
             'period' => ['from' => $attributes['period_from'], 'to' => $attributes['period_to']],
@@ -272,6 +306,9 @@ class BillingSummaryImportService extends ReportImportService
                 foreach ($parsed['routes'] as $route) {
                     $batch->routes()->create($route);
                 }
+
+                // the route master: the routes billing prints, under the districts it prints them (Phase 8a)
+                app(RouteResolver::class)->registerRoutes($parsed['routes'], \App\Models\CommercialRoute::SOURCE_BILLING);
 
                 foreach ($parsed['bands'] as $band) {
                     $batch->bands()->create($band);
@@ -704,9 +741,11 @@ class BillingSummaryImportService extends ReportImportService
     protected function reconcile(array $blocks, ?array $reportTotals): array
     {
         $errors = [];
+        $warnings = [];
+        $flaggedRoutes = [];
+        $flaggedDistricts = [];
         $routeCount = 0;
         $routesOff = 0;
-        $districtMismatches = 0;
         // Number Of Customers is not a count the report adds up (design section 1.3), so it is read but never reconciled.
         $fields = array_values(array_diff(array_keys(self::FIELD_LABELS), ['customers_count']));
 
@@ -720,11 +759,9 @@ class BillingSummaryImportService extends ReportImportService
                 $problems = $this->identityProblems($route['values']);
 
                 if ($problems !== []) {
+                    // A route that disagrees with its own figures is FLAGGED and listed; the file is blocked only when too many do.
                     $routesOff++;
-
-                    foreach ($problems as $problem) {
-                        $errors[] = ['row' => 'Route '.$route['code'], 'message' => "{$route['code']} ({$block['name']}): {$problem}"];
-                    }
+                    $flaggedRoutes[] = ['route' => $route['code'], 'district' => $block['name'], 'problems' => $problems];
                 }
 
                 foreach ($fields as $field) {
@@ -746,8 +783,7 @@ class BillingSummaryImportService extends ReportImportService
                 }
 
                 if (abs($sums[$field] - (float) $block['totals'][$field]) > self::TOLERANCE) {
-                    $districtMismatches++;
-                    $errors[] = ['row' => 'District '.$block['name'], 'message' => self::FIELD_LABELS[$field].': the routes add up to '.$this->figure($sums[$field]).' but the '.$block['name'].' totals row shows '.$this->figure((float) $block['totals'][$field]).'.'];
+                    $flaggedDistricts[] = ['district' => $block['name'], 'field' => self::FIELD_LABELS[$field], 'rows' => round($sums[$field], 2), 'totals_row' => round((float) $block['totals'][$field], 2), 'difference' => round($sums[$field] - (float) $block['totals'][$field], 2)];
                 }
             }
         }
@@ -760,25 +796,45 @@ class BillingSummaryImportService extends ReportImportService
                     continue;
                 }
 
-                if (abs($computed[$field] - (float) $reportTotals[$field]) > self::TOLERANCE) {
+                if (abs($computed[$field] - (float) $reportTotals[$field]) > self::TOLERANCE && $this->beyondGrandTolerance($computed[$field], (float) $reportTotals[$field])) {
                     $reportMismatches++;
-                    $errors[] = ['row' => 'Report totals', 'message' => self::FIELD_LABELS[$field].': the routes add up to '.$this->figure($computed[$field]).' but REPORT TOTALS shows '.$this->figure((float) $reportTotals[$field]).'.'];
+                    $errors[] = ['row' => 'Report totals', 'message' => self::FIELD_LABELS[$field].': the routes add up to '.$this->figure($computed[$field]).' but REPORT TOTALS shows '.$this->figure((float) $reportTotals[$field]).' (more than the '.rtrim(rtrim(number_format((float) config('gwl.commercial_reconcile_grand_total_tolerance_pct', 0.5), 2), '0'), '.').'% the grand total may differ by).'];
                 }
             }
         }
 
+        // Flagged routes and districts are listed as warnings; the file is blocked only above the share of routes that may fail.
+        foreach (array_slice($flaggedRoutes, 0, 40) as $flag) {
+            foreach ($flag['problems'] as $problem) {
+                $warnings[] = ['row' => 'Route '.$flag['route'], 'message' => "Flagged: {$flag['route']} ({$flag['district']}): {$problem}"];
+            }
+        }
+
+        foreach (array_slice($flaggedDistricts, 0, 40) as $flag) {
+            $warnings[] = ['row' => 'District '.$flag['district'], 'message' => "Flagged: {$flag['field']}: the routes add up to ".$this->figure($flag['rows']).' but the '.$flag['district'].' totals row shows '.$this->figure($flag['totals_row']).'.'];
+        }
+
+        $failurePct = $routeCount > 0 ? $routesOff / $routeCount * 100 : 0.0;
+        $limit = $this->routeFailureLimitPct();
+
+        if ($routesOff > 0 && $failurePct > $limit) {
+            $errors[] = ['row' => 'Reconciliation', 'message' => $routesOff.' of '.$routeCount.' routes ('.number_format($failurePct, 1).'%) fail their own checks, which is more than the '.rtrim(rtrim(number_format($limit, 2), '0'), '.').'% a file may have. They are listed above.'];
+        }
+
         return [
             'errors' => $errors,
+            'warnings' => $warnings,
+            'flagged' => ['routes' => $flaggedRoutes, 'districts' => $flaggedDistricts],
             'checks' => [
                 [
                     'label' => 'Every route balances (receivable, payments, closing balance, billed, unbilled)',
                     'passed' => $routesOff === 0 && $routeCount > 0,
-                    'detail' => $routeCount.' routes checked'.($routesOff ? ", {$routesOff} off" : ''),
+                    'detail' => $routeCount.' routes checked'.($routesOff ? ", {$routesOff} flagged" : ''),
                 ],
                 [
                     'label' => 'Routes add up to each district totals row',
-                    'passed' => $districtMismatches === 0 && $blocks !== [] && collect($blocks)->every(fn (array $block) => $block['totals'] !== null),
-                    'detail' => count($blocks).' districts'.($districtMismatches ? ", {$districtMismatches} figure(s) off" : ''),
+                    'passed' => $flaggedDistricts === [] && $blocks !== [] && collect($blocks)->every(fn (array $block) => $block['totals'] !== null),
+                    'detail' => count($blocks).' districts'.($flaggedDistricts ? ', '.count($flaggedDistricts).' figure(s) flagged' : ''),
                 ],
                 [
                     'label' => 'Routes add up to REPORT TOTALS',

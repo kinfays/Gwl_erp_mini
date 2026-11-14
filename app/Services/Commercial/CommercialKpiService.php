@@ -69,7 +69,7 @@ class CommercialKpiService
      * @param  list<array<string, mixed>>  $months  from months()
      * @return array<string, mixed> ['months', 'districts' => [...], 'total' => ...]
      */
-    public function scorecard(array $months): array
+    public function scorecard(array $months, ?array $districtIds = null): array
     {
         $labels = array_map(fn (array $m) => [
             'key' => substr($m['month'], 0, 7), 'month' => $m['month'], 'label' => Carbon::parse($m['month'])->format('F'), 'short' => strtoupper(Carbon::parse($m['month'])->format('M')),
@@ -79,7 +79,8 @@ class CommercialKpiService
         $perDistrict = [];   // key => [name, id, month => sums]
 
         foreach ($months as $m) {
-            $routes = CommercialBillingRoute::query()->where('batch_id', $m['id'])->with('district:id,district_name')->get();
+            $routes = CommercialBillingRoute::query()->where('batch_id', $m['id'])->with('district:id,district_name')
+                ->when($districtIds !== null, fn ($q) => $districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('district_id', $districtIds))->get();
 
             foreach ($routes->groupBy(fn ($route) => $route->district_id ?: 'raw:'.$route->district_label_raw) as $key => $group) {
                 $first = $group->first();
@@ -104,7 +105,8 @@ class CommercialKpiService
 
         usort($districts, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
 
-        return ['months' => $labels, 'districts' => $districts, 'total' => $this->total($districts, $labels, $perDistrict, $targets)];
+        // Phase 8a: with a district limit there is no region-wide row (it would be the sum of a district user's own district, labelled as the region)
+        return ['months' => $labels, 'districts' => $districts, 'total' => $districtIds === null ? $this->total($districts, $labels, $perDistrict, $targets) : null];
     }
 
     /** @param  Collection<int, CommercialBillingRoute>  $routes @return array<string, float> */
@@ -366,7 +368,7 @@ class CommercialKpiService
         $months = $card['months'];
         $labels = array_map(fn (array $m) => $m['short'].' '.substr($m['year'], 2), $months);
         $keys = array_column($months, 'key');
-        $block = $districtId !== null ? (collect($card['districts'])->firstWhere('id', $districtId) ?? $card['total']) : $card['total'];
+        $block = $districtId !== null ? (collect($card['districts'])->firstWhere('id', $districtId) ?? $card['total'] ?? ($card['districts'][0] ?? null)) : ($card['total'] ?? ($card['districts'][0] ?? null));
         $rows = collect($block['rows'])->keyBy('metric');
         $districts = $card['districts'];
 

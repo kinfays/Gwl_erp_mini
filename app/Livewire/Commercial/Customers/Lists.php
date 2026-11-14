@@ -132,8 +132,9 @@ class Lists extends Component
     public function render(CustomerListService $lists, CustomerSnapshots $snapshots)
     {
         $restriction = $this->customerRestriction();
+        $districtIds = $this->customerDistrictIds();   // Phase 8a: null = no district limit
         $details = $this->customerDetails();
-        $districts = $snapshots->current($restriction);
+        $districts = $snapshots->current($restriction, null, null, null, $districtIds);
         $districtNames = DB::table('districts')->whereIn('id', $districts->keys()->all())->orderBy('district_name')->pluck('district_name', 'id');
         $districtId = ctype_digit($this->district) && $districts->has((int) $this->district) ? (int) $this->district : null;
         $searchTypes = ['account' => 'Account number', 'meter' => 'Meter number'] + ($details ? ['phone' => 'Mobile number', 'email' => 'E-mail', 'name' => 'Name starts with'] : []);
@@ -154,7 +155,7 @@ class Lists extends Component
         if ($searching || $districtId) {
             try {
                 $page = $lists->page([
-                    'restriction' => $restriction, 'details' => $details, 'size' => (int) config('gwl.commercial_customer_page_size', 50),
+                    'restriction' => $restriction, 'district_ids' => $districtIds, 'details' => $details, 'size' => (int) config('gwl.commercial_customer_page_size', 50),
                     'district_id' => $searching ? null : $districtId, 'route_id' => ctype_digit($this->route) && $districtId ? (int) $this->route : null,
                     'group' => array_key_exists($this->group, CommercialCustomerCategory::GROUPS) ? $this->group : null,
                     'status_id' => ctype_digit($this->status) ? (int) $this->status : null, 'meter_status_id' => ctype_digit($this->meter) ? (int) $this->meter : null,

@@ -265,6 +265,14 @@ class CustomerImportService
             return $this->park($batch, 'The district "'.$filters['district'].'" is not recognised in '.$region->region_name.'. Match it to a district to continue.');
         }
 
+        // Phase 8a: a district user keeps only their own district's rows. This file is one district's, so another district's file is
+        // skipped whole: nothing of it is stored.
+        if ($uploader && ! CustomerScope::canSeeDistrict($uploader, (int) $district->id, (int) $region->id)) {
+            $batch->forceFill(['region_id' => $region->id, 'district_id' => $district->id])->save();
+
+            return $this->block($batch, ['This file is for '.$district->district_name.', which is not your district: its rows were skipped and nothing was stored.']);
+        }
+
         $newer = CommercialCustomerBatch::query()->live()->where('district_id', $district->id)->whereDate('as_of_date', '>', $batch->as_of_date)->orderByDesc('as_of_date')->first();
 
         if ($newer) {
@@ -415,41 +423,89 @@ class CustomerImportService
         $this->timings['stage_insert'] = ($this->timings['stage_insert'] ?? 0) + $insertSeconds;
         $this->timings['stage_build'] = ($this->timings['stage_build'] ?? 0) + $buildSeconds;
 
-        // ---- reconcile: every route against its own totals row
+        // ---- reconcile: every route against its own totals row. A route that disagrees is FLAGGED (listed in control_totals with the
+        // row and amount differences) and the file still imports; it is blocked only when more than the allowed share of its routes fail,
+        // or its grand total is off by more than the tolerance (both are Settings).
         $control = [];
-        $routeErrors = 0;
+        $failed = 0;
+        $withTotals = 0;
+        $sumRead = 0;
+        $sumExpected = 0;
+        $sumBalance = 0;
+        $sumExpectedBalance = 0;
 
         foreach ($routes as $route) {
             $row = [
                 'route' => $route['route'], 'read' => $route['read'], 'expected' => $route['expected'],
                 'read_balance' => $route['balance'], 'expected_balance' => $route['expected_balance'], 'ok' => true,
+                'count_difference' => null, 'balance_difference' => null,
             ];
 
             if ($route['expected'] === null) {
                 if ($route['read'] > 0) {
                     $warnings[] = ['row' => $route['route'], 'message' => 'No totals row was found for this route, so its '.$route['read'].' customers could not be checked.'];
                 }
-            } elseif ($route['expected'] !== $route['read']) {
-                $row['ok'] = false;
-                $routeErrors++;
+            } else {
+                $withTotals++;
+                $sumRead += $route['read'];
+                $sumExpected += (int) $route['expected'];
 
-                if (count($errors) < self::ISSUE_CAP) {
-                    $errors[] = ['row' => $route['route'], 'message' => 'The route lists '.number_format($route['read']).' customers but its totals row says '.number_format($route['expected']).'.'];
+                if ($route['expected'] !== $route['read']) {
+                    $row['ok'] = false;
+                    $row['count_difference'] = $route['read'] - (int) $route['expected'];
                 }
             }
 
             // Balances are compared to the pesewa after rounding each row; a GH¢1 slack covers a source that carries more decimals.
-            if ($route['expected_balance'] !== null && abs($route['expected_balance'] - $route['balance']) > 100) {
-                $row['ok'] = false;
-                $routeErrors++;
+            if ($route['expected_balance'] !== null) {
+                $sumBalance += $route['balance'];
+                $sumExpectedBalance += $route['expected_balance'];
 
-                if (count($errors) < self::ISSUE_CAP) {
-                    $errors[] = ['row' => $route['route'], 'message' => 'The balances add up to GH¢ '.number_format($route['balance'] / 100, 2).' but the totals row says GH¢ '.number_format($route['expected_balance'] / 100, 2).'.'];
+                if (abs($route['expected_balance'] - $route['balance']) > 100) {
+                    $row['ok'] = false;
+                    $row['balance_difference'] = round(($route['balance'] - $route['expected_balance']) / 100, 2);
+                }
+            }
+
+            if (! $row['ok']) {
+                $failed++;
+
+                if (count($warnings) < self::ISSUE_CAP) {
+                    $parts = [];
+
+                    if ($row['count_difference'] !== null) {
+                        $parts[] = 'lists '.number_format($route['read']).' customers but its totals row says '.number_format((int) $route['expected']).' ('.($row['count_difference'] > 0 ? '+' : '').$row['count_difference'].')';
+                    }
+
+                    if ($row['balance_difference'] !== null) {
+                        $parts[] = 'balances add up to GH¢ '.number_format($route['balance'] / 100, 2).' but the totals row says GH¢ '.number_format($route['expected_balance'] / 100, 2);
+                    }
+
+                    $warnings[] = ['row' => $route['route'], 'message' => 'Flagged: the route '.implode('; ', $parts).'.'];
                 }
             }
 
             $control[] = $row;
         }
+
+        $failurePct = $withTotals > 0 ? $failed / $withTotals * 100 : 0.0;
+        $limitPct = max(0.0, (float) config('gwl.commercial_reconcile_max_route_failures_pct', 2.0));
+        $grandPct = max(0.0, (float) config('gwl.commercial_reconcile_grand_total_tolerance_pct', 0.5));
+
+        if ($failed > 0 && $failurePct > $limitPct) {
+            $errors[] = ['row' => 'Reconciliation', 'message' => number_format($failed).' of '.number_format($withTotals).' routes ('.number_format($failurePct, 1).'%) disagree with their own totals row, which is more than the '.rtrim(rtrim(number_format($limitPct, 2), '0'), '.').'% a file may have.'];
+        }
+
+        if ($withTotals > 0 && abs($sumRead - $sumExpected) > abs($sumExpected) * $grandPct / 100 + 1e-9) {
+            $errors[] = ['row' => 'Reconciliation', 'message' => 'The file lists '.number_format($sumRead).' customers but its route totals add up to '.number_format($sumExpected).', more than the '.rtrim(rtrim(number_format($grandPct, 2), '0'), '.').'% the grand total may differ by.'];
+        }
+
+        if ($sumExpectedBalance !== 0 && abs($sumBalance - $sumExpectedBalance) > abs($sumExpectedBalance) * $grandPct / 100 + 100) {
+            $errors[] = ['row' => 'Reconciliation', 'message' => 'The balances add up to GH¢ '.number_format($sumBalance / 100, 2).' but the route totals say GH¢ '.number_format($sumExpectedBalance / 100, 2).', more than the '.rtrim(rtrim(number_format($grandPct, 2), '0'), '.').'% the grand total may differ by.'];
+        }
+
+        // flagged routes first, so the cap never hides one
+        usort($control, fn (array $a, array $b) => [$a['ok'] ? 1 : 0] <=> [$b['ok'] ? 1 : 0]);
 
         $duplicates = $this->duplicates($batch);
 
@@ -491,7 +547,7 @@ class CustomerImportService
             'control_totals' => array_slice($control, 0, 500),
             'errors' => array_slice($errors, 0, self::ISSUE_CAP),
             'warnings' => array_slice($warnings, 0, self::ISSUE_CAP),
-            'reconciliation_passed' => $errors === [],
+            'reconciliation_passed' => $errors === [] && $failed === 0,
         ])->save();
 
         if ($errors !== []) {

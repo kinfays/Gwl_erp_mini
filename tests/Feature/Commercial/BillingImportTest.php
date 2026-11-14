@@ -67,17 +67,19 @@ class BillingImportTest extends CommercialTestCase
         $this->assertStringNotContainsString('monthly trend', collect($single['warnings'])->pluck('message')->implode(' '));
     }
 
-    public function test_a_route_that_does_not_balance_blocks_the_file(): void
+    public function test_a_route_that_does_not_balance_is_flagged_and_blocks_the_file_only_when_too_many_routes_fail(): void
     {
         $this->actingAs($this->officer());
 
         $districts = ReportWorkbooks::defaultDistricts();
         $districts['SOWUTUOM'][0]['closing'] = 999.0;
 
+        // one of four routes is 25%: over the 2% a file may have
         $preview = $this->previewOf($this->billingFile(['districts' => $districts]));
 
         $this->assertTrue($preview['blocked']);
-        $messages = collect($preview['errors'])->pluck('message')->implode(' ');
+        $this->assertStringContainsString('1 of 4 routes (25.0%)', collect($preview['errors'])->pluck('message')->implode(' '));
+        $messages = collect($preview['errors'])->pluck('message')->merge(collect($preview['warnings'])->pluck('message'))->implode(' ');
         $this->assertStringContainsString('SOWUTUOM 4601', $messages);
         $this->assertStringContainsString('Closing Balance 999.00 is not Total Receivable - Total Payments', $messages);
     }
@@ -98,22 +100,30 @@ class BillingImportTest extends CommercialTestCase
 
             $preview = $this->previewOf($this->billingFile(['districts' => $districts]));
 
-            $this->assertTrue($preview['blocked'], "{$label} should block");
-            $this->assertStringContainsString($label, collect($preview['errors'])->pluck('message')->implode(' '));
+            $this->assertTrue($preview['blocked'], "{$label} should block (1 of 4 routes fails)");
+            $this->assertStringContainsString($label, collect($preview['errors'])->pluck('message')->merge(collect($preview['warnings'])->pluck('message'))->implode(' '));
         }
     }
 
-    public function test_routes_that_do_not_add_up_to_their_district_or_to_report_totals_block_the_file(): void
+    public function test_a_district_that_disagrees_with_its_totals_row_is_flagged_and_a_report_total_beyond_the_tolerance_blocks_the_file(): void
     {
         $this->actingAs($this->officer());
 
+        // a district whose routes do not add up to its own totals row is flagged and listed; the file still imports
         $district = $this->previewOf($this->billingFile(['district_totals' => ['SOWUTUOM' => ['billing' => 5.0]]]));
-        $this->assertTrue($district['blocked']);
-        $this->assertStringContainsString('Billing For Period: the routes add up to 350.50 but the SOWUTUOM totals row shows 355.50', collect($district['errors'])->pluck('message')->implode(' '));
+        $this->assertFalse($district['blocked']);
+        $this->assertStringContainsString('Billing For Period: the routes add up to 350.50 but the SOWUTUOM totals row shows 355.50', collect($district['warnings'])->pluck('message')->implode(' '));
+        $this->assertSame('SOWUTUOM', $district['flagged']['districts'][0]['district']);
+        $this->assertContains(false, array_column($district['checks'], 'passed'), 'a flagged file is not a clean pass');
 
-        $report = $this->previewOf($this->billingFile(['report_totals' => ['payments' => -3.0]]));
+        // the report's grand total off by more than the tolerance (0.5%) blocks it
+        $report = $this->previewOf($this->billingFile(['report_totals' => ['payments' => -30.0]]));
         $this->assertTrue($report['blocked']);
         $this->assertStringContainsString('REPORT TOTALS shows', collect($report['errors'])->pluck('message')->implode(' '));
+
+        // ... and within it does not
+        config(['gwl.commercial_reconcile_grand_total_tolerance_pct' => 50.0]);
+        $this->assertFalse($this->previewOf($this->billingFile(['report_totals' => ['payments' => -3.0]]))['blocked']);
     }
 
     public function test_a_missing_column_header_is_a_layout_error_not_a_silent_zero(): void

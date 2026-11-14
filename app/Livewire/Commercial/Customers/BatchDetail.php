@@ -58,6 +58,13 @@ class BatchDetail extends Component
     protected function canSee(CommercialCustomerBatch $batch): bool
     {
         $restriction = $this->customerRestriction();
+        $districtIds = $this->customerDistrictIds();
+
+        // Phase 8a: a district user opens only their own district's batches (and their own parked ones)
+        if ($districtIds !== null) {
+            return ($batch->district_id !== null && in_array((int) $batch->district_id, $districtIds, true))
+                || ($batch->district_id === null && (int) $batch->imported_by === (int) auth()->id());
+        }
 
         return $restriction === null
             || ($restriction !== 0 && $batch->region_id !== null && (int) $batch->region_id === $restriction)

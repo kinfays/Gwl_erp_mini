@@ -12,13 +12,18 @@ use Illuminate\Support\Collection;
  * place that decides it. Scope is applied here AND again in the analytics queries.
  *
  * $restriction: null = every region, 0 = none, otherwise the one region the viewer may see (CustomerScope::regionRestriction).
+ * $districtIds (Phase 8a): null = no district limit, otherwise the only districts the viewer may see (CustomerScope::districtIds).
  */
 class CustomerSnapshots
 {
     /** The viewer's batches that count as data: imported = the winner of its district and period. */
-    public function scoped(?int $restriction): Builder
+    public function scoped(?int $restriction, ?array $districtIds = null): Builder
     {
         $query = CommercialCustomerBatch::query()->where('status', CommercialCustomerBatch::STATUS_IMPORTED);
+
+        if ($districtIds !== null) {
+            $districtIds === [] ? $query->whereRaw('1 = 0') : $query->whereIn('district_id', $districtIds);
+        }
 
         if ($restriction === null) {
             return $query;
@@ -32,13 +37,13 @@ class CustomerSnapshots
      *
      * @return Collection<int, CommercialCustomerBatch> keyed by district id
      */
-    public function current(?int $restriction, ?int $regionId = null, ?int $districtId = null, ?string $periodKey = null): Collection
+    public function current(?int $restriction, ?int $regionId = null, ?int $districtId = null, ?string $periodKey = null, ?array $districtIds = null): Collection
     {
         // "2026-10" is a MONTH-END view: the last upload of each district inside that month, whatever its cadence (a district
         // that uploads weekly contributes its last week of the month). Any other key is one period exactly.
         $month = $periodKey !== null && preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $periodKey) ? \Illuminate\Support\Carbon::create((int) substr($periodKey, 0, 4), (int) substr($periodKey, 5, 2), 1) : null;
 
-        return $this->scoped($restriction)
+        return $this->scoped($restriction, $districtIds)
             ->when($regionId, fn ($q, $id) => $q->where('region_id', $id))
             ->when($districtId, fn ($q, $id) => $q->where('district_id', $id))
             ->when($month, fn ($q, $first) => $q->whereDate('as_of_date', '>=', $first->toDateString())->whereDate('as_of_date', '<=', $first->copy()->endOfMonth()->toDateString()))
@@ -55,12 +60,12 @@ class CustomerSnapshots
      * @param  Collection<int, CommercialCustomerBatch>  $current
      * @return Collection<int, CommercialCustomerBatch> keyed by district id
      */
-    public function previous(?int $restriction, Collection $current): Collection
+    public function previous(?int $restriction, Collection $current, ?array $districtIds = null): Collection
     {
         $previous = collect();
 
         foreach ($current as $districtId => $batch) {
-            $before = $this->scoped($restriction)->where('district_id', $districtId)->where(fn ($q) => $q
+            $before = $this->scoped($restriction, $districtIds)->where('district_id', $districtId)->where(fn ($q) => $q
                 ->whereDate('as_of_date', '<', $batch->as_of_date)
                 ->orWhere(fn ($q2) => $q2->whereDate('as_of_date', '=', $batch->as_of_date)->where('id', '<', $batch->id)))
                 ->orderByDesc('as_of_date')->orderByDesc('id')->first();
@@ -78,9 +83,9 @@ class CustomerSnapshots
      *
      * @return list<array{key: string, type: string, as_of: string}>
      */
-    public function periods(?int $restriction, ?int $regionId = null, ?int $districtId = null, int $limit = 24): array
+    public function periods(?int $restriction, ?int $regionId = null, ?int $districtId = null, int $limit = 24, ?array $districtIds = null): array
     {
-        return $this->scoped($restriction)
+        return $this->scoped($restriction, $districtIds)
             ->when($regionId, fn ($q, $id) => $q->where('region_id', $id))
             ->when($districtId, fn ($q, $id) => $q->where('district_id', $id))
             ->selectRaw('period_key, period_type, MAX(as_of_date) AS as_of')
@@ -95,15 +100,20 @@ class CustomerSnapshots
      *
      * @return list<string> Y-m
      */
-    public function monthEnds(?int $restriction, ?int $regionId = null, int $limit = 24): array
+    public function monthEnds(?int $restriction, ?int $regionId = null, int $limit = 24, ?array $districtIds = null): array
     {
-        return $this->scoped($restriction)->when($regionId, fn ($q, $id) => $q->where('region_id', $id))
+        return $this->scoped($restriction, $districtIds)->when($regionId, fn ($q, $id) => $q->where('region_id', $id))
             ->orderByDesc('as_of_date')->limit(2000)->pluck('as_of_date')
             ->map(fn ($date) => \Illuminate\Support\Carbon::parse($date)->format('Y-m'))->unique()->take($limit)->values()->all();
     }
 
-    public function filters(Collection $batches, ?int $restriction, array $narrowing = []): CustomerFilters
+    public function filters(Collection $batches, ?int $restriction, array $narrowing = [], ?array $districtIds = null): CustomerFilters
     {
+        // the one choke point: whatever batches are handed in, a district user's filters hold only their districts' batches
+        if ($districtIds !== null) {
+            $batches = $batches->filter(fn ($batch) => in_array((int) $batch->district_id, $districtIds, true));
+        }
+
         return new CustomerFilters(
             batchIds: $batches->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
             regionRestriction: $restriction,
@@ -115,6 +125,7 @@ class CustomerSnapshots
             statusId: $narrowing['status_id'] ?? null,
             meterStatusId: $narrowing['meter_status_id'] ?? null,
             billingOnly: (bool) ($narrowing['billing_only'] ?? false),
+            districtIds: $districtIds,
         );
     }
 }

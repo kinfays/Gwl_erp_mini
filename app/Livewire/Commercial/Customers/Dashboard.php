@@ -103,12 +103,13 @@ class Dashboard extends Component
     public function render(CustomerSnapshots $snapshots, CustomerAnalyticsService $analytics)
     {
         $restriction = $this->customerRestriction();
+        $districtIds = $this->customerDistrictIds();   // Phase 8a: null = no district limit
         $tab = $this->activeTab();
-        $periods = $snapshots->periods($restriction, $this->intOrNull($this->region));
-        $monthEnds = $snapshots->monthEnds($restriction, $this->intOrNull($this->region));
+        $periods = $snapshots->periods($restriction, $this->intOrNull($this->region), null, 24, $districtIds);
+        $monthEnds = $snapshots->monthEnds($restriction, $this->intOrNull($this->region), 24, $districtIds);
         $periodKey = collect($periods)->pluck('key')->merge($monthEnds)->contains($this->period) ? $this->period : null;
 
-        $everything = $snapshots->current($restriction, null, null, $periodKey);
+        $everything = $snapshots->current($restriction, null, null, $periodKey, $districtIds);
         $regionId = $restriction === null ? $this->intOrNull($this->region) : null;
         $inRegion = $regionId ? $everything->filter(fn ($b) => (int) $b->region_id === $regionId) : $everything;
         $districtId = $this->intOrNull($this->district);
@@ -136,7 +137,7 @@ class Dashboard extends Component
             'region_id' => $regionId, 'district_id' => $districtId, 'route_id' => $routeId,
             'group' => array_key_exists($this->group, CommercialCustomerCategory::GROUPS) ? $this->group : null,
             'status_id' => $this->intOrNull($this->status), 'meter_status_id' => $this->intOrNull($this->meter), 'billing_only' => $this->billingOnly,
-        ]);
+        ], $districtIds);
 
         // A per-route breakdown reads the route-level rollups (every route of every district in view): only for one district.
         $by = $this->by === 'route' && ! $districtId ? '' : $this->by;
@@ -144,7 +145,7 @@ class Dashboard extends Component
         $data = match ($tab) {
             'overview' => [
                 'overview' => $analytics->overview($filters),
-                'spark' => $analytics->trend($restriction, $regionId, $districtId, 12)['series'],
+                'spark' => $analytics->trend($restriction, $regionId, $districtId, 12, false, $districtIds)['series'],
             ],
             'meters' => ['meters' => $analytics->meters($filters, $by ?: 'district')],
             'receivables' => ['receivables' => $analytics->receivables($filters)],
@@ -155,8 +156,9 @@ class Dashboard extends Component
             'quality' => ['quality' => $analytics->quality($filters)],
             'coverage' => ['coverage' => $analytics->coverage($filters)],
             'compare' => [
-                'trend' => $analytics->trend($restriction, $regionId, $districtId, 12, $this->trendBy === 'month')['series'],
-                'league' => $analytics->league($filters, $restriction === null ? $snapshots->filters($everything, null) : null),
+                'trend' => $analytics->trend($restriction, $regionId, $districtId, 12, $this->trendBy === 'month', $districtIds)['series'],
+                // the league sets every district side by side: a region-wide view a district user does not have
+                'league' => $analytics->league($filters, $restriction === null && $districtIds === null ? $snapshots->filters($everything, null) : null),
             ],
         };
 

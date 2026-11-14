@@ -88,14 +88,15 @@
 
     @if (! empty($batch->control_totals))
         @php $bad = collect($batch->control_totals)->where('ok', false)->count(); @endphp
-        <x-ui.card title="Check against the file's own totals" :description="$bad ? $bad.' route(s) do not add up.' : 'Every route adds up to its totals row.'" :padded="false" class="dash-row">
+        <x-ui.card title="Check against the file's own totals" :description="$bad ? $bad.' route(s) are flagged: they do not add up to their totals row (the file still imported).' : 'Every route adds up to its totals row.'" :padded="false" class="dash-row">
             <x-ui.table label="Route reconciliation" :sticky="true">
-                <x-slot:head><tr><th>Route</th><th class="num">Customers read</th><th class="num">Totals row says</th><th class="num">Balance read (GH¢)</th><th class="num">Totals row says (GH¢)</th><th></th></tr></x-slot:head>
+                <x-slot:head><tr><th>Route</th><th class="num">Customers read</th><th class="num">Totals row says</th><th class="num">Balance read (GH¢)</th><th class="num">Totals row says (GH¢)</th><th class="num">Difference</th><th></th></tr></x-slot:head>
                 @foreach ($batch->control_totals as $row)
                     <tr wire:key="ct-{{ $loop->index }}">
                         <td class="mono">{{ $row['route'] }}</td><td class="num">{{ $n($row['read']) }}</td><td class="num">{{ $row['expected'] === null ? '–' : $n($row['expected']) }}</td>
                         <td class="num">{{ number_format($row['read_balance'] / 100, 2) }}</td><td class="num">{{ $row['expected_balance'] === null ? '–' : number_format($row['expected_balance'] / 100, 2) }}</td>
-                        <td>@if ($row['ok'])<x-ui.badge tone="success">Agrees</x-ui.badge>@else<x-ui.badge tone="danger">Does not add up</x-ui.badge>@endif</td>
+                        <td class="num">@if (! $row['ok']){{ ($row['count_difference'] ?? null) !== null ? (($row['count_difference'] > 0 ? '+' : '').$row['count_difference'].' customers') : '' }}{{ ($row['balance_difference'] ?? null) !== null ? ' '.(($row['balance_difference'] > 0 ? '+' : '').number_format($row['balance_difference'], 2).' GH¢') : '' }}@endif</td>
+                        <td>@if ($row['ok'])<x-ui.badge tone="success">Agrees</x-ui.badge>@else<x-ui.badge tone="warning">Flagged</x-ui.badge>@endif</td>
                     </tr>
                 @endforeach
             </x-ui.table>

@@ -60,6 +60,9 @@ class CustomerAnalyticsService
 
         $query->when($f->districtId, fn (Builder $q, int $id) => $q->where('r.district_id', $id));
 
+        // Phase 8a: a district user's figures never include another district, whatever batches were handed in
+        $this->limitDistricts($query, $f, 'r.district_id');
+
         return $query->join('commercial_customer_categories AS k', 'k.id', '=', 'r.category_id')
             ->join('commercial_customer_statuses AS s', 's.id', '=', 'r.status_id')
             ->join('commercial_meter_statuses AS m', 'm.id', '=', 'r.meter_status_id')
@@ -70,6 +73,16 @@ class CustomerAnalyticsService
             ->when($f->statusId, fn (Builder $q, int $id) => $q->where('r.status_id', $id))
             ->when($f->meterStatusId, fn (Builder $q, int $id) => $q->where('r.meter_status_id', $id))
             ->when($f->billingOnly, fn (Builder $q) => $q->where('s.is_billing', true));
+    }
+
+    /** Narrows a query to the viewer's districts (nothing when there is no limit; nothing at all for an empty list). */
+    protected function limitDistricts($query, CustomerFilters $f, string $column)
+    {
+        if ($f->districtIds === null) {
+            return $query;
+        }
+
+        return $f->districtIds === [] ? $query->whereRaw('1 = 0') : $query->whereIn($column, $f->districtIds);
     }
 
     /** "SUM(r.x) AS x" for each column. @param  list<string>  $columns */
@@ -460,6 +473,7 @@ class CustomerAnalyticsService
             ->join('commercial_customer_statuses AS n', 'n.id', '=', 'ch.new_value')
             ->whereIn('ch.batch_id', $f->batchIds ?: [0])->where('ch.field', CustomerMergeService::FIELD_STATUS)
             ->when($f->regionRestriction !== null, fn ($q) => $f->regionRestriction === 0 ? $q->whereRaw('1 = 0') : $q->where('b.region_id', $f->regionRestriction))
+            ->when($f->districtIds !== null, fn ($q) => $f->districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('b.district_id', $f->districtIds))
             ->when($f->districtId, fn ($q, $id) => $q->where('b.district_id', $id))
             ->selectRaw('o.code AS from_code, o.label AS from_label, o.meaning_confirmed AS from_ok, n.code AS to_code, n.label AS to_label, n.meaning_confirmed AS to_ok, COUNT(*) AS customers')
             ->groupBy('o.code', 'o.label', 'o.meaning_confirmed', 'n.code', 'n.label', 'n.meaning_confirmed')->orderByDesc('customers')->get();
@@ -492,6 +506,7 @@ class CustomerAnalyticsService
             ->join('commercial_customer_batches AS b', 'b.id', '=', 'c.batch_id')
             ->whereIn('c.batch_id', $f->batchIds ?: [0])
             ->when($f->regionRestriction !== null, fn ($q) => $f->regionRestriction === 0 ? $q->whereRaw('1 = 0') : $q->where('b.region_id', $f->regionRestriction))
+            ->when($f->districtIds !== null, fn ($q) => $f->districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('b.district_id', $f->districtIds))
             ->when($f->districtId, fn ($q, $id) => $q->where('c.district_id', $id))
             ->when($f->categoryId, fn ($q, $id) => $q->where('c.category_id', $id));
 
@@ -541,6 +556,7 @@ class CustomerAnalyticsService
     {
         $months = DB::table('commercial_customer_batches')->whereIn('id', $f->batchIds ?: [0])
             ->when($f->regionRestriction !== null, fn ($q) => $f->regionRestriction === 0 ? $q->whereRaw('1 = 0') : $q->where('region_id', $f->regionRestriction))
+            ->when($f->districtIds !== null, fn ($q) => $f->districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('district_id', $f->districtIds))
             ->pluck('history_months');
         $needed = max(2, (int) config('gwl.commercial_customer_history_min_months', 3));
         $baseline = (int) $rows->sum('hist_baseline');
@@ -565,6 +581,7 @@ class CustomerAnalyticsService
         $rows = DB::table('commercial_customer_quality AS q')->join('commercial_customer_batches AS b', 'b.id', '=', 'q.batch_id')
             ->whereIn('q.batch_id', $f->batchIds ?: [0])
             ->when($f->regionRestriction !== null, fn ($q) => $f->regionRestriction === 0 ? $q->whereRaw('1 = 0') : $q->where('b.region_id', $f->regionRestriction))
+            ->when($f->districtIds !== null, fn ($q) => $f->districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('b.district_id', $f->districtIds))
             ->when($f->districtId, fn ($q, $id) => $q->where('q.district_id', $id))
             ->selectRaw('q.district_id, q.issue, SUM(q.issue_count) AS issue_count')->groupBy('q.district_id', 'q.issue')->get();
 
@@ -607,10 +624,10 @@ class CustomerAnalyticsService
      *
      * @return array<string, mixed>
      */
-    public function trend(?int $restriction, ?int $regionId, ?int $districtId, int $periods = 12, bool $monthEnd = false): array
+    public function trend(?int $restriction, ?int $regionId, ?int $districtId, int $periods = 12, bool $monthEnd = false, ?array $districtIds = null): array
     {
         if ($monthEnd) {
-            return $this->trendByMonthEnd($restriction, $regionId, $districtId, $periods);
+            return $this->trendByMonthEnd($restriction, $regionId, $districtId, $periods, $districtIds);
         }
 
         $rows = DB::table('commercial_customer_rollups_district AS r')
@@ -619,6 +636,7 @@ class CustomerAnalyticsService
             ->join('commercial_meter_statuses AS m', 'm.id', '=', 'r.meter_status_id')
             ->where('b.status', CommercialCustomerBatch::STATUS_IMPORTED)
             ->when($restriction !== null, fn ($q) => $restriction === 0 ? $q->whereRaw('1 = 0') : $q->where('b.region_id', $restriction))
+            ->when($districtIds !== null, fn ($q) => $districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('b.district_id', $districtIds))
             ->when($regionId, fn ($q, $id) => $q->where('b.region_id', $id))
             ->when($districtId, fn ($q, $id) => $q->where('b.district_id', $id))
             ->selectRaw('b.period_key, b.period_type, MAX(b.as_of_date) AS as_of, COUNT(DISTINCT b.id) AS batches, SUM(r.customer_count) AS customers, '
@@ -660,10 +678,11 @@ class CustomerAnalyticsService
      *
      * @return array<string, mixed>
      */
-    protected function trendByMonthEnd(?int $restriction, ?int $regionId, ?int $districtId, int $months): array
+    protected function trendByMonthEnd(?int $restriction, ?int $regionId, ?int $districtId, int $months, ?array $districtIds = null): array
     {
         $batches = CommercialCustomerBatch::query()->where('status', CommercialCustomerBatch::STATUS_IMPORTED)
             ->when($restriction !== null, fn ($q) => $restriction === 0 ? $q->whereRaw('1 = 0') : $q->where('region_id', $restriction))
+            ->when($districtIds !== null, fn ($q) => $districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('district_id', $districtIds))
             ->when($regionId, fn ($q, $id) => $q->where('region_id', $id))
             ->when($districtId, fn ($q, $id) => $q->where('district_id', $id))
             ->orderBy('as_of_date')->orderBy('id')->get(['id', 'district_id', 'as_of_date']);

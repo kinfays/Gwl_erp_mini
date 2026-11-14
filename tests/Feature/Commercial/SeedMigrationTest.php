@@ -22,7 +22,7 @@ class SeedMigrationTest extends CommercialTestCase
         $this->assertSame($first, $this->snapshot());
     }
 
-    public function test_it_creates_the_roles_the_fifteen_permissions_and_an_access_row_for_every_role(): void
+    public function test_it_creates_the_roles_the_seventeen_permissions_and_an_access_row_for_every_role(): void
     {
         $this->runMigration();
 
@@ -33,6 +33,7 @@ class SeedMigrationTest extends CommercialTestCase
             'commercial.upload_reports', 'commercial.resolve_matches', 'commercial.void_batches', 'commercial.export_reports', 'commercial.manage_settings',
             'commercial.view_customer_analytics', 'commercial.view_customer_details',
             'commercial.send_sms', 'commercial.view_sms_balance', 'commercial.view_sms_reports', 'commercial.manage_sms_settings',
+            'commercial.view_all_districts', 'commercial.manage_routes',
         ], Permission::query()->where('module', Permission::MODULE_COMMERCIAL)->pluck('name')->all());
 
         $this->assertSame(Role::query()->count(), ModuleAccess::query()->where('module', Permission::MODULE_COMMERCIAL)->count(), 'every existing role is listed explicitly');
@@ -68,7 +69,7 @@ class SeedMigrationTest extends CommercialTestCase
         $this->assertNotContains('commercial.manage_sms_settings', $fromMigration['commercial_manager'], 'the SMS provider settings stay with super_admin');
         $this->assertContains('commercial.view_reader_performance', $fromMigration['commercial_manager']);
         $this->assertNotContains('commercial.view_reader_performance', $fromMigration['regional_chief_manager']);
-        $this->assertCount(15, $fromMigration['super_admin']);
+        $this->assertCount(17, $fromMigration['super_admin']);
     }
 
     public function test_the_hr_roles_do_not_pick_up_the_new_module_from_the_seeder(): void

@@ -25,6 +25,9 @@ class CustomerLookups
     /** @var array<string, int> district_id|name => id */
     protected array $routes = [];
 
+    /** @var array<int, int|null> district id => its region id (for the route master) */
+    protected array $districtRegions = [];
+
     /** @var array<int, bool> status id => is a billing status */
     protected array $billing = [];
 
@@ -80,14 +83,15 @@ class CustomerLookups
 
     public function status(?string $code): int
     {
-        $code = $code === null || $code === '' ? '?' : $code;
+        // A blank status maps to UNKNOWN (Phase 8a): one pending row to classify, never a guess
+        $code = $code === null || $code === '' ? 'UNKNOWN' : $code;
 
         if (isset($this->statuses[$code])) {
             return $this->statuses[$code];
         }
 
         $id = (int) DB::table('commercial_customer_statuses')->insertGetId([
-            'code' => $code, 'label' => $code === '?' ? 'Not given' : $code, 'is_active' => false, 'is_billing' => false,
+            'code' => $code, 'label' => $code === 'UNKNOWN' ? 'Unknown (no status given)' : $code, 'is_active' => false, 'is_billing' => false,
             'meaning_confirmed' => false, 'is_pending' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -123,7 +127,14 @@ class CustomerLookups
             return $this->routes[$key];
         }
 
-        DB::table('commercial_routes')->insertOrIgnore(['district_id' => $districtId, 'name' => $name, 'created_at' => now(), 'updated_at' => now()]);
+        // The route master (Phase 8a): a route the customer list names is filed with its region, its code (digits as printed) and its source.
+        $this->districtRegions[$districtId] ??= DB::table('districts')->where('id', $districtId)->value('region_id');
+        $code = preg_match('/^(\d{1,12})$/', $name, $m) || preg_match('/\s(\d{1,12})$/', $name, $m) ? $m[1] : null;
+
+        DB::table('commercial_routes')->insertOrIgnore([
+            'district_id' => $districtId, 'region_id' => $this->districtRegions[$districtId], 'name' => $name, 'code' => $code, 'source' => 'customer_list',
+            'active' => true, 'is_pending' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         return $this->routes[$key] = (int) DB::table('commercial_routes')->where('district_id', $districtId)->where('name', $name)->value('id');
     }

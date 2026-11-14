@@ -42,7 +42,7 @@ class BuildCustomerListExport implements ShouldQueue
         }
 
         $details = $user->hasRoles('super_admin') || $user->hasPermission('commercial.view_customer_details');
-        $q = $this->filters + ['restriction' => CustomerScope::regionRestriction($user)];
+        $q = $this->filters + ['restriction' => CustomerScope::regionRestriction($user), 'district_ids' => CustomerScope::districtIds($user)];
         $token = (string) Str::uuid();
         $path = 'commercial/customer-exports/'.$token.'.xlsx';
         Storage::disk('local')->makeDirectory('commercial/customer-exports');

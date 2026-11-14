@@ -46,7 +46,8 @@
         @if ($kpis['empty'])
             <x-ui.alert tone="info" class="dash-row">No single-month billing upload of this customer segment in this region yet.</x-ui.alert>
         @else
-            <p class="ui-hint dash-row">{{ $kpis['region'] }} · {{ $kpis['segments'][$kpis['segment']]['label'] ?? 'All customers' }} · {{ count($kpis['months']) }} month(s). Targets are yearly: a month's target is the annual target ÷ 12 and efficiency = actual ÷ that target × 100. Year to date compares the {{ $charts['ytd_months'] }} month(s) uploaded in {{ $charts['ytd_year'] }} with the annual target × those months ÷ 12. Blank where the year has no target.</p>
+            <p class="ui-hint dash-row">{{ $kpis['region'] }} · {{ $kpis['segments'][$kpis['segment']]['label'] ?? 'All customers' }} · {{ count($kpis['months']) }} month(s). Targets are yearly: a month's target is the annual target ÷ 12 and efficiency = actual ÷ that target × 100.@if ($charts) Year to date compares the {{ $charts['ytd_months'] }} month(s) uploaded in {{ $charts['ytd_year'] }} with the annual target × those months ÷ 12.@endif Blank where the year has no target.</p>
+            @if ($charts)
 
             {{-- ============================================ charts --}}
             <div class="ui-grid ui-grid-3 dash-row">
@@ -103,6 +104,8 @@
                             :series="[['label' => 'Arrears', 'data' => $charts['latest_arrears'], 'color' => 'danger']]" height="260" />
                     </x-ui.card>
                 </div>
+            @endif
+
             @endif
 
             @foreach (array_filter([$district === '' ? $kpis['total'] : null, ...$kpis['districts']]) as $block)

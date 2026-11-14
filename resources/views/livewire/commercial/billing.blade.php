@@ -10,13 +10,13 @@
         $signedPts = fn ($value) => $value === null ? '–' : ($value > 0 ? '+' : '').number_format($value, 1).' pts';
         $creditHint = 'A negative balance is a customer credit (confirmed by the Commercial team).';
         $flagLabels = ['zero_activity' => 'No activity', 'heavy_credit' => 'Heavy credit', 'high_unbilled' => 'High unbilled', 'high_estimation' => 'High estimation'];
-        $drill = fn ($key, $extra = []) => route('commercial.billing', array_filter(['snapshot' => $chosen['id'] ?? null, 'tab' => $activeTab, 'district' => $key, ...$extra]));
+        $drill = fn ($key, $extra = []) => route('commercial.billing', array_filter(['snapshot' => ($chosen['is_range'] ?? false) ? null : ($chosen['id'] ?? null), 'from' => $chosen['range_from'] ?? null, 'to' => $chosen['range_to'] ?? null, 'tab' => $activeTab, 'district' => $key, ...$extra]));
     @endphp
 
     <x-ui.page-header title="Billing" description="Billing, collections, estimation and unbilled customers from the billing summary reports. Every figure is from one snapshot at a time.">
         <x-slot:actions>
             @if ($chosen && ($canExport ?? false))
-                @php $billingExport = array_filter(['snapshot' => $chosen['id'], 'district' => $districtKey ?? '']); @endphp
+                @php $billingExport = array_filter(['snapshot' => ($chosen['is_range'] ?? false) ? null : $chosen['id'], 'from' => $chosen['range_from'] ?? null, 'to' => $chosen['range_to'] ?? null, 'district' => $districtKey ?? '']); @endphp
                 <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'excel', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.file-icon type="excel" /> Excel</a>
                 <a href="{{ route('commercial.export', ['report' => 'billing', 'format' => 'pdf', ...$billingExport]) }}" class="btn btn-secondary"><x-ui.file-icon type="pdf" /> PDF</a>
             @endif
@@ -38,6 +38,13 @@
                     <option value="{{ $s['id'] }}" @selected($s['id'] === $chosen['id'])>{{ $s['label'] }} (batch #{{ $s['id'] }})</option>
                 @endforeach
             </select>
+            <select wire:model.live="preset" class="form-input" aria-label="A whole month">
+                <option value="">A whole month…</option>
+                @foreach ($monthPresets as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
+            </select>
+            <input type="text" wire:model.live.debounce.500ms="dateFrom" class="form-input" style="max-width:11rem" placeholder="From date 2026-07-15" aria-label="From date (YYYY-MM-DD)" autocomplete="off">
+            <input type="text" wire:model.live.debounce.500ms="dateTo" class="form-input" style="max-width:11rem" placeholder="To date 2026-08-31" aria-label="To date (YYYY-MM-DD)" autocomplete="off">
+            @if ($dateFrom !== '' || $dateTo !== '')<button type="button" wire:click="clearFilters" class="btn btn-ghost btn-sm">Clear dates</button>@endif
             <x-ui.segmented label="Billing section" wire:model.live="tab" :options="$tabs" :value="$activeTab" />
             @if (! in_array($activeTab, ['bands', 'compare'], true))
                 <select wire:model.live="district" class="form-input" aria-label="District">
@@ -52,9 +59,16 @@
             @endif
         </div>
 
+        @if ($rangeNotes !== [])
+            <div class="ui-hint dash-row" data-range-notes>
+                <strong>{{ $chosen['label'] }}</strong>
+                <ul style="padding-left:18px;list-style:disc">@foreach ($rangeNotes as $note)<li>{{ $note }}</li>@endforeach</ul>
+            </div>
+        @endif
+
         <p class="ui-hint dash-row">
             Snapshot: <strong>{{ $chosen['label'] }}</strong>.
-            @unless ($chosen['is_single_month'])
+            @unless ($chosen['is_single_month'] || ($chosen['is_range'] ?? false))
                 This is a multi-month period: it is fully usable here, but it cannot be compared or trended against single months.
             @endunless
             @if ($districtKey !== '')

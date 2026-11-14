@@ -1053,6 +1053,225 @@ The two multiples and the minimum months are editable under Settings > customers
 * **One Uploads place.** The sidebar has a single "Uploads" entry (reading and billing reports); a switch at the top of that page and of the customer-list uploads page moves between the two kinds. Routes and permissions are unchanged.
 * **Development data.** `commercial:customers:sample --monthly --start=2026-03-31 --steps=7 --fresh --import` loads month-end customer lists (March to September) in date order (`--fresh` first deletes the customer-list data of a development database and refuses when SMS campaigns exist); the average consumption has planted spikes, drops and zeros for the own-history comparison. Billing (all customers, March to September, chained so each opening balance is the previous closing and September closes at the customer lists' net owed), reading (March to May) and the 2026 targets were added the same way through the real import path.
 
+### 8.29 Phase 8 — route, CCA and district grain: re-examination of the three new full exports (2026-11-14)
+
+**Why.** The Commercial team supplied three full Accra West exports (customer list, billing details, reading summary by route) and said: every file now carries the **route**, a route belongs to a **CCA** and a **district**, uploads may be **daily, weekly or monthly**, and a **district may see only its own district's performance**. The module was built for one-row-per-reader reading files, route-summary billing and one-district customer files, so most of it needs a route dimension. Nothing from the files is copied into code, tests or docs; the figures below are counts and sums only.
+
+#### 8.29.1 What the three files are
+
+| File | Grain | Scale | Period / date | Route label |
+|---|---|---|---|---|
+| **Customer List Report** (`rptCustomerDetails`) | one row per customer, grouped by route, with a TOTALS row per route | 67,349 customers, 196 route headings, 5 districts; **no `DISTRICT:` line, only `REGION:`**; about 111 MB of sheet XML | as at the export (mid-November 2026) | `code, DISTRICT, REGION` |
+| **Detailed Billing Report** (`rptBillingDetails_ExP`) | one row per customer, grouped by route, TOTALS per route; 27 columns (previous and current reading, consume, rate, five charge columns, month total, previous balance, paid this month, previous-month payment, offset, adjusted, balance due, last read / act / pay date, **Bill Status**) | 67,097 customers, 244 route headings; about 133 MB | bill period September 2026 | `DISTRICT code` |
+| **Customer Meter Reading Report, CCA Summary by Route** (`rptReadingSumm`) | one row per **route within a CCA**: verified strength, read, skipped, visited, unvisited (and source percentages, not trusted); a TOTALS row per CCA; one sheet per CCA plus a "Document map" sheet | 74 CCAs, 199 routes, strength 61,825, read 45,268, skipped 10,321, visited 55,589, unvisited 6,236 | report period October 2026 | `DISTRICT code` |
+
+The three are at **different points in time** (reading October, billing September, customer list mid-November), so cross-file figures must always be labelled with each side's period.
+
+#### 8.29.2 What the files tell us (all checked, aggregates only)
+
+* **Billing and reading share one route convention** (`DISTRICT code`): all 199 reading routes exist as billing routes; billing has 45 more (330 customers with no CCA reading them). The **customer list names a route's district differently** for about 27% of accounts (18,146 of 67,097): the same 4-digit code is under one district in the list and another in billing/reading. 39 of the 196 route codes appear under more than one district label in billing. **A route code alone is therefore not a key; and which system owns the district is a business question (8.29.7, Q12).**
+* **The account number links the customer list and billing completely** (all 67,097 billing accounts are in the list; 252 list accounts are newer than the September bill). The route **code** agrees for 67,078 of 67,097.
+* **Reading strength is now per route.** It matches the number of **metered** accounts on the route (working or faulty meter, including disconnected) with a 5.4% median error; it does not match active accounts. So "strength" = metered accounts to read, and the earlier region-level strength can finally be checked.
+* **CCAs:** median 2 routes (max 14); 4 routes appear under two CCAs; 3 CCAs have no visits and one has no route. Among 68 CCAs with at least 300 visits the **skip rate runs 4.7% to 41.1% (median 18%)** and coverage is about 99.9%: coverage barely separates CCAs, skipping does.
+* **Billing status:** REGULAR 40,581; ESTIMATED 6,330; ESTIMATE 5,443; UNBILLED 14,743. The two spellings split by meter: **ESTIMATED** is almost entirely **working meters** (read failure, reader-attributable); **ESTIMATE** is **faulty or no meter** (meter-attributable). *Inference to confirm (Q13).* Only 24 of 46,996 active accounts are unbilled; the unbilled are mostly disconnected.
+* **Money (September, Accra West):** consumption 1,082,971, month total billed 15.08 M, paid this month 13.16 M (87.3%), previous balance 83.71 M, adjustments -0.60 M, balance due 85.00 M. Customer-list balances sum to 75.96 M (56,840 owing, 8,418 in credit, 2,091 nil).
+* **Route-level link between reading and billing:** across 175 routes the skip rate and the share of customers billed ESTIMATED correlate at about 0.34, and the unvisited rate at 0.32. The old region-level "estimation vs skip" (C2) had three data points; this has 175.
+* **Contacts:** 56% of customers have **two mobile numbers** in one cell (" / "-separated, 12-digit `233...`), 36% one, 8% none; 3,185 have two e-mail addresses. Phase 6b already reads the second number; e-mail needs the same list handling.
+* **Status movement** between the September bill and the November list: 2,304 accounts changed status (for example active to disconnected 752, disconnected to active 608, 145 category changes).
+* **Codes not yet in the lookups:** statuses HOLD, DISN, NSC, CNTL and blank (30 rows); category 999 (27 rows).
+* **Totals do not always add up in the source itself:** exactly **one route in each detail file** (the same Darkuman/Gbawe route; one row short in both) disagrees with its own TOTALS row. Phase 6 blocks the whole file when any route fails; that is too strict for a 67,000-row file (8.29.4).
+
+#### 8.29.3 The catalogue: 49 distinct analyses
+
+Nineteen exist today at region or district grain (marked **E**) and get route / CCA / district-scoped versions; thirty are **new** (**N**). Every one is available per district, per route and, where it makes sense, per CCA, and every one except the customer-list-only ones can be trended (T1 to T8).
+
+**Reading by route and CCA (8)**
+
+| # | Analysis | |
+|---|---|---|
+| R1 | CCA scorecard: strength, read, skipped, visited, unvisited, coverage, skip rate | E (now exact) |
+| R2 | Route league table (skip, unvisited, coverage per route) | N |
+| R3 | District reading performance from real routes (replaces the home-district approximation C1) | N |
+| R4 | CCA workload balance: routes and strength per CCA, spread across CCAs | N |
+| R5 | Unvisited backlog: routes and CCAs with most unvisited; CCAs with zero visits | N |
+| R6 | Routes with no CCA, and routes read by more than one CCA | N |
+| R7 | Skip-rate outliers against district peers | N |
+| R8 | Strength against metered accounts per route (data quality) | N |
+
+**Billing details (13)**
+
+| # | Analysis | |
+|---|---|---|
+| B1 | Bill-status mix (regular / estimated / estimate / unbilled) by route, district, category | N |
+| B2 | Estimation cause: reader-attributable (ESTIMATED) against meter-attributable (ESTIMATE) | N |
+| B3 | Unbilled analysis: status by meter status; active-but-unbilled exception list | N |
+| B4 | Consumption: total, per customer, bands, zero consumption, by category and route | E |
+| B5 | Charge breakdown: water, rural water, fire fighting, sewage, service charge | N |
+| B6 | Collections: paid this month, previous-month payment, offsets, ratio by route, district, category | E |
+| B7 | Receivables: previous balance, adjusted, balance due, top debtors, credits | E |
+| B8 | Adjustments review by route and category | N |
+| B9 | Billed but not paid: accounts and value | N |
+| B10 | Tariff recompute check: rate x consumption against water charge | N |
+| B11 | Read recency at billing: days since last read | N |
+| B12 | Billing integrity: route totals, duplicates, bill month against period | E |
+| B13 | Billing trend month on month by route and district | E |
+
+**Customer list (9)**, all E (now by route and by CCA through the route link)
+
+C1 base mix (status, category, meter status); C2 balance and arrears buckets, top debtors, credits; C3 contact reachability (none / one / two numbers, e-mails); C4 status and category movement between uploads; C5 new and missing accounts; C6 meter population and faulty meters per route; C7 last-read and last-paid recency (coverage); C8 inactive accounts still carrying a balance; C9 customers per route.
+
+**Across the files, by route, CCA and district (11)**
+
+| # | Analysis | |
+|---|---|---|
+| X1 | CCA performance against billing outcomes on their routes (skip, estimated share, unbilled, collection) | N |
+| X2 | **Route 360**: reading, billing and customer facts of one route on one page | N |
+| X3 | Skip against estimation at route level (replaces C2's three data points) | N |
+| X4 | Strength reconciliation: reading strength against customer-list metered accounts | N |
+| X5 | Billing against customer list: accounts in one not the other; status changed since the bill | N |
+| X6 | Status exceptions: active but unbilled, disconnected but billed | N |
+| X7 | District scorecard from real routes (reading + billing + customers) | E |
+| X8 | Arrears per CCA portfolio and the routes holding most of it | N |
+| X9 | Reading-to-bill lag: last read date against the bill period | N |
+| X10 | Route master conflicts: the same code under several districts; unassigned (0000) customers | N |
+| X11 | Executive summary by district | E |
+
+**Trends and cadence (8)**
+
+T1 pace against expected (month to date) for every measure, **E** (R14 today); T2 day on day and week on week; T3 month on month, **E**; T4 rolling 4-week / 3-month; T5 rank movement of CCAs and routes; T6 year on year (after 12 months); T7 projection to month end from the run rate; T8 upload timeliness (which district uploaded on time, how late). T2, T4 to T8 are **N**.
+
+#### 8.29.4 How the module was built, and what each new fact changes
+
+| # | Built as | Real files show | Change |
+|---|---|---|---|
+| 1 | **Reading** rows are per reader; the reader's *home district* is a proxy; strength is one number per region and month (`commercial_reading_strengths`) | per route within a CCA, strength per route | New report type `reading_route_summary` stored per (batch, route, CCA). The reader-grain tables stay for the old report. Home-district proxy not needed for the new report |
+| 2 | **Billing** is route summary (`commercial_billing_routes`, bands, one row per district and route); customer-level billing does not exist | customer-grain file, 27 columns, status per customer | New report type `billing_details`. **Do not store 67,000 rows per region-month for ever**: stream-parse, store a **rollup** per (batch, route, category, bill status, meter status) (a few thousand rows) plus capped exception lists (as the customer list does) |
+| 3 | **Customer list** assumes one district per file (`DISTRICT:` line); batches, "missing from file" and rollups are per district | whole-region file, many districts, no `DISTRICT:` line | The parser splits a region file by route heading into per-district **child batches** and runs the existing per-district merge on each; a district that is not fully present in the file does not get its accounts marked missing |
+| 4 | **Routes** (`commercial_routes`: district_id + name) exist for the customer list only; billing keeps `district_label_raw` + `route_code` as text | route is the key everywhere, and the district label disagrees between systems | One **route master** every report resolves to, with aliases and a canonical-district setting (8.29.5) |
+| 5 | **Authorization is by region** (`ScopesCommercialByActor`, `CustomerScope`, `SmsAccess`) | a district must see only its district | One scope object that returns regions **and** districts; every query, export, search and SMS audience takes it (8.29.6) |
+| 6 | **Effective rule:** the newest non-voided batch wins per (region, month, reader) or per (region, segment, period); customer batches have `period_type` weekly or monthly | daily, weekly and monthly uploads | Each batch declares **cumulative** (month to date: newer replaces older for the same month) or **slice** (this period only: slices add up, an overlap is resolved newest-wins). Default inferred: period starting on the 1st = cumulative, otherwise slice; the uploader can change it in the preview |
+| 7 | **Reconciliation blocks** a file when any route fails its own totals | one route in 196 / 244 fails, by one row | Per-route tolerance: a route that fails is **flagged and listed**, the file imports; the file is blocked only when more than a setting (default 2% of routes) fail or the grand total is off by more than a setting (default 0.5%) |
+| 8 | Lookups seeded for the statuses and categories seen so far | HOLD, DISN, NSC, CNTL, blank; category 999 | Seed them as *pending* (the Phase 6 mechanism), shown in the "to classify" list; do not guess meaning (Q15) |
+| 9 | Phase 6b reads two mobiles; e-mail is one value | two e-mails in 3,185 rows | E-mail: keep first, store second, same list handling |
+| 10 | KPIs, targets, SMS are per district or Accra West-locked | district scoping | KPI and scorecards filter by district scope; SMS audience resolution adds the district; the Accra West lock stays |
+| 11 | Uploads are one place for reading and billing, another for customers | six report kinds | One Uploads page that detects the kind from the file (title line) and shows the cadence choice |
+
+#### 8.29.5 The route master (the decision everything hangs on)
+
+* **Route** = (district, code), as in billing and reading. `commercial_routes` gains `region_id`, `code` (digits as printed, "0000" kept), `canonical_route_id` (null for a canonical route), `source` (reading / billing / customer_list / manual) and `active`. The customer list's `code, DISTRICT, REGION` heading resolves to a route the same way; a label whose district does not match the canonical one becomes an **alias** to the canonical route.
+* **Which district is canonical** is a setting, default **billing / reading label** (`commercial_route_district_authority` = `billing`), because those two agree with each other and carry the CCA. A route's district is then also the district of every account on it. The alternative, `customer_list`, is available. Until the Commercial team answers Q12 the screen **X10 Route master conflicts** lists every code that has two districts, the accounts affected and the setting that decides, and a Commercial Manager can pin a route to a district by hand (`commercial.manage_routes`).
+* **Account to route:** `commercial_customers.route_id` stays what the list says; a new `ops_route_id` (the canonical route from the newest billing file) is the one all analytics and the **district scope** use, falling back to `route_id`. The customer's own district column is not rewritten.
+* **CCA to route** comes from each reading-route batch (a route's CCA can change by period): `commercial_route_cca` (route, CCA staff id, employee id, batch, period). A route with two CCAs in one period is shared; a route with none is unassigned. Both are reported (R6).
+
+#### 8.29.6 District scoping
+
+* New service `CommercialScope::for($user)` returns `{regions: null|[ids], districts: null|[ids]}`. A user with the new permission **`commercial.view_all_districts`** (and region access) sees every district of the region; a user without it sees **only the district on their employee record**; Head Office and `super_admin` see everything, as today. A user with no employee district and no all-districts permission sees nothing.
+* **No behaviour change for existing roles:** the migration grants `view_all_districts` to every role that holds any `commercial.*` view permission, and adds a role **District Commercial Viewer** (the commercial view permissions without `view_all_districts`).
+* **Everything takes the scope:** reading and billing screens and rollups, the customer list and its search, analytics, KPIs, exports, SMS audience, upload history, notifications. A district user sees a CCA only through the routes in their district ("your district's share of this CCA"). Region totals are hidden from a district user (no region row, no comparison with other districts' figures); the small-group rule (`commercial_min_readers_for_district_figures`) still applies to users without `view_reader_performance`.
+* **Tests:** one test per screen and export proves a district user cannot see another district through the URL, a filter, a search, an export or a Livewire call. The service twin (queued jobs, commands) is pinned to the Livewire one by a test, as `CustomerScope` is today.
+
+#### 8.29.7 Questions for the Commercial team (added to section 10)
+
+12. **Which system owns a route's district?** The customer list shows about 27% of accounts under a different district from billing and reading (for example one code under one district in the list and another in billing). Is the billing/reading label the operational truth (assumed)? Why do 39 route codes appear under more than one district, and what is route 0000?
+13. **ESTIMATED against ESTIMATE:** is ESTIMATED "working meter, not read" and ESTIMATE "faulty or no meter"?
+14. **Daily and weekly files:** are they month to date (each file contains everything since the 1st) or only that day or week? Is the customer list always the full region?
+15. **New codes:** what do statuses HOLD, DISN, NSC, CNTL and category 999 mean, and are they billable?
+16. **Route totals:** how should a route whose rows do not match its TOTALS row be treated (flag and import, assumed)? Is the missing row in the export a known issue?
+17. **Reading strength:** is it meant to be the metered accounts on the route (as it looks), and should the 45 billing routes with no CCA have one?
+18. **District users:** is the district on the employee record the right basis for "sees only their district", and who is allowed to see all districts of a region?
+19. **Retention:** how long must customer-grain billing exceptions be kept (assumed 3 months of account-level lists, rollups for 24 months)?
+
+#### 8.29.8 Plan: Phase 8 in five slices (each reviewed before the next)
+
+* **8a Foundation (prompt below):** route master and aliases, canonical-district setting and the X10 conflicts screen; `CommercialScope` and district scoping across what exists; cadence fields on batches (cumulative / slice) and the effective-rule change; per-route reconciliation tolerance; pending seeds for the new codes. No new report type yet.
+* **8b Customer list, region-wide:** parser reads a region file, splits into per-district child batches, e-mail list handling, partial-file safety for "missing", route reconciliation as flags; `ops_route_id` from billing when 8d exists.
+* **8c Reading by route:** `reading_route_summary` import (74-sheet workbook), `commercial_reading_route_stats`, `commercial_route_cca`, analytics R1 to R8, T1.
+* **8d Billing details:** streamed parser, rollup, exception lists, analytics B1 to B13.
+* **8e Across the files and trends:** X1 to X11, T2 to T8, the route 360 page, cadence screens and upload timeliness, sample-data generator for the three layouts.
+
+#### 8.29.9 Phase 8a kickoff prompt (ready to paste into Claude Code)
+
+```
+You are working on the Laravel ERP at C:\laragon\www\erp_project (Laravel 13, PHP 8.3, Livewire 4, MySQL in production, SQLite in tests). Read CLAUDE.md, APP_DOCUMENTATION.md and docs/commercial-module-design.md (sections 8.20 to 8.29) first. Change ONLY section 8.30 of the design doc (add it for "Phase 8a as built"); never rewrite the other sections.
+
+PHASE 8a: the route master, district scoping, upload cadence and reconciliation tolerance. No new report type in this phase.
+
+BACKGROUND (section 8.29): three new Accra West exports carry the route; a route belongs to a CCA and a district; uploads can be daily, weekly or monthly; a district must see only its own district. The billing and reading reports label a route "DISTRICT code" (for example "AMASAMAN 4601"); the customer list labels it "code, DISTRICT, REGION"; the two disagree on the district for about 27% of accounts. Never copy any real customer, staff or route value from files into code, tests, docs or logs: tests use invented data only.
+
+1. ROUTE MASTER. Extend the existing commercial_routes table (district_id, name, unique(district_id, name)) with a NEW migration (never edit a migration): region_id (nullable FK), code (string 12, digits as printed, "0000" kept), canonical_route_id (nullable self FK; null = canonical), source (reading|billing|customer_list|manual), active (bool default true). Back-fill code from name where name is the route code. A `RouteResolver` service resolves a raw label ("AMASAMAN 4601" or "4601, KANESHIE, ACCRA WEST") to a route, creating it as a pending route when unseen, using the existing district alias mechanism (commercial_location_aliases) for district names and returning the CANONICAL route. Setting `commercial_route_district_authority` (billing|customer_list, default billing) in config/gwl.php and CommercialSettings: when two routes share a code in one region, the one whose district matches the authority source is canonical and the other gets canonical_route_id. Add commercial_customers.ops_route_id (nullable, indexed) to be filled in later phases; do not use it yet.
+   Screen "Route master" under Commercial (permission commercial.manage_routes, new, granted to Commercial Manager): list routes with district, source, canonical or alias, customers count; filter to conflicts (a code under several districts, unassigned 0000); a Commercial Manager can pin a route to a district or mark an alias. Audit::log every change. This is also analysis X10.
+
+2. DISTRICT SCOPE. Create App\Services\Commercial\CommercialScope::for(?User): regions (null = all) and districts (null = all). Rules: super_admin, Global Admin and Head Office staff: all. A user holding the NEW permission commercial.view_all_districts: all districts of their region. Anyone else with commercial access: ONLY the district on their employee record. No employee district and no all-districts permission: nothing. Keep CustomerScope and ScopesCommercialByActor as thin wrappers over it so existing callers keep working. Apply the district limit to EVERY existing query: reading stats (by their district_id), billing routes and bands (district_id), customer lists, search, analytics and rollups, KPIs, exports (Excel and PDF), upload history, notifications, and the SMS audience resolver (the Accra West region lock in SmsAccess stays and the district limit is added). A district user sees no region-wide row and no other district's figure; the small-group rule still applies. Migration: seed permission commercial.view_all_districts with updateOrInsert, grant it to EVERY role that holds any commercial.* view permission (so nothing changes for existing roles), create the role "District Commercial Viewer" with the same view permissions WITHOUT it (follow the pattern of the existing seeding migrations and CommercialRolePermissionSeeder).
+
+3. CADENCE. Add to commercial_import_batches: period_kind (cumulative|slice, nullable) and to commercial_customer_batches the same. The effective scopes become: cumulative = newest non-voided batch per (region, period_from month, key) wins; slice = all non-voided batches whose periods do not overlap are included, overlapping ones resolve newest-wins on the overlapped days (warn in the preview). Default when not chosen: a period starting on the 1st of a month = cumulative, anything else = slice. The upload preview shows a "This file is: month to date / only this period" choice with that default. Existing batches keep their current behaviour (null = today's rule); a test pins that nothing existing changes.
+
+4. RECONCILIATION TOLERANCE. In the customer-list reconcile phase and the report reconciliation, a route whose rows disagree with its own TOTALS row is FLAGGED (listed in control_totals with the row and amount differences) and the file still imports. The file is blocked only when more than commercial_reconcile_max_route_failures_pct (default 2.0) of routes fail or the grand total differs by more than commercial_reconcile_grand_total_tolerance_pct (default 0.5). Both are editable in Settings. Show the flagged routes on the batch page.
+
+5. LOOKUPS. Seed as PENDING (the Phase 6 mechanism, shown in the "to classify" list; do not guess meaning) statuses HOLD, DISN, NSC, CNTL and category 999. A blank status maps to UNKNOWN.
+
+6. TESTS (plain PHPUnit, in-memory SQLite, invented data): district user cannot see another district through URL, filter, search, export or Livewire call for each screen; existing roles unchanged after the migration; CommercialScope pinned to the service twin; route resolver (both label forms, aliases, canonical choice under each authority setting, "0000"); cadence effective rules (cumulative replaced, slices summed, overlap resolved, null unchanged); a route failing its totals flags and imports, a 5% failure blocks; settings editable. Run php artisan config:clear then php artisan test --filter=Commercial and the full suite; report counts.
+
+7. DOCS. Section 8.30 of docs/commercial-module-design.md: what was built, the migration names, the settings and permissions added, what is NOT done (new report types are 8b to 8e). Update docs/ for the module if a doc lists permissions.
+
+Do not add dependencies. Keep controllers and Livewire thin; logic in app/Services/Commercial. When finished, list every file changed and any decision you made that this prompt did not cover.
+```
+
+### 8.30 Phase 8a as built (2026-11-14): route master, district scope, the period model, the excluded account, reconciliation tolerance, new status codes
+
+Built from the Phase 8a brief (which supersedes the shorter prompt in 8.29.9: it adds the interval period model, the excluded account and the status meanings, and closes SMS to district users). No new report type: 8b to 8e are untouched. Every figure and test uses invented data; nothing was copied from the three real exports.
+
+**Migrations** (all new, defensive, safe to run again): `2026_11_20_000001_extend_commercial_routes_for_route_master`, `2026_11_20_000002_seed_commercial_district_scope_and_route_permissions`, `2026_11_20_000003_seed_commercial_status_and_category_codes_of_phase_8a`. Seeders mirror them (`RoleSeeder`, `ModuleAccessSeeder`, `PermissionSeeder`, `CommercialRolePermissionSeeder`).
+
+#### 8.30.1 Route master (analysis X10)
+
+* `commercial_routes` gained `region_id`, `code` (text, "0000" kept), `canonical_route_id` (self FK, null = this is the route), `source` (reading / billing / customer_list / manual), `active`, and two columns the brief did not name: `is_pending` (created by an import from a label nobody confirmed) and `pinned` (a Commercial Manager decided it by hand; `source` stays the system it was first seen in). `commercial_customers.ops_route_id` exists, nullable and indexed, and is **not used yet**. The migration back-fills `region_id` from the district and `code` where the name is, or ends in, the code.
+* **`RouteResolver`** is the one service. `parse()` reads `DISTRICT code` (billing, reading) and `code, DISTRICT, REGION` (customer list, where the code itself may contain commas); `resolve()` turns a label into the **canonical** route, creating an unseen one **pending**, and returns null for a district nobody can place (nothing is guessed; district names go through `commercial_location_aliases`). A district-less label ("0000") has no route to create. `registerRoutes()` files the routes of a billing import (source billing); the customer list import files its routes with region, code and source `customer_list`.
+* **Canonical choice** when routes of one region share a code: a **pinned** route wins; otherwise the route whose system is `commercial_route_district_authority` (`billing`, which means the label billing AND reading print, or `customer_list`); otherwise the oldest. A route seen by the authority system as well as the first one becomes its own. `settle()` runs after every resolve; `rebuild()` runs it for every shared code (button on the screen, after the setting changes). A manager's alias or pin is never overridden.
+* **Screen** Commercial > **Route master** (`commercial.manage_routes`: Commercial Manager and super_admin): routes with district, region, where first seen, route or alias (of which district), customers filed under it; filters All / Same code under several districts / Unassigned (0000) / Pending / Aliases; a search by code; tiles for the conflicts and the unassigned count; **Pin / alias** per route and "Let the setting decide". Region-scoped (another region's route is a 404). Every change `Audit::log`s ids and codes only (`commercial.route_pinned`, `route_marked_alias`, `route_released`, `route_confirmed`, `route_activated`, `route_deactivated`, `routes_rebuilt`).
+
+#### 8.30.2 District scope and SMS
+
+* **`Services/Commercial/CommercialScope::for(?User)`** returns regions and districts (null = all): `super_admin`, Global Admin and Head Office staff all; a holder of the new `commercial.view_all_districts` every district of their region; anyone else only the district on their **employee record**; no employee region, nothing. `CustomerScope` and the Livewire `ScopesCommercialByActor` are now thin wrappers; a test pins the three together. The trait also gives `scopeBillingRoutesForActor`, `scopeUploadsForActor` and `scopeDistrictsForActor`.
+* **Applied to** reading stats (the CCA's home district), billing routes (district), the verified strength and the consumption bands (region-wide tables: a district user has none, so no coverage), KPIs (no "All districts" row), the customer list (snapshots, filters, rollups, lists, search, one customer, Excel exports and the export job), upload history (a district user sees only the uploads they made, and only their district's customer batches), the overdue list and the overdue reminders, Home, Summary, the scorecard and every export. A district user's file keeps only their own district's rows: reading rows of other districts' CCAs (and unmatched CCAs, which have no district) and billing routes of other districts are **skipped, counted in the preview and never stored**; a customer-list file of another district is skipped whole. Strengths and bands are not stored from a district user's file. The small-group rule (`commercial_min_readers_for_district_figures`) still applies: for a district user without `view_reader_performance`, the district is the group.
+* **SMS is closed** to any district-limited user whatever roles they hold: `SmsAccess::userMay()` denies first, so the menu entry, every route and Livewire action (403), the balance and its low-balance notice, the reports and exports, the "send SMS" actions on the customer lists (hidden and refused on the server) and the audience resolver (which also refuses an actor itself) are all closed. The Accra West lock is unchanged.
+* **Roles.** `commercial.view_all_districts` was granted to every role that holds any `commercial.view_*` permission, so nothing changes for an existing role. The new role **District Commercial Viewer** (`district_commercial_viewer`) holds the four management views (dashboard, billing, reading, customer analytics) and nothing else: no all-districts, no upload / resolve / void, no export, no `view_reader_performance`, none of the four SMS permissions. Commercial Manager also got `commercial.manage_routes`.
+
+#### 8.30.3 The period model (`CommercialPeriods`)
+
+A batch keeps `period_from` / `period_to` exactly as the file prints them; day / month / range is only a label (`label()`). For one report type, region and billing segment: (1) identical period: the newest wins; (2) a newer period that contains an older one shadows it; (3) partial overlap: both kept, the upload preview names the other batch and warns, and a view takes the non-overlapping set newest first and **says which days of the range are covered and which are not**; (4) distinct periods add up for flows with every ratio recomputed from the sums, while stocks take the latest period; (5) a view takes a date range and counts only batches whose period lies **inside** it, listing a batch partly outside.
+
+* **Billing** (`BillingAnalyticsService::snapshots()` applies rules 1 and 2; `CommercialReportData::billingRange()` rules 3 to 5; `combineBillingRoutes()` rule 4): flows (volume, billing, adjustments, the three payment columns) are summed; the **closing balance and the customer counts** (customers billed / unbilled / "number of customers") are the latest period's; the **opening balance is the earliest period's** (a decision the brief did not cover: it is the balance the range started from); total receivable is recomputed as opening + billing + adjustments. The Billing screen takes two typed dates (or a "whole month" shortcut), the same analyses run over the added-up routes, and the notes say how many uploads were added up, which days are not covered, which batch overlaps which and which are partly outside. The Excel and PDF take `from` / `to`. With no dates the screen is what it was (the latest uploaded period).
+* **Reading** keeps its reader-by-month rows and the existing "newest batch per reader and month" scope, so existing monthly results are exactly unchanged (`ExistingFiguresPinnedTest`). The screen and the exports take dates as well as the old month shortcuts: a month counts only when the **whole month** lies inside the range, a month partly inside is excluded and listed, and the gaps are stated. **The default stays "all months"**, not the latest period, because the trend needs the history.
+* Dates are typed as `YYYY-MM-DD` in a text box (the in-app browser's date pickers do not open); the month selects stay as shortcuts. The customer list is unchanged: a snapshot as at a date, only the newest of each district counts.
+
+#### 8.30.4 The excluded account
+
+`commercial_excluded_staff_ids` (config and Settings, a comma separated list, default `00000`) plus any account named "System Administrator" (case-insensitive, whatever the ID). In every reading import those sheets' rows are **skipped**: shown in the preview as "excluded (system account)" with their counts (`excluded`, `system_count`), never a warning, never unmatched, **never stored**, never in a CCA list, total, ranking or directory match. They still count in the grand-total reconciliation (the report's own total includes them). Older batches that stored `system_account` rows are still left out by `CommercialReadingStat::scopeReaders()`.
+
+#### 8.30.5 Reconciliation tolerance
+
+A route that disagrees with its own totals is **flagged** (listed with the row and amount differences) and the file still imports. It is blocked only when more than `commercial_reconcile_max_route_failures_pct` (default 2.0) of its routes fail, or its grand total differs by more than `commercial_reconcile_grand_total_tolerance_pct` (default 0.5, a percentage of the total). Both are editable in Settings (group "Imports and reconciliation"). Customer list: per route count and balance, flagged routes listed first in `control_totals` (`count_difference`, `balance_difference`), grand count and grand balance checked against the tolerance, a flagged file is `reconciliation_passed = false`. Billing summary: a route failing its own identities is flagged, a district whose routes do not add up to its totals row is flagged (not blocking by itself), REPORT TOTALS uses the grand tolerance; flags are in `control_totals.flagged` and on the batch page. Reading: the CCA sheets against the grand-total sheet use the grand tolerance.
+
+#### 8.30.6 Lookups: what was chosen
+
+| Code | Meaning (from the Commercial team) | `is_active` | `is_billing` | confirmed | pending |
+|---|---|---|---|---|---|
+| HOLD | holding billing action: billing is paused | yes (still connected, like ACTN) | **no** | yes | no |
+| DISN | disconnected, no payment | no (same group as DISC) | no | yes | no |
+| NSC | new service connection, not yet billing | yes (like ACTN) | no | yes | no |
+| CNTL | unexplained | no | no | no | **pending** |
+| (blank) | maps to the status **UNKNOWN** (an existing "?" row is renamed) | no | no | no | **pending** |
+| category 999 | unexplained | | | | **pending** (group unknown) |
+
+The three pending rows appear in the "to classify" list of the lookups screen; nothing is guessed.
+
+#### 8.30.7 Settings, permissions, tests
+
+* **Settings added** (`CommercialSettings`, also in `config/gwl.php` and `.env.example`): `commercial_route_district_authority`, `commercial_excluded_staff_ids`, `commercial_reconcile_max_route_failures_pct`, `commercial_reconcile_grand_total_tolerance_pct`. The settings class gained two types, `enum` and `list`.
+* **Permissions added:** `commercial.view_all_districts`, `commercial.manage_routes` (17 Commercial permissions now). Role added: `district_commercial_viewer`.
+* **Tests** (plain PHPUnit): `ExistingFiguresPinnedTest` (every export and the billing analyses hashed before the phase: unchanged), `DistrictScopeTest`, `DistrictUsersHaveNoSmsTest`, `RouteMasterTest`, `CommercialPeriodsTest`, plus the tolerance, excluded-account and lookup tests in the existing files. The test helpers `userWith()` now add `view_all_districts` (they model existing roles) and take `districtLimited: true` for a district user.
+* **Not done** (by design): the new report types and everything in 8b to 8e (region-wide customer files split by route, route-level reading and billing details, `ops_route_id` filled, CCA-to-route table, route 360, T2 to T8); Summary, Home and the KPIs still read one snapshot or month (they do not take a date range); the month-to-date / only-this-period choice of 8.29.9 is replaced by the period rules; the daily and weekly cadence of a **customer list** is unchanged (`weekly` / `monthly`).
+
 ---
 
 ## 8b. After Phase 5b
@@ -1078,3 +1297,5 @@ Direct integration with the billing system (API/database) — uploads only for n
 7. **Reader staff IDs** — confirm they match `employees.staff_id` in the directory (the module reports the match rate on first import); and confirm the report's `ACCRA WEST` maps to an existing region (an alias handles any naming difference).
 8. **Home-district proxy (C1)** — acceptable as a labelled approximation until a district-level reading export exists?
 9. **Cadence and ownership** — who uploads, and weekly or monthly? (Weekly uploads of the reading report refresh the current month; the design supports both.)
+
+*Questions 12 to 19 (route district authority, ESTIMATED against ESTIMATE, daily and weekly file meaning, new status codes, route totals, strength, district users, retention) are in section 8.29.7.*

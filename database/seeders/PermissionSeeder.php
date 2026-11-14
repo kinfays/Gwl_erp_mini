@@ -124,6 +124,8 @@ class PermissionSeeder extends Seeder
                 'commercial.view_sms_balance',
                 'commercial.view_sms_reports',
                 'commercial.manage_sms_settings',
+                'commercial.view_all_districts',
+                'commercial.manage_routes',
             ],
             'health_safety' => [
                 'health_safety.report_incident',

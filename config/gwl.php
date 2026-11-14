@@ -179,6 +179,16 @@ return [
     // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
     // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).
     'commercial_min_readers_for_district_figures' => (int) env('GWL_COMMERCIAL_MIN_READERS_FOR_DISTRICT_FIGURES', 3),
+    // Phase 8a. Which system owns a route's district when billing / reading and the customer list disagree (the route master,
+    // docs/commercial-module-design.md 8.30): 'billing' (the label billing and reading print) or 'customer_list'.
+    'commercial_route_district_authority' => in_array(env('GWL_COMMERCIAL_ROUTE_DISTRICT_AUTHORITY', 'billing'), ['billing', 'customer_list'], true) ? env('GWL_COMMERCIAL_ROUTE_DISTRICT_AUTHORITY', 'billing') : 'billing',
+    // Staff IDs whose rows are skipped in every reading import (the billing system's own account). The name "System Administrator"
+    // is matched too, whatever the ID.
+    'commercial_excluded_staff_ids' => array_values(array_filter(array_map('trim', explode(',', (string) env('GWL_COMMERCIAL_EXCLUDED_STAFF_IDS', '00000'))), fn ($id) => $id !== '')),
+    // Reconciliation: a route whose rows disagree with its own TOTALS row is flagged and the file still imports. The file is blocked
+    // only when more than this percentage of its routes fail, or its grand total is off by more than the tolerance percentage.
+    'commercial_reconcile_max_route_failures_pct' => (float) env('GWL_COMMERCIAL_RECONCILE_MAX_ROUTE_FAILURES_PCT', 2.0),
+    'commercial_reconcile_grand_total_tolerance_pct' => (float) env('GWL_COMMERCIAL_RECONCILE_GRAND_TOTAL_TOLERANCE_PCT', 0.5),
     'commercial_workload_low_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_LOW_PCT', 50),
     'commercial_workload_high_pct' => (int) env('GWL_COMMERCIAL_WORKLOAD_HIGH_PCT', 150),
     // PLACEHOLDER targets until the Commercial team confirms the real ones (design section 10, question 5).

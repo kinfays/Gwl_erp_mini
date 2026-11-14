@@ -30,8 +30,8 @@ class ReadingImportTest extends CommercialTestCase
         $this->assertSame('2026-06-01', $batch->period_from->toDateString());
         $this->assertSame('2026-07-31', $batch->period_to->toDateString());
         $this->assertSame(CommercialImportBatch::GRANULARITY_MONTHLY, $batch->granularity);
-        $this->assertSame(6, $batch->row_count);
-        $this->assertSame(6, $batch->matched_count, 'two matched readers and the system account, two months each');
+        $this->assertSame(4, $batch->row_count, 'two readers, two months each: the system account is excluded, never stored');
+        $this->assertSame(4, $batch->matched_count);
         $this->assertTrue($batch->reconciliation_passed);
         $this->assertSame(64, strlen($batch->file_hash));
         $this->assertSame('rptReadingSummDate.xlsx', $batch->source_filename);
@@ -49,23 +49,62 @@ class ReadingImportTest extends CommercialTestCase
         $this->assertNotNull($kofi[0]->employee_id);
     }
 
-    public function test_the_system_account_is_kept_but_never_counted_as_a_reader(): void
+    public function test_the_excluded_system_account_is_shown_in_the_preview_and_never_stored_matched_or_counted(): void
     {
         $this->employee('15071', 'Kofi Mensah');
         $this->employee('15072', 'Ama Serwaa');
         $this->actingAs($this->officer());
 
+        // the preview: skipped, counted, no warning, not unmatched
+        $preview = $this->previewOf($this->readingFile());
+        $this->assertSame(2, $preview['system_count']);
+        $this->assertSame([['staff_id' => '00000', 'rows' => 2, 'read' => 10, 'skipped' => 2, 'visited' => 12]], $preview['excluded']);
+        $this->assertSame(4, $preview['total_rows']);
+        $this->assertSame(0, $preview['unmatched_count']);
+        $this->assertSame(2, $preview['reader_count'], 'two CCAs; the system account is not one');
+        $this->assertStringNotContainsString('00000', collect($preview['warnings'])->pluck('message')->implode(' '));
+        $this->assertTrue($preview['checks'][0]['passed'], 'the grand-total sheet still counts it, so the file still reconciles');
+
+        Livewire::test(\App\Livewire\Commercial\Batches::class)->call('openUpload')->set('file', $this->readingFile())->call('previewFile')->assertSee('excluded (system account): 2 rows, not imported');
+
+        // the batch: nothing of it is stored
         $batch = $this->importFile($this->readingFile());
+        $this->assertSame(0, $batch->stats()->where('reader_staff_id', '00000')->count());
+        $this->assertSame(0, CommercialReadingStat::query()->where('match_status', CommercialReadingStat::MATCH_SYSTEM_ACCOUNT)->count());
+        $this->assertSame(['15071', '15072'], $batch->stats()->distinct()->orderBy('reader_staff_id')->pluck('reader_staff_id')->all());
+        $this->assertSame(2, $batch->control_totals['excluded'][0]['rows']);
 
-        $system = $batch->stats()->where('reader_staff_id', '00000')->get();
-        $this->assertCount(2, $system);
-        $this->assertSame(CommercialReadingStat::MATCH_SYSTEM_ACCOUNT, $system->first()->match_status);
-        $this->assertSame(['15071', '15072'], $batch->stats()->readers()->distinct()->orderBy('reader_staff_id')->pluck('reader_staff_id')->all());
-        $this->assertSame(2, CommercialReadingStat::query()->effective()->readers()->distinct()->count('reader_staff_id'));
+        Livewire::test(BatchShow::class, ['batch' => $batch])->assertSee('Excluded (system account) 00000');
+    }
 
-        Livewire::test(BatchShow::class, ['batch' => $batch])
-            ->assertSee('system account')
-            ->assertSee('2 rows', escape: false);
+    public function test_the_excluded_ids_are_a_setting_and_the_name_system_administrator_is_excluded_whatever_the_id(): void
+    {
+        $this->employee('15071', 'Kofi Mensah');
+        $this->actingAs($this->officer());
+
+        // the ID list is replaced: 15072 is now excluded, 00000 is no longer on the list but still named System Administrator
+        config(['gwl.commercial_excluded_staff_ids' => ['15072']]);
+        $preview = $this->previewOf($this->readingFile());
+
+        $this->assertSame(['15072', '00000'], array_column($preview['excluded'], 'staff_id'));
+        $this->assertSame(2, $preview['total_rows'], 'only Kofi is left');
+
+        // a different ID with that name is excluded too (case-insensitive)
+        config(['gwl.commercial_excluded_staff_ids' => []]);
+        $named = $this->previewOf($this->readingFile(['readers' => [
+            ['id' => '15071', 'name' => 'KOFI MENSAH', 'counts' => ['2026-06-01' => [5, 1], '2026-07-01' => [6, 2]]],
+            ['id' => '99999', 'name' => 'system ADMINISTRATOR', 'counts' => ['2026-06-01' => [1, 0], '2026-07-01' => [1, 0]]],
+        ]]));
+        $this->assertSame(['99999'], array_column($named['excluded'], 'staff_id'));
+        $this->assertFalse($named['blocked'], collect($named['errors'])->pluck('message')->implode(' | '));
+
+        // the setting is editable in Settings, as a comma separated list
+        $settings = app(\App\Services\Commercial\CommercialSettings::class);
+        $settings->save(['commercial_excluded_staff_ids' => ' 00000, 12345 ,,00000 '], $this->superAdmin()->id);
+        $this->assertSame(['00000', '12345'], config('gwl.commercial_excluded_staff_ids'));
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $settings->save(['commercial_excluded_staff_ids' => 'bad id!'], $this->superAdmin()->id);
     }
 
     public function test_reader_rows_that_do_not_add_up_to_the_grand_total_sheet_are_blocked(): void
@@ -137,6 +176,28 @@ class ReadingImportTest extends CommercialTestCase
         $this->assertSame(1, CommercialImportBatch::query()->count());
     }
 
+    public function test_the_grand_total_may_differ_by_the_tolerance_and_no_more(): void
+    {
+        $this->actingAs($this->officer());
+
+        // the CCA sheets add up to read 1,420 / skipped 303 / visited 1,723: a grand total 5 higher is 0.35%, inside the 0.5%
+        $within = $this->previewOf($this->readingFile(['grand_overall' => [1425, 303, 1728]]));
+        $this->assertFalse($within['blocked'], collect($within['errors'])->pluck('message')->implode(' | '));
+
+        // 20 higher is 1.4%: blocked, and the message names the figures
+        $beyond = $this->previewOf($this->readingFile(['grand_overall' => [1440, 303, 1743]]));
+        $this->assertTrue($beyond['blocked']);
+        $this->assertStringContainsString('overall: CCA sheets total 1,420 but the grand-total sheet shows 1,440', collect($beyond['errors'])->pluck('message')->implode(' '));
+
+        // the tolerance is a setting
+        config(['gwl.commercial_reconcile_grand_total_tolerance_pct' => 2.0]);
+        $this->assertFalse($this->previewOf($this->readingFile(['grand_overall' => [1440, 303, 1743]]))['blocked']);
+
+        // zero tolerance is the old exact rule
+        config(['gwl.commercial_reconcile_grand_total_tolerance_pct' => 0.0]);
+        $this->assertTrue($this->previewOf($this->readingFile(['grand_overall' => [1421, 303, 1724]]))['blocked']);
+    }
+
     public function test_an_unmatched_reader_imports_with_a_warning_and_can_be_linked_to_an_employee(): void
     {
         $this->employee('15072', 'Ama Serwaa');
@@ -151,7 +212,7 @@ class ReadingImportTest extends CommercialTestCase
         $batch = $this->importFile($this->readingFile());
 
         $this->assertSame(2, $batch->stats()->where('match_status', CommercialReadingStat::MATCH_UNMATCHED)->count());
-        $this->assertSame(4, $batch->matched_count, 'Ama and the system account, two months each');
+        $this->assertSame(2, $batch->matched_count, 'Ama, two months');
         $this->assertGreaterThan(0, $batch->warning_count);
 
         $employee = $this->employee('77001', 'Kofi Mensah (directory)', $this->accraWest, $this->odorkor);
@@ -168,7 +229,7 @@ class ReadingImportTest extends CommercialTestCase
         $this->assertTrue($linked->every(fn ($stat) => $stat->match_status === CommercialReadingStat::MATCH_MATCHED && $stat->employee_id === $employee->id));
         $this->assertSame($this->odorkor->id, $linked->first()->district_id);
         $this->assertSame(0, $batch->stats()->where('match_status', CommercialReadingStat::MATCH_UNMATCHED)->count());
-        $this->assertSame(6, $batch->fresh()->matched_count);
+        $this->assertSame(4, $batch->fresh()->matched_count);
 
         $this->assertNotNull(AuditLog::query()->where('action', 'commercial.reader_linked')->first());
     }
@@ -229,7 +290,7 @@ class ReadingImportTest extends CommercialTestCase
         $preview = $this->previewOf($this->readingFile(['merged_headers' => false, 'filters' => 'cells']));
 
         $this->assertFalse($preview['blocked'], collect($preview['errors'])->pluck('message')->implode(' | '));
-        $this->assertSame(6, $preview['total_rows']);
+        $this->assertSame(4, $preview['total_rows']);
         $this->assertSame('ACCRA WEST', $preview['region']['raw']);
     }
 
@@ -297,10 +358,11 @@ class ReadingImportTest extends CommercialTestCase
 
         $this->assertSame(CommercialImportBatch::class, $log->target_type);
         $this->assertSame($batch->id, $log->target_id);
-        $this->assertSame(6, $log->metadata['rows']);
+        $this->assertSame(4, $log->metadata['rows']);
         $this->assertSame(2, $log->metadata['matched']);
         $this->assertSame(2, $log->metadata['unmatched']);
-        $this->assertSame(2, $log->metadata['system_account']);
+        $this->assertSame(0, $log->metadata['system_account']);
+        $this->assertSame(2, $log->metadata['excluded_rows'], 'counts only: the excluded account is never stored');
         $this->assertTrue($log->metadata['reconciliation_passed']);
         $this->assertSame(['read' => 1420, 'skipped' => 303, 'visited' => 1723], $log->metadata['control_totals']['grand_totals']['overall']);
         $this->assertSame(['read' => 1420, 'skipped' => 303, 'visited' => 1723], [

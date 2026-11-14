@@ -34,6 +34,7 @@ class ModuleAccessSeeder extends Seeder
             'driver' => [Permission::MODULE_TRANSPORT],
             'commercial_officer' => [Permission::MODULE_COMMERCIAL],
             'commercial_manager' => [Permission::MODULE_COMMERCIAL],
+            'district_commercial_viewer' => [Permission::MODULE_COMMERCIAL],
             'hs_officer' => [],
             'hs_manager' => [],
             'pr_officer' => [],

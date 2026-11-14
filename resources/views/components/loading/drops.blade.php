@@ -23,10 +23,11 @@
         role="status" aria-live="polite"
     @endif
 >
+    {{-- The three drops must stay children 1 to 3: app.css colours and staggers them with :nth-child. --}}
+    <span class="wl-drop" aria-hidden="true"></span>
+    <span class="wl-drop" aria-hidden="true"></span>
+    <span class="wl-drop" aria-hidden="true"></span>
     @unless ($decorative)
         <span class="sr-only-text">{{ $label }}</span>
     @endunless
-    <span class="wl-drop" aria-hidden="true"></span>
-    <span class="wl-drop" aria-hidden="true"></span>
-    <span class="wl-drop" aria-hidden="true"></span>
 </span>

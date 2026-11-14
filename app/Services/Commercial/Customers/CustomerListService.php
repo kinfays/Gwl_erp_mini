@@ -86,6 +86,11 @@ class CustomerListService
             $restriction === 0 ? $query->whereRaw('1 = 0') : $query->where('c.region_id', (int) $restriction);
         }
 
+        // Phase 8a: a district user reaches only their district's customers, by every route into this query (list, search, export, drill-down)
+        if (array_key_exists('district_ids', $q) && $q['district_ids'] !== null) {
+            $q['district_ids'] === [] ? $query->whereRaw('1 = 0') : $query->whereIn('c.district_id', array_map('intval', $q['district_ids']));
+        }
+
         if ($withContacts) {
             $query->leftJoin('commercial_customer_contacts AS ct', 'ct.customer_id', '=', 'c.id');
         }
@@ -262,12 +267,16 @@ class CustomerListService
      *
      * @return array<string, mixed>|null
      */
-    public function find(int $id, ?int $restriction): ?array
+    public function find(int $id, ?int $restriction, ?array $districtIds = null): ?array
     {
         $query = DB::table('commercial_customers AS c')->where('c.id', $id);
 
         if ($restriction !== null) {
             $restriction === 0 ? $query->whereRaw('1 = 0') : $query->where('c.region_id', $restriction);
+        }
+
+        if ($districtIds !== null) {
+            $districtIds === [] ? $query->whereRaw('1 = 0') : $query->whereIn('c.district_id', $districtIds);
         }
 
         $this->select($query, false);

@@ -25,6 +25,9 @@ class CommercialRolePermissionSeeder extends Seeder
             'commercial.view_customer_analytics',   // aggregates only; names/phones (view_customer_details) go to super_admin until granted
         ];
 
+        // Phase 8a: a role that already saw the module keeps seeing every district of its region; only the district viewer is limited.
+        $allDistricts = 'commercial.view_all_districts';
+
         $map = [
             'super_admin' => $permissions->keys()->all(),
             'commercial_officer' => [
@@ -38,6 +41,7 @@ class CommercialRolePermissionSeeder extends Seeder
                 'commercial.send_sms',
                 'commercial.view_sms_balance',
                 'commercial.view_sms_reports',
+                $allDistricts,
             ],
             'commercial_manager' => [
                 ...$managementView,
@@ -51,10 +55,14 @@ class CommercialRolePermissionSeeder extends Seeder
                 'commercial.send_sms',
                 'commercial.view_sms_balance',
                 'commercial.view_sms_reports',
+                $allDistricts,
+                'commercial.manage_routes',
             ],
-            'chief_manager' => $managementView,
-            'regional_chief_manager' => $managementView,
-            'district_manager' => $managementView,
+            'chief_manager' => [...$managementView, $allDistricts],
+            'regional_chief_manager' => [...$managementView, $allDistricts],
+            'district_manager' => [...$managementView, $allDistricts],
+            // Phase 8a: the management views, limited to the district on the employee record; no upload, no SMS, no all-districts.
+            'district_commercial_viewer' => $managementView,
         ];
 
         foreach ($map as $roleName => $slugs) {

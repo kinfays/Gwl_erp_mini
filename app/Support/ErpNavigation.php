@@ -975,6 +975,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.manage_settings'),
             ],
             [
+                'label' => 'Route master',
+                'route' => 'commercial.routes',
+                'active' => ['commercial.routes'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'map',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.manage_routes'),
+            ],
+            [
                 'label' => 'Uploads',
                 'route' => 'commercial.batches',
                 // Reading / billing reports and the customer list share this one entry (a switch at the top of each page).

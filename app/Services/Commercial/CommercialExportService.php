@@ -177,10 +177,14 @@ class CommercialExportService
     public function billing(array $d): array
     {
         $o = $d['overview'];
-        $notes = ['One snapshot only: snapshots are never added together. Ratios are worked out from the sums, not averaged over routes.'];
+        if ($d['snapshot']['is_range'] ?? false) {
+            $notes = ['A date range: the uploads inside it that do not overlap are added up (flows are summed; the closing balance and customer counts are the latest upload\'s). Ratios are worked out from the sums, not averaged over routes.', ...($d['range_notes'] ?? [])];
+        } else {
+            $notes = ['One snapshot only: snapshots are never added together. Ratios are worked out from the sums, not averaged over routes.'];
 
-        if (! $d['snapshot']['is_single_month']) {
-            $notes[] = 'This is a multi-month period: it overlaps single months and cannot be compared or trended.';
+            if (! $d['snapshot']['is_single_month']) {
+                $notes[] = 'This is a multi-month period: it overlaps single months and cannot be compared or trended.';
+            }
         }
 
         $notes[] = 'A negative balance is a customer credit (confirmed by the Commercial team).';
@@ -267,7 +271,7 @@ class CommercialExportService
             'Region' => (string) $d['region'],
             'Customer segment' => (string) ($d['segments'][$d['segment']]['label'] ?? 'All customers'),
             'Months' => $period,
-            'District' => ($d['district_id'] ?? null) ? (string) ($d['districts'][0]['name'] ?? '') : 'All districts',
+            'District' => ($d['district_id'] ?? null) ? (string) ($d['districts'][0]['name'] ?? '') : ($d['total'] === null ? 'Your district' : 'All districts'),
         ], $notes, $tables, $period);
     }
 

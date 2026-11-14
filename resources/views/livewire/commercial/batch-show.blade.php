@@ -110,6 +110,24 @@
         </table>
     </div>
 
+    @php $flagged = $batch->control_totals['flagged'] ?? ['routes' => [], 'districts' => []]; $excludedAccounts = $batch->control_totals['excluded'] ?? []; @endphp
+    @if (! empty($flagged['routes']) || ! empty($flagged['districts']))
+        <div class="pg">
+            <div class="pg-head"><span class="pg-title">Flagged at import (the file still imported)</span></div>
+            <table>
+                <thead><tr><th>Where</th><th>What disagrees</th></tr></thead>
+                <tbody>
+                    @foreach ($flagged['routes'] as $flag)
+                        <tr><td>{{ $flag['route'] }} ({{ $flag['district'] }})</td><td>{{ implode(' ', $flag['problems']) }}</td></tr>
+                    @endforeach
+                    @foreach ($flagged['districts'] as $flag)
+                        <tr><td>{{ $flag['district'] }}</td><td>{{ $flag['field'] }}: the routes add up to {{ number_format($flag['rows'], 2) }} but the totals row says {{ number_format($flag['totals_row'], 2) }} ({{ $flag['difference'] > 0 ? '+' : '' }}{{ number_format($flag['difference'], 2) }}).</td></tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
     @if ($importWarnings)
         <div class="pg">
             <div class="pg-head"><span class="pg-title">Warnings at import</span></div>
@@ -142,8 +160,11 @@
                 </tbody>
             </table>
             @if ($systemRows > 0)
-                <p class="form-hint" style="padding:8px 14px">Totals above exclude the system account ({{ $systemRows }} rows), which is kept but never counted as a CCA.</p>
+                <p class="form-hint" style="padding:8px 14px">Totals above exclude the system account ({{ $systemRows }} rows kept by an earlier version), which is never counted as a CCA.</p>
             @endif
+            @foreach ($excludedAccounts as $account)
+                <p class="form-hint" style="padding:8px 14px">Excluded (system account) {{ $account['staff_id'] }}: {{ $account['rows'] }} month rows ({{ number_format($account['visited']) }} visits) in the file were not imported.</p>
+            @endforeach
         </div>
 
         @if ($unmatchedReaders->isNotEmpty())

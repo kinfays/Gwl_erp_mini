@@ -70,11 +70,11 @@ class SmsCampaignService
 
         $regionId = (int) SmsAccess::campaignRegionId($user);
         $spec = $this->audienceSpec((array) ($input['audience'] ?? []));
-        $counts = $this->audiences->counts($spec, [$regionId]);
+        $counts = $this->audiences->counts($spec, [$regionId], $user);
         $message = $this->messages->inspect((string) ($input['body'] ?? ''));
         $credits = $counts['numbers'] * $message['segments'];
         $details = $this->mayUseName($user);
-        $sample = $this->audiences->sample($spec, [$regionId], $details);
+        $sample = $this->audiences->sample($spec, [$regionId], $details, 3, $user);
 
         return [
             'spec' => $spec,
@@ -111,7 +111,7 @@ class SmsCampaignService
         }
 
         $message = $this->checkBody($user, $body);
-        $counts = $this->audiences->counts($spec, [$regionId]);
+        $counts = $this->audiences->counts($spec, [$regionId], $user);
         $recipients = $counts['numbers'];
         $max = (int) config('gwl.commercial_sms_max_recipients');
 

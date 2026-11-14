@@ -34,13 +34,13 @@ class Show extends Component
 
         $this->customerId = $customer;
 
-        abort_if(app(CustomerListService::class)->find($customer, $this->customerRestriction()) === null, 404);
+        abort_if(app(CustomerListService::class)->find($customer, $this->customerRestriction(), $this->customerDistrictIds()) === null, 404);
     }
 
     public function reveal(): void
     {
         $this->guardCommercialPermission('commercial.view_customer_details');
-        abort_if(app(CustomerListService::class)->find($this->customerId, $this->customerRestriction()) === null, 404);
+        abort_if(app(CustomerListService::class)->find($this->customerId, $this->customerRestriction(), $this->customerDistrictIds()) === null, 404);
 
         $this->revealed = true;
 
@@ -59,7 +59,7 @@ class Show extends Component
 
     public function render(CustomerListService $lists)
     {
-        $customer = $lists->find($this->customerId, $this->customerRestriction());
+        $customer = $lists->find($this->customerId, $this->customerRestriction(), $this->customerDistrictIds());
         abort_if($customer === null, 404);
 
         $details = $this->customerDetails();

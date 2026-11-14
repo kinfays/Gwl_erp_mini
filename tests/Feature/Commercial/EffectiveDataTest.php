@@ -170,7 +170,7 @@ class EffectiveDataTest extends CommercialTestCase
         $this->assertSame(CommercialImportBatch::STATUS_SUPERSEDED, $july->fresh()->status);
         $this->assertSame(CommercialImportBatch::STATUS_IMPORTED, $both->status);
         $this->assertSame($july->id, $both->supersedes_batch_id, 'the most recent batch it replaced');
-        $this->assertSame(6, CommercialReadingStat::query()->effective()->count());
+        $this->assertSame(4, CommercialReadingStat::query()->effective()->count(), 'two readers, two months (the system account is not stored)');
     }
 
     public function test_the_preview_says_how_many_rows_an_upload_will_replace(): void
@@ -185,7 +185,7 @@ class EffectiveDataTest extends CommercialTestCase
 
         $preview = $this->previewOf($changed);
 
-        $this->assertSame(6, $preview['will_replace'], 'two months of the three accounts already loaded (two readers and the system account)');
+        $this->assertSame(4, $preview['will_replace'], 'two months of the two readers already loaded (the system account is excluded, never stored)');
         $this->assertStringContainsString('will be replaced by this file', collect($preview['warnings'])->pluck('message')->implode(' '));
     }
 

@@ -3372,6 +3372,12 @@ textarea.form-input {
     gap: 8px;
 }
 
+/* A little bigger than the in-button size, so the bounce reads next to 13px text */
+.wl-inline .wl-drops {
+    --wl-d: 11px;
+    --wl-b: 14px;
+}
+
 /* B: filling drop */
 .wl-fill {
     --wl-w: 3rem;

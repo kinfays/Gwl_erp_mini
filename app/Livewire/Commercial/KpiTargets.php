@@ -50,7 +50,7 @@ class KpiTargets extends Component
     /** @return \Illuminate\Support\Collection<int, District> */
     protected function districts()
     {
-        return District::query()->when(! $this->actorSeesAllRegions(), fn ($q) => $q->where('region_id', $this->actorRegionId() ?? 0))
+        return $this->scopeDistrictsForActor(District::query())->when(! $this->actorSeesAllRegions(), fn ($q) => $q->where('region_id', $this->actorRegionId() ?? 0))
             ->where('district_name', 'not like', '%Head Office%')->where('district_name', 'not like', '%Regional Office%')->orderBy('district_name')->get(['id', 'district_name', 'region_id']);
     }
 

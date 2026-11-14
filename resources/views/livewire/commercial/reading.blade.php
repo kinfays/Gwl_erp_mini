@@ -9,7 +9,7 @@
         $monthLabel = fn ($month) => \Illuminate\Support\Carbon::parse($month)->format('M Y');
     @endphp
 
-    @php $exportQuery = array_filter(['region' => $region, 'district' => $district, 'from' => $from, 'to' => $to]); @endphp
+    @php $exportQuery = array_filter(['region' => $region, 'district' => $district, 'from' => $rangeFrom, 'to' => $rangeTo]); @endphp
 
     <x-ui.page-header title="Meter Reading" description="Visits, skips and coverage from the reading reports. Rates are worked out from the counts, never taken from the report.">
         <x-slot:actions>
@@ -61,10 +61,19 @@
                     <option value="{{ $value }}">To {{ $label }}</option>
                 @endforeach
             </select>
+            <input type="text" wire:model.live.debounce.500ms="dateFrom" class="form-input" style="max-width:11rem" placeholder="From date 2026-07-15" aria-label="From date (YYYY-MM-DD)" autocomplete="off">
+            <input type="text" wire:model.live.debounce.500ms="dateTo" class="form-input" style="max-width:11rem" placeholder="To date 2026-08-31" aria-label="To date (YYYY-MM-DD)" autocomplete="off">
             @if ($filtered)
                 <button type="button" wire:click="clearFilters" class="btn btn-ghost btn-sm">Clear filters</button>
             @endif
         </div>
+        @if ($rangeSummary)
+            <p class="ui-hint dash-row" data-range-summary>
+                Showing {{ $rangeSummary['range'] }}: {{ $rangeSummary['counted'] === [] ? 'no whole month lies inside it' : 'the whole months '.implode(', ', $rangeSummary['counted']) }} ({{ number_format($rangeSummary['covered_days']) }} of {{ number_format($rangeSummary['range_days']) }} days have data).
+                @if ($rangeSummary['gaps'])No data for {{ $rangeSummary['gaps'] }}.@endif
+                @if ($rangeSummary['partly_outside'] !== [])Left out because they are only partly inside the range: {{ implode(', ', $rangeSummary['partly_outside']) }}.@endif
+            </p>
+        @endif
 
         @if ($district !== '')
             <p class="ui-hint dash-row">Filtered by the CCA's <strong>home district</strong> in the staff directory. The report has no district split, so this is where the CCA is posted, not where they read.</p>
@@ -235,7 +244,7 @@
                         @foreach ($readers as $i => $row)
                             <tr wire:key="reader-{{ $row['staff_id'] }}">
                                 <td class="num">{{ $i + 1 }}</td>
-                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                 <td @class(['cell-muted' => ! $row['district']])>{{ $row['district'] ?? 'Unknown' }}</td>
                                 <td class="num"><strong>{{ number_format($row['visited']) }}</strong></td>
                                 <td class="num">{{ $pct($row['share']) }}</td>
@@ -253,7 +262,7 @@
                         <x-ui.table label="CCAs with the lowest skip rate" :sticky="false">
                             <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
                             @forelse ($quality['best'] as $row)
-                                <tr wire:key="best-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
+                                <tr wire:key="best-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
                             @empty
                                 <x-ui.empty-row :colspan="3" icon="users" title="No CCA has enough visits to be ranked." />
                             @endforelse
@@ -264,7 +273,7 @@
                         <x-ui.table label="CCAs with the highest skip rate" :sticky="false">
                             <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th></tr></x-slot:head>
                             @forelse ($quality['worst'] as $row)
-                                <tr wire:key="worst-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
+                                <tr wire:key="worst-{{ $row['staff_id'] }}"><td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td><td class="num">{{ number_format($row['visited']) }}</td><td class="num">{{ $pct($row['skip_rate']) }}</td></tr>
                             @empty
                                 <x-ui.empty-row :colspan="3" icon="users" title="No CCA has enough visits to be ranked." />
                             @endforelse
@@ -280,7 +289,7 @@
                             <x-slot:head><tr><th>CCA</th><th class="num">Months</th><th class="num">Average visits</th><th class="num">Lowest</th><th class="num">Highest</th><th class="num">Variation</th><th class="num">Months below own average</th></tr></x-slot:head>
                             @foreach ($consistency['rows'] as $row)
                                 <tr wire:key="cv-{{ $row['staff_id'] }}">
-                                    <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                    <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                     <td class="num">{{ $row['months'] }}</td>
                                     <td class="num">{{ number_format($row['mean']) }}</td>
                                     <td class="num">{{ number_format($row['min']) }}</td>
@@ -301,7 +310,7 @@
                             <x-slot:head><tr><th>CCA</th><th class="num">Visited before</th><th class="num">Visited now</th><th class="num">Change</th><th class="num">Skip rate before</th><th class="num">Skip rate now</th><th class="num">Change (points)</th><th>Skip-rate trend</th></tr></x-slot:head>
                             @foreach ($movement['rows'] as $row)
                                 <tr wire:key="mv-{{ $row['staff_id'] }}">
-                                    <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                    <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                     <td class="num">{{ number_format($row['visited_before']) }}</td>
                                     <td class="num">{{ number_format($row['visited_after']) }}</td>
                                     <td class="num">{{ ($row['visited_change'] > 0 ? '+' : '').number_format($row['visited_change']) }}</td>
@@ -329,14 +338,14 @@
                                 <td>{{ $month['label'] }}<span class="ui-person-sub">median {{ $month['median'] === null ? '–' : number_format($month['median']) }}</span></td>
                                 <td>
                                     @forelse ($month['zero'] as $row)
-                                        <div>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</div>
+                                        <div>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</div>
                                     @empty
                                         <span class="cell-muted">None</span>
                                     @endforelse
                                 </td>
                                 <td>
                                     @forelse ($month['low'] as $row)
-                                        <div>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to]) <span class="ui-person-sub">{{ number_format($row['visited']) }} visits ({{ $pct($row['pct_of_median'], 0) }} of median)</span></div>
+                                        <div>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo]) <span class="ui-person-sub">{{ number_format($row['visited']) }} visits ({{ $pct($row['pct_of_median'], 0) }} of median)</span></div>
                                     @empty
                                         <span class="cell-muted">None</span>
                                     @endforelse
@@ -362,7 +371,7 @@
                         <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">% of median</th><th>Band</th></tr></x-slot:head>
                         @forelse (array_filter($workload['rows'], fn ($row) => $row['band'] !== 'normal') as $row)
                             <tr wire:key="wl-{{ $row['staff_id'] }}">
-                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                 <td class="num">{{ number_format($row['visited']) }}</td>
                                 <td class="num">{{ $pct($row['pct_of_median'], 0) }}</td>
                                 <td><x-ui.badge :tone="match ($row['band']) { 'high' => 'warning', 'low' => 'warning', default => 'danger' }">{{ ucfirst($row['band']) }}</x-ui.badge></td>
@@ -386,7 +395,7 @@
                         <x-slot:head><tr><th>CCA</th><th class="num">Visited</th><th class="num">Skip rate</th><th class="num">z-score</th><th>Flag</th></tr></x-slot:head>
                         @forelse ($outliers['rows'] as $row)
                             <tr wire:key="out-{{ $row['staff_id'] }}">
-                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                 <td class="num">{{ number_format($row['visited']) }}</td>
                                 <td class="num">{{ $pct($row['skip_rate']) }}</td>
                                 <td class="num">{{ $row['z'] === null ? '–' : number_format($row['z'], 2) }}</td>
@@ -421,7 +430,7 @@
                         @forelse ($scorecard['rows'] as $i => $row)
                             <tr wire:key="score-{{ $row['staff_id'] }}">
                                 <td class="num">{{ $i + 1 }}</td>
-                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $from, 'to' => $to])</td>
+                                <td>@include('livewire.commercial.partials.reader-cell', ['row' => $row, 'from' => $rangeFrom, 'to' => $rangeTo])</td>
                                 <td class="num">{{ number_format($row['visited']) }}</td>
                                 <td class="num">{{ $pct($row['skip_rate']) }}</td>
                                 <td class="num">{{ $pct($row['cv']) }}</td>

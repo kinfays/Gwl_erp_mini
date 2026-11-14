@@ -111,7 +111,7 @@ class Send extends Component
         if ($ticked !== []) {
             $this->selectedIds = array_values(array_unique(array_map('intval', $ticked)));
             $this->type = 'selected';
-            $this->tickedOutside = app(SmsAudienceResolver::class)->checkSelected($this->selectedIds, SmsAccess::allowedRegionIds(Auth::user()))['outside'];
+            $this->tickedOutside = app(SmsAudienceResolver::class)->checkSelected($this->selectedIds, SmsAccess::allowedRegionIds(Auth::user()), Auth::user())['outside'];
         }
     }
 
@@ -206,7 +206,7 @@ class Send extends Component
         $this->resetErrorBag();
 
         try {
-            $result = $audiences->parseAccountList($this->pasted, SmsAccess::allowedRegionIds(Auth::user()));
+            $result = $audiences->parseAccountList($this->pasted, SmsAccess::allowedRegionIds(Auth::user()), Auth::user());
         } catch (SmsAudienceException $e) {
             $this->addError('pasted', $e->getMessage());
 
@@ -335,7 +335,7 @@ class Send extends Component
             try {
                 $spec = $audiences->normalise($this->audience());
                 $details = $campaigns->mayUseName($user);
-                $sample = $audiences->sample($spec, $regionIds, $details);
+                $sample = $audiences->sample($spec, $regionIds, $details, 3, Auth::user());
                 $example = $sample !== [] && $this->body !== '' ? $messages->render($this->body, [
                     'name' => (string) ($sample[0]['name'] ?? '(name)'),
                     'account_no' => (string) $sample[0]['account_no'],

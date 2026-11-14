@@ -123,6 +123,7 @@ class CustomerExportService
             ->join('commercial_customer_categories AS k', 'k.id', '=', 'r.category_id')
             ->where('r.district_id', (int) ($q['district_id'] ?? 0))
             ->when(isset($q['restriction']) && $q['restriction'] !== null, fn ($query) => $q['restriction'] === 0 ? $query->whereRaw('1 = 0') : $query->where('r.region_id', (int) $q['restriction']))
+            ->when(array_key_exists('district_ids', $q) && $q['district_ids'] !== null, fn ($query) => $q['district_ids'] === [] ? $query->whereRaw('1 = 0') : $query->whereIn('r.district_id', array_map('intval', $q['district_ids'])))
             ->when($q['route_id'] ?? null, fn ($query, $id) => $query->where('r.route_id', (int) $id))
             ->when($q['category_id'] ?? null, fn ($query, $id) => $query->where('r.category_id', (int) $id))
             ->when($q['group'] ?? null, fn ($query, $group) => $query->where('k.category_group', (string) $group))

@@ -95,7 +95,7 @@ class Home extends Component
             return null;
         }
 
-        $routes = CommercialBillingRoute::query()->where('batch_id', $snapshot['id'])->get();
+        $routes = $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->where('batch_id', $snapshot['id']))->get();
         $totals = $billing->totals($routes);
         $metrics = $billing->metrics($totals);
         $pct = fn ($value) => $value === null ? '–' : number_format($value, 1).'%';
@@ -121,6 +121,9 @@ class Home extends Component
             $since = now()->subMonths(11)->startOfMonth()->toDateString();
 
             $stats = $this->scopeReadingStatsForActor(CommercialReadingStat::query()->effective()->readers())->whereDate('month', '>=', $since)->get();
+
+            // a district user whose district has too few CCAs gets no reading figure that would be those people's own
+            $stats = $this->districtGroupTooSmall($stats) ? collect() : $stats;
             $strengths = $this->scopeStrengthsForActor(CommercialReadingStrength::query()->effective())->whereDate('month', '>=', $since)->get();
 
             $trend = $analytics->monthlyTrend($stats, $strengths, now());
@@ -132,7 +135,9 @@ class Home extends Component
             : null;
 
         // Latest batch that still counts, per report type and region.
+        // (a district user has no region-wide upload status to see)
         $latest = $this->scopeBatchesForActor(CommercialImportBatch::query())
+            ->when($this->actorDistrictLimited(), fn ($query) => $query->whereRaw('1 = 0'))
             ->notVoided()
             ->with('region')
             ->orderByDesc('id')

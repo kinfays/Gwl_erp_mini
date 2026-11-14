@@ -96,7 +96,8 @@ class Settings extends Component
         $this->values = [];
 
         foreach (array_keys(CommercialSettings::definitions()) as $key) {
-            $this->values[$this->field($key)] = $settings->current($key);
+            $value = $settings->current($key);
+            $this->values[$this->field($key)] = is_array($value) ? implode(', ', $value) : $value;   // a list is typed as text
         }
     }
 

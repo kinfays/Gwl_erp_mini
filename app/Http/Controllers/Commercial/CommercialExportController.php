@@ -104,15 +104,20 @@ class CommercialExportController extends Controller
             'summary' => [$exports->summary($data->summary($snapshot)), ['snapshot' => $snapshot]],
             'reading-trend' => [$exports->readingTrend($data->readingTrend($region, $district, $from, $to), $readingMeta()), compact('region', 'district', 'from', 'to')],
             'readers' => [$exports->readers($data->readers($region, $district, $from, $to), $readingMeta()), compact('region', 'district', 'from', 'to')],
-            'billing' => ($billing = $data->billingSnapshot($snapshot, (string) $request->query('district', ''))) === null ? null : [$exports->billing($billing), ['snapshot' => $billing['snapshot']['id'], 'district' => $billing['district']]],
+            'billing' => ($billing = $data->billingSnapshot($snapshot, (string) $request->query('district', ''), $from, $to)) === null ? null : [$exports->billing($billing), ($billing['snapshot']['is_range'] ?? false) ? ['district' => $billing['district'], 'from' => $billing['snapshot']['range_from'], 'to' => $billing['snapshot']['range_to']] : ['snapshot' => $billing['snapshot']['id'], 'district' => $billing['district']]],
             'kpis' => ($kpis = $data->kpis($region, is_string($request->query('segment')) && $request->query('segment') !== '' ? (string) $request->query('segment') : null, max(1, min(12, (int) $request->query('months', 3))), $district)) && ! $kpis['empty'] ? [$exports->kpis($kpis), ['region' => $kpis['region_id'], 'segment' => $kpis['segment'], 'months' => $kpis['months_asked'], 'district' => $district]] : null,
             'scorecard' => ($card = $data->scorecard($snapshot)) === null ? null : [$exports->scorecard($card), ['snapshot' => $card['snapshot']['id']]],
             default => null,
         };
     }
 
+    /** A typed month (2026-09) or date (2026-09-15) of the range; anything else is no bound. */
     protected function month(mixed $value): ?string
     {
+        if (is_string($value) && preg_match('/^(\d{4})-(0[1-9]|1[0-2])-(\d{2})$/', $value, $m) && checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+            return $value;
+        }
+
         return is_string($value) && preg_match('/^\d{4}-(0[1-9]|1[0-2])/', $value) ? substr($value, 0, 7) : null;
     }
 

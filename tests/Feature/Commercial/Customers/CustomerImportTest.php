@@ -145,14 +145,65 @@ class CustomerImportTest extends CustomerTestCase
         $spec['routes'][0]['count'] = 6;
         $batch = $this->loadCustomers($spec);
 
+        // the only route of the file fails: 100%, far over the 2% a file may have, so it is blocked (the detail is flagged beside it)
         $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $batch->status);
-        $this->assertStringContainsString('lists 5 customers but its totals row says 6', $batch->errors[0]['message']);
+        $this->assertStringContainsString('1 of 1 routes (100.0%)', $batch->errors[0]['message']);
+        $this->assertStringContainsString('lists 5 customers but its totals row says 6', collect($batch->warnings)->pluck('message')->implode(' '));
+        $this->assertFalse($batch->control_totals[0]['ok']);
+        $this->assertSame(-1, $batch->control_totals[0]['count_difference']);
         $this->assertSame(0, $this->customerCount());
         $this->assertSame(0, DB::table('commercial_customer_staging')->count());
 
         $spec = $this->simpleSpec(1, 5);
         $spec['routes'][0]['balance'] = 9999.0;
         $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $this->loadCustomers($spec)->status);
+    }
+
+    public function test_a_route_that_fails_its_totals_is_flagged_and_the_file_still_imports_while_a_larger_share_of_failures_blocks(): void
+    {
+        // 100 routes of 4 customers: one route says 5 (1% of the routes, 0.25% of the customers): flagged, imported
+        $routes = [];
+
+        for ($r = 0; $r < 100; $r++) {
+            $routes[] = ['name' => (string) (1100 + $r), 'customers' => $this->customers($r * 4 + 1, $r * 4 + 4)];
+        }
+
+        $one = $routes;
+        $one[40]['count'] = 5;
+        $batch = $this->loadCustomers(['routes' => $one]);
+
+        $this->assertSame(CommercialCustomerBatch::STATUS_IMPORTED, $batch->status, json_encode($batch->errors));
+        $this->assertFalse($batch->reconciliation_passed, 'a flagged file is not a clean pass');
+        $this->assertSame(400, $this->customerCount());
+        $flagged = collect($batch->control_totals)->where('ok', false)->values();
+        $this->assertCount(1, $flagged);
+        $this->assertSame([1140, 4, 5, -1], [(int) $flagged[0]['route'], $flagged[0]['read'], $flagged[0]['expected'], $flagged[0]['count_difference']]);
+        $this->assertSame($flagged[0]['route'], $batch->control_totals[0]['route'], 'flagged routes are listed first');
+        $this->assertStringContainsString('Flagged: the route', collect($batch->warnings)->pluck('message')->implode(' '));
+
+        // five routes in a hundred is 5%: over the limit, blocked, nothing stored
+        $five = $routes;
+
+        foreach ([3, 20, 41, 60, 88] as $i) {
+            $five[$i]['count'] = 5;
+        }
+
+        DB::table('commercial_customer_batches')->delete();
+        $blocked = $this->loadCustomers(['routes' => $five], '2026-11-05');
+        $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $blocked->status);
+        $this->assertStringContainsString('5 of 100 routes (5.0%)', $blocked->errors[0]['message']);
+
+        // the limits are settings. 10% of the routes may fail now, but the grand total (405 against 400: 1.2%) is still over its 0.5%
+        config(['gwl.commercial_reconcile_max_route_failures_pct' => 10.0]);
+        DB::table('commercial_customer_batches')->delete();
+        $grand = $this->loadCustomers(['routes' => $five], '2026-11-06');
+        $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $grand->status);
+        $this->assertStringContainsString('more than the 0.5% the grand total may differ by', collect($grand->errors)->pluck('message')->implode(' '));
+
+        // and with both limits widened the same file imports
+        config(['gwl.commercial_reconcile_grand_total_tolerance_pct' => 2.0]);
+        DB::table('commercial_customer_batches')->delete();
+        $this->assertSame(CommercialCustomerBatch::STATUS_IMPORTED, $this->loadCustomers(['routes' => $five], '2026-11-07')->status);
     }
 
     public function test_a_route_without_a_totals_row_only_warns(): void
@@ -192,7 +243,7 @@ class CustomerImportTest extends CustomerTestCase
         $far['routes'][0]['balance'] = round(array_sum(array_column($far['routes'][0]['customers'], 'balance')) + 5, 2);
         $blocked = $this->loadCustomers($far, '2026-11-05');
         $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $blocked->status);
-        $this->assertStringContainsString('balances add up to', $blocked->errors[0]['message']);
+        $this->assertStringContainsString('balances add up to', collect($blocked->warnings)->pluck('message')->implode(' ').' '.collect($blocked->errors)->pluck('message')->implode(' '));
     }
 
     public function test_thousands_separators_in_the_customer_count_are_read(): void
@@ -221,14 +272,14 @@ class CustomerImportTest extends CustomerTestCase
     public function test_unknown_categories_statuses_and_meter_statuses_become_pending_rows_with_a_warning(): void
     {
         $customers = [
-            ReportWorkbooks::customer(1, ['category' => '999', 'status' => 'WXYZ', 'meter_status' => 'Q']),
+            ReportWorkbooks::customer(1, ['category' => '998', 'status' => 'WXYZ', 'meter_status' => 'Q']),
             ReportWorkbooks::customer(2, ['category' => null]),
             ReportWorkbooks::customer(3, ['status' => 'TRFR']),
         ];
         $batch = $this->loadCustomers(['routes' => [['name' => '1001', 'customers' => $customers]]]);
 
         $this->assertSame(CommercialCustomerBatch::STATUS_IMPORTED, $batch->status);
-        $this->assertTrue((bool) DB::table('commercial_customer_categories')->where('code', '999')->value('is_pending'));
+        $this->assertTrue((bool) DB::table('commercial_customer_categories')->where('code', '998')->value('is_pending'));
         $this->assertTrue((bool) DB::table('commercial_customer_statuses')->where('code', 'WXYZ')->value('is_pending'));
         $this->assertTrue((bool) DB::table('commercial_meter_statuses')->where('code', 'Q')->value('is_pending'));
 

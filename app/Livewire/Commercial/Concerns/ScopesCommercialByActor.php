@@ -7,6 +7,8 @@ use App\Models\CommercialReadingStat;
 use App\Models\CommercialReadingStrength;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\Commercial\CommercialPeriods;
+use App\Services\Commercial\CommercialScope;
 use App\Services\Commercial\Customers\CustomerScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -16,9 +18,10 @@ use Illuminate\Support\Facades\Auth;
  * Who sees which Commercial batches. A separate trait from Assets\Concerns\ScopesAssetsByActor on purpose: the rules
  * differ (Assets scopes ICT staff; this scopes everyone) and neither should change when the other does.
  *
- * super_admin, Global Admin and Head Office staff see every region. Everyone else sees their own region only, and a
- * user with no employee record or no region sees nothing. Head Office is a district whose staff share the Head Office
- * district's region_id, so "Head Office" is recognised by location_type, never by region alone.
+ * The rule is CommercialScope's (Phase 8a); this trait only wraps it for a signed-in person. super_admin, Global Admin and Head
+ * Office staff see every region and district; a holder of commercial.view_all_districts every district of their own region; anyone
+ * else only the district on their employee record; no employee record or region, nothing. Head Office is a district whose staff
+ * share the Head Office district's region_id, so "Head Office" is recognised by location_type, never by region alone.
  */
 trait ScopesCommercialByActor
 {
@@ -42,24 +45,38 @@ trait ScopesCommercialByActor
         return $this->actorEmployee()?->region_id;
     }
 
+    /** The actor's CommercialScope (asked afresh each call: a role change is seen at once). */
+    protected function commercialScope(): CommercialScope
+    {
+        return CommercialScope::for(Auth::user());
+    }
+
     protected function actorSeesAllRegions(): bool
     {
-        $user = $this->actor();
+        return $this->commercialScope()->seesAllRegions();
+    }
 
-        return $user->hasRoles('super_admin', 'admin') || $this->actorEmployee()?->location_type === 'HeadOffice';
+    /** True for a district user: no region-wide row, no other district's figure. */
+    protected function actorDistrictLimited(): bool
+    {
+        return $this->commercialScope()->isDistrictLimited();
+    }
+
+    /** null = no district limit; otherwise the only district ids the actor may see (empty = none). @return list<int>|null */
+    protected function actorDistrictIds(): ?array
+    {
+        return $this->commercialScope()->districtIds();
     }
 
     protected function scopeBatchesForActor(Builder $query): Builder
     {
-        if ($this->actorSeesAllRegions()) {
+        $regions = $this->commercialScope()->regions;
+
+        if ($regions === null) {
             return $query;
         }
 
-        $regionId = $this->actorRegionId();
-
-        return $regionId
-            ? $query->where($query->qualifyColumn('region_id'), $regionId)
-            : $query->whereRaw('1 = 0');
+        return $regions === [] ? $query->whereRaw('1 = 0') : $query->whereIn($query->qualifyColumn('region_id'), $regions);
     }
 
     /**
@@ -68,12 +85,27 @@ trait ScopesCommercialByActor
      */
     protected function scopeReadingStatsForActor(Builder $query): Builder
     {
-        return $query->whereHas('batch', fn (Builder $batch) => $this->scopeBatchesForActor($batch));
+        $query->whereHas('batch', fn (Builder $batch) => $this->scopeBatchesForActor($batch));
+
+        // a district user sees only the CCAs whose home district is theirs (a row with no district is not theirs)
+        return $this->commercialScope()->limitDistricts($query, $query->qualifyColumn('district_id'));
     }
 
+    /**
+     * Billing route rows the actor may see: a district user only their district's routes (a route with no district is not theirs).
+     * The bands, the strengths and the upload freshness are region-wide figures: see actorDistrictLimited().
+     */
+    protected function scopeBillingRoutesForActor(Builder $query): Builder
+    {
+        return $this->commercialScope()->limitDistricts($query, $query->qualifyColumn('district_id'));
+    }
+
+    /** The verified strength is one figure for the whole region: a district user has no region-wide row to see. */
     protected function scopeStrengthsForActor(Builder $query): Builder
     {
-        return $query->whereHas('batch', fn (Builder $batch) => $this->scopeBatchesForActor($batch));
+        $query->whereHas('batch', fn (Builder $batch) => $this->scopeBatchesForActor($batch));
+
+        return $this->actorDistrictLimited() ? $query->whereRaw('1 = 0') : $query;
     }
 
     /**
@@ -88,16 +120,38 @@ trait ScopesCommercialByActor
         return $this->scopeReadingStatsForActor(CommercialReadingStat::query()->effective()->readers())
             ->when($regionId !== null && $this->actorSeesAllRegions(), fn (Builder $query) => $query->whereHas('batch', fn (Builder $batch) => $batch->where('region_id', $regionId)))
             ->when($districtId, fn (Builder $query, int $district) => $query->where('district_id', $district))
-            ->when(self::monthBound((string) $from, false), fn (Builder $query, Carbon $date) => $query->whereDate('month', '>=', $date->toDateString()))
-            ->when(self::monthBound((string) $to, true), fn (Builder $query, Carbon $date) => $query->whereDate('month', '<=', $date->toDateString()));
+            ->when(is_array(self::monthRange($from, $to)), fn (Builder $query) => $query->whereDate('month', '>=', self::monthRange($from, $to)[0]->toDateString())->whereDate('month', '<=', self::monthRange($from, $to)[1]->toDateString()))
+            ->when(self::monthRange($from, $to) === false, fn (Builder $query) => $query->whereRaw('1 = 0'));
     }
 
     protected function filteredStrengths(?int $regionId = null, ?string $from = null, ?string $to = null): Builder
     {
         return $this->scopeStrengthsForActor(CommercialReadingStrength::query()->effective())
             ->when($regionId !== null && $this->actorSeesAllRegions(), fn (Builder $query) => $query->whereHas('batch', fn (Builder $batch) => $batch->where('region_id', $regionId)))
-            ->when(self::monthBound((string) $from, false), fn (Builder $query, Carbon $date) => $query->whereDate('month', '>=', $date->toDateString()))
-            ->when(self::monthBound((string) $to, true), fn (Builder $query, Carbon $date) => $query->whereDate('month', '<=', $date->toDateString()));
+            ->when(is_array(self::monthRange($from, $to)), fn (Builder $query) => $query->whereDate('month', '>=', self::monthRange($from, $to)[0]->toDateString())->whereDate('month', '<=', self::monthRange($from, $to)[1]->toDateString()))
+            ->when(self::monthRange($from, $to) === false, fn (Builder $query) => $query->whereRaw('1 = 0'));
+    }
+
+    /**
+     * The month rows a typed range counts (Phase 8a, CommercialPeriods rule 5): a month counts only when the WHOLE month lies inside the
+     * range, so a typed month ("2026-07") is that month exactly (as it always was) and a typed date range counts the whole months inside
+     * it. Returns [first month start, last month start] (Carbon), null for no range at all, and false when the range holds no whole month.
+     *
+     * @return array{0: Carbon, 1: Carbon}|false|null
+     */
+    public static function monthRange(?string $from, ?string $to): array|false|null
+    {
+        $start = CommercialPeriods::bound($from, false);
+        $end = CommercialPeriods::bound($to, true);
+
+        if ($start === null && $end === null) {
+            return null;
+        }
+
+        $first = $start === null ? Carbon::create(1970, 1, 1) : ($start->day === 1 ? $start->copy() : $start->copy()->addMonthNoOverflow()->startOfMonth());
+        $last = $end === null ? Carbon::create(2999, 12, 1) : ($end->equalTo($end->copy()->endOfMonth()->startOfDay()) ? $end->copy()->startOfMonth() : $end->copy()->subMonthNoOverflow()->startOfMonth());
+
+        return $first->greaterThan($last) ? false : [$first, $last];
     }
 
     /** "2026-09" (or a full date) as the first / last moment of that month; null for anything else. */
@@ -131,15 +185,30 @@ trait ScopesCommercialByActor
         return $default;
     }
 
+    /**
+     * Upload history (the uploads list and a batch page). A reading / billing batch is a region-wide file, so a district user sees
+     * only the batches they uploaded themselves (their file holds only their district's rows); everyone else sees their region's.
+     */
+    protected function scopeUploadsForActor(Builder $query): Builder
+    {
+        $this->scopeBatchesForActor($query);
+
+        return $this->actorDistrictLimited() ? $query->where($query->qualifyColumn('imported_by'), Auth::id() ?? 0) : $query;
+    }
+
     protected function actorCanAccessBatch(CommercialImportBatch $batch): bool
     {
-        if ($this->actorSeesAllRegions()) {
-            return true;
+        if (! $this->commercialScope()->seesRegion($batch->region_id !== null ? (int) $batch->region_id : null)) {
+            return false;
         }
 
-        $regionId = $this->actorRegionId();
+        return ! $this->actorDistrictLimited() || ((int) $batch->imported_by === (int) Auth::id());
+    }
 
-        return $regionId !== null && $batch->region_id !== null && (int) $batch->region_id === (int) $regionId;
+    /** District rows the actor may list (a picker, a filter): a district user's own district(s) only. */
+    protected function scopeDistrictsForActor(Builder $query): Builder
+    {
+        return $this->commercialScope()->limitDistricts($query, $query->qualifyColumn('id'));
     }
 
     protected function abortUnlessBatchAccessible(CommercialImportBatch $batch): void
@@ -150,7 +219,7 @@ trait ScopesCommercialByActor
     /** Regions the actor may file or resolve reports for: null means every region. */
     protected function uploadRegionRestriction(): ?int
     {
-        return $this->actorSeesAllRegions() ? null : ($this->actorRegionId() ?? 0);
+        return $this->commercialScope()->regionRestriction();
     }
 
     /** Passes for super_admin or a user holding ANY of the permissions. */
@@ -185,12 +254,34 @@ trait ScopesCommercialByActor
     }
 
     /**
+     * The small-group rule for a district user: their district IS the group, so when it has fewer than the minimum of distinct active
+     * CCAs, a person who may not see individual CCAs must not be shown figures that would be those people's own. (Someone with the
+     * all-districts permission asks the same question per district, where the district filter and the scorecard already do.)
+     *
+     * @param  \Illuminate\Support\Collection<int, CommercialReadingStat>  $stats  the actor's already-scoped rows
+     */
+    protected function districtGroupTooSmall($stats): bool
+    {
+        if (! $this->actorDistrictLimited() || ! $this->hideSmallGroups()) {
+            return false;
+        }
+
+        return $stats->where('visited_count', '>', 0)->pluck('reader_staff_id')->unique()->count() < max(1, (int) config('gwl.commercial_min_readers_for_district_figures', 3));
+    }
+
+    /**
      * The customer list's region restriction for the actor: null = every region, 0 = none, otherwise the one region id. The
      * service-level twin is CustomerScope (a test pins the two together); every customer query, list and export takes this.
      */
     protected function customerRestriction(): ?int
     {
         return CustomerScope::regionRestriction($this->actor());
+    }
+
+    /** The customer list's district limit for the actor: null = none, otherwise the only districts they may see (empty = none). @return list<int>|null */
+    protected function customerDistrictIds(): ?array
+    {
+        return CustomerScope::districtIds($this->actor());
     }
 
     /** Whether the actor may see names, addresses and (masked) contact details. */

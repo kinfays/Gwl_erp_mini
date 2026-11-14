@@ -12,6 +12,7 @@ final class CustomerFilters
     /**
      * @param  list<int>  $batchIds  the effective batches in view
      * @param  int|null  $regionRestriction  null = every region; 0 = none; otherwise the one region the viewer may see
+     * @param  list<int>|null  $districtIds  null = no district limit; otherwise the only districts the viewer may see (empty = none)
      */
     public function __construct(
         public readonly array $batchIds,
@@ -24,6 +25,7 @@ final class CustomerFilters
         public readonly ?int $statusId = null,
         public readonly ?int $meterStatusId = null,
         public readonly bool $billingOnly = false,
+        public readonly ?array $districtIds = null,
     ) {
     }
 

@@ -57,7 +57,10 @@ style, keeps the original row numbers, and opens sheets by **name**. OpenSpout s
 8. **Permissions**: `commercial.view_customer_analytics` (aggregates and lists without personal data) goes to the officer, manager and
    the three management roles; `commercial.view_customer_details` (names, addresses, masked phones/e-mails) goes to **nobody but
    `super_admin`** until someone grants it. Uploads use `upload_reports`, voiding `void_batches`, matching `resolve_matches`,
-   exports `export_reports`, settings `manage_settings`.
+   exports `export_reports`, settings `manage_settings`. **Districts (Phase 8a):** `commercial.view_all_districts` lets a person see every
+   district of their region (every role that already saw the module has it); without it a person sees **only the district on their
+   employee record** (the *District Commercial Viewer* role, `commercial.manage_routes` for the route master). The customer
+   screens, lists, search, exports and upload pages all take `CommercialScope` (see `docs/commercial-module-design.md` 8.30).
 9. **Only the newest upload of a district can be voided** (see 6.3). An older one cannot be undone exactly: upload a corrected file.
 10. **Customers missing from a file are flagged, never deleted.** Contact details can optionally be purged after N days (default off).
 

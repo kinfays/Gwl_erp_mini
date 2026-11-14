@@ -44,6 +44,8 @@ class CommercialSettings
         'exceptions' => ['title' => 'Billing route exceptions', 'description' => 'When a route is flagged on the Billing Exceptions tab.'],
         'reminders' => ['title' => 'Upload reminders', 'description' => 'When officers are told an upload is overdue.'],
         'exports' => ['title' => 'Exports', 'description' => 'Limits on Excel and PDF files.'],
+        'imports' => ['title' => 'Imports and reconciliation', 'description' => 'How strictly an upload is checked against its own totals, and which accounts are never imported.'],
+        'routes' => ['title' => 'Routes and districts', 'description' => 'Which system decides the district of a route when billing / reading and the customer list disagree.'],
         'customers' => ['title' => 'Customer list', 'description' => 'Thresholds, retention and export limits for the customer list. Category groups, status meanings and each district\'s upload cadence are on their own screen.'],
         // Phase 7. Has its own screen (commercial.manage_sms_settings), so the general settings screen leaves this group out.
         'sms' => ['title' => 'SMS to customers', 'description' => 'Limits and defaults for SMS campaigns to Accra West customers. The provider key, sender IDs and the region lock are in the server settings (.env), not here.'],
@@ -105,6 +107,11 @@ class CommercialSettings
             'commercial_sms_debtors_min' => ['group' => 'sms', 'label' => 'Debtors: minimum owed (the starting value)', 'help' => 'The send screen starts with this and the sender can change it for each campaign.', 'type' => 'float', 'min' => 0, 'max' => 1000000, 'unit' => 'GH¢'],
             'commercial_sms_most_valuable_top_n' => ['group' => 'sms', 'label' => 'Most valuable customers: top N (the starting value)', 'help' => 'Billing accounts with the highest last bill. An assumption to be confirmed.', 'type' => 'int', 'min' => 1, 'max' => 100000, 'unit' => 'customers'],
             'commercial_sms_most_valuable_top_pct' => ['group' => 'sms', 'label' => 'Most valuable customers: top percent (the starting value)', 'help' => 'Used when the sender chooses a percentage instead of a number.', 'type' => 'float', 'min' => 0.1, 'max' => 100, 'unit' => '%'],
+
+            'commercial_route_district_authority' => ['group' => 'routes', 'label' => 'District of a route is decided by', 'help' => 'When two routes share a code in one region, the one whose district comes from this source is the canonical route and the other becomes its alias.', 'type' => 'enum', 'options' => ['billing' => 'The billing / reading label', 'customer_list' => 'The customer list'], 'min' => null, 'max' => null, 'unit' => ''],
+            'commercial_excluded_staff_ids' => ['group' => 'imports', 'label' => 'Staff IDs never imported', 'help' => 'Separated by commas. A reading row for one of these IDs (and any account named "System Administrator") is skipped, shown in the preview as excluded and never stored.', 'type' => 'list', 'min' => null, 'max' => null, 'unit' => ''],
+            'commercial_reconcile_max_route_failures_pct' => ['group' => 'imports', 'label' => 'Block a file when more routes than this fail their totals', 'help' => 'A route whose rows disagree with its own TOTALS row is flagged and the file still imports, until more than this share of its routes fail.', 'type' => 'float', 'min' => 0, 'max' => 100, 'unit' => '% of routes'],
+            'commercial_reconcile_grand_total_tolerance_pct' => ['group' => 'imports', 'label' => 'Block a file when its grand total is off by more than', 'help' => 'The rows against the report\'s own grand total.', 'type' => 'float', 'min' => 0, 'max' => 100, 'unit' => '%'],
 
             'commercial_export_pdf_max_rows' => ['group' => 'exports', 'label' => 'Most rows in one PDF', 'help' => 'PDFs are heavy to build, so they have a lower limit than Excel. Over it the user is asked to narrow the filters or use Excel.', 'type' => 'int', 'min' => 50, 'max' => 3000, 'unit' => 'rows'],
         ];
@@ -216,6 +223,8 @@ class CommercialSettings
             $safe[$name] = $value;
             $definition = $definitions[$key];
             $rules[$name] = match ($definition['type']) {
+                'enum' => ['required', 'in:'.implode(',', array_keys($definition['options']))],
+                'list' => ['nullable', 'string', 'max:500'],
                 'bool' => ['required', 'boolean'],
                 'int' => ['required', 'integer', 'min:'.$definition['min'], 'max:'.$definition['max']],
                 default => ['required', 'numeric', 'min:'.$definition['min'], 'max:'.$definition['max']],
@@ -226,9 +235,17 @@ class CommercialSettings
         $validator = Validator::make($safe, $rules, [], $labels);
         $merged = fn (string $key) => array_key_exists($key, $values) ? $this->cast($key, $values[$key]) : $this->current($key);
 
-        $validator->after(function ($validator) use ($merged): void {
+        $validator->after(function ($validator) use ($merged, $values): void {
             if ($validator->errors()->isNotEmpty()) {
                 return;
+            }
+
+            foreach ($this->cast('commercial_excluded_staff_ids', $values['commercial_excluded_staff_ids'] ?? []) as $id) {
+                if (! preg_match('/^[A-Za-z0-9._-]{1,20}$/', (string) $id)) {
+                    $validator->errors()->add('commercial_excluded_staff_ids', 'A staff ID is letters, digits, dots, dashes or underscores, up to 20 characters.');
+
+                    break;
+                }
             }
 
             if ($merged('commercial_workload_low_pct') >= $merged('commercial_workload_high_pct')) {
@@ -343,6 +360,8 @@ class CommercialSettings
     protected function cast(string $key, mixed $value): mixed
     {
         return match (self::definitions()[$key]['type'] ?? 'string') {
+            'list' => array_values(array_unique(array_filter(array_map(fn ($item) => trim((string) $item), is_array($value) ? $value : explode(',', (string) $value)), fn (string $item) => $item !== ''))),
+            'enum' => (string) $value,
             'int' => (int) $value,
             'float' => (float) $value,
             'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
@@ -353,6 +372,7 @@ class CommercialSettings
     protected function store(string $key, mixed $value): string
     {
         return match (self::definitions()[$key]['type']) {
+            'list' => implode(',', (array) $value),
             'bool' => $value ? '1' : '0',
             default => (string) $value,
         };
@@ -360,6 +380,10 @@ class CommercialSettings
 
     protected function same(string $key, mixed $a, mixed $b): bool
     {
-        return self::definitions()[$key]['type'] === 'float' ? abs((float) $a - (float) $b) < 0.0000001 : $a === $b;
+        return match (self::definitions()[$key]['type']) {
+            'float' => abs((float) $a - (float) $b) < 0.0000001,
+            'list' => (array) $a === (array) $b,
+            default => $a === $b,
+        };
     }
 }

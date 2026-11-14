@@ -524,6 +524,11 @@ if (config('gwl.commercial_module_enabled')) {
                 ->middleware('permission:commercial.manage_settings')
                 ->name('kpis.targets');
 
+            // Phase 8a: the route master (which district a route is in; the X10 conflicts)
+            Route::get('/routes', [CommercialModuleController::class, 'routes'])
+                ->middleware('permission:commercial.manage_routes')
+                ->name('routes');
+
             Route::get('/reading', [CommercialModuleController::class, 'reading'])
                 ->middleware('permission:commercial.view_reading,commercial.view_reader_performance')
                 ->name('reading');

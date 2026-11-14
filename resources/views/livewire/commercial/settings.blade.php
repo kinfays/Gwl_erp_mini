@@ -1,6 +1,11 @@
 <div>
     @php
-        $show = fn ($value, array $field) => is_bool($value) ? ($value ? 'On' : 'Off') : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.').($field['unit'] !== '' ? ' '.$field['unit'] : '');
+        $show = fn ($value, array $field) => match (true) {
+            is_bool($value) => $value ? 'On' : 'Off',
+            $field['type'] === 'enum' => ($field['options'][$value] ?? $value),
+            $field['type'] === 'list' => $value === [] ? 'none' : implode(', ', (array) $value),
+            default => rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.').($field['unit'] !== '' ? ' '.$field['unit'] : ''),
+        };
     @endphp
 
     <x-ui.page-header title="Commercial settings" description="Targets and thresholds the Commercial screens measure against. A change applies everywhere at once and is recorded in the audit log.">
@@ -40,7 +45,13 @@
                             @endif
                         </div>
                         <div class="form-field" style="flex:1">
-                            @if ($field['type'] === 'bool')
+                            @if ($field['type'] === 'enum')
+                                <select id="s-{{ $field['field'] }}" class="form-input" wire:model="values.{{ $field['field'] }}">
+                                    @foreach ($field['options'] as $optionValue => $optionLabel)<option value="{{ $optionValue }}">{{ $optionLabel }}</option>@endforeach
+                                </select>
+                            @elseif ($field['type'] === 'list')
+                                <input id="s-{{ $field['field'] }}" type="text" class="form-input" wire:model="values.{{ $field['field'] }}" placeholder="00000, 99999" autocomplete="off">
+                            @elseif ($field['type'] === 'bool')
                                 <label style="display:flex;gap:8px;align-items:center">
                                     <input type="checkbox" id="s-{{ $field['field'] }}" wire:model="values.{{ $field['field'] }}">
                                     <span>{{ $field['label'] }}</span>
