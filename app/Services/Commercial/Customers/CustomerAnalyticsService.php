@@ -148,6 +148,41 @@ class CustomerAnalyticsService
         return $query->first() ?? (object) array_fill_keys($columns, 0);
     }
 
+    // ---------------------------------------------------------------- Phase 8c: strength against the customer list
+
+    /**
+     * Metered accounts (a working or faulty meter, any account status) per route, from the ROUTE-LEVEL rollups of the batches in view:
+     * the figure the reading report's verified strength is checked against (analysis R8). Only the routes asked for are read, in
+     * chunks; the region restriction and the district limit apply like everywhere else here.
+     *
+     * @param  list<int>  $routeIds  canonical route ids
+     * @return array<int, int> route id => accounts
+     */
+    public function meteredByRoute(CustomerFilters $f, array $routeIds): array
+    {
+        $out = [];
+
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $routeIds))), 500) as $chunk) {
+            $query = DB::table('commercial_customer_rollups AS r')
+                ->join('commercial_meter_statuses AS m', 'm.id', '=', 'r.meter_status_id')
+                ->whereIn('r.batch_id', $f->batchIds === [] ? [0] : $f->batchIds)
+                ->whereIn('r.route_id', $chunk)
+                ->whereIn('m.code', ['W', 'F']);
+
+            if ($f->regionRestriction !== null) {
+                $f->regionRestriction === 0 ? $query->whereRaw('1 = 0') : $query->where('r.region_id', $f->regionRestriction);
+            }
+
+            $this->limitDistricts($query, $f, 'r.district_id');
+
+            foreach ($query->selectRaw('r.route_id, COALESCE(SUM(r.customer_count), 0) AS accounts')->groupBy('r.route_id')->get() as $row) {
+                $out[(int) $row->route_id] = (int) $row->accounts;
+            }
+        }
+
+        return $out;
+    }
+
     // ---------------------------------------------------------------- A. customer base
 
     /** @return array<string, mixed> */

@@ -590,6 +590,16 @@ class ReportWorkbooks
         return Carbon::parse($month)->format('D d-M-Y');
     }
 
+    /**
+     * The reading report BY ROUTE (rptReadingSumm; Phase 8c), laid out like the real export. The layout writer is
+     * App\Services\Commercial\ReadingRouteSampleFile (also used by the sample command and the fixture): see its docblock for the
+     * $spec keys. Every name, id and figure is invented.
+     */
+    public static function readingRoute(array $spec = []): string
+    {
+        return \App\Services\Commercial\ReadingRouteSampleFile::write($spec);
+    }
+
     protected static function save(Spreadsheet $book): string
     {
         $path = tempnam(sys_get_temp_dir(), 'comm').'.xlsx';

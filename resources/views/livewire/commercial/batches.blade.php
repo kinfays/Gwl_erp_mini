@@ -78,6 +78,44 @@
                         <span style="color:#A36A2D">{{ $preview['warning_count'] }} warnings</span>
                     </div>
 
+                    @if (! empty($preview['route_report']))
+                        {{-- Phase 8c: what the reading report BY ROUTE holds (the generic preview has no sheets, routes or owners) --}}
+                        @php $rr = $preview['route_report']; @endphp
+                        <div data-route-report style="margin-top:10px;font-size:12px">
+                            <p>
+                                <strong>Period read:</strong> {{ $rr['period_label'] ?? 'not found in the file' }}@if ($rr['period_kind'] ?? null) ({{ $rr['period_kind'] === 'range' ? 'a date range' : ($rr['period_kind'] === 'month' ? 'a whole month' : 'one day') }})@endif.
+                                <strong>Region:</strong> {{ $preview['region']['name'] ?? $preview['region']['raw'] ?? 'not found' }}.
+                                <strong>{{ number_format($rr['sheets']) }}</strong> CCA sheets, <strong>{{ number_format($rr['routes']) }}</strong> routes, <strong>{{ number_format($rr['districts']) }}</strong> districts, <strong>{{ number_format($rr['ccas']) }}</strong> CCAs.
+                            </p>
+                            @if ($rr['unplaced_rows'] > 0)
+                                <p class="form-hint">{{ number_format($rr['unplaced_rows']) }} route rows name a district the system does not know yet. They import anyway, and you can resolve the district afterwards on the batch page.</p>
+                            @endif
+                            @if ($rr['flagged_rows'] > 0 || $rr['flagged_sheets'] > 0)
+                                <p class="form-hint">{{ number_format($rr['flagged_rows']) }} row(s) and {{ number_format($rr['flagged_sheets']) }} sheet total(s) do not add up. They import flagged; the file is blocked only when too many do.</p>
+                            @endif
+                            @if ($rr['owner_decision_count'] > 0)
+                                <details open style="margin-top:6px">
+                                    <summary>{{ number_format($rr['owner_decision_count']) }} route(s) under more than one CCA: the owner is the CCA with the visits ({{ number_format($rr['assigned_no_visits']) }} row(s) kept as assigned, no visits)</summary>
+                                    <table style="margin-top:6px">
+                                        <thead><tr><th>Route</th><th>Owner (counts the strength)</th><th>Also listed, no visits counted</th></tr></thead>
+                                        <tbody>
+                                            @foreach ($rr['owner_decisions'] as $decision)
+                                                <tr><td>{{ $decision['route'] }}</td><td>{{ $decision['owner'] }} {{ $decision['owner_name'] }}</td><td>{{ implode(', ', $decision['others']) }}</td></tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                    @if ($rr['owner_decision_count'] > count($rr['owner_decisions']))<p class="form-hint">The first {{ count($rr['owner_decisions']) }} are listed.</p>@endif
+                                </details>
+                            @endif
+                            @if ($rr['no_routes_count'] > 0)
+                                <p style="margin-top:6px"><strong>{{ number_format($rr['no_routes_count']) }} CCA(s) with no routes</strong> (kept on record): {{ collect($rr['no_routes'])->map(fn ($c) => trim($c['staff_id'].' '.$c['name']))->implode(', ') }}@if ($rr['no_routes_count'] > count($rr['no_routes'])) …@endif</p>
+                            @endif
+                            @if ($rr['no_visits_count'] > 0)
+                                <p style="margin-top:6px"><strong>{{ number_format($rr['no_visits_count']) }} CCA(s) with routes but no visits</strong> (kept on record): {{ collect($rr['no_visits'])->map(fn ($c) => trim($c['staff_id'].' '.$c['name']))->implode(', ') }}@if ($rr['no_visits_count'] > count($rr['no_visits'])) …@endif</p>
+                            @endif
+                        </div>
+                    @endif
+
                     @if ($preview['checks'])
                         <table style="margin-top:12px">
                             <thead><tr><th>Reconciliation check</th><th>Result</th><th>Detail</th></tr></thead>

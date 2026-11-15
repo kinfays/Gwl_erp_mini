@@ -533,6 +533,11 @@ if (config('gwl.commercial_module_enabled')) {
                 ->middleware('permission:commercial.view_reading,commercial.view_reader_performance')
                 ->name('reading');
 
+            // Phase 8c: the reading report BY ROUTE AND CCA (rptReadingSumm)
+            Route::get('/reading/routes', [CommercialModuleController::class, 'readingRoutes'])
+                ->middleware('permission:commercial.view_reading')
+                ->name('reading.routes');
+
             Route::get('/reading/readers/{staffId}', [CommercialModuleController::class, 'readerShow'])
                 ->where('staffId', '[A-Za-z0-9_-]+')
                 ->middleware('permission:commercial.view_reader_performance')

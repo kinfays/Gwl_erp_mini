@@ -3,6 +3,7 @@
 namespace App\Services\Commercial;
 
 use App\Models\CommercialImportBatch;
+use App\Models\CommercialReadingRouteStat;
 use App\Models\CommercialReadingStat;
 use App\Models\District;
 use App\Models\Employee;
@@ -22,6 +23,7 @@ class BatchResolutionService
         protected LocationMatcher $locations,
         protected CommercialImportService $imports,
         protected ReadingSummaryImportService $reading,
+        protected ReadingRouteImportService $readingRoutes,
     ) {
     }
 
@@ -46,8 +48,8 @@ class BatchResolutionService
      */
     public function resolveDistrict(CommercialImportBatch $batch, string $rawLabel, District $district): int
     {
-        if (! $batch->isBilling()) {
-            throw new CommercialImportException('Only billing batches have districts to resolve.');
+        if (! $batch->isBilling() && ! $batch->isReadingRoute()) {
+            throw new CommercialImportException('Only billing and reading-by-route batches have districts to resolve.');
         }
 
         if ($batch->region_id !== null && (int) $district->region_id !== (int) $batch->region_id) {
@@ -82,8 +84,12 @@ class BatchResolutionService
      */
     public function linkReader(CommercialImportBatch $batch, string $readerStaffId, Employee $employee): int
     {
-        if (! $batch->isReading()) {
+        if (! $batch->isReading() && ! $batch->isReadingRoute()) {
             throw new CommercialImportException('Only reading batches have CCAs to link.');
+        }
+
+        if ($batch->isReadingRoute()) {
+            return $this->linkRouteCca($batch, $readerStaffId, $employee);
         }
 
         return DB::transaction(function () use ($batch, $readerStaffId, $employee): int {
@@ -104,6 +110,31 @@ class BatchResolutionService
                 targetType: CommercialImportBatch::class,
                 targetId: $batch->id,
                 metadata: ['reader_staff_id' => $readerStaffId, 'employee_id' => $employee->id, 'employee_staff_id' => $employee->staff_id, 'rows' => $updated]
+            );
+
+            return $updated;
+        });
+    }
+
+    /** The same for a reading-by-route batch: every row of that CCA in the batch. */
+    protected function linkRouteCca(CommercialImportBatch $batch, string $staffId, Employee $employee): int
+    {
+        return DB::transaction(function () use ($batch, $staffId, $employee): int {
+            $updated = $batch->routeStats()->where('cca_staff_id', $staffId)->where('match_status', CommercialReadingRouteStat::MATCH_UNMATCHED)->update([
+                'employee_id' => $employee->id,
+                'match_status' => CommercialReadingRouteStat::MATCH_MATCHED,
+            ]);
+
+            // a CCA listed with no route takes the employee's home district; a CCA with routes keeps the routes' own
+            $batch->routeStats()->where('cca_staff_id', $staffId)->whereNull('route_label_raw')->update(['district_id' => $employee->district_id]);
+            $this->readingRoutes->refreshBatchCounts($batch);
+
+            Audit::log(
+                action: 'commercial.reader_linked',
+                module: Permission::MODULE_COMMERCIAL,
+                targetType: CommercialImportBatch::class,
+                targetId: $batch->id,
+                metadata: ['reader_staff_id' => $staffId, 'employee_id' => $employee->id, 'employee_staff_id' => $employee->staff_id, 'rows' => $updated]
             );
 
             return $updated;

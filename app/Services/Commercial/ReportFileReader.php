@@ -39,6 +39,100 @@ class ReportFileReader
         return array_values($import->sheets);
     }
 
+    // ---------------------------------------------------------------- sheet by sheet (Phase 8c)
+
+    /** Sheet names of a workbook, from its index alone (cheap). @return list<string> */
+    public function sheetNames(UploadedFile|string $file): array
+    {
+        $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
+
+        return array_values(IOFactory::createReaderForFile($path)->listWorksheetNames($path));
+    }
+
+    /**
+     * ONE sheet as a raw grid of cell values (row index and column index both 0-based, formulas calculated), read on its own: the reader
+     * is told to load only this sheet and only the first $maxRows rows (and, when $columns is given, only those columns), so a workbook
+     * of 75 CCA sheets is never held in memory at once and the "Document map" sheet (whose declared range runs to column XFC) is never
+     * walked cell by cell. The caller keeps what it needs from the grid and lets it go.
+     *
+     * @param  list<string>|null  $columns  column letters to read (null = all)
+     * @return array<int, array<int, mixed>>
+     */
+    public function readSheetGrid(UploadedFile|string $file, string $sheetName, int $maxRows = 1500, ?array $columns = null): array
+    {
+        $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
+        $reader = IOFactory::createReaderForFile($path);
+        $reader->setLoadSheetsOnly([$sheetName]);
+        $reader->setReadDataOnly(true);
+        $reader->setReadFilter(new class($maxRows, $columns) implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter
+        {
+            public function __construct(private int $maxRows, private ?array $columns)
+            {
+            }
+
+            public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool
+            {
+                return $row <= $this->maxRows && ($this->columns === null || in_array($columnAddress, $this->columns, true));
+            }
+        });
+
+        $spreadsheet = $reader->load($path);
+
+        try {
+            $grid = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
+        } finally {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+        }
+
+        return array_values(array_map(fn ($row) => array_values((array) $row), $grid));
+    }
+
+    /**
+     * Whether the workbook is the reading report BY ROUTE (Phase 8c) rather than the reader-by-month report: its CCA sheets have a header
+     * row with a "Route" column beside "Verified Strength" and the read / visited counts (the by-month sheets have rows of months), or its
+     * title says "By Route". Only the first CCA sheet is read, and only its first rows.
+     */
+    public function looksLikeRouteReadingReport(UploadedFile|string $file): bool
+    {
+        try {
+            $names = array_values(array_filter($this->sheetNames($file), fn (string $name) => ! preg_match('/^\s*document\s*map\s*$/i', $name)));
+
+            foreach (array_slice($names, 0, 2) as $name) {
+                $grid = $this->readSheetGrid($file, $name, self::HEADER_SCAN_ROWS);
+                $hasRoute = false;
+                $hasStrength = false;
+                $hasCounts = false;
+                $titled = false;
+                $routeTitle = false;
+
+                foreach ($grid as $row) {
+                    foreach ($row as $cell) {
+                        $text = strtolower($this->text($cell));
+
+                        if ($text === '') {
+                            continue;
+                        }
+
+                        $hasRoute = $hasRoute || preg_replace('/[^a-z]/', '', $text) === 'route';
+                        $hasStrength = $hasStrength || str_contains($text, 'strength');
+                        $hasCounts = $hasCounts || (bool) preg_match('/^(read|visited|skipped)\b/', $text);
+                        $titled = $titled || (bool) preg_match('/customer\s+meter\s+reading\s+report/i', $text);
+                        $routeTitle = $routeTitle || (bool) preg_match('/\bby\s+route\b/i', $text);
+                    }
+                }
+
+                if (($hasRoute && $hasStrength && $hasCounts) || ($titled && $routeTitle)) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return false;
+    }
+
     public function fileHash(UploadedFile $file): string
     {
         return (string) hash_file('sha256', $file->getRealPath());

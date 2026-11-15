@@ -227,6 +227,17 @@ class CommercialReportData
     }
 
     /**
+     * The reading report BY ROUTE AND CCA (Phase 8c, design 8.36): the uploads the typed range uses (the five period rules), the analyses
+     * R1 to R8, the trend by upload and the small-group rule, all for the viewer's own scope. The Reading screen and the export both call it.
+     *
+     * @return array<string, mixed>
+     */
+    public function routeReading(?int $regionId = null, ?int $districtId = null, ?string $from = null, ?string $to = null): array
+    {
+        return app(ReadingRouteReport::class)->build($regionId, $districtId, $from, $to);
+    }
+
+    /**
      * A DATE RANGE of billing (Phase 8a, CommercialPeriods): the uploads of the snapshot's region and segment that lie inside it, chosen
      * by the period rules, with their routes added up (flows summed, stocks from the latest period). Null when no range is typed.
      *

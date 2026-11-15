@@ -4,7 +4,11 @@
             <h2>{{ $batchTypeLabel }} - batch #{{ $batch->id }}</h2>
             <p>
                 {{ $batch->region?->region_name ?? $batch->region_label_raw ?? 'No region' }} &middot;
-                {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                @if ($batch->isReadingRoute())
+                    {{ \App\Services\Commercial\CommercialPeriods::describe($batch->period_from, $batch->period_to) }}
+                @else
+                    {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                @endif
                 @if ($batch->customer_segment && $batch->customer_segment !== 'all')
                     &middot; {{ str($batch->customer_segment)->replace('_', ' ')->title() }}
                 @endif
@@ -13,7 +17,7 @@
         </div>
         <div class="ph-right">
             <a class="btn btn-secondary" href="{{ route('commercial.batches') }}">Back to Uploads</a>
-            @if ($canResolve && ! $batch->isVoided() && ($batch->row_count - $batch->matched_count) > 0)
+            @if ($canResolve && ! $batch->isVoided() && $needsMatching > 0)
                 <button type="button" class="btn btn-secondary" wire:click="rematch" wire:loading.attr="disabled">Re-match</button>
             @endif
             @if ($canVoid && ! $batch->isVoided())
@@ -54,12 +58,12 @@
         <div class="stat">
             <div class="stat-lbl">Rows</div>
             <div class="stat-val">{{ number_format($batch->row_count) }}</div>
-            <div class="stat-sub">{{ $batch->isReading() ? 'CCA-month rows' : 'route rows' }}</div>
+            <div class="stat-sub">{{ $batch->isReading() ? 'CCA-month rows' : 'route rows' }}@if ($batch->isReadingRoute()), {{ number_format($batch->matched_count) }} CCAs in the directory @endif</div>
         </div>
         <div class="stat">
             <div class="stat-lbl">Needs matching</div>
-            <div class="stat-val">{{ number_format(max(0, $batch->row_count - $batch->matched_count)) }}</div>
-            <div class="stat-sub">{{ $batch->isReading() ? 'CCAs not in the directory' : 'routes without a district' }}</div>
+            <div class="stat-val">{{ number_format($needsMatching) }}</div>
+            <div class="stat-sub">{{ $batch->isReadingRoute() ? 'CCAs not in the directory, districts not matched' : ($batch->isReading() ? 'CCAs not in the directory' : 'routes without a district') }}</div>
         </div>
         <div class="stat">
             <div class="stat-lbl">Warnings at import</div>
@@ -245,6 +249,170 @@
                         </tr>
                     @empty
                         <tr><td colspan="7">No rows for this filter.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+            <div style="padding:12px">{{ $rows->links() }}</div>
+        </div>
+    @elseif ($batch->isReadingRoute())
+        {{-- ============================================================ Phase 8c: the reading report BY ROUTE --}}
+        <div class="pg" data-route-findings>
+            <div class="pg-head"><span class="pg-title">What this upload holds</span></div>
+            <ul style="padding:12px 14px 12px 30px;font-size:12px;list-style:disc">
+                <li>{{ number_format($batch->row_count) }} route rows from {{ number_format(count($batch->control_totals['ccas'] ?? [])) }} CCA sheets. Each route's verified strength counts once, in the owner's row (the CCA with the most visits).</li>
+                <li>{{ number_format($assignedNoVisits) }} row(s) are kept as "assigned, no visits": the route is also listed under another CCA who has the visits.</li>
+                <li>{{ number_format($ccaNoRoutes->count()) }} CCA(s) are listed with no route{{ $ccaNoRoutes->isNotEmpty() ? ': '.$ccaNoRoutes->implode(', ') : '' }}.</li>
+                <li>{{ number_format($ccaNoVisits->count()) }} CCA(s) have routes but no visits{{ $ccaNoVisits->isNotEmpty() ? ': '.$ccaNoVisits->implode(', ') : '' }}.</li>
+                @foreach ($excludedAccounts as $account)
+                    <li>Excluded (system account) {{ $account['staff_id'] }}: {{ $account['rows'] }} row(s) in the file were not imported.</li>
+                @endforeach
+            </ul>
+        </div>
+
+        @if ($flaggedRows->isNotEmpty() || ! empty($batch->control_totals['sheets_failed']))
+            <div class="pg">
+                <div class="pg-head"><span class="pg-title">Flagged at import (the file still imported)</span></div>
+                <table>
+                    <thead><tr><th>Where</th><th>What disagrees</th></tr></thead>
+                    <tbody>
+                        @foreach ($flaggedRows as $row)
+                            <tr><td>{{ $row->cca_staff_id }} {{ $row->route_label_raw }}</td><td>{{ $row->flag_reason === \App\Models\CommercialReadingRouteStat::FLAG_VISITED ? 'Visited is not read plus skipped.' : 'Unvisited is not verified strength minus visited.' }}</td></tr>
+                        @endforeach
+                        @foreach ($batch->control_totals['sheets_failed'] ?? [] as $sheet)
+                            <tr><td>Sheet of {{ $sheet['staff_id'] }}</td><td>{{ $sheet['detail'] }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                @if ($flaggedRows->count() >= 50)<p class="form-hint" style="padding:8px 14px">The first 50 flagged rows are listed.</p>@endif
+            </div>
+        @endif
+
+        @if ($unmatchedDistricts->isNotEmpty())
+            <div class="pg">
+                <div class="pg-head"><span class="pg-title">Districts not matched</span></div>
+                <table>
+                    <thead><tr><th>District in report</th><th>Route rows</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach ($unmatchedDistricts as $district)
+                            <tr>
+                                <td>{{ $district->district_label_raw }}</td>
+                                <td>{{ $district->route_count }}</td>
+                                <td>
+                                    @if ($canResolve && ! $batch->isVoided())
+                                        <button type="button" class="btn btn-secondary" wire:click="startResolvingDistrict(@js($district->district_label_raw))">Resolve</button>
+                                    @endif
+                                </td>
+                            </tr>
+                            @if ($resolvingDistrictLabel === $district->district_label_raw)
+                                <tr>
+                                    <td colspan="3">
+                                        <div class="form-row">
+                                            <div class="form-field">
+                                                <label class="form-label">Which district is "{{ $district->district_label_raw }}"?</label>
+                                                <select class="form-input" wire:model="resolveDistrictId">
+                                                    <option value="">Choose a district</option>
+                                                    @foreach ($districtOptions as $option)
+                                                        <option value="{{ $option->id }}">{{ $option->district_name }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <span class="form-hint">Remembered for every later upload.</span>
+                                                @error('resolveDistrictId') <span class="form-error">{{ $message }}</span> @enderror
+                                            </div>
+                                            <div class="form-field" style="justify-content:end">
+                                                <button type="button" class="btn btn-primary" wire:click="saveDistrictResolution">Save and re-match</button>
+                                                <button type="button" class="btn btn-secondary" wire:click="cancelResolvingDistrict">Cancel</button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endif
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        @if ($unmatchedReaders->isNotEmpty())
+            <div class="pg">
+                <div class="pg-head"><span class="pg-title">CCAs not in the staff directory</span></div>
+                <table>
+                    <thead><tr><th>Staff ID</th><th>Name in report</th><th>Route rows</th><th>Visited</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach ($unmatchedReaders as $reader)
+                            <tr>
+                                <td>{{ $reader->cca_staff_id }}</td>
+                                <td>{{ $reader->cca_name }}</td>
+                                <td>{{ $reader->route_rows }}</td>
+                                <td>{{ number_format($reader->visited_total) }}</td>
+                                <td>
+                                    @if ($canResolve && ! $batch->isVoided())
+                                        <button type="button" class="btn btn-secondary" wire:click="startLinkingReader('{{ $reader->cca_staff_id }}')">Link to employee</button>
+                                    @endif
+                                </td>
+                            </tr>
+                            @if ($linkingReaderId === (string) $reader->cca_staff_id)
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="form-row">
+                                            <div class="form-field">
+                                                <label class="form-label">Find the employee (staff ID or name)</label>
+                                                <input class="form-input" wire:model.live.debounce.300ms="employeeSearch">
+                                                @error('employeeSearch') <span class="form-error">{{ $message }}</span> @enderror
+                                            </div>
+                                            <div class="form-field" style="justify-content:end">
+                                                <button type="button" class="btn btn-secondary" wire:click="cancelLinkingReader">Cancel</button>
+                                            </div>
+                                        </div>
+                                        @foreach ($candidates as $employee)
+                                            <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+                                                <span>{{ $employee->staff_id }} - {{ $employee->full_name }}</span>
+                                                <button type="button" class="btn btn-primary" wire:click="linkReader({{ $employee->id }})">Link</button>
+                                            </div>
+                                        @endforeach
+                                        @if ($candidates->isEmpty())
+                                            <p class="form-hint">No employee found.</p>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endif
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        <div class="pg">
+            <div class="pg-head">
+                <span class="pg-title">CCA and route rows</span>
+                <div class="ph-right">
+                    <input class="form-input" type="search" placeholder="Search CCA or route" wire:model.live.debounce.300ms="routeSearch">
+                    <select class="form-input" wire:model.live="matchFilter">
+                        <option value="">All rows</option>
+                        @foreach ($matchStatuses as $status)
+                            <option value="{{ $status }}">{{ str($status)->replace('_', ' ')->title() }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>CCA</th><th>Route</th><th>District</th><th>Verified strength</th><th>Read</th><th>Skipped</th><th>Visited</th><th>Owner</th><th>Match</th></tr>
+                </thead>
+                <tbody>
+                    @forelse ($rows as $row)
+                        <tr wire:key="rrow-{{ $row->id }}">
+                            <td>{{ $row->cca_staff_id }} {{ $row->employee?->full_name ?? $row->cca_name_raw }}</td>
+                            <td>{{ $row->route_label_raw ?? 'no route' }}</td>
+                            <td>{{ $row->district?->district_name ?? ($row->route_label_raw ? $row->district_label_raw : '-') }}@if ($row->route_label_raw && ! $row->route_id) <span class="form-hint">not matched</span>@endif</td>
+                            <td>{{ $row->route_label_raw ? number_format($row->verified_strength) : '-' }}</td>
+                            <td>{{ number_format($row->read_count) }}</td>
+                            <td>{{ number_format($row->skipped_count) }}</td>
+                            <td>{{ number_format($row->visited_count) }}</td>
+                            <td>{{ $row->route_label_raw ? ($row->is_route_owner ? 'Owner' : 'Assigned, no visits') : '-' }}</td>
+                            <td><x-ui.status-pill domain="commercial" :status="$row->match_status" /></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="9">No rows for this search.</td></tr>
                     @endforelse
                 </tbody>
             </table>

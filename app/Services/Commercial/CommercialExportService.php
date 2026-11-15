@@ -26,6 +26,7 @@ class CommercialExportService
         'billing' => ['title' => 'Billing snapshot', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'kpis' => ['title' => 'District KPIs against targets', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'scorecard' => ['title' => 'District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing', 'commercial.view_reading'], 'any' => []],
+        'reading-routes' => ['title' => 'Meter reading by route and CCA', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reading'], 'any' => []],
     ];
 
     // ---------------------------------------------------------------- summary (C3)
@@ -313,6 +314,138 @@ class CommercialExportService
                 $r['reading_hidden'] ? 'Fewer than '.$c['min_readers'].' CCAs' : '',
             ], $c['rows'])],
         ], $snapshot['period_label']);
+    }
+
+    // ---------------------------------------------------------------- reading by route and CCA (Phase 8c)
+
+    /**
+     * The reading report BY ROUTE AND CCA (analyses R1 to R8 and the trend by upload). Built from the same data as the screen; a viewer
+     * without commercial.view_reader_performance gets districts and counts but no named CCA, exactly as on the screen.
+     *
+     * @param  array<string, mixed>  $d  CommercialReportData::routeReading()
+     */
+    public function readingRoutes(array $d): array
+    {
+        $a = $d['analysis'];
+        $named = (bool) $d['named'];
+        $meta = [
+            'Region' => (string) ($d['region'] ?? 'All'),
+            'Period' => (string) ($d['range']['label'] ?? 'no upload'),
+            'District' => $d['district_id'] ? (string) ($d['districts'][$d['district_id']] ?? '') : ($d['district_limited'] ? 'Your district' : 'All districts'),
+        ];
+        $notes = [
+            'Rates are worked out from the counts: skip rate = skipped / visited, coverage = visited / verified strength. The report\'s own percentages and its Unvisited column are never used.',
+            'A route\'s verified strength is counted once, for the CCA who owns the route (the most visits); the other CCAs listed on it are "assigned, no visits".',
+            ...$d['notes'],
+        ];
+
+        if ($d['range']) {
+            $notes[] = 'Uploads used: '.implode('; ', array_map(fn (array $b) => 'batch #'.$b['id'].' ('.$b['label'].')', $d['range']['batches'])).'. Times of upload, not run dates: the report prints no run date.';
+        }
+
+        if (! $named) {
+            $notes[] = 'No CCA is named here: individual CCA figures need the CCA performance permission. Districts and counts are shown.';
+        }
+
+        if ($d['small_group'] || $d['held_back'] !== []) {
+            $notes[] = 'A district with fewer than '.$d['min_readers'].' CCAs with visits has its figures held back ('.($d['small_group'] ? 'this is your district' : implode(', ', $d['held_back'])).'): they would be an individual CCA\'s own.';
+        }
+
+        if ($a === null) {
+            return $this->report('reading-routes', $meta, $notes, [['title' => 'Held back', 'headings' => ['Note'], 'rows' => [['Your district has too few CCAs with visits for these figures to be shown.']]]], $meta['Period']);
+        }
+
+        $t = $a['totals'];
+        $tables = [
+            ['title' => 'Summary', 'headings' => ['Measure', 'Value'], 'rows' => [
+                ['Routes', $d['counts']['routes']], ['CCAs listed', $d['counts']['ccas']], ['CCAs with routes', $d['counts']['ccas_with_routes']],
+                ['Verified strength', $t['strength']], ['Read', $t['read']], ['Skipped', $t['skipped']], ['Visited', $t['visited']],
+                ['Unvisited (strength - visited)', $t['unvisited']], ['Coverage (%)', $this->n($t['coverage'])], ['Skip rate (%)', $this->n($t['skip_rate'])],
+            ]],
+            ['title' => 'R3 Districts', 'headings' => ['District', 'Routes', 'CCAs owning routes', 'CCAs with visits', 'Verified strength', 'Read', 'Skipped', 'Visited', 'Unvisited', 'Coverage (%)', 'Skip rate (%)', 'Figures'], 'rows' => array_map(fn (array $r) => [
+                $r['name'], $r['routes'], $r['ccas'], $r['active_ccas'], $r['strength'], $this->n($r['read']), $this->n($r['skipped']), $this->n($r['visited']), $this->n($r['unvisited']), $this->n($r['coverage']), $this->n($r['skip_rate']),
+                ($r['held_back'] ?? false) ? 'Held back: fewer than '.$d['min_readers'].' CCAs' : '',
+            ], $a['districts'])],
+        ];
+
+        if ($named) {
+            $tables[] = ['title' => 'R1 CCA scorecard', 'headings' => ['Rank', 'Staff ID', 'CCA', 'District', 'Routes owned', 'Strength owned', 'Read', 'Skipped', 'Visited', 'Unvisited', 'Coverage (%)', 'Skip rate (%)', 'Note'], 'rows' => array_map(fn (array $c) => [
+                $this->n($c['rank']), $c['staff_id'], (string) $c['name'], (string) $c['district'], $c['owned_routes'], $c['owned_strength'], $c['read'], $c['skipped'], $c['visited'], $c['unvisited'], $this->n($c['coverage']), $this->n($c['skip_rate']),
+                $c['no_routes'] ? 'Listed with no route' : ($c['zero_visits'] ? 'Routes, no visits' : (! $c['eligible'] ? 'Fewer than '.$a['min_visits'].' visits: not ranked' : '')),
+            ], array_values($a['ccas']))];
+        }
+
+        $routeRows = collect($a['routes'])->filter(fn (array $r) => $r['placed'])->sortBy([['skip_rate', 'desc'], ['visited', 'desc'], ['label', 'asc']])->values();
+        $tables[] = ['title' => 'R2 Route league table', 'headings' => ['Route', 'District', 'Owner CCA', 'Verified strength', 'Read', 'Skipped', 'Visited', 'Unvisited', 'Coverage (%)', 'Skip rate (%)'], 'rows' => $routeRows->map(fn (array $r) => [
+            (string) $r['label'], (string) $r['district'], $named ? trim($r['owner_cca'].' '.$r['owner_name']) : '', $r['strength'], $r['read'], $r['skipped'], $r['visited'], $r['unvisited'], $this->n($r['coverage']), $this->n($r['skip_rate']),
+        ])->all()];
+
+        $w = $a['workload'];
+        $tables[] = ['title' => 'R4 Workload balance', 'headings' => ['Measure', 'Value'], 'rows' => [
+            ['CCAs owning routes', $w['ccas']], ['Routes owned', $w['routes']], ['Largest strength owned', $this->n($w['largest'])], ['Median strength owned', $this->n($w['median'])],
+            ['Median routes owned', $this->n($w['median_routes'])], ['Coefficient of variation (%)', $this->n($w['cv'])],
+            ['CCAs above '.$w['high_pct'].'% of the median', $d['counts']['workload_high']], ['CCAs below '.$w['low_pct'].'% of the median', $d['counts']['workload_low']],
+        ]];
+
+        if ($named) {
+            $tables[] = ['title' => 'R4 CCAs off the median', 'headings' => ['Staff ID', 'CCA', 'Routes owned', 'Strength owned', '% of the median', 'Band'], 'rows' => array_map(fn (array $r) => [
+                $r['staff_id'], (string) $r['name'], $r['owned_routes'], $r['owned_strength'], $this->n($r['pct_of_median']), $r['band'] === 'high' ? 'Above' : 'Below',
+            ], array_merge($w['high'], $w['low']))];
+        }
+
+        $tables[] = ['title' => 'R5 Unvisited by route', 'headings' => ['Route', 'District', 'Verified strength', 'Visited', 'Unvisited', 'Coverage (%)'], 'rows' => array_map(fn (array $r) => [
+            (string) $r['label'], (string) $r['district'], $r['strength'], $r['visited'], $r['unvisited'], $this->n($r['coverage']),
+        ], array_slice($a['backlog']['routes'], 0, ReadingRouteAnalyticsService::LIST_CAP))];
+        $tables[] = ['title' => 'R5 Routes with no visits', 'headings' => ['Route', 'District', 'Verified strength'], 'rows' => array_map(fn (array $r) => [(string) $r['label'], (string) $r['district'], $r['strength']], $a['backlog']['routes_zero_visits'])];
+
+        if ($named) {
+            $tables[] = ['title' => 'R5 Unvisited by CCA', 'headings' => ['Staff ID', 'CCA', 'Strength owned', 'Visited', 'Unvisited'], 'rows' => array_map(fn (array $c) => [$c['staff_id'], (string) $c['name'], $c['owned_strength'], $c['visited_owned'], $c['unvisited']], $a['backlog']['ccas'])];
+            $tables[] = ['title' => 'R5 CCAs with no visits', 'headings' => ['Staff ID', 'CCA', 'Routes owned', 'Strength owned'], 'rows' => array_map(fn (array $c) => [$c['staff_id'], (string) $c['name'], $c['owned_routes'], $c['owned_strength']], $a['backlog']['ccas_zero_visits'])];
+            $tables[] = ['title' => 'R6 CCAs with no route', 'headings' => ['Staff ID', 'CCA'], 'rows' => array_map(fn (array $c) => [$c['staff_id'], (string) $c['name']], $a['coverage']['ccas_no_routes'])];
+        } else {
+            $tables[] = ['title' => 'R6 CCA counts', 'headings' => ['Measure', 'CCAs'], 'rows' => [['Listed with no route', $d['counts']['ccas_no_routes']], ['Routes but no visits', $d['counts']['ccas_zero_visits']]]];
+        }
+
+        $tables[] = ['title' => 'R6 Routes with several CCAs', 'headings' => ['Route', 'District', 'Owner CCA', 'CCAs on the route', 'Verified strength (counted once)'], 'rows' => array_map(fn (array $r) => [
+            (string) $r['label'], (string) $r['district'], $named ? trim($r['owner_cca'].' '.$r['owner_name']) : '', count($r['multi_rows'] ?? []) ?: ($named ? 0 : ''), $r['strength'],
+        ], $a['coverage']['multi_cca_routes'])];
+
+        if ($d['unread_routes']) {
+            $tables[] = ['title' => 'R6 Routes with no reading row', 'headings' => ['Route', 'District', 'First filed by'], 'rows' => array_map(fn (array $r) => [(string) $r['label'], (string) $r['district'], (string) $r['source']], $d['unread_routes']['shown'])];
+
+            if ($d['unread_routes']['capped']) {
+                $notes[] = 'Only the first '.count($d['unread_routes']['shown']).' of '.$d['unread_routes']['total'].' routes with no reading row are listed.';
+            }
+        }
+
+        $o = $a['outliers'];
+        $tables[] = ['title' => 'R7 Outliers by district', 'headings' => ['District', 'CCAs with '.$o['min_visits'].'+ visits', 'Enough to judge (at least '.$o['min_peers'].')', 'Mean skip rate (%)', 'Standard deviation', 'Outlier above (%)', 'Outliers'], 'rows' => array_map(fn (array $r) => [
+            $r['name'], $r['eligible'], $r['enough'] ? 'Yes' : 'No: too few', $r['mean'], $r['stdev'], $this->n($r['threshold']), $r['flagged'],
+        ], $o['districts'])];
+
+        if ($named && $o['flagged'] !== []) {
+            $tables[] = ['title' => 'R7 CCAs above their district', 'headings' => ['Staff ID', 'CCA', 'District', 'Visited', 'Skip rate (%)', 'District mean (%)', 'Standard deviations above'], 'rows' => array_map(fn (array $c) => [
+                $c['staff_id'], (string) $c['name'], (string) $c['district'], $c['visited'], $this->n($c['skip_rate']), $c['district_mean'], $c['z'],
+            ], $o['flagged'])];
+        }
+
+        $s = $d['strength'];
+
+        if ($s && ($s['available'] ?? false)) {
+            $tables[] = ['title' => 'R8 Strength vs customers', 'headings' => ['Measure', 'Value'], 'rows' => [
+                ['Routes compared', $s['compared']], ['Median difference, any direction (%)', $this->n($s['median_abs_pct'])], ['Median difference, signed (%)', $this->n($s['median_signed_pct'])],
+                ['Routes beyond '.$s['threshold'].'%', count($s['beyond'])], ['Routes with an ambiguous code (left out)', count($s['ambiguous'])], ['Routes with no metered accounts on the customer list', $s['no_match']],
+            ]];
+            $tables[] = ['title' => 'R8 Beyond the threshold', 'headings' => ['Route', 'District', 'Verified strength', 'Metered accounts', 'Difference', 'Difference (%)'], 'rows' => array_map(fn (array $r) => [(string) $r['label'], (string) $r['district'], $r['strength'], $r['metered'], $r['difference'], $r['relative_pct']], $s['beyond'])];
+            $tables[] = ['title' => 'R8 Ambiguous codes', 'headings' => ['Route', 'District', 'Verified strength'], 'rows' => array_map(fn (array $r) => [(string) $r['label'], (string) $r['district'], $r['strength']], $s['ambiguous'])];
+            $notes[] = 'Metered accounts are the accounts with a working or faulty meter in the newest customer list ('.($s['as_of'] ?? 'no date').').';
+        }
+
+        $tables[] = ['title' => 'Trend by upload', 'headings' => ['Period', 'Routes', 'CCAs with visits', 'Verified strength', 'Read', 'Skipped', 'Visited', 'Unvisited', 'Coverage (%)', 'Skip rate (%)'], 'rows' => array_map(fn (array $p) => [
+            $p['label'], $p['routes'], $p['ccas_active'], $p['strength'], $p['read'], $p['skipped'], $p['visited'], $p['unvisited'], $this->n($p['coverage']), $this->n($p['skip_rate']),
+        ], $d['trend'])];
+
+        return $this->report('reading-routes', $meta, $notes, $tables, $meta['Period']);
     }
 
     // ---------------------------------------------------------------- helpers

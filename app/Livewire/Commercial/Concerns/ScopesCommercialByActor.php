@@ -109,6 +109,17 @@ trait ScopesCommercialByActor
     }
 
     /**
+     * Reading-by-route rows (Phase 8c) the actor may see: those whose batch is in a region they may see, and for a district user only
+     * their district's rows (a row with no district is not theirs). Which uploads count is decided by CommercialPeriods, not here.
+     */
+    protected function scopeRouteStatsForActor(Builder $query): Builder
+    {
+        $query->whereHas('batch', fn (Builder $batch) => $this->scopeBatchesForActor($batch));
+
+        return $this->commercialScope()->limitDistricts($query, $query->qualifyColumn('district_id'));
+    }
+
+    /**
      * The effective, readers-only reading rows the actor may see, narrowed by the screen's filters. The Reading screen,
      * the Summary and every export build their rows here, so they cannot disagree.
      *

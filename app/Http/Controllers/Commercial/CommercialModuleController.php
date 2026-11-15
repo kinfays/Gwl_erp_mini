@@ -30,6 +30,14 @@ class CommercialModuleController extends Controller
         return view('commercial.reading');
     }
 
+    /** Phase 8c: the reading report by route and CCA. */
+    public function readingRoutes(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.reading-routes');
+    }
+
     public function settings(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_COMMERCIAL);

@@ -15,6 +15,7 @@ class CommercialImportService
         protected ReportFileReader $reader,
         protected ReadingSummaryImportService $reading,
         protected BillingSummaryImportService $billing,
+        protected ReadingRouteImportService $readingRoutes,
     ) {
     }
 
@@ -30,6 +31,11 @@ class CommercialImportService
             $result['errors'] = [['row' => 'File', 'message' => 'This is the customer list report (rptCustomerDetails). Upload it on the Customer uploads screen: it is read in the background, it can be very large and it holds personal data.']];
 
             return $result;
+        }
+
+        // Phase 8c: the reading report BY ROUTE (rptReadingSumm) is read sheet by sheet, never as one grid of every sheet
+        if ($this->reader->looksLikeRouteReadingReport($file)) {
+            return $this->readingRoutes->preview($file, $restrictToRegionId, $districtIds);
         }
 
         $sheets = $this->reader->readSheets($file);
@@ -53,6 +59,7 @@ class CommercialImportService
         return match ($preview['report_type'] ?? null) {
             CommercialImportBatch::TYPE_READING_SUMMARY => $this->reading->createBatch($batchAttributes, $preview['parsed'], $importFilePath, $actorId),
             CommercialImportBatch::TYPE_BILLING_SUMMARY => $this->billing->createBatch($batchAttributes, $preview['parsed'], $importFilePath, $actorId),
+            CommercialImportBatch::TYPE_READING_ROUTE_SUMMARY => $this->readingRoutes->createBatch($batchAttributes, $preview['parsed'], $importFilePath, $actorId),
             default => throw new CommercialImportException('This is not a recognised report.'),
         };
     }
@@ -60,7 +67,11 @@ class CommercialImportService
     /** @return int how many readers (reading) or routes (billing) matched this time */
     public function rematchBatch(CommercialImportBatch $batch): int
     {
-        return $batch->isReading() ? $this->reading->rematchBatch($batch) : $this->billing->rematchBatch($batch);
+        return match (true) {
+            $batch->isReading() => $this->reading->rematchBatch($batch),
+            $batch->isReadingRoute() => $this->readingRoutes->rematchBatch($batch),
+            default => $this->billing->rematchBatch($batch),
+        };
     }
 
     /** The sheet names alone say so (cheap): a sheet called rptCustomerDetails. */
@@ -80,7 +91,7 @@ class CommercialImportService
         return [
             'report_type' => null,
             'blocked' => true,
-            'errors' => [['row' => 'File', 'message' => 'This file is not one of the supported reports. Upload the "Customer Meter Reading Report - CCA Summary" (rptReadingSummDate) or the "Billing Summary Report By Routes" (rptBillingSumm_ExP) as an .xlsx export.']],
+            'errors' => [['row' => 'File', 'message' => 'This file is not one of the supported reports. Upload the "Customer Meter Reading Report - CCA Summary" (rptReadingSummDate by month, or rptReadingSumm by route) or the "Billing Summary Report By Routes" (rptBillingSumm_ExP) as an .xlsx export.']],
             'warnings' => [],
             'checks' => [],
             'error_count' => 1,

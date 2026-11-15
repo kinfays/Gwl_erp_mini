@@ -175,6 +175,13 @@ return [
     // outlier is flagged, so a reader with 197 visits is not judged on noise.
     'commercial_min_visits_for_outlier' => (int) env('GWL_COMMERCIAL_MIN_VISITS_FOR_OUTLIER', 200),
     'commercial_outlier_zscore' => (float) env('GWL_COMMERCIAL_OUTLIER_ZSCORE', 2.0),
+    // Phase 8c, the reading report BY ROUTE. A CCA is ranked on skip rate only with at least this many visits in the range.
+    'commercial_min_visits_for_ranking' => (int) env('GWL_COMMERCIAL_MIN_VISITS_FOR_RANKING', 300),
+    // A CCA is an outlier when its skip rate is more than this many standard deviations above the mean of the eligible CCAs of the SAME
+    // district (at least 5 of them are needed).
+    'commercial_skip_outlier_sigma' => (float) env('GWL_COMMERCIAL_SKIP_OUTLIER_SIGMA', 2.0),
+    // A route is listed when its verified strength differs from the metered accounts of the newest customer list by more than this percent.
+    'commercial_strength_mismatch_pct' => (float) env('GWL_COMMERCIAL_STRENGTH_MISMATCH_PCT', 15),
     // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
     // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
     // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).

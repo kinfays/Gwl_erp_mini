@@ -932,6 +932,14 @@ class ErpNavigation
                 'can' => $canSeeReading,
             ],
             [
+                'label' => 'Reading by route',
+                'route' => 'commercial.reading.routes',
+                'active' => ['commercial.reading.routes'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'list',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading'),
+            ],
+            [
                 'label' => 'Billing',
                 'route' => 'commercial.billing',
                 'active' => ['commercial.billing'],

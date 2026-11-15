@@ -11,10 +11,13 @@ class CommercialImportBatch extends Model
 {
     public const TYPE_READING_SUMMARY = 'reading_summary';
     public const TYPE_BILLING_SUMMARY = 'billing_summary';
+    /** Phase 8c: "Customer Meter Reading Report - CCA Summary - By Route": verified strength and counts per CCA per route, for any dates. */
+    public const TYPE_READING_ROUTE_SUMMARY = 'reading_route_summary';
 
     public const TYPES = [
         self::TYPE_READING_SUMMARY,
         self::TYPE_BILLING_SUMMARY,
+        self::TYPE_READING_ROUTE_SUMMARY,
     ];
 
     public const STATUS_IMPORTED = 'imported';
@@ -84,6 +87,7 @@ class CommercialImportBatch extends Model
         return match ($type) {
             self::TYPE_READING_SUMMARY => 'Meter reading summary',
             self::TYPE_BILLING_SUMMARY => 'Billing summary',
+            self::TYPE_READING_ROUTE_SUMMARY => 'Meter reading by route',
             default => str($type)->replace('_', ' ')->title()->toString(),
         };
     }
@@ -123,6 +127,12 @@ class CommercialImportBatch extends Model
         return $this->hasMany(CommercialBillingRoute::class, 'batch_id');
     }
 
+    /** The rows of a reading-by-route batch (one per CCA per route). */
+    public function routeStats(): HasMany
+    {
+        return $this->hasMany(CommercialReadingRouteStat::class, 'batch_id');
+    }
+
     public function bands(): HasMany
     {
         return $this->hasMany(CommercialBillingBand::class, 'batch_id');
@@ -136,6 +146,12 @@ class CommercialImportBatch extends Model
     public function isBilling(): bool
     {
         return $this->report_type === self::TYPE_BILLING_SUMMARY;
+    }
+
+    /** The reading report BY ROUTE (Phase 8c); isReading() stays the legacy reader-by-month report only. */
+    public function isReadingRoute(): bool
+    {
+        return $this->report_type === self::TYPE_READING_ROUTE_SUMMARY;
     }
 
     public function isVoided(): bool

@@ -32,9 +32,11 @@ class BatchLifecycleService
             ->get();
 
         foreach ($batches as $batch) {
-            $isOverridden = $batch->isReading()
-                ? ! $batch->stats()->effective()->exists()
-                : $this->billingSnapshotIsReplaced($batch);
+            $isOverridden = match (true) {
+                $batch->isReading() => ! $batch->stats()->effective()->exists(),
+                $batch->isReadingRoute() => $this->routeReadingIsShadowed($batch),
+                default => $this->billingSnapshotIsReplaced($batch),
+            };
 
             $target = $isOverridden ? CommercialImportBatch::STATUS_SUPERSEDED : CommercialImportBatch::STATUS_IMPORTED;
 
@@ -110,6 +112,19 @@ class BatchLifecycleService
 
             return $locked->refresh();
         });
+    }
+
+    /** A reading-by-route batch is only a label "superseded" when a newer batch of the region has the same period or contains it (CommercialPeriods rules 1 and 2). */
+    protected function routeReadingIsShadowed(CommercialImportBatch $batch): bool
+    {
+        return CommercialImportBatch::query()
+            ->ofType(CommercialImportBatch::TYPE_READING_ROUTE_SUMMARY)
+            ->notVoided()
+            ->where('id', '>', $batch->id)
+            ->where('region_id', $batch->region_id)
+            ->whereDate('period_from', '<=', $batch->period_from->toDateString())
+            ->whereDate('period_to', '>=', $batch->period_to->toDateString())
+            ->exists();
     }
 
     protected function billingSnapshotIsReplaced(CommercialImportBatch $batch): bool
