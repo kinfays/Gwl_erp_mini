@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Commercial;
 
 use App\Models\CommercialCustomerBatch;
+use App\Models\CommercialCustomerUpload;
 use App\Services\Commercial\Customers\CustomerConsumptionHistory;
 use App\Services\Commercial\Customers\CustomerMergeService;
 use Illuminate\Console\Command;
@@ -47,10 +48,23 @@ class PurgeCustomerData extends Command
             if (! $dry) {
                 CustomerMergeService::clearStaging($batch->id);
 
-                if ($batch->file_path) {
-                    Storage::disk('local')->delete($batch->file_path);
-                    $batch->forceFill(['file_path' => null, 'status' => $batch->status === CommercialCustomerBatch::STATUS_NEEDS_MATCH ? CommercialCustomerBatch::STATUS_FAILED : $batch->status, 'error_message' => $batch->error_message ?: 'The file was deleted after a week without being finished: upload it again.'])->save();
+                // the workbook belongs to the UPLOAD (Phase 8b); it goes, and so does the wait for a check or a match
+                $upload = $batch->upload()->first();
+
+                if ($upload && $upload->file_path) {
+                    Storage::disk('local')->delete($upload->file_path);
+                    $upload->forceFill(['file_path' => null])->save();
                 }
+
+                if ($upload && in_array($upload->status, [CommercialCustomerUpload::STATUS_NEEDS_MATCH, CommercialCustomerUpload::STATUS_AWAITING_REVIEW, CommercialCustomerUpload::STATUS_QUEUED, CommercialCustomerUpload::STATUS_DISCOVERING], true)) {
+                    $upload->forceFill(['status' => CommercialCustomerUpload::STATUS_FAILED, 'error_message' => 'The file was deleted after a week without being finished: upload it again.', 'finished_at' => now()])->save();
+                }
+
+                if ($batch->file_path) {
+                    Storage::disk('local')->delete($batch->file_path);   // a batch from before Phase 8b held its own copy
+                }
+
+                $batch->forceFill(['file_path' => null, 'status' => $batch->status === CommercialCustomerBatch::STATUS_NEEDS_MATCH ? CommercialCustomerBatch::STATUS_FAILED : $batch->status, 'error_message' => $batch->error_message ?: 'The file was deleted after a week without being finished: upload it again.'])->save();
             }
         }
 

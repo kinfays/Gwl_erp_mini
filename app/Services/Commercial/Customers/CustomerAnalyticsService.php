@@ -26,7 +26,7 @@ class CustomerAnalyticsService
 
     public const QUALITY_LABELS = [
         'missing_mobile' => 'No mobile number', 'missing_email' => 'No e-mail', 'missing_address' => 'No address', 'missing_name' => 'No account name',
-        'invalid_phone' => 'Mobile that is not a valid number', 'multiple_phones' => 'Two or more mobile numbers (not a fault)', 'reachable' => 'Reachable: at least one valid mobile number', 'future_date' => 'Date in the future', 'implausible_date' => 'Implausible or unreadable date',
+        'invalid_phone' => 'Mobile that is not a valid number', 'invalid_email' => 'E-mail with an address that is not valid', 'multiple_phones' => 'Two or more mobile numbers (not a fault)', 'reachable' => 'Reachable: at least one valid mobile number', 'future_date' => 'Date in the future', 'implausible_date' => 'Implausible or unreadable date',
         'unknown_category' => 'Category UNKNOWN', 'pending_category' => 'Category code not reviewed yet', 'unconfirmed_status' => 'Status code with an unconfirmed meaning',
         'shared_meter' => 'Meter number shared by several accounts', 'shared_mobile' => 'Mobile shared by several accounts', 'shared_email' => 'E-mail shared by several accounts',
         'not_in_file' => 'Not in the latest file',
@@ -357,7 +357,7 @@ class CustomerAnalyticsService
      * Billing coverage, meter-reading coverage, estimated-reading rate and arrears by time since the last payment. Definitions (the
      * rules are written once, here, and printed on the screen):
      *
-     *   eligible account        a BILLING account (status ACTB), the accounts the utility should bill and read;
+     *   eligible account        a BILLING account (a status marked billing: ACTB, NSC), the accounts the utility should bill and read;
      *   valid billing record    a last bill dated in the 30 days before the file's date and for more than zero;
      *   billing coverage        eligible accounts with a valid billing record / eligible accounts;
      *   eligible metered        eligible accounts whose meter is working or faulty (not "no meter");

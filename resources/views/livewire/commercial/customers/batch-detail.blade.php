@@ -13,6 +13,7 @@
     </x-ui.page-header>
 
     @if (session('status'))<x-ui.alert tone="success" class="dash-row">{{ session('status') }}</x-ui.alert>@endif
+    @if ($upload)<p class="ui-hint">This district is part of <a href="{{ route('commercial.customers.file', $upload) }}">upload #{{ $upload->id }}</a> ({{ $upload->source_filename }}): a file can hold several districts, each with its own batch like this one.</p>@endif
 
     <div class="ui-stat-grid dash-row">
         <x-ui.stat-tile label="Status" :value="\App\Models\CommercialCustomerBatch::statusLabel($batch->status)" icon="activity" :tone="$tone" :meta="$phases[$voiding ? 'voiding' : $batch->phase] ?? $batch->phase" />

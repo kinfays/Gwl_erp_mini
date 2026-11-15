@@ -90,7 +90,7 @@
             @php $o = $overview; $series = $spark ?? []; @endphp
             <div class="ui-stat-grid dash-row">
                 <x-ui.stat-tile label="Customers" :value="$n($o['total'])" icon="users" tone="primary" :sparkline="array_column($series, 'customers')" :meta="$o['route_count'].' routes · '.$o['batches'].' district(s)'" />
-                <x-ui.stat-tile label="Billing accounts (ACTB)" :value="$n($o['billing'])" icon="receipt" tone="success" :meta="$pct($o['billing_share']).' of customers'" :href="$listUrl()" />
+                <x-ui.stat-tile label="Billing accounts" :value="$n($o['billing'])" icon="receipt" tone="success" :meta="$pct($o['billing_share']).' of customers'" :href="$listUrl()" />
                 <x-ui.stat-tile label="Active, not billing (ACTN)" :value="$n($o['active_non_billing'])" icon="user-check" tone="info" />
                 <x-ui.stat-tile label="Disconnected / suspended" :value="$n($o['disconnected'] + $o['suspended'])" icon="plug-zap" tone="warning" :meta="$n($o['disconnected']).' disconnected · '.$n($o['suspended']).' suspended'" />
                 <x-ui.stat-tile label="Other status codes" :value="$n($o['other_status'])" icon="circle-help" :meta="'Meaning not confirmed for some codes'" />
@@ -418,7 +418,7 @@
                     </x-ui.card>
                 </div>
 
-                <x-ui.card title="By district" description="Eligible = billing accounts (ACTB). A valid bill is dated in the last {{ $cv['days'] }} days and is for more than zero. A read counts if the last read date is in the last {{ $cv['days'] }} days (the file does not say whether it was accepted). Metered = working or faulty meter." :padded="false" class="dash-row">
+                <x-ui.card title="By district" description="Eligible = billing accounts (every status marked as billing). A valid bill is dated in the last {{ $cv['days'] }} days and is for more than zero. A read counts if the last read date is in the last {{ $cv['days'] }} days (the file does not say whether it was accepted). Metered = working or faulty meter." :padded="false" class="dash-row">
                     <x-ui.table label="Coverage by district" :sticky="true">
                         <x-slot:head><tr><th>District</th><th class="num">Active accounts</th><th class="num">Eligible</th><th class="num">Billing coverage</th><th class="num">Metered</th><th class="num">Reading coverage</th><th class="num">Estimated rate</th></tr></x-slot:head>
                         @foreach ($cv['districts'] as $row)

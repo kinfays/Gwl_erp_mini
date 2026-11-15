@@ -16,10 +16,14 @@ use Generator;
  *
  * It yields events and keeps no rows in memory:
  *   ['kind' => 'filters', 'region' => ?string, 'district' => ?string]
- *   ['kind' => 'heading', 'route' => string, 'district' => ?string, 'region' => ?string]
- *   ['kind' => 'row', 'row_no' => int, 'route' => ?string, 'values' => array<field, mixed>]
- *   ['kind' => 'totals', 'row_no' => int, 'route' => string, 'count' => ?int, 'balance' => ?float]
- *   ['kind' => 'malformed', 'row_no' => int, 'reason' => string]     (never carries cell values: they are personal data)
+ *   ['kind' => 'heading', 'route' => string, 'district' => ?string, 'region' => ?string, 'effective_district' => ?string]
+ *   ['kind' => 'row', 'row_no' => int, 'route' => ?string, 'district' => ?string, 'values' => array<field, mixed>]
+ *   ['kind' => 'totals', 'row_no' => int, 'district' => ?string, 'route' => string, 'count' => ?int, 'balance' => ?float]
+ *   ['kind' => 'malformed', 'row_no' => int, 'district' => ?string, 'reason' => string]     (never carries cell values: they are personal data)
+ *
+ * 'district' on a row / totals / malformed event is the district of the heading it sits under, or, where the heading names none (or
+ * there is no heading yet), the DISTRICT: line of the FILTERS block of a one-district file; null when neither exists. With
+ * $withValues = false (the first pass, which only counts) a row event carries just its account number.
  *   ['kind' => 'missing_columns', 'columns' => list<string>]          (a header row without a required column)
  */
 class CustomerListParser
@@ -51,12 +55,17 @@ class CustomerListParser
      * @param  iterable<int, list<mixed>>  $rows  row number => dense cells (XlsxStreamReader::rows())
      * @return Generator<int, array<string, mixed>>
      */
-    public function parse(iterable $rows): Generator
+    public function parse(iterable $rows, bool $withValues = true): Generator
     {
         $map = null;
         $route = null;
         $filtersSeen = false;
         $scanned = 0;
+        // Phase 8b: the district a row belongs to is the one its route heading names; a heading with none, or a row before any
+        // heading, takes the district of the FILTERS block (a one-district file). This is the ONE place that rule lives: the first
+        // pass (discovery) and the staging pass both read it from the events, so they cannot route a row differently.
+        $filterDistrict = null;
+        $headingDistrict = null;
 
         foreach ($rows as $rowNumber => $cells) {
             // Fast path, taken by nearly every row: once a header has been seen, a row with a valid account number in the
@@ -67,13 +76,16 @@ class CustomerListParser
                 if ($account !== null) {
                     $values = [];
 
-                    foreach ($map as $field => $index) {
-                        $values[$field] = $cells[$index] ?? null;
+                    // the first pass only counts rows, so it does not build their values (about a third of the time of a full read)
+                    if ($withValues) {
+                        foreach ($map as $field => $index) {
+                            $values[$field] = $cells[$index] ?? null;
+                        }
                     }
 
                     $values['account'] = $account;
 
-                    yield ['kind' => 'row', 'row_no' => $rowNumber, 'route' => $route, 'values' => $values];
+                    yield ['kind' => 'row', 'row_no' => $rowNumber, 'route' => $route, 'district' => $headingDistrict ?? $filterDistrict, 'values' => $values];
 
                     continue;
                 }
@@ -90,6 +102,7 @@ class CustomerListParser
 
                 if ($filters !== null) {
                     $filtersSeen = true;
+                    $filterDistrict = $filters['district'];
 
                     yield ['kind' => 'filters', ...$filters];
 
@@ -113,7 +126,7 @@ class CustomerListParser
             $totals = $this->totals($filled, $map);
 
             if ($totals !== null) {
-                yield ['kind' => 'totals', 'row_no' => $rowNumber, ...$totals];
+                yield ['kind' => 'totals', 'row_no' => $rowNumber, 'district' => $headingDistrict ?? $filterDistrict, ...$totals];
 
                 continue;
             }
@@ -123,8 +136,9 @@ class CustomerListParser
 
                 if ($heading !== null) {
                     $route = $heading['route'];
+                    $headingDistrict = $heading['district'];
 
-                    yield ['kind' => 'heading', ...$heading];
+                    yield ['kind' => 'heading', ...$heading, 'effective_district' => $headingDistrict ?? $filterDistrict];
                 }
 
                 continue;
@@ -144,14 +158,14 @@ class CustomerListParser
 
             if ($account === null) {
                 // Several filled cells but no usable account number: a damaged row, counted and reported (without values).
-                yield ['kind' => 'malformed', 'row_no' => $rowNumber, 'reason' => 'Account # is missing or not a 12-digit number'];
+                yield ['kind' => 'malformed', 'row_no' => $rowNumber, 'district' => $headingDistrict ?? $filterDistrict, 'reason' => 'Account # is missing or not a 12-digit number'];
 
                 continue;
             }
 
             $values['account'] = $account;
 
-            yield ['kind' => 'row', 'row_no' => $rowNumber, 'route' => $route, 'values' => $values];
+            yield ['kind' => 'row', 'row_no' => $rowNumber, 'route' => $route, 'district' => $headingDistrict ?? $filterDistrict, 'values' => $withValues ? $values : ['account' => $account]];
         }
     }
 

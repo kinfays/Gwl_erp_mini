@@ -1,7 +1,8 @@
 # Commercial: Customer List (import + analytics)
 
 Phase 6 of the Commercial module (see `docs/commercial-module-design.md`). Users upload the main platform's
-`rptCustomerDetails` Excel export, one district per file, weekly or monthly. The system keeps the customer base current and
+`rptCustomerDetails` Excel export, for one district, several or every district of a region in one file (Phase 8b: the file says
+which districts it holds), weekly or monthly. The system keeps the customer base current and
 answers all-round questions about it. The company has millions of customers, so every choice below is judged by one test:
 *does it stay fast with 5 to 10 million customer rows?*
 
@@ -45,7 +46,10 @@ style, keeps the original row numbers, and opens sheets by **name**. OpenSpout s
    and month truncation, behind `CustomerSql::isMysql()`. Both branches run in the test suite (SQLite) and in the benchmark (MySQL 8.4).
 2. **The report has no date of its own**, so the uploader says what day the data is from ("Data as of") and whether the upload is
    weekly or monthly. A file older than the data already loaded for the district is refused.
-3. **One district per file** (the `DISTRICT:` line). A route heading that names another district only warns.
+3. **A file may hold one district, several, or every district of a region** (Phase 8b, confirmed by the Commercial side; this replaces the
+   Phase 6 assumption "one district per file, the `DISTRICT:` line"). The district of a customer is the one its ROUTE HEADING names
+   (`code, DISTRICT, REGION`); a file with a `DISTRICT:` line (the old one-district export) uses that district for headings that name none.
+   The real export is region-wide: its filter block has only `REGION:`. See "Import flow" and `docs/commercial-module-design.md` section 8.33.
 4. **Arrears have no age in the file.** "Arrears aging" is therefore *how many of the customer's last bills are owed*
    (balance ÷ last bill): credit, nil, up to 1, 1 to 3, 3 to 6, 6 to 12, over 12 bills, and "owes with no usable last bill". The limits
    are `commercial_customer_arrears_bills` in `config/gwl.php`.
@@ -106,27 +110,48 @@ present row to stamp "seen". Presence is recorded the other way round: only an a
 ## 4. Import flow
 
 ```
-upload (plain form post) -> file stored (private disk) -> batch "queued" -> ProcessCustomerListBatch (queue)
-  locate    read only the FILTERS block; match region and district (unknown -> "needs a match", BEFORE any customer is read)
-  stage     stream the sheet; ~2,000-row chunks into staging, each chunk its own transaction that also moves the resume point
-  reconcile per route: rows read vs "Customer Count: N", balance vs the totals row; duplicates; malformed rows
-  merge     one diff pass finds the rows that need work; undo, change log, update/insert; contacts only where their hash differs
-  missing   accounts of the district the file no longer lists get missing_since_batch_id (never deleted)
+upload (plain form post) -> file stored (private disk) -> UPLOAD (parent) + its first batch "queued" -> ProcessCustomerListBatch (queue)
+  discover  a first, cheap pass (no customer values built): the FILTERS block, every route heading, customer rows counted per heading;
+            every heading's district resolved (an unknown NAME parks the whole upload as "needs a match", BEFORE any customer is read);
+            the uploader's scope applied; the "older than the data" rule applied PER DISTRICT; ONE CHILD BATCH per district found.
+            With "show me the districts first" ticked the upload now waits (awaiting_review) until the person confirms; unticked
+            districts lose their (empty) batch and are never read
+  stage     ONE pass over the sheet for every district: each customer row goes to the batch of the district its heading names;
+            ~2,000-row chunks into staging, each chunk its own transaction that also moves every batch's resume point
+  reconcile per district batch, per route: rows read vs "Customer Count: N", balance vs the totals row; duplicates; malformed rows
+  merge     per batch, under that district's own lock: one diff pass finds the rows that need work; undo, change log, update/insert
+  missing   accounts of THAT district the file no longer lists get missing_since_batch_id (never deleted); a district that is not in the file is not touched
   rollup    INSERT ... SELECT ... GROUP BY: route rollups, district rollups, consumption, connections, debt, issue lists, quality
   complete  staging and the uploaded workbook are deleted; imported/superseded labels recomputed
 ```
 
-* **Blocked** (nothing changes): a route that does not add up to its own totals (GH¢1 slack on balances), duplicate account numbers in the
-  file, a missing required column, a region the uploader may not load, a file older than the district's current data.
+A file is a PARENT (`commercial_customer_uploads`); every district found in it is a CHILD batch (`commercial_customer_batches.upload_id`)
+that behaves exactly as a one-district file always did. A child that fails or is blocked does not stop the others: the upload's status
+is `imported` (every district loaded), `partial` (some loaded, some blocked or failed), `blocked`, `failed` or `voided`, worked out in one
+place (`CommercialCustomerUpload::statusFromBatches()`).
+
+* **Blocked** (nothing of that district changes; the other districts of the file carry on): a route that does not add up to its own
+  totals beyond the tolerance settings (GH¢1 slack on balances), duplicate account numbers in the district (or one account under two
+  districts of the file), a district whose data is newer than the file. **Blocks the whole upload**: a missing required column, a
+  region the uploader may not load, no district of the uploader's own, rows under a heading that names no district in a file with no
+  `DISTRICT:` line.
 * **Only warns**: an unknown region/district (parks the batch), unknown category/status/meter codes (pending rows), a customer count that
   moved by more than `commercial_customer_count_change_warn_pct` (a partial export looks like that), malformed rows (counted, first 40 listed
   by row number, never by value), a route without a totals row.
-* **Idempotent**: the same file (SHA-256) is the same batch while it is in flight or is still the district's newest data. A *different*
-  file with identical content (the next week, nothing changed) is a new batch and writes **no customer rows** (verified by test).
-* **Resumable**: `phase`, `staged_through_row` and `merge_cursor` live on the batch. A killed worker is run again and carries on; tests kill
-  a job mid-staging and mid-merge and check nothing is lost or counted twice.
-* **Memory is flat** in the file size (tested at 3,000 and 12,000 rows; benchmark below at 100,000).
+* **Idempotent**: the same file (SHA-256) is the same upload while it is in flight or while any of its districts is still that district's
+  newest data. A *different* file with identical content (the next week, nothing changed) is a new upload and writes **no customer rows**
+  (verified by test).
+* **Resumable**: `phase`, `staged_through_row` and `merge_cursor` live on every district's batch (the staging pass moves every batch's
+  `staged_through_row` in the same transaction as its rows). A killed worker is run again and carries on with exactly the districts that are
+  not done; tests kill a job mid-staging, mid-merge and in one district's rollup and check nothing is lost or counted twice.
+* **Memory is flat** in the file size (tested at 3,000 and 12,000 rows, one district and several; benchmark below at 100,000, and for a
+  region-wide 70,000-row file in `docs/commercial-module-design.md` 8.33).
 * **Concurrency**: one batch per district at a time (cache lock); a second waits (`CustomerDistrictBusy`, the job releases itself).
+  A busy district is retried; the other districts of the same file are not held up by it.
+* **Several e-mail addresses** (Phase 8b): about 5% of customers have two in one cell. They are split like the mobile cell (`/ , ; | &` and
+  line breaks), validated one by one, the first is the primary (`email`, shown and used), the second is kept lower-cased in
+  `commercial_customer_contacts.email_secondary` (searched and counted as shared like a second mobile), and a piece that holds an `@`
+  but is not an address flags `INVALID_EMAIL` while the good ones are kept. A piece with no `@` ("N/A") is simply no e-mail.
 * **Failures never leak customer data**: the exception shown/stored is the class, the SQLSTATE and the phase, not the driver's text
   (which can echo a value). With `APP_DEBUG` on, the driver text is added for developers.
 * Needs a **queue worker** (`php artisan queue:work --timeout=7300`) and, for reminders/purge, the **scheduler**. The job timeout is 7,200 s.
@@ -197,7 +222,7 @@ Median and top-N facts are computed at import from the `(district_id, balance)` 
 
 | Tab | What it shows | Source |
 |---|---|---|
-| A. Overview | totals; billing (ACTB) vs active non-billing (ACTN) vs disconnected vs suspended vs other; mix by category group, category, status, meter status; per district and per route; customers per route; not-in-file, moved, new | district rollups (+ route rollups for one district) |
+| A. Overview | totals; billing (every status marked billing: ACTB and, since Phase 8b, NSC) vs active non-billing (ACTN, HOLD) vs disconnected vs suspended vs other; mix by category group, category, status, meter status; per district and per route; customers per route; not-in-file, moved, new | district rollups (+ route rollups for one district) |
 | B. Meters | working / faulty / no meter by district, route or category; faulty or no-meter customers still billing; share of billing customers on estimates; faulty-meter ageing by days since last read | rollups |
 | C. Receivables | owed (debit) vs credit, average balance, arrears buckets, owed by status and category, owed by disconnected/suspended, debt concentration (top 1/5/10% of debtors), medians, top debtors (drill-down) | rollups + debt stats |
 | D. Billing & collection | paid ÷ billed on the *last* bill/payment, average last bill by category, billed but unpaid for 30/60/90/180 days, zero-bill customers | rollups |

@@ -5,6 +5,7 @@ namespace App\Livewire\Commercial\Customers;
 use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\CommercialCustomerBatch;
+use App\Models\CommercialCustomerUpload;
 use App\Models\Permission;
 use App\Services\Commercial\Customers\CustomerUploadReminders;
 use Livewire\Attributes\Url;
@@ -12,9 +13,9 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 /**
- * Customer-list uploads: the form (a plain post to the controller, because these files are far too big for Livewire's
- * temporary uploads), the overdue districts and the batches with their live progress. The list refreshes itself while any
- * batch is still being worked on.
+ * Customer-list uploads: the form (a plain post to the controller, because these files are far too big for Livewire's temporary
+ * uploads), the overdue districts and the history, ONE ROW PER UPLOAD (Phase 8b: a file may hold several districts) with its districts
+ * expandable. The list refreshes itself while any upload is still being worked on.
  */
 class Uploads extends Component
 {
@@ -24,6 +25,9 @@ class Uploads extends Component
 
     #[Url]
     public string $status = '';
+
+    /** @var array<int, bool> upload id => its districts are shown */
+    public array $open = [];
 
     public function mount(): void
     {
@@ -37,17 +41,21 @@ class Uploads extends Component
         $this->resetPage();
     }
 
-    /** Batches the viewer may see: their region's, plus their own uploads still parked before a region was known. */
-    protected function scopedBatches()
+    public function toggle(int $id): void
+    {
+        $this->open[$id] = ! ($this->open[$id] ?? false);
+    }
+
+    /** Uploads the viewer may see: their region's, plus their own still parked before a region was known; a district user: those with a batch in their district, and their own. */
+    protected function scopedUploads()
     {
         $restriction = $this->customerRestriction();
         $districtIds = $this->customerDistrictIds();
-        $query = CommercialCustomerBatch::query();
+        $query = CommercialCustomerUpload::query();
 
-        // Phase 8a: a district user sees the uploads of their own district (and their own parked ones), never another district's
         if ($districtIds !== null) {
-            return $query->where(fn ($w) => ($districtIds === [] ? $w->whereRaw('1 = 0') : $w->whereIn('district_id', $districtIds))
-                ->orWhere(fn ($own) => $own->whereNull('district_id')->where('imported_by', auth()->id())));
+            return $query->where(fn ($w) => ($districtIds === [] ? $w->whereRaw('1 = 0') : $w->whereIn('id', fn ($in) => $in->from('commercial_customer_batches')->select('upload_id')->whereIn('district_id', $districtIds)))
+                ->orWhere('imported_by', auth()->id()));
         }
 
         if ($restriction === null) {
@@ -60,14 +68,25 @@ class Uploads extends Component
 
     public function render(CustomerUploadReminders $reminders)
     {
-        $batches = $this->scopedBatches()->with(['district', 'region', 'importer'])
+        $districtIds = $this->customerDistrictIds();
+
+        $uploads = $this->scopedUploads()->with(['region', 'importer'])
             ->when($this->status !== '', fn ($q) => $q->where('status', $this->status))
             ->orderByDesc('id')->paginate(12);
 
+        // the batches of the uploads on this page; a district user is given their own district's only (and a parked batch of their own)
+        $children = CommercialCustomerBatch::query()->with('district')->whereIn('upload_id', $uploads->pluck('id')->all() ?: [0])
+            ->when($districtIds !== null, fn ($q) => $q->where(fn ($w) => ($districtIds === [] ? $w->whereRaw('1 = 0') : $w->whereIn('district_id', $districtIds))
+                ->orWhere(fn ($own) => $own->whereNull('district_id')->where('imported_by', auth()->id()))))
+            ->orderBy('id')->get();
+
         return view('livewire.commercial.customers.uploads', [
-            'batches' => $batches,
-            'statuses' => CommercialCustomerBatch::STATUSES,
-            'working' => $batches->contains(fn (CommercialCustomerBatch $batch) => $batch->isWorking() || $batch->phase === 'voiding'),
+            'uploads' => $uploads,
+            'children' => $children->groupBy('upload_id'),
+            // the batches on this page, flat (every screen that lists batches reads them from here)
+            'batches' => $children,
+            'statuses' => CommercialCustomerUpload::STATUSES,
+            'working' => $uploads->contains(fn (CommercialCustomerUpload $u) => $u->isWorking()) || $children->contains(fn (CommercialCustomerBatch $b) => $b->isWorking() || $b->phase === 'voiding'),
             // the overdue list names districts across the region: a district user does not have it
             'overdue' => $this->actorDistrictLimited() ? [] : $reminders->overdue(now(), $this->customerRestriction()),
             'canUpload' => $this->actorCan('commercial.upload_reports'),

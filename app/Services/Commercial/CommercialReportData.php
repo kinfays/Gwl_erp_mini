@@ -286,7 +286,7 @@ class CommercialReportData
             'id' => 'range', 'batch' => null, 'is_range' => true, 'range_from' => $selection['from'], 'range_to' => $selection['to'], 'batch_ids' => $chosen,
             'region_id' => $snapshot['region_id'], 'region' => $snapshot['region'], 'segment' => $snapshot['segment'], 'segment_label' => $snapshot['segment_label'],
             'period_from' => $selection['from'], 'period_to' => $selection['to'], 'month' => $selection['from'] ? substr($selection['from'], 0, 7).'-01' : null,
-            'period_label' => $label, 'is_single_month' => false,
+            'period_label' => $label, 'is_single_month' => false, 'in_one_month' => false, 'is_part_month' => false,
             'label' => $snapshot['region'].' · '.$snapshot['segment_label'].' · '.$label.(count($chosen) > 1 ? ' ('.count($chosen).' uploads added up)' : ''),
         ];
 
@@ -404,7 +404,9 @@ class CommercialReportData
      */
     public function kpis(?int $regionId = null, ?string $segment = null, int $months = 3, ?int $districtId = null): array
     {
-        $snapshots = array_values(array_filter($this->snapshots(), fn (array $s) => $s['is_single_month']));
+        // Phase 8b (step 0.1): every batch inside ONE calendar month is a candidate; whether a month is full or only a part of one is
+        // decided by CommercialKpiService::months() from the batches' own days, never from "it is inside one month".
+        $snapshots = array_values(array_filter($this->snapshots(), fn (array $s) => $s['in_one_month']));
         $regions = collect($snapshots)->unique('region_id')->mapWithKeys(fn (array $s) => [(int) $s['region_id'] => $s['region']])->all();
 
         // newest snapshot first: the default region is the one with the latest data

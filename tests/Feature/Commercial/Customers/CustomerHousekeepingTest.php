@@ -273,7 +273,8 @@ class CustomerHousekeepingTest extends CustomerTestCase
         $this->assertEquals([true, false, true], [(bool) $statuses['HOLD']->is_active, (bool) $statuses['HOLD']->is_billing, (bool) $statuses['HOLD']->meaning_confirmed], 'billing paused: connected, not billing (like ACTN)');
         $this->assertEquals([false, false, true], [(bool) $statuses['DISN']->is_active, (bool) $statuses['DISN']->is_billing, (bool) $statuses['DISN']->meaning_confirmed], 'same group as DISC');
         $this->assertSame([(bool) $statuses['DISC']->is_active, (bool) $statuses['DISC']->is_billing], [(bool) $statuses['DISN']->is_active, (bool) $statuses['DISN']->is_billing]);
-        $this->assertEquals([true, false, true], [(bool) $statuses['NSC']->is_active, (bool) $statuses['NSC']->is_billing, (bool) $statuses['NSC']->meaning_confirmed], 'new, not yet billing');
+        // Phase 8b step 0.3: the Commercial team confirmed that NSC IS a billing status (8a had it "not yet billing")
+        $this->assertEquals([true, true, true], [(bool) $statuses['NSC']->is_active, (bool) $statuses['NSC']->is_billing, (bool) $statuses['NSC']->meaning_confirmed], 'a new service connection is active and billing');
 
         // still unexplained: pending, never guessed
         foreach (['CNTL', 'UNKNOWN'] as $code) {

@@ -198,6 +198,35 @@ class ReadingImportTest extends CommercialTestCase
         $this->assertTrue($this->previewOf($this->readingFile(['grand_overall' => [1421, 303, 1724]]))['blocked']);
     }
 
+    public function test_a_file_that_covers_part_of_a_month_warns_that_it_replaces_other_uploads_of_that_month(): void
+    {
+        $this->actingAs($this->officer());
+        $warning = 'This file covers part of a month. It will REPLACE, not add to, other uploads of the same month.';
+        $messages = fn (array $preview) => collect($preview['warnings'])->pluck('message')->all();
+
+        try {
+            // 1 to 14 October: stops short of the month
+            \Tests\Support\Commercial\ReportWorkbooks::$readingPeriod = '01-October-2026 - 14-October-2026';
+            $this->assertContains($warning, $messages($this->previewOf($this->readingFile(['months' => ['2026-10-01']]))));
+
+            // starting mid-month is partial as well
+            \Tests\Support\Commercial\ReportWorkbooks::$readingPeriod = '15-October-2026 - 01-November-2026';
+            $this->assertContains($warning, $messages($this->previewOf($this->readingFile(['months' => ['2026-10-01']]))));
+
+            // whole months, however the end is printed (the 1st after, or the last day), never warn
+            foreach (['01-June-2026 - 01-October-2026', '01-October-2026 - 31-October-2026', '01-October-2026 - 01-November-2026'] as $whole) {
+                \Tests\Support\Commercial\ReportWorkbooks::$readingPeriod = $whole;
+                $this->assertNotContains($warning, $messages($this->previewOf($this->readingFile(['months' => ['2026-10-01']]))), $whole);
+            }
+
+            // text that cannot be read as two dates says nothing
+            \Tests\Support\Commercial\ReportWorkbooks::$readingPeriod = 'last fortnight';
+            $this->assertNotContains($warning, $messages($this->previewOf($this->readingFile(['months' => ['2026-10-01']]))));
+        } finally {
+            \Tests\Support\Commercial\ReportWorkbooks::$readingPeriod = null;
+        }
+    }
+
     public function test_an_unmatched_reader_imports_with_a_warning_and_can_be_linked_to_an_employee(): void
     {
         $this->employee('15072', 'Ama Serwaa');

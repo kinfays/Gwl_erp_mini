@@ -98,7 +98,8 @@ class CustomerListService
         $query
             ->when($q['region_id'] ?? null, fn (Builder $b, $id) => $b->where('c.region_id', (int) $id))
             ->when($q['district_id'] ?? null, fn (Builder $b, $id) => $b->where('c.district_id', (int) $id))
-            ->when($q['route_id'] ?? null, fn (Builder $b, $id) => $b->where('c.route_id', (int) $id))
+            // a route picked under the district is that district's own route: its customers are filed under the CANONICAL route (Phase 8b)
+            ->when($q['route_id'] ?? null, fn (Builder $b, $id) => $b->where('c.route_id', (int) (DB::table('commercial_routes')->where('id', (int) $id)->value('canonical_route_id') ?? $id)))
             ->when($q['category_id'] ?? null, fn (Builder $b, $id) => $b->where('c.category_id', (int) $id))
             ->when($q['status_id'] ?? null, fn (Builder $b, $id) => $b->where('c.status_id', (int) $id))
             ->when($q['meter_status_id'] ?? null, fn (Builder $b, $id) => $b->where('c.meter_status_id', (int) $id))
@@ -124,7 +125,8 @@ class CustomerListService
             'meter' => $query->where('c.meter_no', $value),
             // Any of the customer's numbers, first or second.
             'phone' => $query->where(fn (Builder $w) => $w->where('ct.phone_primary', $number)->orWhere('ct.phone_secondary', $number)),
-            'email' => $query->where('ct.email_lower', mb_strtolower($value)),
+            // Either of the customer's addresses (Phase 8b: the second one is stored lower-cased in email_secondary).
+            'email' => $query->where(fn (Builder $w) => $w->where('ct.email_lower', mb_strtolower($value))->orWhere('ct.email_secondary', mb_strtolower($value))),
             'name' => $query->where('ct.name_search', 'like', str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($value)).'%'),
             default => $query->whereRaw('1 = 0'),
         };
@@ -146,6 +148,7 @@ class CustomerListService
             case 'missing_address':
             case 'missing_name':
             case 'invalid_phone':
+            case 'invalid_email':
             case 'multiple_phones':
             case 'future_date':
             case 'implausible_date':
@@ -359,7 +362,8 @@ class CustomerListService
             'name' => $contact->account_name,
             'address' => $contact->address,
             'mobiles' => implode(', ', $reveal ? $mobiles : array_map([CustomerValues::class, 'maskPhone'], $mobiles)),
-            'email' => $reveal ? $contact->email : CustomerValues::maskEmail($contact->email),
+            // both addresses when there are two (Phase 8b), masked unless revealed, " , " between them like the numbers
+            'email' => ($emails = implode(', ', array_filter(array_map(fn (?string $address) => $address === null || $address === '' ? null : ($reveal ? $address : CustomerValues::maskEmail($address)), [$contact->email, $contact->email_secondary ?? null])))) === '' ? null : $emails,
         ];
     }
 

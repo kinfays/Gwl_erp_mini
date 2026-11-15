@@ -3,6 +3,7 @@
 namespace App\Jobs\Commercial;
 
 use App\Models\CommercialCustomerBatch;
+use App\Models\CommercialCustomerUpload;
 use App\Services\Commercial\Customers\CustomerDistrictBusy;
 use App\Services\Commercial\Customers\CustomerImportException;
 use App\Services\Commercial\Customers\CustomerImportService;
@@ -56,6 +57,13 @@ class ProcessCustomerListBatch implements ShouldQueue
 
         if ($batch && ! in_array($batch->status, [CommercialCustomerBatch::STATUS_IMPORTED, CommercialCustomerBatch::STATUS_BLOCKED, CommercialCustomerBatch::STATUS_VOIDED], true)) {
             $batch->forceFill(['status' => CommercialCustomerBatch::STATUS_FAILED, 'error_message' => $batch->error_message ?: 'The import job failed and gave up. Run it again from the batch page.', 'finished_at' => now()])->save();
+        }
+
+        // the file's own status follows its districts (the one rule is CommercialCustomerUpload::statusFromBatches())
+        $upload = $batch?->upload()->first();
+
+        if ($upload && ! in_array($upload->status, [CommercialCustomerUpload::STATUS_AWAITING_REVIEW, CommercialCustomerUpload::STATUS_NEEDS_MATCH], true)) {
+            $upload->forceFill(['status' => CommercialCustomerUpload::statusFromBatches($upload->batches()->get(), $upload->status), 'finished_at' => now()])->save();
         }
     }
 }

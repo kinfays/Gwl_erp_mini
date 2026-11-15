@@ -335,6 +335,49 @@ final class CustomerValues
         return $text === null || ! str_contains($text, '@') ? null : $text;
     }
 
+    /**
+     * The full reading of an E-mail cell (Phase 8b), the twin of readPhones(): about 5% of customers have TWO addresses in one cell,
+     * joined by " / " or any of / , ; | & or a line break. Each piece is trimmed and validated; the first good one is the primary
+     * (what is shown and used), the second the secondary; a third and later are dropped (counted in `extra`); the same address twice
+     * is one. A piece that holds an @ but is not a valid address makes the cell INVALID while the good ones are kept; a piece with no
+     * @ at all ("N/A", "none", "-") is not an attempt at an address and is ignored, so such a cell is simply "no e-mail" as before.
+     * An address is never logged, quoted in a message or put in an exception.
+     *
+     * @return array{emails: list<string>, invalid: bool, extra: int}
+     */
+    public static function readEmails(mixed $value): array
+    {
+        $result = ['emails' => [], 'invalid' => false, 'extra' => 0];
+
+        if ($value === null || $value === '' || (! is_string($value) && ! is_int($value) && ! is_float($value))) {
+            return $result;
+        }
+
+        $found = [];
+
+        foreach (preg_split('/\s*[\/,;|&\r\n]+\s*/u', (string) $value) ?: [] as $piece) {
+            $piece = trim($piece);
+
+            if ($piece === '' || ! str_contains($piece, '@')) {
+                continue;
+            }
+
+            if (mb_strlen($piece) > 191 || ! filter_var($piece, FILTER_VALIDATE_EMAIL)) {
+                $result['invalid'] = true;
+
+                continue;
+            }
+
+            $found[mb_strtolower($piece)] ??= $piece;
+        }
+
+        $found = array_values($found);
+        $result['emails'] = array_slice($found, 0, 2);
+        $result['extra'] = max(0, count($found) - 2);
+
+        return $result;
+    }
+
     /** Meter number: blank, "0" and similar placeholders are no meter number. */
     public static function meterNo(mixed $value): ?string
     {

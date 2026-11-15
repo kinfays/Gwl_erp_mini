@@ -3,6 +3,7 @@
 namespace App\Services\Commercial\Customers;
 
 use App\Models\CommercialCustomerBatch;
+use App\Models\CommercialCustomerUpload;
 use App\Models\Permission;
 use App\Models\User;
 use App\Support\Audit;
@@ -24,11 +25,11 @@ use Illuminate\Support\Facades\Storage;
 class CustomerBatchLifecycle
 {
     /** The uploaded workbook holds personal data: it is deleted the moment the batch is finished (or blocked). */
-    public function discardFile(CommercialCustomerBatch $batch): void
+    public function discardFile(CommercialCustomerBatch|CommercialCustomerUpload $holder): void
     {
-        if ($batch->file_path) {
-            Storage::disk('local')->delete($batch->file_path);
-            $batch->forceFill(['file_path' => null])->save();
+        if ($holder->file_path) {
+            Storage::disk('local')->delete($holder->file_path);
+            $holder->forceFill(['file_path' => null])->save();
         }
     }
 
@@ -145,7 +146,54 @@ class CustomerBatchLifecycle
 
         $this->refreshStatuses((int) $batch->district_id);
 
-        $this->audit($actor->id, 'commercial.customer_batch_voided', $batch, ['district_id' => $batch->district_id, 'period' => $batch->period_key, 'rows' => $batch->rows_read]);
+        // the file's own status follows its districts (the one rule is CommercialCustomerUpload::statusFromBatches())
+        if ($upload = $batch->upload()->first()) {
+            $upload->forceFill(['status' => CommercialCustomerUpload::statusFromBatches($upload->batches()->get(), $upload->status)])->save();
+        }
+
+        $this->audit($actor->id, 'commercial.customer_batch_voided', $batch, ['district_id' => $batch->district_id, 'period' => $batch->period_key, 'rows' => $batch->rows_read, 'upload_id' => $batch->upload_id]);
+    }
+
+    /**
+     * "Undo this upload": voids EVERY batch of the upload that is still the newest of its district (each exactly, with its own rollback
+     * data). A district that has had a newer file since cannot be undone any more and is left as it is; the result says which. Returns the
+     * ids voided and, per batch that could not be, the reason (never a customer). $districtIds limits it to the districts the person may see
+     * (a district user undoes only their own district's batch).
+     *
+     * @param  list<int>|null  $districtIds
+     * @return array{voided: list<int>, skipped: array<int, string>}
+     */
+    public function voidUpload(CommercialCustomerUpload $upload, User $actor, string $reason, ?array $districtIds = null): array
+    {
+        $voided = [];
+        $skipped = [];
+
+        foreach ($upload->batches()->get() as $batch) {
+            if ($batch->isVoided() || ($districtIds !== null && ! in_array((int) $batch->district_id, $districtIds, true))) {
+                continue;
+            }
+
+            if ($blocker = $this->voidBlocker($batch)) {
+                if ($batch->isLive()) {
+                    $skipped[$batch->id] = $blocker;
+                }
+
+                if ($batch->phase === 'voiding') {
+                    $batch->forceFill(['phase' => CommercialCustomerBatch::PHASE_DONE])->save();   // marked for the undo, but a newer file arrived meanwhile
+                }
+
+                continue;
+            }
+
+            $this->void($batch, $actor, $reason);
+            $voided[] = (int) $batch->id;
+        }
+
+        // the upload's own status follows its batches (the one rule is CommercialCustomerUpload::statusFromBatches())
+        $batches = $upload->batches()->get();
+        $upload->forceFill(['status' => CommercialCustomerUpload::statusFromBatches($batches, $upload->status)])->save();
+
+        return ['voided' => $voided, 'skipped' => $skipped];
     }
 
     /** Keeps undo rows for the newest N batches of the district only. */

@@ -36,7 +36,8 @@ class SmsAudienceResolver
 
     /** Group key => label. Unconfirmed status codes (TRFR, VACN, DISO, NFLO) are deliberately not offered as groups. */
     public const GROUPS = [
-        'actb' => 'Billing accounts (ACTB)',
+        // the key stays 'actb' (saved campaigns carry it); the group is every status marked BILLING (ACTB, NSC ...), read from the flag
+        'actb' => 'Billing accounts',
         'actn' => 'Active, not billing (ACTN)',
         'disc' => 'Disconnected (DISC)',
         'susp' => 'Suspended (SUSP)',
@@ -159,6 +160,14 @@ class SmsAudienceResolver
     {
         $prepared = ['regions' => $regionIds, 'districts' => $this->districtIds($regionIds, $spec)];
 
+        // A route picked under a district is THAT district's own route (Phase 8b): its customers in that district, whether the code is the
+        // canonical route here or an alias of another district's (customers are filed under the canonical route, but keep their own district).
+        $prepared['route'] = null;
+
+        if (! empty($spec['route_id']) && ($route = \App\Models\CommercialRoute::query()->find((int) $spec['route_id']))) {
+            $prepared['route'] = ['id' => (int) app(\App\Services\Commercial\RouteResolver::class)->canonical($route)->id, 'district_id' => (int) $route->district_id];
+        }
+
         $prepared['category_ids'] = $spec['category_group'] !== null
             ? DB::table('commercial_customer_categories')->where('category_group', $spec['category_group'])->pluck('id')->map(fn ($id) => (int) $id)->all()
             : null;
@@ -166,7 +175,10 @@ class SmsAudienceResolver
         $group = $spec['group'] ?? null;
 
         if (isset(self::STATUS_GROUPS[$group])) {
-            $prepared['group_status_ids'] = DB::table('commercial_customer_statuses')->where('code', self::STATUS_GROUPS[$group])->where('meaning_confirmed', true)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            // the billing group is the is_billing FLAG (so NSC counts), never a list of codes; the other groups are one status each
+            $prepared['group_status_ids'] = $group === 'actb'
+                ? array_values(array_diff($this->billingIds(), [0]))
+                : DB::table('commercial_customer_statuses')->where('code', self::STATUS_GROUPS[$group])->where('meaning_confirmed', true)->pluck('id')->map(fn ($id) => (int) $id)->all();
         }
 
         if ($group === 'faulty_meter') {
@@ -234,7 +246,11 @@ class SmsAudienceResolver
         }
 
         if (! empty($spec['route_id'])) {
-            $query->where('c.route_id', (int) $spec['route_id']);
+            $route = $prepared['route'] ?? null;
+
+            $route === null
+                ? $query->whereRaw('1 = 0')   // a route that does not exist matches nobody
+                : $query->where('c.route_id', $route['id'])->where('c.district_id', $route['district_id']);
         }
 
         if ($prepared['category_ids'] !== null) {

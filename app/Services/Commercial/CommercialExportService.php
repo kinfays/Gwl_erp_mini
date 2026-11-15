@@ -234,7 +234,8 @@ class CommercialExportService
     public function kpis(array $d): array
     {
         $months = $d['months'];
-        $labels = array_map(fn (array $m) => $m['label'].' '.$m['year'], $months);
+        $isPart = fn (array $m) => ($m['full'] ?? true) === false;
+        $labels = array_map(fn (array $m) => $m['label'].' '.$m['year'].($isPart($m) ? ' ('.$m['part_label'].')' : ''), $months);
         $short = array_map(fn (array $m) => $m['short'], $months);
         $notes = [
             'Sales is the volume billed (thousand litres, which is 1 m3 per thousand); billing is "billing for the period"; collection is total payments. Targets are yearly: a month\'s target is the annual target ÷ 12, and efficiency = actual ÷ that target × 100, left blank where the year has no target. Year to date compares the months uploaded so far this year with the annual target × those months ÷ 12.',
@@ -242,6 +243,15 @@ class CommercialExportService
             $d['age_note'],
             'Each month comes from the single-month billing snapshot of that month (the newest non-voided upload); snapshots are never added together.',
         ];
+
+        // step 0.1: a month made of several uploads, and a part month (said only when there is one, so a normal export reads as before)
+        foreach ($months as $m) {
+            if ($isPart($m)) {
+                $notes[] = $m['label'].' '.$m['year'].' is a PART MONTH: it has '.$m['part_label'].' ('.$m['missing'].' not uploaded). Its figures are what was uploaded so far; its efficiency against the monthly target is not shown, it is left out of the year to date and it is never compared with another month.';
+            } elseif (count($m['batch_ids'] ?? []) > 1) {
+                $notes[] = $m['label'].' '.$m['year'].' is a full month made of '.count($m['batch_ids']).' uploads that do not overlap: their flows are added up and the closing balance is the latest upload\'s.';
+            }
+        }
 
         $tables = [];
 

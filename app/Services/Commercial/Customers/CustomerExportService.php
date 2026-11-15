@@ -47,7 +47,7 @@ class CustomerExportService
         $tables = [
             ['title' => 'Customer base', 'headings' => ['Measure', 'Customers', 'Share (%)'], 'rows' => [
                 ['All customers', $o['total'], ''],
-                ['Billing accounts (ACTB)', $o['billing'], $o['billing_share'] ?? ''],
+                ['Billing accounts', $o['billing'], $o['billing_share'] ?? ''],
                 ['Active, not billing (ACTN)', $o['active_non_billing'], ''],
                 ['Disconnected', $o['disconnected'], ''],
                 ['Suspended', $o['suspended'], ''],

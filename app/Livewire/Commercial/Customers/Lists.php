@@ -174,7 +174,12 @@ class Lists extends Component
             'error' => $error,
             'districts' => $districtNames,
             'districtId' => $districtId,
-            'routes' => $districtId ? DB::table('commercial_routes')->where('district_id', $districtId)->orderBy('name')->pluck('name', 'id') : collect(),
+            // The routes of the district, and (Phase 8b) any route its customers are filed under in the current upload: a code printed under
+            // two districts is ONE canonical route that may belong to the other district, but this district's customers are still in it.
+            'routes' => $districtId
+                ? DB::table('commercial_routes')->where(fn ($q) => $q->where('district_id', $districtId)
+                    ->orWhereIn('id', fn ($in) => $in->from('commercial_customer_rollups')->select('route_id')->where('batch_id', $districts[$districtId]->id)))->orderBy('name')->pluck('name', 'id')
+                : collect(),
             'groups' => CommercialCustomerCategory::GROUPS,
             'statuses' => DB::table('commercial_customer_statuses')->orderBy('code')->get(['id', 'code', 'label', 'meaning_confirmed']),
             'meters' => DB::table('commercial_meter_statuses')->orderBy('code')->get(['id', 'code', 'label']),

@@ -40,7 +40,7 @@ class CommercialCustomerBatch extends Model
     public const PERIOD_MONTHLY = 'monthly';
 
     protected $fillable = [
-        'region_id', 'district_id', 'region_label_raw', 'district_label_raw', 'period_type', 'period_key', 'as_of_date',
+        'upload_id', 'region_id', 'district_id', 'region_label_raw', 'district_label_raw', 'period_type', 'period_key', 'as_of_date',
         'source_filename', 'file_path', 'file_hash', 'status', 'phase', 'staged_through_row', 'merge_cursor', 'rows_read',
         'rows_new', 'rows_changed', 'rows_unchanged', 'rows_missing', 'rows_moved', 'rows_malformed', 'duplicate_accounts', 'routes_count',
         'previous_count', 'count_change_pct', 'previous_batch_id', 'control_totals', 'errors', 'warnings',
@@ -66,6 +66,12 @@ class CommercialCustomerBatch extends Model
         $date = \Illuminate\Support\Carbon::instance($asOf);
 
         return $periodType === self::PERIOD_WEEKLY ? $date->isoFormat('GGGG-[W]WW') : $date->format('Y-m');
+    }
+
+    /** The file this batch came from (Phase 8b: a file may have several batches, one per district). */
+    public function upload(): BelongsTo
+    {
+        return $this->belongsTo(CommercialCustomerUpload::class, 'upload_id');
     }
 
     public function region(): BelongsTo

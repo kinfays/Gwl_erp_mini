@@ -33,6 +33,17 @@ class ProcessCustomerBatch extends Command
 
         $this->info("Batch #{$batch->id}: {$batch->status} ({$batch->rows_read} rows, {$batch->rows_new} new, {$batch->rows_changed} changed, {$batch->rows_missing} not in file).");
 
+        // a file may hold several districts (Phase 8b): say what happened to each of them
+        $upload = $batch->upload()->first();
+
+        if ($upload && $upload->batches()->count() > 1) {
+            $this->line("Upload #{$upload->id}: {$upload->status}, {$upload->batches()->count()} districts.");
+
+            foreach ($upload->batches()->with('district')->get() as $other) {
+                $this->line(sprintf('  #%d %s: %s (%d rows, %d new, %d changed, %d not in file)', $other->id, $other->district?->district_name ?? $other->district_label_raw ?? '?', $other->status, $other->rows_read, $other->rows_new, $other->rows_changed, $other->rows_missing));
+            }
+        }
+
         return in_array($batch->status, [CommercialCustomerBatch::STATUS_IMPORTED, CommercialCustomerBatch::STATUS_NEEDS_MATCH], true) ? self::SUCCESS : self::FAILURE;
     }
 }

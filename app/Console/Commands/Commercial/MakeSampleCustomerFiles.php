@@ -34,7 +34,13 @@ class MakeSampleCustomerFiles extends Command
         {--steps=7 : With --monthly, how many month-end uploads to make}
         {--fresh : First delete the customer-list data (customers, uploads, rollups, history) so older files can be loaded in date order; development only}
         {--force : With --fresh, do not ask first}
-        {--import : Also load the files through the import pipeline}';
+        {--import : Also load the files through the import pipeline}
+        {--region-wide : Write ONE file for the whole region in the real layout (no DISTRICT: line, route headings "code, DISTRICT, REGION"), like the real export}
+        {--districts=5 : With --region-wide, how many districts the file holds (the region\'s own first; any extra are invented names that will ask for a match)}
+        {--district-names= : With --region-wide, the district names as printed, comma separated (instead of the region\'s own)}
+        {--per-route=400 : With --region-wide, customers per route}
+        {--edge-cases : With --region-wide, add the awkward cases: a route whose TOTALS row is one row out, one code under two districts, a 0000 route, a customer with two mobiles and two e-mails, and a heading with an unknown district}
+        {--output= : With --region-wide, the path of the one file to write (default: the sample folder)}';
 
     protected $description = 'Make synthetic (not real) customer-list workbooks for a region, and optionally import them';
 
@@ -69,6 +75,10 @@ class MakeSampleCustomerFiles extends Command
 
         if ($this->option('fresh') && ! $this->wipe()) {
             return self::FAILURE;
+        }
+
+        if ($this->option('region-wide')) {
+            return $this->regionWide($imports, $region, $districts);
         }
 
         $customers = max(50, (int) $this->option('customers'));
@@ -108,6 +118,130 @@ class MakeSampleCustomerFiles extends Command
             : 'Files are in '.$directory.'. Upload them (oldest first) on Commercial > Customer uploads, as weekly.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ONE file for the whole region, laid out like the real rptCustomerDetails export (Phase 8b): the filter block has only REGION, and every
+     * route has its own heading "code, DISTRICT, REGION" followed by its customers and a "<code> TOTALS :" row. Everything is invented.
+     */
+    protected function regionWide(CustomerImportService $imports, Region $region, $districts): int
+    {
+        $names = $this->option('district-names')
+            ? array_values(array_filter(array_map('trim', explode(',', (string) $this->option('district-names')))))
+            : $districts->pluck('district_name')->all();
+        $wanted = max(1, min(40, (int) $this->option('districts')));
+        $names = array_slice($names, 0, $wanted);
+
+        for ($extra = count($names) + 1; count($names) < $wanted; $extra++) {
+            $names[] = 'Sample District '.$extra;   // invented: it is not in the region, so the import asks for a match
+        }
+
+        $names = array_map('mb_strtoupper', $names);
+        $customers = max(10, (int) $this->option('customers'));
+        $asOf = CarbonImmutable::parse((string) $this->option('start'))->endOfMonth()->startOfDay();
+        $directory = storage_path('app/sample-customer-files');
+        is_dir($directory) || mkdir($directory, 0775, true);
+        $path = (string) ($this->option('output') ?: $directory.'/rptCustomerDetails-SAMPLE-'.str_replace(' ', '', $region->region_name).'-all-districts-'.$asOf->format('Y-m-d').'.xlsx');
+
+        $rows = $this->writeRegionWide($path, mb_strtoupper($region->region_name), $names, $customers, max(1, (int) $this->option('per-route')), $asOf, (bool) $this->option('edge-cases'));
+        $this->line(sprintf('%s  %s districts  %s rows  %s', $asOf->format('Y-m-d'), count($names), number_format($rows), $path));
+
+        if (! $this->option('import')) {
+            $this->info('Upload it on Commercial > Customer uploads.');
+
+            return self::SUCCESS;
+        }
+
+        try {
+            ['batch' => $batch, 'upload' => $upload, 'duplicate' => $duplicate] = $imports->register($path, basename($path), $this->option('monthly') ? CommercialCustomerBatch::PERIOD_MONTHLY : CommercialCustomerBatch::PERIOD_WEEKLY, \Illuminate\Support\Carbon::instance($asOf), null, 'Synthetic sample data');
+            $imports->process($batch);
+            $upload->refresh();
+            $this->line('    -> '.$upload->status.($duplicate ? ' (already uploaded)' : '').', '.$upload->batches()->count().' district batch(es)');
+        } catch (CustomerImportException $e) {
+            $this->error('    -> '.$e->getMessage());
+        } catch (Throwable $e) {
+            $this->error('    -> failed: '.class_basename($e));
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Writes the region-wide workbook and returns its number of customers. $names are the district names as printed (upper case).
+     *
+     * @param  list<string>  $names
+     */
+    protected function writeRegionWide(string $path, string $region, array $names, int $perDistrict, int $perRoute, CarbonImmutable $asOf, bool $edge): int
+    {
+        $writer = new Writer;
+        $writer->openToFile($path);
+        $writer->getCurrentSheet()->setName('Document map');
+        $writer->addRow(Row::fromValues(['Customer List Report (SAMPLE - invented data)']));
+        $writer->addNewSheetAndMakeItCurrent()->setName('rptCustomerDetails');
+        $writer->addRow(Row::fromValues(['Customer List Report']));
+        $writer->addRow(Row::fromValues(['FILTERS']));
+        $writer->addRow(Row::fromValues(['REGION: '.$region."\n"]));   // no DISTRICT: line: the districts are in the route headings
+
+        $headers = [null, 'Account #', 'Meter  #', 'Account Name', null, 'Category', 'Status', 'Meter Status', 'Residential Address', null, null, null, null, 'Mobile', 'Email', null, 'Balance', 'Last Read Date', null, 'Last Reading', 'Last Bill Date', 'Last Bill Amount', 'Last Paid Date', 'Last Paid Amount', 'Connect Date', 'Estimated Consume', 'Average Consume', 'Meter Factor'];
+        $written = 0;
+
+        $emit = function (string $code, string $district, array $customers, ?int $claimed = null) use ($writer, $headers, $region, &$written): void {
+            $writer->addRow(Row::fromValues([null, "{$code}, {$district}, {$region}"]));
+            $writer->addRow(Row::fromValues($headers));
+            $balance = 0.0;
+
+            foreach ($customers as $c) {
+                $balance += $c['balance'];
+                $written++;
+                $writer->addRow(Row::fromValues([
+                    null, $c['account'], $c['meter_no'], $c['name'], null, $c['category'], $c['status'], $c['meter_status'], $c['address'], null, null, null, null,
+                    $c['mobile'], $c['email'], null, $c['balance'], $c['last_read_date'], null, $c['last_reading'], $c['last_bill_date'], $c['last_bill_amount'],
+                    $c['last_paid_date'], $c['last_paid_amount'], $c['connect_date'], $c['estimated_consume'], $c['average_consume'], $c['meter_factor'],
+                ]));
+            }
+
+            $writer->addRow(Row::fromValues([null, "{$code} TOTALS :", null, null, null, null, null, null, null, null, null, null, null, null, 'Customer Count: '.number_format($claimed ?? count($customers)), null, round($balance, 2)]));
+            $writer->addRow(Row::fromValues([]));
+        };
+
+        foreach ($names as $index => $district) {
+            $offset = ($index + 1) * 1000000;
+            $routeNo = 0;
+
+            for ($from = 0; $from < $perDistrict; $from += $perRoute) {
+                $routeNo++;
+                $customers = [];
+
+                for ($i = $from; $i < min($perDistrict, $from + $perRoute); $i++) {
+                    $customers[] = $this->customer($offset + $i, $i, 0, $asOf, $asOf);
+                }
+
+                if ($edge && $index === 0 && $routeNo === 1) {
+                    // a customer with two mobiles and two e-mail addresses in their cells
+                    $customers[0]['mobile'] = '233241234567 / 233207654321';
+                    $customers[0]['email'] = 'two.mail@example.test / second.mail@example.test';
+                }
+
+                // the first route of the first district says it has one customer more than it lists (a route that disagrees with its own totals)
+                $emit((string) (1000 + $index * 100 + $routeNo), $district, $customers, $edge && $index === 0 && $routeNo === 1 ? count($customers) + 1 : null);
+            }
+        }
+
+        if ($edge && count($names) >= 2) {
+            // one route code printed under two districts, and an unassigned 0000 route
+            $emit('4001', $names[0], array_map(fn (int $i) => $this->customer(900000000 + $i, $i, 0, $asOf, $asOf), range(1, 5)));
+            $emit('4001', $names[1], array_map(fn (int $i) => $this->customer(910000000 + $i, $i, 0, $asOf, $asOf), range(1, 5)));
+            $emit('0000', $names[0], array_map(fn (int $i) => $this->customer(920000000 + $i, $i, 0, $asOf, $asOf), range(1, 4)));
+        }
+
+        if ($edge) {
+            // a heading with a district the region does not have: the whole file waits for a match
+            $emit('9001', 'SAMPLE UNKNOWN', array_map(fn (int $i) => $this->customer(930000000 + $i, $i, 0, $asOf, $asOf), range(1, 6)));
+        }
+
+        $writer->close();
+
+        return $written;
     }
 
     /** Deletes the customer-list data of the whole database (not the lookups). Refuses when SMS campaigns point at customers. */

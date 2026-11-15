@@ -117,7 +117,7 @@ class CustomerRollupService
         foreach ([
             'missing_mobile' => CustomerRecordBuilder::MISSING_MOBILE, 'missing_email' => CustomerRecordBuilder::MISSING_EMAIL,
             'missing_address' => CustomerRecordBuilder::MISSING_ADDRESS, 'missing_name' => CustomerRecordBuilder::MISSING_NAME,
-            'invalid_phone' => CustomerRecordBuilder::INVALID_PHONE, 'future_date' => CustomerRecordBuilder::FUTURE_DATE,
+            'invalid_phone' => CustomerRecordBuilder::INVALID_PHONE, 'invalid_email' => CustomerRecordBuilder::INVALID_EMAIL, 'future_date' => CustomerRecordBuilder::FUTURE_DATE,
             'implausible_date' => CustomerRecordBuilder::IMPLAUSIBLE_DATE, 'multiple_phones' => CustomerRecordBuilder::MULTIPLE_PHONES,
         ] as $issue => $bit) {
             // An issue nobody has costs nothing: only issues that occur get a list.
@@ -143,10 +143,14 @@ class CustomerRollupService
             ."SELECT {$b}, 'shared_mobile', x.cid FROM (SELECT DISTINCT n.cid FROM numbers n INNER JOIN shared s ON s.v = n.v) x"
         );
 
+        // The same for e-mail (Phase 8b): an address is shared when it is on more than one ACCOUNT of the district, as first or second
+        // address. The two addresses of one account are never equal (the reader keeps each address once), so COUNT(*) counts accounts.
         DB::affectingStatement(
-            "INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) SELECT {$b}, 'shared_email', c.id FROM commercial_customers c "
-            ."INNER JOIN commercial_customer_contacts t ON t.customer_id = c.id "
-            ."INNER JOIN (SELECT t2.email_lower AS v FROM commercial_customer_contacts t2 INNER JOIN commercial_customers c2 ON c2.id = t2.customer_id WHERE c2.district_id = {$d} AND c2.missing_since_batch_id IS NULL AND t2.email_lower IS NOT NULL GROUP BY t2.email_lower HAVING COUNT(*) > 1) s ON s.v = t.email_lower WHERE {$live}"
+            'INSERT INTO commercial_customer_issue_accounts (batch_id, issue, customer_id) '
+            ."WITH base AS (SELECT t.customer_id AS cid, t.email_lower AS e1, t.email_secondary AS e2 FROM commercial_customer_contacts t INNER JOIN commercial_customers c2 ON c2.id = t.customer_id WHERE c2.district_id = {$d} AND c2.missing_since_batch_id IS NULL AND t.email_lower IS NOT NULL), "
+            .'addresses AS (SELECT cid, e1 AS v FROM base UNION ALL SELECT cid, e2 FROM base WHERE e2 IS NOT NULL), '
+            .'shared AS (SELECT v FROM addresses GROUP BY v HAVING COUNT(*) > 1) '
+            ."SELECT {$b}, 'shared_email', x.cid FROM (SELECT DISTINCT n.cid FROM addresses n INNER JOIN shared s ON s.v = n.v) x"
         );
     }
 
@@ -357,6 +361,7 @@ class CustomerRollupService
             'missing_email' => CustomerRecordBuilder::MISSING_EMAIL,
             'missing_address' => CustomerRecordBuilder::MISSING_ADDRESS,
             'invalid_phone' => CustomerRecordBuilder::INVALID_PHONE,
+            'invalid_email' => CustomerRecordBuilder::INVALID_EMAIL,
             'future_date' => CustomerRecordBuilder::FUTURE_DATE,
             'implausible_date' => CustomerRecordBuilder::IMPLAUSIBLE_DATE,
             'missing_name' => CustomerRecordBuilder::MISSING_NAME,

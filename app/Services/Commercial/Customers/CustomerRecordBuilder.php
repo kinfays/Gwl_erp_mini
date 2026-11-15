@@ -28,8 +28,11 @@ class CustomerRecordBuilder
     /** Two or more valid mobile numbers (information, not a fault). */
     public const MULTIPLE_PHONES = 128;
 
+    /** An e-mail cell with at least one piece that holds an @ but is not a valid address (the valid ones are kept). */
+    public const INVALID_EMAIL = 256;
+
     /** The quality bits that describe the contact details (they are stored with the contact row). */
-    public const CONTACT_BITS = self::MISSING_MOBILE | self::MISSING_EMAIL | self::MISSING_ADDRESS | self::INVALID_PHONE | self::MISSING_NAME | self::MULTIPLE_PHONES;
+    public const CONTACT_BITS = self::MISSING_MOBILE | self::MISSING_EMAIL | self::MISSING_ADDRESS | self::INVALID_PHONE | self::MISSING_NAME | self::MULTIPLE_PHONES | self::INVALID_EMAIL;
 
     /** The columns the "attributes_hash" covers, in order. */
     public const HASHED = [
@@ -51,6 +54,14 @@ class CustomerRecordBuilder
      * @var array{multi: int, recovered: int, repaired: int, placeholders: int}
      */
     public array $phoneStats = ['multi' => 0, 'recovered' => 0, 'repaired' => 0, 'placeholders' => 0];
+
+    /**
+     * The same for the E-mail cells (counts only, never an address): cells with two addresses, cells with a piece that was not a valid
+     * address, and addresses beyond the second that were dropped.
+     *
+     * @var array{multi: int, invalid: int, extra: int}
+     */
+    public array $emailStats = ['multi' => 0, 'invalid' => 0, 'extra' => 0];
 
     /** @var array<string, int> route name => id, so a route is resolved once per file, not once per row */
     protected array $routes = [];
@@ -129,7 +140,12 @@ class CustomerRecordBuilder
         $this->phoneStats['recovered'] += $read['recovered'];
         $this->phoneStats['repaired'] += $read['repaired'];
         $this->phoneStats['placeholders'] += $read['placeholders'];
-        $email = CustomerValues::email($values['email'] ?? null);
+        $readEmail = CustomerValues::readEmails($values['email'] ?? null);
+        $email = $readEmail['emails'][0] ?? null;
+        $emailSecondary = isset($readEmail['emails'][1]) ? mb_strtolower($readEmail['emails'][1]) : null;
+        $this->emailStats['multi'] += $emailSecondary !== null ? 1 : 0;
+        $this->emailStats['invalid'] += $readEmail['invalid'] ? 1 : 0;
+        $this->emailStats['extra'] += $readEmail['extra'];
         $name = CustomerValues::text($values['name'] ?? null, 191);
         $address = CustomerValues::text($values['address'] ?? null, 255);
 
@@ -147,6 +163,10 @@ class CustomerRecordBuilder
 
         if ($email === null) {
             $flags |= self::MISSING_EMAIL;
+        }
+
+        if ($readEmail['invalid']) {
+            $flags |= self::INVALID_EMAIL;
         }
 
         if ($address === null) {
@@ -194,8 +214,11 @@ class CustomerRecordBuilder
         $row['phone_secondary'] = $phones[1] ?? null;
         $row['email'] = $email;
         $row['email_lower'] = $email === null ? null : mb_strtolower($email);
+        $row['email_secondary'] = $emailSecondary;
         $row['name_search'] = $name === null ? null : mb_substr(mb_strtolower($name), 0, 191);
-        $row['contact_hash'] = self::hash([$name, $address, $mobiles, $email, $flags & self::CONTACT_BITS]);
+        // The second address joins the hash ONLY when there is one, so a contact without it hashes exactly as it did before this column
+        // existed and an ordinary upload does not rewrite the contact rows of millions of customers for nothing.
+        $row['contact_hash'] = self::hash([$name, $address, $mobiles, $email, $flags & self::CONTACT_BITS, ...($emailSecondary === null ? [] : [$emailSecondary])]);
         $row['quality_flags'] = $flags;
 
         return $row;

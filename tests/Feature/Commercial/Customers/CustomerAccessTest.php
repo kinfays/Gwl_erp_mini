@@ -301,7 +301,7 @@ class CustomerAccessTest extends CustomerTestCase
         $superAdmin = $this->superAdmin();
 
         $page = Livewire::actingAs($this->analyst())->test(Dashboard::class);
-        $page->assertSee('Customer List')->assertSee('5')->assertSee('Billing accounts (ACTB)');
+        $page->assertSee('Customer List')->assertSee('5')->assertSee('Billing accounts');
 
         $component = Livewire::actingAs($superAdmin)->test(\App\Livewire\Commercial\Customers\Lookups::class);
         $id = (int) DB::table('commercial_customer_categories')->where('code', '611')->value('id');

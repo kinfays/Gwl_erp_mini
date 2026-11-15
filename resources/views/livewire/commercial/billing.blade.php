@@ -68,9 +68,11 @@
 
         <p class="ui-hint dash-row">
             Snapshot: <strong>{{ $chosen['label'] }}</strong>.
-            @unless ($chosen['is_single_month'] || ($chosen['is_range'] ?? false))
+            @if ($chosen['is_part_month'] ?? false)
+                This covers only part of a month ({{ $chosen['period_label'] }}): it is fully usable here, but it is not a month, so it is never compared with or trended against a whole month. Pick the dates of the whole month above to add the uploads of that month together.
+            @elseif (! ($chosen['is_single_month'] || ($chosen['is_range'] ?? false)))
                 This is a multi-month period: it is fully usable here, but it cannot be compared or trended against single months.
-            @endunless
+            @endif
             @if ($districtKey !== '')
                 Showing <strong>{{ $districtKey }}</strong> only.
             @endif
@@ -416,7 +418,7 @@
             </x-ui.card>
         @elseif ($activeTab === 'compare')
             @unless ($chosenIsSingleMonth)
-                <x-ui.alert tone="info" class="dash-row">This snapshot is a multi-month period. It overlaps single months, so it cannot be compared or trended; pick a single-month snapshot above to compare.</x-ui.alert>
+                <x-ui.alert tone="info" class="dash-row">@if ($chosen['is_part_month'] ?? false)This snapshot covers only part of a month ({{ $chosen['period_label'] }}), so it is not compared with or trended against whole months; pick a whole-month snapshot above to compare.@else This snapshot is a multi-month period. It overlaps single months, so it cannot be compared or trended; pick a single-month snapshot above to compare.@endif</x-ui.alert>
             @endunless
 
             @if ($chosenIsSingleMonth)

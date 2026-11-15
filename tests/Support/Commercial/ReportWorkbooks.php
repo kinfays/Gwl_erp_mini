@@ -354,7 +354,8 @@ class ReportWorkbooks
     public static function customerList(array $spec = []): string
     {
         $region = $spec['region'] ?? 'ACCRA WEST';
-        $district = $spec['district'] ?? 'SOWUTUOM';
+        // null = a REGION-WIDE file: no DISTRICT: line, each route heading names its own district (Phase 8b)
+        $district = array_key_exists('district', $spec) ? $spec['district'] : 'SOWUTUOM';
         $routes = $spec['routes'] ?? [['name' => '1001', 'customers' => [self::customer(1), self::customer(2)]]];
 
         $book = new Spreadsheet;
@@ -366,12 +367,12 @@ class ReportWorkbooks
         $sheet->setTitle($spec['sheet'] ?? 'rptCustomerDetails');
         $sheet->setCellValue('J4', 'Customer List Report');
         $sheet->setCellValue('A5', 'FILTERS');
-        $sheet->setCellValue('A7', "REGION: {$region}\nDISTRICT: {$district}\n");
+        $sheet->setCellValue('A7', "REGION: {$region}\n".($district === null ? '' : "DISTRICT: {$district}\n"));
 
         $row = 9;
 
         foreach ($routes as $route) {
-            $sheet->setCellValue("B{$row}", $route['name'].', '.$district.', '.$region);
+            $sheet->setCellValue("B{$row}", $route['name'].', '.($route['district'] ?? $district).', '.$region);
             $row++;
 
             foreach (self::CUSTOMER_HEADERS as $field => $label) {
@@ -470,6 +471,58 @@ class ReportWorkbooks
         return $path;
     }
 
+    /**
+     * A REGION-WIDE customer list (no DISTRICT: line; each route heading names its own district), written with the streaming writer so a
+     * file of tens of thousands of rows can be made cheaply. Rows are shared out over the districts in blocks of routes; customers are
+     * invented from their number alone. $firstNumber starts the customer numbers (account = 100000000000 + number).
+     *
+     * @param  list<string>  $districts  the district names as printed (upper case)
+     */
+    public static function customerListRegionStreamed(int $rows, array $districts, string $region = 'ACCRA WEST', int $perRoute = 400, int $firstNumber = 1): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'cust').'.xlsx';
+        $writer = new \OpenSpout\Writer\XLSX\Writer;
+        $writer->openToFile($path);
+        $writer->getCurrentSheet()->setName('Document map');
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['Customer List Report']));
+        $writer->addNewSheetAndMakeItCurrent()->setName('rptCustomerDetails');
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['Customer List Report']));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['FILTERS']));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(["REGION: {$region}\n"]));
+
+        $headers = [null, 'Account #', 'Meter  #', 'Account Name', null, 'Category', 'Status', 'Meter Status', 'Residential Address', null, null, null, null, 'Mobile', 'Email', null, 'Balance', 'Last Read Date', null, 'Last Reading', 'Last Bill Date', 'Last Bill Amount', 'Last Paid Date', 'Last Paid Amount', 'Connect Date', 'Estimated Consume', 'Average Consume', 'Meter Factor'];
+        $day = new \DateTimeImmutable('2026-09-20');
+        $routes = (int) ceil($rows / $perRoute);
+        $written = 0;
+
+        for ($route = 1; $route <= $routes; $route++) {
+            $district = $districts[intdiv(($route - 1) * count($districts), $routes)];
+            $name = (string) (1000 + $route);
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([null, "{$name}, {$district}, {$region}"]));
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues($headers));
+            $balance = 0.0;
+            $count = 0;
+
+            for ($i = 0; $i < $perRoute && $written < $rows; $i++, $written++) {
+                $c = self::customer($firstNumber + $written);
+                $balance += $c['balance'];
+                $count++;
+                $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+                    null, $c['account'], $c['meter_no'], $c['name'], null, $c['category'], $c['status'], $c['meter_status'], $c['address'], null, null, null, null,
+                    $c['mobile'], $c['email'], null, $c['balance'], $day, null, $c['last_reading'], $day, $c['last_bill_amount'], $day, $c['last_paid_amount'], $day,
+                    $c['estimated_consume'], $c['average_consume'], $c['meter_factor'],
+                ]));
+            }
+
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([null, "{$name} TOTALS :", null, null, null, null, null, null, null, null, null, null, null, null, 'Customer Count: '.number_format($count), null, round($balance, 2)]));
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([]));
+        }
+
+        $writer->close();
+
+        return $path;
+    }
+
     public static function upload(string $path, string $name = 'report.xlsx'): UploadedFile
     {
         return UploadedFile::fake()->createWithContent($name, (string) file_get_contents($path));
@@ -492,13 +545,16 @@ class ReportWorkbooks
         return array_values($row);
     }
 
+    /** The printed REPORT PERIOD of a reading workbook (null = the default 01-June-2026 - 01-October-2026); a test sets it and puts it back. */
+    public static ?string $readingPeriod = null;
+
     protected static function readingTitleAndFilters(Worksheet $sheet, string $region, string $filters): void
     {
         $sheet->setCellValue('A1', 'Customer Meter Reading Report - CCA Summary - By Month');
 
         if ($filters === 'lines') {
             // As in the real export: the whole filter block is ONE cell holding several lines.
-            $sheet->setCellValue('B7', "REPORT PERIOD: 01-June-2026 - 01-October-2026\nREGION: {$region}\nDISTRICT: SOWUTUOM,ODORKOR,KANESHIE\n");
+            $sheet->setCellValue('B7', "REPORT PERIOD: ".(self::$readingPeriod ?? '01-June-2026 - 01-October-2026')."\nREGION: {$region}\nDISTRICT: SOWUTUOM,ODORKOR,KANESHIE\n");
 
             return;
         }

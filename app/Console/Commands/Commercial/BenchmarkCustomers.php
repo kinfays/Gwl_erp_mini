@@ -385,8 +385,13 @@ class BenchmarkCustomers extends Command
         $contactId = (int) DB::table('commercial_customers')->max('id');
 
         foreach ($bulkDistricts as $index => $districtId) {
+            // every batch belongs to an upload (Phase 8b), so the bulk-seeded ones show in the history like any other
+            $upload = \App\Models\CommercialCustomerUpload::query()->create([
+                'region_id' => $regionId, 'source_filename' => 'bulk-seed', 'file_hash' => hash('sha256', 'bulk'.$districtId), 'as_of_date' => $this->asOf->toDateString(), 'period_type' => 'monthly',
+                'period_key' => $this->asOf->format('Y-m'), 'status' => 'imported', 'phase' => 'done', 'districts_found' => 1, 'districts_selected' => 1, 'rows_found' => $perDistrict, 'finished_at' => now(),
+            ]);
             $batch = CommercialCustomerBatch::query()->create([
-                'region_id' => $regionId, 'district_id' => $districtId, 'period_type' => 'monthly', 'period_key' => $this->asOf->format('Y-m'), 'as_of_date' => $this->asOf->toDateString(),
+                'upload_id' => $upload->id, 'region_id' => $regionId, 'district_id' => $districtId, 'period_type' => 'monthly', 'period_key' => $this->asOf->format('Y-m'), 'as_of_date' => $this->asOf->toDateString(),
                 'source_filename' => 'bulk-seed', 'file_hash' => hash('sha256', 'bulk'.$districtId), 'status' => 'imported', 'phase' => 'done', 'rows_read' => $perDistrict,
                 'reconciliation_passed' => true, 'imported_at' => now(), 'finished_at' => now(),
             ]);

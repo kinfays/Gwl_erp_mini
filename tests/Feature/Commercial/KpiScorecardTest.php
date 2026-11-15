@@ -522,4 +522,141 @@ class KpiScorecardTest extends \Tests\Feature\Commercial\Customers\CustomerTestC
         Livewire::actingAs($this->officer())->test(\App\Livewire\Commercial\Billing::class)->set('tab', 'balances')->assertSee('A negative balance is a customer credit')->assertDontSee('to be confirmed');
         $this->assertSame(0, DB::table('commercial_import_batches')->where('status', 'failed')->count());
     }
+
+    // ---------------------------------------------------------------- Phase 8b step 0.1: part months
+
+    public function test_two_part_month_uploads_that_cover_every_day_add_up_to_a_full_month(): void
+    {
+        // 1 to 14 October and 15 to 31 October: together they are every day of October
+        $first = $this->month('2026-10-01', [$this->route('MAMPROBI', 100, 1000, 900, 5000)], ['period_to' => '2026-10-14']);
+        $second = $this->month('2026-10-15', [$this->route('MAMPROBI', 60, 600, 500, 5400)], ['period_to' => '2026-10-31']);
+        $this->targets($this->mamprobi, 160, 1600, 1400, '2026-10-01');
+
+        $card = $this->card();
+        $october = $card['months'][0];
+
+        $this->assertCount(1, $card['months']);
+        $this->assertTrue($october['full']);
+        $this->assertNull($october['part_label']);
+        $this->assertSame([$first->id, $second->id], $this->monthBatchIds());
+
+        $block = $this->block($card, 'Mamprobi');
+        $this->assertEquals(160.0, $this->row($block, 'sales')['actuals']['2026-10'], 'flows add up');
+        $this->assertEquals(1600.0, $this->row($block, 'billing')['actuals']['2026-10']);
+        $this->assertEquals(1400.0, $this->row($block, 'collection')['actuals']['2026-10']);
+        $this->assertEquals(100.0, $this->row($block, 'billing')['efficiency']['2026-10'], 'a full month is measured against its monthly target');
+        $this->assertEquals(5400.0, $this->row($block, 'arrears')['actuals']['2026-10'], 'the closing balance is the latest period, never added');
+        $this->assertSame(1, $this->row($block, 'billing')['ytd']['months']);
+    }
+
+    public function test_one_part_month_upload_is_a_part_month_with_no_efficiency_and_no_comparison(): void
+    {
+        $this->month('2026-09-01', [$this->route('MAMPROBI', 100, 1000, 900, 5000)]);
+        $this->month('2026-10-01', [$this->route('MAMPROBI', 40, 400, 300, 5100)], ['period_to' => '2026-10-14']);
+        $this->targets($this->mamprobi, 100, 1000, 900, '2026-09-01');
+
+        $card = $this->card();
+        $block = $this->block($card, 'Mamprobi');
+        $september = $card['months'][0];
+        $october = $card['months'][1];
+
+        $this->assertTrue($september['full']);
+        $this->assertFalse($october['full']);
+        $this->assertSame('14 of 31 days', $october['part_label']);
+        $this->assertSame('15 Oct to 31 Oct 2026', $october['missing']);
+
+        $billing = $this->row($block, 'billing');
+        $this->assertEquals(400.0, $billing['actuals']['2026-10'], 'what was uploaded is still shown');
+        $this->assertNotNull($billing['targets']['2026-10'], 'with the monthly target beside it');
+        $this->assertNull($billing['efficiency']['2026-10'], 'but its efficiency is withheld');
+        $this->assertEquals(100.0, $billing['efficiency']['2026-09'], 'the full month is unchanged');
+        $this->assertSame(1, $billing['ytd']['months'], 'a part month is not a month of the year to date');
+        $this->assertEquals(1000.0, $billing['ytd']['actual']);
+
+        $arrears = collect($block['arrears'])->keyBy('key');
+        $this->assertTrue($arrears['2026-10']['part']);
+        $this->assertStringContainsString('14 of 31 days', $arrears['2026-10']['label']);
+        $this->assertNull($arrears['2026-10']['change'], 'never a change against another month');
+        $this->assertNull($arrears['2026-10']['change_pct']);
+    }
+
+    public function test_the_month_after_a_part_month_is_not_compared_with_it(): void
+    {
+        $this->month('2026-09-01', [$this->route('MAMPROBI', 100, 1000, 900, 5000)], ['period_to' => '2026-09-10']);
+        $this->month('2026-10-01', [$this->route('MAMPROBI', 100, 1000, 900, 5200)]);
+
+        $arrears = collect($this->block($this->card(), 'Mamprobi')['arrears'])->keyBy('key');
+
+        $this->assertNull($arrears['2026-09']['change']);
+        $this->assertNull($arrears['2026-10']['change'], 'nothing is compared with a part month');
+    }
+
+    public function test_a_whole_month_upload_is_a_month_of_one_upload_and_gives_todays_figures(): void
+    {
+        $this->sample();
+        $this->targets($this->mamprobi, 125976, 1425674, 1425674);
+
+        $card = $this->card();
+
+        $this->assertSame([true, true, true], array_column($card['months'], 'full'));
+        $this->assertSame([1, 1, 1], array_map(fn ($m) => count($m['batch_ids']), $this->monthsOfScorecard()));
+        $block = $this->block($card, 'Mamprobi');
+        $this->assertEquals(130072.0, $this->row($block, 'sales')['actuals']['2026-08']);
+        $this->assertEquals(103.3, $this->row($block, 'sales')['efficiency']['2026-08']);
+    }
+
+    public function test_a_part_month_is_marked_on_the_charts_and_the_screen_and_the_export(): void
+    {
+        $this->month('2026-09-01', [$this->route('MAMPROBI', 100, 1000, 900, 5000)]);
+        $this->month('2026-10-01', [$this->route('MAMPROBI', 40, 400, 300, 5100)], ['period_to' => '2026-10-14']);
+        $this->targets($this->mamprobi, 100, 1000, 900, '2026-09-01');
+
+        $card = $this->card();
+        $charts = app(CommercialKpiService::class)->charts($card);
+
+        $this->assertSame(['SEP 26', 'OCT 26 · 14/31 d'], $charts['labels']);
+        $this->assertSame('14 of 31 days', $charts['part_months'][0]['days']);
+        $this->assertStringContainsString('14 of 31 days', $charts['arrears_labels'][1]);
+
+        Livewire::actingAs($this->officer())->test(Kpis::class)->assertSee('Part month')->assertSee('14 of 31 days')->assertSee('15 Oct to 31 Oct 2026')->assertSee('never compared with another month');
+
+        $response = $this->actingAs($this->officer())->get(route('commercial.export', ['report' => 'kpis', 'format' => 'excel']))->assertOk();
+        $text = json_encode(array_map(fn ($sheet) => $sheet->toArray(), IOFactory::load($response->baseResponse->getFile()->getPathname())->getAllSheets()));
+        $this->assertStringContainsString('PART MONTH', $text);
+        $this->assertStringContainsString('14 of 31 days', $text);
+    }
+
+    public function test_a_part_month_batch_is_not_a_single_month_for_the_billing_screen_and_compare(): void
+    {
+        $billing = app(\App\Services\Commercial\BillingAnalyticsService::class);
+        $whole = $billing->describe($this->month('2026-09-01', [$this->route('MAMPROBI', 100, 1000, 900, 5000)]));
+        $part = $billing->describe($this->month('2026-10-01', [$this->route('MAMPROBI', 40, 400, 300, 5100)], ['period_to' => '2026-10-14']));
+
+        $this->assertTrue($whole['is_single_month']);
+        $this->assertFalse($whole['is_part_month']);
+        $this->assertFalse($part['is_single_month'], 'part of a month is not a month');
+        $this->assertTrue($part['is_part_month']);
+        $this->assertTrue($part['in_one_month'], 'it still belongs to October, so the KPIs can build October from it');
+        $this->assertSame('1 Oct to 14 Oct 2026', $part['period_label']);
+        $this->assertStringContainsString('part of a month', (string) $billing->comparable($whole, $part));
+
+        // the screen's month presets offer whole months only
+        $presets = Livewire::actingAs($this->officer())->test(\App\Livewire\Commercial\Billing::class)->viewData('monthPresets');
+        $this->assertSame(['2026-09'], array_keys($presets));
+    }
+
+    /** @return list<array<string, mixed>> the months of the scorecard with the batches each was built from */
+    protected function monthsOfScorecard(): array
+    {
+        $this->actingAs($this->officer());
+        $data = app(CommercialReportData::class);
+
+        return app(CommercialKpiService::class)->months(array_values(array_filter($data->snapshots(), fn ($s) => $s['in_one_month'])), $this->accraWest->id, 'new_service', 3);
+    }
+
+    /** @return list<int> the batch ids the first month of the scorecard was built from */
+    protected function monthBatchIds(): array
+    {
+        return array_map('intval', $this->monthsOfScorecard()[0]['batch_ids']);
+    }
 }

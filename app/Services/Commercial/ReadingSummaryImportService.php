@@ -300,6 +300,23 @@ class ReadingSummaryImportService extends ReportImportService
             $warnings[] = ['row' => 'CCA '.$staffId, 'message' => "{$staffId} - {$summary['name']} is not in the staff directory. The batch can still be imported; link the CCA on the batch screen."];
         }
 
+        // --- Phase 8b (step 0.2): a file whose own REPORT PERIOD stops short of a month. This legacy report keeps ONE row per reader
+        // per month (the newest upload wins), so a part-month file cannot be ADDED to another upload of the same month: it replaces it.
+        // The route-level reading report (8c) keeps its rows by period and has no such limit. ---
+        $periodText = null;
+
+        foreach ($readerSheets as $sheet) {
+            $periodText = $this->reader->labelValue($sheet['rows'], '/^\s*report\s*period\b\s*:?\s*(.*)$/i');
+
+            if ($periodText !== null) {
+                break;
+            }
+        }
+
+        if ($periodText !== null && $this->coversPartOfAMonth($periodText)) {
+            $warnings[] = ['row' => 'Period', 'message' => 'This file covers part of a month. It will REPLACE, not add to, other uploads of the same month.'];
+        }
+
         // --- What this file replaces. ---
         $willReplace = 0;
 
@@ -522,6 +539,33 @@ class ReadingSummaryImportService extends ReportImportService
      * @param  \Illuminate\Support\Collection<string, Employee>  $employees  keyed by staff ID
      * @return array{employee_id: int|null, district_id: int|null, match_status: string}
      */
+    /**
+     * True when the printed REPORT PERIOD ("01-October-2026 - 14-October-2026") starts or stops inside a month. A whole-month period
+     * starts on the 1st and ends on the last day of a month, or on the 1st of the month after (the real export prints its end that way).
+     * Text that cannot be read as two dates says nothing: it is never called partial.
+     */
+    protected function coversPartOfAMonth(string $text): bool
+    {
+        $parts = preg_split('/\s+(?:-|–|—|to)\s+/iu', trim($text));
+
+        if (! is_array($parts) || count($parts) !== 2) {
+            return false;
+        }
+
+        try {
+            $from = Carbon::parse(trim($parts[0]))->startOfDay();
+            $to = Carbon::parse(trim($parts[1]))->startOfDay();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if ($to->lessThan($from)) {
+            return false;
+        }
+
+        return $from->day !== 1 || ! ($to->day === 1 || $to->equalTo($to->copy()->endOfMonth()->startOfDay()));
+    }
+
     protected function resolveReader(string $staffId, ?string $name, $employees): array
     {
         $employee = $employees[$staffId] ?? null;

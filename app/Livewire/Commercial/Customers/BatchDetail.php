@@ -171,6 +171,7 @@ class BatchDetail extends Component
 
         return view('livewire.commercial.customers.batch-detail', [
             'batch' => $batch,
+            'upload' => $batch->upload()->first(),
             'working' => $batch->isWorking() || $batch->phase === 'voiding',
             'voiding' => $batch->phase === 'voiding',
             'regions' => $restriction === null ? Region::query()->orderBy('region_name')->get() : Region::query()->whereKey($restriction)->get(),

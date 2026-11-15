@@ -94,7 +94,7 @@ class CustomerMergeService
         $staged = "s.batch_id = {$b} AND s.id > {$from} AND s.id <= {$to}";
         $diff = "d.batch_id = {$b} AND d.staging_id > {$from} AND d.staging_id <= {$to}";
         $hot = '(d.flags & 1) = 1';
-        $anyContact = '(s.account_name IS NOT NULL OR s.address IS NOT NULL OR s.mobiles IS NOT NULL OR s.email IS NOT NULL OR (s.quality_flags & '.CustomerRecordBuilder::INVALID_PHONE.') <> 0)';
+        $anyContact = '(s.account_name IS NOT NULL OR s.address IS NOT NULL OR s.mobiles IS NOT NULL OR s.email IS NOT NULL OR (s.quality_flags & '.(CustomerRecordBuilder::INVALID_PHONE | CustomerRecordBuilder::INVALID_EMAIL).') <> 0)';
 
         DB::transaction(function () use ($b, $r, $d, $from, $to, $staged, $diff, $hot, $anyContact): void {
             $rows = (int) DB::table('commercial_customer_staging')->where('batch_id', $b)->where('id', '>', $from)->where('id', '<=', $to)->count();

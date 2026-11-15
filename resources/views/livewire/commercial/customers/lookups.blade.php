@@ -23,7 +23,7 @@
         <div class="dash-row"><button type="button" class="btn btn-primary" wire:click="saveCategories">Save categories</button></div>
     </x-ui.card>
 
-    <x-ui.card title="Account statuses" description="'Billing' decides who counts as a billing account (ACTB), 'Active' who counts as active. A code whose meaning is not confirmed is shown by its raw code." :padded="false" class="dash-row">
+    <x-ui.card title="Account statuses" description="'Billing' decides who counts as a billing account (ACTB and NSC are billing; HOLD is not), 'Active' who counts as active. A code whose meaning is not confirmed is shown by its raw code." :padded="false" class="dash-row">
         <x-ui.table label="Account statuses" :sticky="false">
             <x-slot:head><tr><th>Code</th><th>Meaning</th><th>Active</th><th>Billing</th><th>Meaning confirmed</th></tr></x-slot:head>
             @foreach ($statuses as $id => $row)

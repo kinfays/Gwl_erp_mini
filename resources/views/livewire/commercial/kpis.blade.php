@@ -47,6 +47,14 @@
             <x-ui.alert tone="info" class="dash-row">No single-month billing upload of this customer segment in this region yet.</x-ui.alert>
         @else
             <p class="ui-hint dash-row">{{ $kpis['region'] }} · {{ $kpis['segments'][$kpis['segment']]['label'] ?? 'All customers' }} · {{ count($kpis['months']) }} month(s). Targets are yearly: a month's target is the annual target ÷ 12 and efficiency = actual ÷ that target × 100.@if ($charts) Year to date compares the {{ $charts['ytd_months'] }} month(s) uploaded in {{ $charts['ytd_year'] }} with the annual target × those months ÷ 12.@endif Blank where the year has no target.</p>
+            @php $partMonths = array_values(array_filter($kpis['months'], fn ($m) => ! ($m['full'] ?? true))); @endphp
+            @if ($partMonths !== [])
+                <x-ui.alert tone="warning" class="dash-row">
+                    <strong>Part month{{ count($partMonths) === 1 ? '' : 's' }}:</strong>
+                    @foreach ($partMonths as $m){{ $m['label'] }} {{ $m['year'] }} has {{ $m['part_label'] }} ({{ $m['missing'] }} missing){{ $loop->last ? '.' : '; ' }}@endforeach
+                    Its figures are what was uploaded so far. Its efficiency against the monthly target is not shown, it is left out of the year to date, and it is never compared with another month. It is marked on the charts.
+                </x-ui.alert>
+            @endif
             @if ($charts)
 
             {{-- ============================================ charts --}}
@@ -116,7 +124,7 @@
                             <thead>
                                 <tr><th rowspan="2">KPI</th><th rowspan="2" class="num">Annual target</th><th colspan="{{ count($months) }}" class="num">Actuals</th><th colspan="{{ count($months) }}" class="num">Efficiency (%)</th><th colspan="3" class="num">Year to date</th></tr>
                                 <tr>
-                                    @foreach ($months as $m)<th class="num">{{ $m['label'] }}</th>@endforeach
+                                    @foreach ($months as $m)<th class="num">{{ $m['label'] }}@if (! ($m['full'] ?? true))<br><span class="ui-hint" style="font-weight:400" title="Missing: {{ $m['missing'] }}">{{ $m['part_label'] }}</span>@endif</th>@endforeach
                                     @foreach ($months as $m)<th class="num">{{ $m['short'] }}</th>@endforeach
                                     <th class="num">Actual</th><th class="num">Efficiency (%)</th><th class="num">Of annual target (%)</th>
                                 </tr>
@@ -131,7 +139,7 @@
                                         @foreach ($months as $m)<td class="num">{{ $cell($row, $row['actuals'][$m['key']] ?? null) }}</td>@endforeach
                                         @foreach ($months as $m)
                                             @php $eff = $row['efficiency'][$m['key']] ?? null; @endphp
-                                            <td class="num">@if ($eff !== null)<x-ui.badge :tone="$eff >= 100 ? 'success' : 'warning'">{{ number_format($eff, 1) }}</x-ui.badge>@endif</td>
+                                            <td class="num">@if ($eff !== null)<x-ui.badge :tone="$eff >= 100 ? 'success' : 'warning'">{{ number_format($eff, 1) }}</x-ui.badge>@elseif (! ($m['full'] ?? true) && $row['metric'] !== 'arrears')<span class="ui-hint" title="Part month: not measured against a monthly target">part</span>@endif</td>
                                         @endforeach
                                         @if ($row['metric'] === 'arrears')
                                             <td class="num">–</td><td class="num"></td><td class="num"></td>

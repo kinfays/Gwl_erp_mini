@@ -97,8 +97,13 @@ class BillingAnalyticsService
     {
         $from = $batch->period_from;
         $to = $batch->period_to;
-        $single = $from->format('Y-m') === $to->format('Y-m');
-        $period = $single ? $from->format('M Y') : $from->format('M').' to '.$to->format('M Y');
+        // Phase 8b (step 0.1): a "single month" is a WHOLE calendar month. A bill period inside one month that stops short of it (1 to 14
+        // October) is a PART of a month: it is not "October", it is not compared with a month and it is not a month's target. The
+        // KPIs build their months from such batches with CommercialPeriods (months()), so `in_one_month` stays for them.
+        $inOneMonth = $from->format('Y-m') === $to->format('Y-m');
+        $single = CommercialPeriods::label($from, $to) === CommercialPeriods::MONTH;
+        $part = $inOneMonth && ! $single;
+        $period = $single ? $from->format('M Y') : ($part ? CommercialPeriods::describe($from, $to) : $from->format('M').' to '.$to->format('M Y'));
         $segment = $batch->customer_segment && $batch->customer_segment !== CommercialImportBatch::SEGMENT_ALL
             ? str($batch->customer_segment)->replace('_', ' ')->title()->toString()
             : 'All customers';
@@ -115,6 +120,8 @@ class BillingAnalyticsService
             'month' => $from->format('Y-m-01'),
             'period_label' => $period,
             'is_single_month' => $single,
+            'in_one_month' => $inOneMonth,
+            'is_part_month' => $part,
             'label' => ($batch->region?->region_name ?? $batch->region_label_raw ?? 'Unknown region').' · '.$segment.' · '.$period.($single ? '' : ' (period)'),
         ];
     }
@@ -599,7 +606,7 @@ class BillingAnalyticsService
         }
 
         if (! $a['is_single_month'] || ! $b['is_single_month']) {
-            return 'A multi-month period overlaps single months, so it cannot be compared or trended. Compare two single-month snapshots.';
+            return 'A multi-month period, or a part of a month, overlaps whole months, so it cannot be compared or trended. Compare two whole-month snapshots.';
         }
 
         if ($a['region_id'] !== $b['region_id'] || $a['segment'] !== $b['segment']) {

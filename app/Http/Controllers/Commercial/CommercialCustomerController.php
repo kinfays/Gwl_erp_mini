@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\Commercial\BuildCustomerListExport;
 use App\Jobs\Commercial\ProcessCustomerListBatch;
 use App\Models\CommercialCustomerBatch;
+use App\Models\CommercialCustomerUpload;
 use App\Models\Permission;
 use App\Services\Commercial\Customers\CustomerAnalyticsService;
 use App\Services\Commercial\Customers\CustomerExportService;
@@ -65,6 +66,12 @@ class CommercialCustomerController extends Controller
         return $this->page($request, 'commercial.customers.batch', ['batch' => $batch]);
     }
 
+    /** One uploaded FILE: the districts it holds, the check before it is loaded, and every district's batch (Phase 8b). */
+    public function file(Request $request, CommercialCustomerUpload $upload)
+    {
+        return $this->page($request, 'commercial.customers.file', ['upload' => $upload]);
+    }
+
     public function lookups(Request $request)
     {
         return $this->page($request, 'commercial.customers.lookups');
@@ -88,20 +95,24 @@ class CommercialCustomerController extends Controller
             'period_type' => ['required', 'in:weekly,monthly'],
             'as_of_date' => ['required', 'date', 'before_or_equal:tomorrow'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'review' => ['nullable', 'boolean'],
         ]);
 
         $file = $request->file('file');
+        // "Show me the districts first": the file is read once, cheaply, and waits for the person to confirm the districts it holds
+        $review = $request->boolean('review');
 
         try {
-            ['batch' => $batch, 'duplicate' => $duplicate] = $imports->register(
-                $file->getRealPath(), $file->getClientOriginalName(), (string) $request->input('period_type'), Carbon::parse((string) $request->input('as_of_date')), $user, $request->input('notes')
+            ['batch' => $batch, 'upload' => $upload, 'duplicate' => $duplicate] = $imports->register(
+                $file->getRealPath(), $file->getClientOriginalName(), (string) $request->input('period_type'), Carbon::parse((string) $request->input('as_of_date')), $user, $request->input('notes'), $review
             );
         } catch (CustomerImportException $exception) {
             return back()->withInput()->with('error', $exception->getMessage());
         }
 
         if ($duplicate) {
-            return redirect()->route('commercial.customers.batch', $batch)->with('status', 'This exact file was already uploaded (batch #'.$batch->id.', '.CommercialCustomerBatch::statusLabel($batch->status).'). Nothing was done twice.');
+            return redirect()->route($upload->batches()->count() > 1 || $review ? 'commercial.customers.file' : 'commercial.customers.batch', $upload->batches()->count() > 1 || $review ? $upload : $batch)
+                ->with('status', 'This exact file was already uploaded (batch #'.$batch->id.', '.CommercialCustomerBatch::statusLabel($batch->status).'). Nothing was done twice.');
         }
 
         Audit::log(
@@ -109,10 +120,14 @@ class CommercialCustomerController extends Controller
             module: Permission::MODULE_COMMERCIAL,
             targetType: CommercialCustomerBatch::class,
             targetId: $batch->id,
-            metadata: ['period' => $batch->period_key, 'period_type' => $batch->period_type, 'size_mb' => round($file->getSize() / 1048576, 1)]
+            metadata: ['period' => $batch->period_key, 'period_type' => $batch->period_type, 'size_mb' => round($file->getSize() / 1048576, 1), 'upload_id' => $upload->id, 'review' => $review]
         );
 
         ProcessCustomerListBatch::dispatch($batch->id);
+
+        if ($review) {
+            return redirect()->route('commercial.customers.file', $upload)->with('status', 'File received. It is being read to find its districts; you will be asked to confirm them before anything is loaded.');
+        }
 
         return redirect()->route('commercial.customers.batch', $batch)->with('status', 'File received. It is being read in the background; this page shows its progress.');
     }

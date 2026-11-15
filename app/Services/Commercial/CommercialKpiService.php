@@ -57,7 +57,45 @@ class CommercialKpiService
      */
     public function months(array $snapshots, ?int $regionId, ?string $segment, int $limit): array
     {
-        $months = array_values(array_filter($snapshots, fn (array $s) => $s['is_single_month'] && $s['region_id'] === $regionId && $s['segment'] === $segment));
+        // Phase 8b (step 0.1): a calendar month is built from ALL the batches that lie inside it, not taken from "one batch inside one
+        // month". The non-overlapping ones (CommercialPeriods rules 1 to 3, newest first) are ADDED UP by scorecard(); if together they
+        // cover EVERY day of the month it is a full month, otherwise a PART MONTH: it is shown with "n of d days", its efficiency is
+        // withheld and it is never compared with another month. A whole-month batch is a month of one batch and gives today's figures.
+        $periods = new CommercialPeriods;
+        $groups = [];
+
+        foreach ($snapshots as $s) {
+            if (($s['in_one_month'] ?? $s['is_single_month']) && $s['region_id'] === $regionId && $s['segment'] === $segment) {
+                $groups[$s['month']][] = $s;
+            }
+        }
+
+        $months = [];
+
+        foreach ($groups as $month => $family) {
+            $start = Carbon::parse($month)->startOfMonth();
+            $units = array_map(fn (array $s) => ['id' => $s['id'], 'from' => $s['period_from'], 'to' => $s['period_to'], 'order' => (int) $s['id']], $family);
+            $pick = $periods->select($units, $start->toDateString(), $start->copy()->endOfMonth()->toDateString());
+
+            if ($pick['chosen'] === []) {
+                continue;
+            }
+
+            $byId = array_column($family, null, 'id');
+            $latest = $byId[$pick['chosen'][count($pick['chosen']) - 1]];
+            $full = $pick['gaps'] === [];
+
+            $months[] = $latest + [
+                'batch_ids' => $pick['chosen'],
+                'is_full_month' => $full,
+                'days_covered' => $pick['covered_days'],
+                'days_in_month' => $pick['range_days'],
+                'part_label' => $full ? null : $pick['covered_days'].' of '.$pick['range_days'].' days',
+                'missing' => $full ? null : CommercialPeriods::describeIntervals($pick['gaps']),
+                'overlaps' => count($pick['overlaps']),
+            ];
+        }
+
         usort($months, fn (array $a, array $b) => $a['month'] <=> $b['month']);
 
         return array_slice($months, -max(1, $limit));
@@ -74,13 +112,25 @@ class CommercialKpiService
         $labels = array_map(fn (array $m) => [
             'key' => substr($m['month'], 0, 7), 'month' => $m['month'], 'label' => Carbon::parse($m['month'])->format('F'), 'short' => strtoupper(Carbon::parse($m['month'])->format('M')),
             'year' => Carbon::parse($m['month'])->format('Y'), 'snapshot_id' => $m['id'],
+            // a part month (step 0.1): the days it covers and the ones it does not; null / true for a full month
+            'full' => $m['is_full_month'] ?? true, 'days_covered' => $m['days_covered'] ?? null, 'days_in_month' => $m['days_in_month'] ?? null,
+            'part_label' => $m['part_label'] ?? null, 'missing' => $m['missing'] ?? null,
         ], $months);
 
         $perDistrict = [];   // key => [name, id, month => sums]
+        $periods = new CommercialPeriods;
 
         foreach ($months as $m) {
-            $routes = CommercialBillingRoute::query()->where('batch_id', $m['id'])->with('district:id,district_name')
-                ->when($districtIds !== null, fn ($q) => $districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('district_id', $districtIds))->get();
+            // the batches of the month are ADDED UP route by route (flows summed, balances the latest period's): one batch is itself
+            $ids = $m['batch_ids'] ?? [$m['id']];
+            $byBatch = [];
+
+            foreach ($ids as $batchId) {
+                $byBatch[$batchId] = CommercialBillingRoute::query()->where('batch_id', $batchId)->with('district:id,district_name')
+                    ->when($districtIds !== null, fn ($q) => $districtIds === [] ? $q->whereRaw('1 = 0') : $q->whereIn('district_id', $districtIds))->get();
+            }
+
+            $routes = $periods->combineBillingRoutes($byBatch, $ids);
 
             foreach ($routes->groupBy(fn ($route) => $route->district_id ?: 'raw:'.$route->district_label_raw) as $key => $group) {
                 $first = $group->first();
@@ -147,7 +197,9 @@ class CommercialKpiService
     {
         $rows = [];
         $year = $labels === [] ? null : (int) $labels[count($labels) - 1]['year'];
-        $yearKeys = array_values(array_filter(array_column($labels, 'key'), fn (string $key) => (int) substr($key, 0, 4) === $year && isset($monthly[$key])));
+        $partKeys = array_column(array_filter($labels, fn (array $l) => ($l['full'] ?? true) === false), 'key');
+        // a part month is neither measured against a monthly target nor counted in the year to date (it is not a month yet)
+        $yearKeys = array_values(array_filter(array_column($labels, 'key'), fn (string $key) => (int) substr($key, 0, 4) === $year && isset($monthly[$key]) && ! in_array($key, $partKeys, true)));
 
         foreach (self::METRICS as $metric => $meta) {
             $actuals = [];
@@ -159,7 +211,7 @@ class CommercialKpiService
                 $target = $targetOf($metric, $label['month']);
                 $actuals[$label['key']] = $actual;
                 $targets[$label['key']] = $target;
-                $efficiency[$label['key']] = $actual !== null && $target !== null && $target > 0 ? round($actual / $target * 100, 1) : null;
+                $efficiency[$label['key']] = $actual !== null && $target !== null && $target > 0 && ! in_array($label['key'], $partKeys, true) ? round($actual / $target * 100, 1) : null;
             }
 
             $latest = null;
@@ -200,15 +252,19 @@ class CommercialKpiService
             }
 
             $billing = (float) $m['billing'];
+            $part = in_array($label['key'], $partKeys, true);
+            // a part month is never compared with another month, and the month after it has no earlier full month to be compared with
+            $compare = $previous !== null && ! $part;
             $arrears[] = [
-                'key' => $label['key'], 'label' => $label['label'], 'arrears' => (float) $m['arrears'], 'billing' => $billing,
+                'key' => $label['key'], 'label' => $part ? $label['label'].' ('.$label['part_label'].')' : $label['label'], 'arrears' => (float) $m['arrears'], 'billing' => $billing, 'part' => $part,
                 'age' => $billing > 0 && $m['arrears'] > 0 ? round($m['arrears'] / $billing, 1) : null,
                 'owed' => (float) $m['owed'], 'credit' => (float) $m['credit'], 'credit_routes' => (int) $m['credit_routes'], 'net' => round((float) $m['owed'] - (float) $m['credit'], 2),
                 'source' => (string) ($m['source'] ?? 'routes'),
-                'change' => $previous === null ? null : round($m['arrears'] - $previous, 2),
-                'change_pct' => $previous === null || $previous == 0 ? null : round(($m['arrears'] - $previous) / abs($previous) * 100, 1),
+                'change' => $compare ? round($m['arrears'] - $previous, 2) : null,
+                'change_pct' => ! $compare || $previous == 0 ? null : round(($m['arrears'] - $previous) / abs($previous) * 100, 1),
             ];
-            $previous = (float) $m['arrears'];
+            // nothing is compared with a part month, so the month after one has no month before it to be compared with
+            $previous = $part ? null : (float) $m['arrears'];
         }
 
         // The arrears row of the KPI table (actuals only: arrears have no target).
@@ -366,7 +422,9 @@ class CommercialKpiService
     public function charts(array $card, ?int $districtId = null): array
     {
         $months = $card['months'];
-        $labels = array_map(fn (array $m) => $m['short'].' '.substr($m['year'], 2), $months);
+        // a part month is LABELLED on every chart ("OCT 26 · 14/31 d") so nobody reads it as a full month
+        $labels = array_map(fn (array $m) => $m['short'].' '.substr($m['year'], 2).(($m['full'] ?? true) === false ? ' · '.$m['days_covered'].'/'.$m['days_in_month'].' d' : ''), $months);
+        $partMonths = array_values(array_map(fn (array $m) => ['label' => $m['label'].' '.$m['year'], 'days' => $m['part_label'], 'missing' => $m['missing']], array_filter($months, fn (array $m) => ($m['full'] ?? true) === false)));
         $keys = array_column($months, 'key');
         $block = $districtId !== null ? (collect($card['districts'])->firstWhere('id', $districtId) ?? $card['total'] ?? ($card['districts'][0] ?? null)) : ($card['total'] ?? ($card['districts'][0] ?? null));
         $rows = collect($block['rows'])->keyBy('metric');
@@ -397,6 +455,7 @@ class CommercialKpiService
 
         return [
             'labels' => $labels,
+            'part_months' => $partMonths,
             'trend' => $trend,
             'districts' => array_column($districts, 'name'),
             // year to date efficiency of each district, by KPI (null = no target set)

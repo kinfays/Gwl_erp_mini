@@ -2,6 +2,9 @@
 
 namespace App\Services\Commercial\Customers;
 
+use App\Models\CommercialRoute;
+use App\Models\District;
+use App\Services\Commercial\RouteResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -27,6 +30,9 @@ class CustomerLookups
 
     /** @var array<int, int|null> district id => its region id (for the route master) */
     protected array $districtRegions = [];
+
+    /** @var array<int, District|null> */
+    protected array $districtModels = [];
 
     /** @var array<int, bool> status id => is a billing status */
     protected array $billing = [];
@@ -125,6 +131,19 @@ class CustomerLookups
 
         if (isset($this->routes[$key])) {
             return $this->routes[$key];
+        }
+
+        // Phase 8b: a heading is resolved through the route master (RouteResolver, source customer_list) to its CANONICAL route: a code
+        // printed under two districts is one route, and the customer keeps the district its heading names (customers.district_id).
+        // A name that is not a plain code (longer than the 12 characters a code has, or odd characters) keeps the old direct filing.
+        if ($name !== '(no route)') {
+            $this->districtModels[$districtId] ??= District::query()->find($districtId);
+            $resolver = app(RouteResolver::class);
+            $code = $resolver->parse($name)['code'] ?? $name;
+
+            if ($this->districtModels[$districtId] && preg_match('/^[A-Za-z0-9\-\/. ]{1,12}$/', $code)) {
+                return $this->routes[$key] = (int) $resolver->resolveIn($this->districtModels[$districtId], $code, CommercialRoute::SOURCE_CUSTOMER_LIST)->id;
+            }
         }
 
         // The route master (Phase 8a): a route the customer list names is filed with its region, its code (digits as printed) and its source.

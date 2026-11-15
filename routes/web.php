@@ -571,6 +571,12 @@ if (config('gwl.commercial_module_enabled')) {
                         ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                         ->name('.batch');
 
+                    // one uploaded FILE with its districts (Phase 8b): the check before it is loaded, every district's batch, undo
+                    Route::get('/files/{upload}', [CommercialCustomerController::class, 'file'])
+                        ->whereNumber('upload')
+                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
+                        ->name('.file');
+
                     Route::get('/settings', [CommercialCustomerController::class, 'lookups'])
                         ->middleware('permission:commercial.manage_settings')
                         ->name('.lookups');
