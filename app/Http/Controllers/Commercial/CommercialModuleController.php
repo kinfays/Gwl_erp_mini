@@ -46,6 +46,31 @@ class CommercialModuleController extends Controller
         return view('commercial.billing-details');
     }
 
+    /** Phase 8e: the index of the analyses that need more than one file. */
+    public function cross(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.cross');
+    }
+
+    /** Phase 8e: one of X1 and X3 to X12. */
+    public function crossShow(Request $request, string $analysis): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+        abort_unless(array_key_exists($analysis, \App\Services\Commercial\Cross\CrossFileReport::ANALYSES), 404);
+
+        return view('commercial.cross-show', ['analysis' => $analysis]);
+    }
+
+    /** Phase 8e: route 360 (X2), the page behind every route link. A route outside the viewer's reach is a 404 (the Livewire page decides). */
+    public function crossRoute(Request $request, int $route): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.cross-route', ['routeId' => $route]);
+    }
+
     public function settings(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_COMMERCIAL);

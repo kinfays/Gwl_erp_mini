@@ -251,6 +251,29 @@ class CommercialReportData
     }
 
     /**
+     * One analysis that needs more than one file (X1, X3 to X12; Phase 8e, design 8.42), for the viewer's own scope and permissions. The page and the
+     * export both call it.
+     *
+     * @param  array{region?: int|null, district?: int|null, from?: string|null, to?: string|null, mode?: string|null}  $filters
+     * @return array<string, mixed>
+     */
+    public function cross(string $key, array $filters): array
+    {
+        return app(Cross\CrossFileReport::class)->build($key, $filters);
+    }
+
+    /**
+     * Route 360 (X2): one route on one page. Null when the route does not exist or is outside the viewer's reach.
+     *
+     * @param  array{from?: string|null, to?: string|null, mode?: string|null}  $filters
+     * @return array<string, mixed>|null
+     */
+    public function crossRoute(int $routeId, array $filters = []): ?array
+    {
+        return app(Cross\CrossFileReport::class)->route($routeId, $filters);
+    }
+
+    /**
      * A DATE RANGE of billing (Phase 8a, CommercialPeriods): the uploads of the snapshot's region and segment that lie inside it, chosen
      * by the period rules, with their routes added up (flows summed, stocks from the latest period). Null when no range is typed.
      *

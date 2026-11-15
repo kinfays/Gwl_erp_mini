@@ -196,6 +196,17 @@ class CommercialImportBatch extends Model
         return $this->hasMany(CommercialBillingDetailIssue::class, 'batch_id');
     }
 
+    /** What the customer-list link says about the accounts (Phase 8e): status / category movements per route, and the district matrix. */
+    public function detailTransitions(): HasMany
+    {
+        return $this->hasMany(CommercialBillingDetailTransition::class, 'batch_id');
+    }
+
+    public function detailDistrictMatrix(): HasMany
+    {
+        return $this->hasMany(CommercialBillingDetailDistrictCell::class, 'batch_id');
+    }
+
     public function isReading(): bool
     {
         return $this->report_type === self::TYPE_READING_SUMMARY;

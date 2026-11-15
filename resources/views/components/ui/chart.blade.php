@@ -12,7 +12,7 @@
             event="transport-report-data-updated" source="monthlyExpenses"
             :source-data="$payload['monthlyExpenses'] ?? []" :series="[['label' => 'GHS', 'key' => 'data']]" />
 
-    Types: line · area · bar · hbar · doughnut. Series colours follow the fixed slot order unless a
+    Types: line · area · bar · hbar · doughnut · scatter (data = a list of ['x' => .., 'y' => ..] points, labels = one name per point; `xLabel` names the x axis, `unit` the y axis). Series colours follow the fixed slot order unless a
     series sets `color` (a token such as 'series-3' / 'success') or per-point `colors` / `colorsKey`.
     `color-map` ties a colour to a category label (e.g. leave statuses) so it never changes with rank.
     Every chart has a "Table" toggle showing the same numbers as text.
@@ -37,6 +37,7 @@
     'height' => 260,
     'table' => true,
     'colorMap' => null,
+    'xLabel' => null,
     'emptyText' => 'No data for this period yet.',
 ])
 
@@ -52,7 +53,7 @@
             $item['colors'] = array_values($rows[$item['colorsKey']] ?? []);
         }
 
-        $item['data'] = array_values(array_map(fn ($value) => is_numeric($value) ? $value + 0 : 0, $item['data'] ?? []));
+        $item['data'] = array_values(array_map(fn ($value) => is_array($value) ? ['x' => (float) ($value['x'] ?? 0), 'y' => (float) ($value['y'] ?? 0)] : (is_numeric($value) ? $value + 0 : 0), $item['data'] ?? []));
 
         return $item;
     })->values()->all();
@@ -72,6 +73,7 @@
         'source' => $source,
         'watch' => $watch,
         'colorMap' => $colorMap,
+        'xLabel' => $xLabel,
     ];
 @endphp
 

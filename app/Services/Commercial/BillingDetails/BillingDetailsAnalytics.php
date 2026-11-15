@@ -149,6 +149,21 @@ class BillingDetailsAnalytics
                 $acc['spelling'][$bs][1] += $v[BillingDetailsScan::C_MONTH_TOTAL];
             }
 
+            // Phase 8e: how the account STATUS sits with the bill (X6): accounts holding a billing status, HOLD accounts, and billed accounts that are not active
+            $statusFlags = $ctx['flags'][$r['cs']] ?? null;
+
+            if ($statusFlags !== null && $statusFlags['billing']) {
+                $acc['active_billing'] += $customers;
+            }
+
+            if ($r['cs'] === 'HOLD') {
+                $acc['hold'] += $customers;
+            }
+
+            if (in_array($bs, BillingDetailsScan::BILLED, true) && $statusFlags !== null && ! $statusFlags['active']) {
+                $acc['billed_not_active'] += $customers;
+            }
+
             if ($bs === 'UNBILLED') {
                 $acc['unbilled'] += $customers;
                 $flags = $ctx['flags'][$r['cs']] ?? null;
@@ -174,7 +189,7 @@ class BillingDetailsAnalytics
         return [
             'v' => array_fill(0, 33, 0), 'bill' => array_fill_keys([...self::STATUSES, 'OTHER'], [0, 0, 0]), 'est' => array_fill_keys(array_keys(self::CAUSES), [0, 0]),
             'spelling' => ['ESTIMATED' => [0, 0], 'ESTIMATE' => [0, 0]],
-            'billed_customers' => 0, 'billed_bills' => 0, 'billed_consume' => 0, 'regular_customers' => 0, 'regular_zero' => 0, 'unbilled' => 0, 'unbilled_active' => 0, 'unbilled_hold' => 0,
+            'billed_customers' => 0, 'billed_bills' => 0, 'billed_consume' => 0, 'regular_customers' => 0, 'regular_zero' => 0, 'unbilled' => 0, 'unbilled_active' => 0, 'unbilled_hold' => 0, 'active_billing' => 0, 'hold' => 0, 'billed_not_active' => 0,
             'first' => ['route_id' => null, 'label' => '', 'district_id' => null],
         ];
     }
@@ -217,6 +232,8 @@ class BillingDetailsAnalytics
             'estimated_value' => $m($a['est']['F'][1] + $a['est']['N'][1] + $a['est']['W'][1] + $a['est']['O'][1]),
             // unbilled (B3)
             'unbilled' => $a['unbilled'], 'unbilled_active' => $a['unbilled_active'], 'unbilled_hold' => $a['unbilled_hold'], 'unbilled_share' => $this->pct($a['unbilled'], $customers),
+            // Phase 8e (X6): customers holding a billing status, HOLD customers, billed customers whose status is not active
+            'active_billing_customers' => $a['active_billing'], 'hold_customers' => $a['hold'], 'billed_not_active' => $a['billed_not_active'],
             // consumption (B4)
             'consume' => round($v[BillingDetailsScan::C_CONSUME] / 1000, 3), 'consume_per_bill' => $a['billed_bills'] > 0 ? round($a['billed_consume'] / 1000 / $a['billed_bills'], 3) : null,
             'zero_regular' => $a['regular_zero'], 'zero_regular_share' => $this->pct($a['regular_zero'], $a['regular_customers']),

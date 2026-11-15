@@ -116,6 +116,7 @@ function buildConfig(config, labels, series) {
     const type = config.type || 'line';
     const isDoughnut = type === 'doughnut';
     const isLine = type === 'line' || type === 'area';
+    const isScatter = type === 'scatter';
     const horizontal = type === 'hbar';
     const format = formatter(config.unit);
     const surface = token('--color-surface');
@@ -145,6 +146,18 @@ function buildConfig(config, labels, series) {
                 borderWidth: 2,
                 borderRadius: 3,
                 hoverOffset: 4,
+            };
+        }
+
+        if (isScatter) {
+            return {
+                label: item.label,
+                data: item.data || [],
+                backgroundColor: withAlpha(base, 0.75),
+                borderColor: base,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                showLine: false,
             };
         }
 
@@ -202,7 +215,7 @@ function buildConfig(config, labels, series) {
         ? false
         : (isDoughnut || series.length > 1 || config.legend);
 
-    const wholeNumbers = series.every((item) => (item.data || []).every((value) => Number.isInteger(Number(value))));
+    const wholeNumbers = isScatter ? false : series.every((item) => (item.data || []).every((value) => Number.isInteger(Number(value))));
 
     const valueAxis = {
         beginAtZero: true,
@@ -234,8 +247,18 @@ function buildConfig(config, labels, series) {
         },
     };
 
+    // a scatter has a number line on both axes (its own titles); the labels name the points
+    const scatterAxis = (title, unit) => ({
+        type: 'linear',
+        beginAtZero: true,
+        title: { display: Boolean(title), text: title || '', color: ink3 },
+        grid: { color: grid, drawTicks: false },
+        border: { display: false },
+        ticks: { color: ink3, padding: 8, maxTicksLimit: 8, callback: (value) => (unit === '%' ? `${value}%` : value) },
+    });
+
     return {
-        type: isDoughnut ? 'doughnut' : (isLine ? 'line' : 'bar'),
+        type: isDoughnut ? 'doughnut' : (isScatter ? 'scatter' : (isLine ? 'line' : 'bar')),
         data: { labels, datasets },
         plugins: [centerTotal],
         options: {
@@ -244,10 +267,10 @@ function buildConfig(config, labels, series) {
             animation: reducedMotion() ? false : { duration: 400 },
             indexAxis: horizontal ? 'y' : 'x',
             cutout: isDoughnut ? '68%' : undefined,
-            interaction: isDoughnut ? { mode: 'nearest', intersect: true } : { mode: 'index', intersect: false },
+            interaction: isDoughnut || isScatter ? { mode: 'nearest', intersect: true } : { mode: 'index', intersect: false },
             layout: { padding: isDoughnut ? 4 : { top: 6, right: 8 } },
             font: { family: font, size: 12 },
-            scales: isDoughnut ? {} : (horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis }),
+            scales: isDoughnut ? {} : (isScatter ? { x: scatterAxis(config.xLabel, config.unit), y: scatterAxis(config.label, config.unit) } : (horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis })),
             plugins: {
                 legend: {
                     display: Boolean(showLegend),
@@ -278,6 +301,12 @@ function buildConfig(config, labels, series) {
                     callbacks: {
                         label(context) {
                             const value = context.parsed?.x !== undefined && horizontal ? context.parsed.x : (context.parsed?.y ?? context.parsed);
+
+                            if (isScatter) {
+                                const name = labels[context.dataIndex] ? `${labels[context.dataIndex]}: ` : '';
+
+                                return ` ${name}${format(context.parsed.x)} / ${format(context.parsed.y)}`;
+                            }
 
                             if (isDoughnut) {
                                 const total = context.dataset.data.reduce((sum, item) => sum + Number(item || 0), 0);
@@ -365,13 +394,17 @@ function registerChart(Alpine) {
         },
 
         get isEmpty() {
-            return this.series.every((item) => (item.data || []).every((value) => ! Number(value)));
+            return this.series.every((item) => (item.data || []).every((value) => (value !== null && typeof value === 'object' ? ! (Number(value.x) || Number(value.y)) : ! Number(value))));
         },
 
         get tableRows() {
             return this.labels.map((label, index) => ({
                 label,
-                values: this.series.map((item) => formatter(config.unit)((item.data || [])[index])),
+                values: this.series.map((item) => {
+                    const point = (item.data || [])[index];
+
+                    return point !== null && typeof point === 'object' ? `${formatter(config.unit)(point.x)} / ${formatter(config.unit)(point.y)}` : formatter(config.unit)(point);
+                }),
             }));
         },
     }));

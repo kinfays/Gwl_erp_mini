@@ -2,6 +2,7 @@
 
 namespace App\Services\Commercial\BillingDetails;
 
+use App\Models\CommercialBillingDetailIssue;
 use App\Models\CommercialImportBatch;
 use App\Models\CommercialRoute;
 use App\Models\District;
@@ -582,6 +583,8 @@ class BillingDetailsImportService extends ReportImportService
         DB::table('commercial_billing_detail_rollups')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_bands')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_issues')->where('batch_id', $batch->id)->delete();
+        DB::table('commercial_billing_detail_transitions')->where('batch_id', $batch->id)->delete();
+        DB::table('commercial_billing_detail_district_matrix')->where('batch_id', $batch->id)->delete();
 
         if ($staging) {
             DB::table(self::STAGING)->where('batch_id', $batch->id)->delete();
@@ -697,10 +700,20 @@ class BillingDetailsImportService extends ReportImportService
     // ---------------------------------------------------------------- the customer list link (ops_route_id)
 
     /**
-     * Fills commercial_customers.ops_route_id (the canonical route of the billing row) for the accounts of this file that exist in the customer
-     * list, one route at a time (set-based), and only for the districts this batch is the NEWEST of (the greatest period, then the latest upload).
-     * It does NOT change who sees which customer (that is Phase 8e, behind a setting). Reports how many accounts were in billing but not in the list
-     * and how many accounts of the list's districts were not in the file.
+     * Links the customer list to this upload.
+     *
+     *  1. Fills commercial_customers.ops_route_id (the canonical route of the billing row) for the accounts of this file that exist in the
+     *     customer list, one route at a time (set-based), and only for the districts this batch is the NEWEST of (the greatest period, then
+     *     the latest upload). It does NOT change who sees which customer (that is a later phase, behind a setting).
+     *  2. Phase 8e step 0.2, for every placed route whatever the upload's age: the TRANSITION of each linked account (its status and service
+     *     category as billed against the customer list's CURRENT ones) as counts per route in commercial_billing_detail_transitions; the
+     *     DISTRICT DISAGREEMENT counts (the district of the billing route against customers.district_id) in
+     *     commercial_billing_detail_district_matrix; and a capped list (kind status_changed, amount 0, per district) of the accounts whose
+     *     status differs. Accounts the list no longer holds (missing from its latest file) are not compared: their list status is stale.
+     *  3. Reports how many accounts were in billing but not in the list, per billing district, and how many billing-status accounts of the
+     *     list's districts were not in the file, per list district.
+     *
+     * Everything is set-based or one query per route; no name, phone or meter number is read.
      *
      * @return array<string, mixed>
      */
@@ -717,29 +730,120 @@ class BillingDetailsImportService extends ReportImportService
             return ['available' => false, 'reason' => 'No customer list has been loaded yet, so there is nothing to link. Load it and upload this report again to link the accounts.', 'accounts' => $staged];
         }
 
+        // a second run (with the accounts still staged) starts from nothing; with nothing staged there is nothing to compare, so what is kept stays
+        if ($staged === 0) {
+            return ['available' => true, 'accounts' => 0, 'in_customer_list' => 0, 'not_in_customer_list' => 0, 'linked' => 0, 'list_accounts_not_in_file' => 0, 'routes_left_to_a_newer_upload' => 0, 'by_district' => [], 'by_route' => [], 'list_billing_not_in_file_by_district' => [], 'compared' => 0, 'status_changed' => 0, 'category_changed' => 0, 'unplaced_accounts' => 0];
+        }
+
+        DB::table('commercial_billing_detail_transitions')->where('batch_id', $batch->id)->delete();
+        DB::table('commercial_billing_detail_district_matrix')->where('batch_id', $batch->id)->delete();
+        DB::table('commercial_billing_detail_issues')->where('batch_id', $batch->id)->where('kind', CommercialBillingDetailIssue::STATUS_CHANGED)->delete();
+
         $linked = 0;
         $older = 0;
         $districts = [];
         $newest = [];
+        $cap = max(1, (int) config('gwl.commercial_billing_detail_issue_cap', 200));
+        $now = now()->toDateTimeString();
+        $transitions = [];
+        $matrix = [];
+        $byDistrict = [];
+        $byRoute = [];
+        $listed = [];
+        $compared = 0;
+        $statusChanged = 0;
+        $categoryChanged = 0;
+        $unplaced = 0;
 
         foreach ($batch->control_totals['routes'] ?? [] as $route) {
             if ($route['route_id'] === null || $route['district_id'] === null) {
+                $unplaced += (int) DB::table(self::STAGING)->where('batch_id', $batch->id)->where('route_seq', $route['seq'])->count();
+
                 continue;
             }
 
-            $districts[$route['district_id']] = true;
-            $newest[$route['district_id']] ??= $this->isNewestFor($batch, (int) $route['district_id']);
+            $district = (int) $route['district_id'];
+            $districts[$district] = true;
+            $newest[$district] ??= $this->isNewestFor($batch, $district);
 
-            if (! $newest[$route['district_id']]) {
+            if ($newest[$district]) {
+                $linked += DB::affectingStatement(
+                    'UPDATE commercial_customers SET ops_route_id = ? WHERE account_no IN (SELECT account_no FROM '.self::STAGING.' WHERE batch_id = ? AND route_seq = ?) AND (ops_route_id IS NULL OR ops_route_id <> ?)',
+                    [$route['route_id'], $batch->id, $route['seq'], $route['route_id']]
+                );
+            } else {
                 $older++;
-
-                continue;
             }
 
-            $linked += DB::affectingStatement(
-                'UPDATE commercial_customers SET ops_route_id = ? WHERE account_no IN (SELECT account_no FROM '.self::STAGING.' WHERE batch_id = ? AND route_seq = ?) AND (ops_route_id IS NULL OR ops_route_id <> ?)',
-                [$route['route_id'], $batch->id, $route['seq'], $route['route_id']]
-            );
+            // accounts of this route in billing, and how many of them the customer list holds (per billing district)
+            $accounts = (int) DB::table(self::STAGING)->where('batch_id', $batch->id)->where('route_seq', $route['seq'])->count();
+            $held = (int) DB::table(self::STAGING.' as s')->join('commercial_customers as c', 'c.account_no', '=', 's.account_no')->where('s.batch_id', $batch->id)->where('s.route_seq', $route['seq'])->count();
+            $byDistrict[$district]['accounts'] = ($byDistrict[$district]['accounts'] ?? 0) + $accounts;
+            $byDistrict[$district]['in_list'] = ($byDistrict[$district]['in_list'] ?? 0) + $held;
+            $byRoute[(int) $route['route_id']]['accounts'] = ($byRoute[(int) $route['route_id']]['accounts'] ?? 0) + $accounts;
+            $byRoute[(int) $route['route_id']]['in_list'] = ($byRoute[(int) $route['route_id']]['in_list'] ?? 0) + $held;
+
+            // what the list says about those accounts NOW (one grouped query: the transitions and the district matrix come out of it together)
+            $rows = DB::table(self::STAGING.' as s')
+                ->join('commercial_customers as c', 'c.account_no', '=', 's.account_no')
+                ->join('commercial_customer_statuses as st', 'st.id', '=', 'c.status_id')
+                ->join('commercial_customer_categories as ck', 'ck.id', '=', 'c.category_id')
+                ->where('s.batch_id', $batch->id)->where('s.route_seq', $route['seq'])->whereNull('c.missing_since_batch_id')
+                ->selectRaw("s.status_code AS from_status, st.code AS to_status, s.category_code AS from_category, COALESCE(ck.code, '') AS to_category, c.district_id AS list_district, COUNT(*) AS n")
+                ->groupBy('s.status_code', 'st.code', 's.category_code', 'ck.code', 'c.district_id')
+                ->get();
+
+            $changedHere = 0;
+
+            foreach ($rows as $row) {
+                $n = (int) $row->n;
+                $key = $route['route_id']."\x1f".$row->from_status."\x1f".$row->to_status."\x1f".$row->from_category."\x1f".$row->to_category;
+                $transitions[$key] ??= [
+                    'batch_id' => $batch->id, 'route_id' => (int) $route['route_id'], 'district_id' => $district, 'from_status' => (string) $row->from_status, 'to_status' => (string) $row->to_status,
+                    'from_category' => (string) $row->from_category, 'to_category' => (string) $row->to_category, 'customers' => 0,
+                ];
+                $transitions[$key]['customers'] += $n;
+                $matrix[$district][(int) $row->list_district] = ($matrix[$district][(int) $row->list_district] ?? 0) + $n;
+                $compared += $n;
+
+                if ($row->from_status !== $row->to_status) {
+                    $statusChanged += $n;
+                    $changedHere += $n;
+                }
+
+                if ($row->from_category !== $row->to_category) {
+                    $categoryChanged += $n;
+                }
+            }
+
+            // the capped list of accounts whose status moved: per district, the cap shared by its routes
+            $room = $cap - ($listed[$district] ?? 0);
+
+            if ($changedHere > 0 && $room > 0) {
+                $listed[$district] = ($listed[$district] ?? 0) + DB::affectingStatement(
+                    'INSERT INTO commercial_billing_detail_issues (batch_id, kind, account_no, route_id, route_label_raw, district_id, district_label_raw, amount, created_at) '
+                    .'SELECT ?, ?, s.account_no, ?, ?, ?, ?, 0, ? FROM '.self::STAGING.' s '
+                    .'INNER JOIN commercial_customers c ON c.account_no = s.account_no INNER JOIN commercial_customer_statuses st ON st.id = c.status_id '
+                    .'WHERE s.batch_id = ? AND s.route_seq = ? AND c.missing_since_batch_id IS NULL AND s.status_code <> st.code ORDER BY s.account_no LIMIT '.(int) $room,
+                    [$batch->id, CommercialBillingDetailIssue::STATUS_CHANGED, $route['route_id'], $route['label'], $district, (string) ($route['district_label'] ?? ''), $now, $batch->id, $route['seq']]
+                );
+            }
+        }
+
+        foreach (array_chunk(array_values($transitions), 200) as $chunk) {
+            DB::table('commercial_billing_detail_transitions')->insert($chunk);
+        }
+
+        $cells = [];
+
+        foreach ($matrix as $billingDistrict => $byList) {
+            foreach ($byList as $listDistrict => $n) {
+                $cells[] = ['batch_id' => $batch->id, 'billing_district_id' => $billingDistrict, 'list_district_id' => $listDistrict, 'customers' => $n];
+            }
+        }
+
+        foreach (array_chunk($cells, 200) as $chunk) {
+            DB::table('commercial_billing_detail_district_matrix')->insert($chunk);
         }
 
         $notInFile = $districts === [] ? 0 : (int) DB::table('commercial_customers as c')
@@ -748,12 +852,24 @@ class BillingDetailsImportService extends ReportImportService
             ->whereNotExists(fn ($q) => $q->from(self::STAGING.' as s')->whereColumn('s.account_no', 'c.account_no')->where('s.batch_id', $batch->id))
             ->count();
 
+        // the accounts of a BILLING status (the status flag, so NSC counts) the list holds in the file's districts that the file does not
+        $billingNotInFile = $districts === [] ? [] : DB::table('commercial_customers as c')
+            ->join('commercial_customer_statuses as st', 'st.id', '=', 'c.status_id')
+            ->whereIn('c.district_id', array_keys($districts))
+            ->whereNull('c.missing_since_batch_id')->where('st.is_billing', true)
+            ->whereNotExists(fn ($q) => $q->from(self::STAGING.' as s')->whereColumn('s.account_no', 'c.account_no')->where('s.batch_id', $batch->id))
+            ->selectRaw('c.district_id AS district_id, COUNT(*) AS n')->groupBy('c.district_id')->pluck('n', 'district_id')->map(fn ($n) => (int) $n)->all();
+
         return [
             'available' => true, 'accounts' => $staged, 'in_customer_list' => $inList, 'not_in_customer_list' => $staged - $inList, 'linked' => $linked,
             'list_accounts_not_in_file' => $notInFile, 'routes_left_to_a_newer_upload' => $older,
+            // Phase 8e
+            'by_district' => array_map(fn (array $d) => ['accounts' => $d['accounts'], 'in_list' => $d['in_list'], 'not_in_list' => $d['accounts'] - $d['in_list']], $byDistrict),
+            'by_route' => array_map(fn (array $d) => ['accounts' => $d['accounts'], 'in_list' => $d['in_list']], $byRoute),
+            'list_billing_not_in_file_by_district' => $billingNotInFile,
+            'compared' => $compared, 'status_changed' => $statusChanged, 'category_changed' => $categoryChanged, 'unplaced_accounts' => $unplaced,
         ];
     }
-
     /** True when no other live upload of the region has data for the district with a later period (or the same period and a later id). */
     protected function isNewestFor(CommercialImportBatch $batch, int $districtId): bool
     {

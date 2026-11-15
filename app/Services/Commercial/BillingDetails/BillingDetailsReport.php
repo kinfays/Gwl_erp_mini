@@ -11,6 +11,7 @@ use App\Models\CommercialReadingRouteStat;
 use App\Models\District;
 use App\Models\Region;
 use App\Services\Commercial\CommercialPeriods;
+use App\Services\Commercial\RouteCcaResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -83,7 +84,7 @@ class BillingDetailsReport
         $districtId = $districtId !== null && isset($options['districts'][$districtId]) ? $districtId : null;
         $category = $category !== null && $category !== '' && isset($options['categories'][$category]) ? $category : null;
 
-        $cca = $this->ccaOwners($regionId, $named);
+        $cca = $this->ccaOwners($regionId, $selection['from'] ?? null, $selection['to'] ?? null);
         $ccaOptions = $named && $cca ? $this->ccaOptions($cca, $options['route_ids']) : [];
         $ccaStaffId = $named && $ccaStaffId !== null && isset($ccaOptions[$ccaStaffId]) ? $ccaStaffId : null;
         $routeId = $routeId !== null && isset($options['routes'][$routeId]) ? $routeId : null;
@@ -142,7 +143,7 @@ class BillingDetailsReport
             'concentration' => $this->concentration($chosen, $inRegion, $districtId, $category, $routeFilter, $districtNames),
             'integrity' => $this->integrity($chosen, $inRegion, $analysis, $periodLabel),
             'trend' => $this->trend($trendIds, $filters, $districtNames, $periodLabel, $ranks),
-            'cca_source' => $cca ? ['batch_id' => $cca['batch_id'], 'label' => $cca['label']] : null,
+            'cca_source' => $cca ? ['batch_id' => $cca['batch_id'], 'label' => $cca['label'], 'relation' => $cca['relation'], 'overlap_days' => $cca['overlap_days'], 'sentence' => $cca['sentence']] : null,
             'counts' => ['routes' => count($analysis['routes']), 'customers' => $analysis['totals']['customers'], 'districts' => count($analysis['districts'])],
         ];
     }
@@ -182,29 +183,17 @@ class BillingDetailsReport
         return $out;
     }
 
-    // ---------------------------------------------------------------- the CCA of a route (the newest reading by route upload's OWNER row)
+    // ---------------------------------------------------------------- the CCA of a route (RouteCcaResolver, Phase 8e step 0.1)
 
     /**
-     * @return array{owners: array<int, array{staff_id: string, name: string|null}>, batch_id: int, label: string}|null
+     * The owner of each route in the reading-by-route upload that overlaps the BILL period the most (the newest when none does): one rule,
+     * RouteCcaResolver, shared with the cross-file analyses.
+     *
+     * @return array{owners: array<int, array{staff_id: string, name: string|null}>, batch_id: int, label: string, relation: string, overlap_days: int, sentence: string, from: string, to: string}|null
      */
-    protected function ccaOwners(int $regionId, bool $named): ?array
+    protected function ccaOwners(int $regionId, ?string $billFrom, ?string $billTo): ?array
     {
-        $batch = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_READING_ROUTE_SUMMARY)->live()->where('region_id', $regionId)
-            ->orderByDesc('period_to')->orderByDesc('id')->first();
-
-        if (! $batch) {
-            return null;
-        }
-
-        $owners = [];
-
-        $query = $this->scopeRouteStatsForActor(CommercialReadingRouteStat::query()->where('batch_id', $batch->id)->where('is_route_owner', true)->whereNotNull('route_id'));
-
-        foreach ($query->toBase()->get(['route_id', 'cca_staff_id', 'cca_name_raw']) as $r) {
-            $owners[(int) $r->route_id] = ['staff_id' => (string) $r->cca_staff_id, 'name' => $r->cca_name_raw];
-        }
-
-        return ['owners' => $owners, 'batch_id' => $batch->id, 'label' => CommercialPeriods::describe($batch->period_from, $batch->period_to)];
+        return app(RouteCcaResolver::class)->forPeriod($regionId, $billFrom, $billTo);
     }
 
     /**

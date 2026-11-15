@@ -260,7 +260,7 @@
                         </x-slot:head>
                         @forelse ($placed->take($screenCap) as $route)
                             <tr wire:key="rr-r-{{ $route['key'] }}">
-                                <td class="mono">{{ $route['label'] }}</td>
+                                <td class="mono">@if (! empty($route['route_id']))<a href="{{ route('commercial.cross.route', $route['route_id']) }}">{{ $route['label'] }}</a>@else{{ $route['label'] }}@endif</td>
                                 <td>{{ $route['district'] }}</td>
                                 @if ($named)<td>{{ $who($route['owner_cca'], $route['owner_name']) }}</td>@endif
                                 <td class="num">{{ number_format($route['strength']) }}</td>
@@ -283,7 +283,7 @@
                         <x-ui.table label="Unvisited backlog by route" :sticky="false">
                             <x-slot:head><tr><th>Route</th><th>District</th><th class="num">Unvisited</th><th class="num">Coverage</th></tr></x-slot:head>
                             @forelse (array_slice($b['routes'], 0, 25) as $route)
-                                <tr wire:key="rr-b-{{ $route['key'] }}"><td class="mono">{{ $route['label'] }}</td><td>{{ $route['district'] }}</td><td class="num">{{ number_format($route['unvisited']) }}</td><td class="num">{{ $pct($route['coverage']) }}</td></tr>
+                                <tr wire:key="rr-b-{{ $route['key'] }}"><td class="mono">@if (! empty($route['route_id']))<a href="{{ route('commercial.cross.route', $route['route_id']) }}">{{ $route['label'] }}</a>@else{{ $route['label'] }}@endif</td><td>{{ $route['district'] }}</td><td class="num">{{ number_format($route['unvisited']) }}</td><td class="num">{{ $pct($route['coverage']) }}</td></tr>
                             @empty
                                 <x-ui.empty-row :colspan="4" icon="check" title="No route has customers left unvisited." />
                             @endforelse
@@ -311,7 +311,7 @@
                         <x-slot:head><tr><th>Route</th><th>District</th><th>On the route</th><th class="num">Verified strength (once)</th><th class="num">Visited</th></tr></x-slot:head>
                         @forelse (array_slice($cov['multi_cca_routes'], 0, 100) as $route)
                             <tr wire:key="rr-m-{{ $route['key'] }}">
-                                <td class="mono">{{ $route['label'] }}</td>
+                                <td class="mono">@if (! empty($route['route_id']))<a href="{{ route('commercial.cross.route', $route['route_id']) }}">{{ $route['label'] }}</a>@else{{ $route['label'] }}@endif</td>
                                 <td>{{ $route['district'] }}</td>
                                 <td>@if ($named)@foreach ($route['multi_rows'] as $row){{ $who($row['cca'], $row['name']) }} ({{ number_format($row['visited']) }} visits){{ $row['owner'] ? ', owner' : '' }}@if (! $loop->last); @endif @endforeach @else {{ count($route['ccas']) }} CCAs @endif</td>
                                 <td class="num">{{ number_format($route['strength']) }}</td>
@@ -352,7 +352,7 @@
                         <x-ui.table label="Routes beyond the threshold" :sticky="false">
                             <x-slot:head><tr><th>Route</th><th>District</th><th class="num">Verified strength</th><th class="num">Metered accounts</th><th class="num">Difference</th><th class="num">Difference %</th></tr></x-slot:head>
                             @forelse (array_slice($s['beyond'], 0, 100) as $route)
-                                <tr wire:key="rr-s-{{ $route['route_id'] }}"><td class="mono">{{ $route['label'] }}</td><td>{{ $route['district'] }}</td><td class="num">{{ number_format($route['strength']) }}</td><td class="num">{{ number_format($route['metered']) }}</td><td class="num">{{ ($route['difference'] > 0 ? '+' : '').number_format($route['difference']) }}</td><td class="num">{{ ($route['relative_pct'] > 0 ? '+' : '').number_format($route['relative_pct'], 1) }}%</td></tr>
+                                <tr wire:key="rr-s-{{ $route['route_id'] }}"><td class="mono">@if (! empty($route['route_id']))<a href="{{ route('commercial.cross.route', $route['route_id']) }}">{{ $route['label'] }}</a>@else{{ $route['label'] }}@endif</td><td>{{ $route['district'] }}</td><td class="num">{{ number_format($route['strength']) }}</td><td class="num">{{ number_format($route['metered']) }}</td><td class="num">{{ ($route['difference'] > 0 ? '+' : '').number_format($route['difference']) }}</td><td class="num">{{ ($route['relative_pct'] > 0 ? '+' : '').number_format($route['relative_pct'], 1) }}%</td></tr>
                             @empty
                                 <x-ui.empty-row :colspan="6" icon="check" title="No route is beyond the threshold." />
                             @endforelse

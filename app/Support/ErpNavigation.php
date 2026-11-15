@@ -948,6 +948,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
             ],
             [
+                'label' => 'Across the files',
+                'route' => 'commercial.cross',
+                'active' => ['commercial.cross', 'commercial.cross.show', 'commercial.cross.route'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'layers',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading') || $currentUser->hasPermission('commercial.view_billing') || $currentUser->hasPermission('commercial.view_customer_analytics'),
+            ],
+            [
                 'label' => 'Billing',
                 'route' => 'commercial.billing',
                 'active' => ['commercial.billing'],

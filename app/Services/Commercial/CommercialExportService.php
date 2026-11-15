@@ -29,6 +29,18 @@ class CommercialExportService
         'scorecard' => ['title' => 'District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing', 'commercial.view_reading'], 'any' => []],
         'reading-routes' => ['title' => 'Meter reading by route and CCA', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reading'], 'any' => []],
         'billing-details' => ['title' => 'Detailed billing', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
+        'cross-x1' => ['title' => 'Across the files: X1 CCA performance against billing outcomes', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x3' => ['title' => 'Across the files: X3 Skip against estimation', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x4' => ['title' => 'Across the files: X4 Strength reconciliation', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x5' => ['title' => 'Across the files: X5 Billing against the customer list', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x6' => ['title' => 'Across the files: X6 Status exceptions', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x7' => ['title' => 'Across the files: X7 District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x8' => ['title' => 'Across the files: X8 Arrears per CCA portfolio', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x9' => ['title' => 'Across the files: X9 Read recency against visits', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x10' => ['title' => 'Across the files: X10 District and route evidence', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x11' => ['title' => 'Across the files: X11 Executive summary by district', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-x12' => ['title' => 'Across the files: X12 Detailed billing against the billing summary', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'cross-route' => ['title' => 'Route 360', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
     ];
 
     /** The sections of the Detailed billing export (the tabs of its screen): each is an export of its own, so one stays inside the row caps. */
@@ -501,7 +513,7 @@ class CommercialExportService
         }
 
         if ($d['named'] && $d['cca_source']) {
-            $notes[] = 'The CCA beside a route is its owner in the reading report by route of '.$d['cca_source']['label'].' (batch #'.$d['cca_source']['batch_id'].').';
+            $notes[] = 'The CCA beside a route is '.$d['cca_source']['sentence'].'.';
         } elseif (! $d['named']) {
             $notes[] = 'No CCA is named here: individual CCA figures need the CCA performance permission.';
         }
@@ -613,6 +625,74 @@ class CommercialExportService
         $tables = $section === 'all' ? array_merge(...array_values($sections)) : $sections[$section];
 
         return $this->report('billing-details', $meta, $notes, $tables, $meta['Period']);
+    }
+
+    // ---------------------------------------------------------------- across the files (Phase 8e)
+
+    /**
+     * One "Across the files" analysis (X1, X3 to X12) as a titled report, from the SAME payload its page shows (CrossFileReport::build). The period each
+     * part used is in the header and the notes, a part the viewer may not see is listed as "not in this file", and nothing but numbers and codes is in it.
+     *
+     * @param  array<string, mixed>  $d  CommercialReportData::cross()
+     */
+    public function cross(string $key, array $d): array
+    {
+        $meta = [
+            'Region' => (string) ($d['region'] ?? 'All'),
+            'Period' => $this->crossPeriod($d),
+            'District' => $d['district_id'] ? (string) ($d['districts'][$d['district_id']] ?? '') : ($d['district_limited'] ? 'Your districts' : 'All districts'),
+            'Window rule' => $d['mode'] === 'same' && $d['typed'] ? 'The same range for every part' : 'Latest of each part',
+            'Analysis' => $d['code'].' '.$d['title'],
+        ];
+
+        $tables = app(Cross\CrossExportTables::class)->tables(substr($key, 6), $d);
+
+        return $this->report($key, $meta, $this->crossNotes($d), $tables, 'across-files');
+    }
+
+    /**
+     * Route 360 as a one-route report.
+     *
+     * @param  array<string, mixed>  $d  CommercialReportData::crossRoute()
+     */
+    public function crossRoute(array $d): array
+    {
+        $meta = ['Region' => (string) ($d['region'] ?? 'All'), 'Route' => $d['route']['label'], 'District' => (string) $d['route']['district'], 'Period' => $this->crossPeriod($d)];
+
+        return $this->report('cross-route', $meta, $this->crossNotes($d), app(Cross\CrossExportTables::class)->routeTables($d), 'route-'.$d['route']['id']);
+    }
+
+    /** @param  array<string, mixed>  $d */
+    protected function crossPeriod(array $d): string
+    {
+        $labels = [];
+
+        foreach ($d['windows'] as $w) {
+            if ($w['allowed'] && $w['available']) {
+                $labels[] = $w['title'].': '.$w['label'];
+            }
+        }
+
+        return $labels === [] ? 'no upload' : implode(' | ', $labels);
+    }
+
+    /**
+     * @param  array<string, mixed>  $d
+     * @return list<string>
+     */
+    protected function crossNotes(array $d): array
+    {
+        $notes = ['The files are at different points in time: each part names the period it used. Money is in GH¢. Ratios are worked out from the sums, never averaged; they are blank when the denominator is zero. A negative balance is a customer credit and is never netted off what customers owe.'];
+
+        foreach ($d['windows'] as $w) {
+            if ($w['allowed'] && $w['available']) {
+                $notes[] = $w['sentence'].'.';
+            } elseif ($w['allowed']) {
+                $notes[] = $w['title'].': not available ('.$w['reason'].')';
+            }
+        }
+
+        return array_merge($notes, $d['notes'], array_map(fn (array $h) => 'Hidden: '.$h['title'].' ('.$h['reason'].')', $d['hidden']));
     }
 
     // ---------------------------------------------------------------- helpers

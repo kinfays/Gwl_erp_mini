@@ -293,6 +293,71 @@ class CustomerListService
     }
 
     /**
+     * How reachable the customers of ONE canonical route are (Phase 8e, the route 360 page): the accounts the list holds under the route and
+     * under any alias that points at it, how many have a valid mobile number, how many have two, and how many an e-mail. Counts from the
+     * quality bits of the contact rows: no number, name or address is selected. Region restriction and district limit as everywhere here.
+     *
+     * @param  list<int>  $routeIds  the canonical route and its aliases
+     * @return array{customers: int, reachable: int, two_numbers: int, no_mobile: int, invalid_mobile: int, with_email: int}
+     */
+    public function routeContactReach(array $routeIds, ?int $restriction, ?array $districtIds = null): array
+    {
+        $query = DB::table('commercial_customers AS c')
+            ->join('commercial_customer_contacts AS t', 't.customer_id', '=', 'c.id')
+            ->whereIn('c.route_id', $routeIds === [] ? [0] : $routeIds)
+            ->whereNull('c.missing_since_batch_id');
+
+        if ($restriction !== null) {
+            $restriction === 0 ? $query->whereRaw('1 = 0') : $query->where('c.region_id', $restriction);
+        }
+
+        if ($districtIds !== null) {
+            $districtIds === [] ? $query->whereRaw('1 = 0') : $query->whereIn('c.district_id', $districtIds);
+        }
+
+        $row = $query->selectRaw(
+            'COUNT(*) AS customers, '
+            .'COALESCE(SUM(CASE WHEN (t.quality_flags & 1) = 0 THEN 1 ELSE 0 END), 0) AS reachable, '
+            .'COALESCE(SUM(CASE WHEN (t.quality_flags & 128) = 128 THEN 1 ELSE 0 END), 0) AS two_numbers, '
+            .'COALESCE(SUM(CASE WHEN (t.quality_flags & 1) = 1 THEN 1 ELSE 0 END), 0) AS no_mobile, '
+            .'COALESCE(SUM(CASE WHEN (t.quality_flags & 8) = 8 THEN 1 ELSE 0 END), 0) AS invalid_mobile, '
+            .'COALESCE(SUM(CASE WHEN (t.quality_flags & 2) = 0 THEN 1 ELSE 0 END), 0) AS with_email'
+        )->first();
+
+        return [
+            'customers' => (int) ($row->customers ?? 0), 'reachable' => (int) ($row->reachable ?? 0), 'two_numbers' => (int) ($row->two_numbers ?? 0),
+            'no_mobile' => (int) ($row->no_mobile ?? 0), 'invalid_mobile' => (int) ($row->invalid_mobile ?? 0), 'with_email' => (int) ($row->with_email ?? 0),
+        ];
+    }
+
+    /**
+     * For the route 360 page: of the accounts the customer list holds under ONE canonical route (and its aliases), how many the Detailed Billing
+     * Report did NOT put on this route (ops_route_id is the route of the account's billing row; null = not billed anywhere, another id = billed on
+     * another route), and how many are not missing from the list's latest file. Counts only.
+     *
+     * @param  list<int>  $routeIds  the canonical route and its aliases
+     * @return array{list_accounts: int, billed_here: int, not_billed_here: int}
+     */
+    public function routeLinkCounts(int $canonicalId, array $routeIds, ?int $restriction, ?array $districtIds = null): array
+    {
+        $query = DB::table('commercial_customers AS c')->whereIn('c.route_id', $routeIds === [] ? [0] : $routeIds)->whereNull('c.missing_since_batch_id');
+
+        if ($restriction !== null) {
+            $restriction === 0 ? $query->whereRaw('1 = 0') : $query->where('c.region_id', $restriction);
+        }
+
+        if ($districtIds !== null) {
+            $districtIds === [] ? $query->whereRaw('1 = 0') : $query->whereIn('c.district_id', $districtIds);
+        }
+
+        $row = $query->selectRaw('COUNT(*) AS accounts, COALESCE(SUM(CASE WHEN c.ops_route_id = ? THEN 1 ELSE 0 END), 0) AS here', [$canonicalId])->first();
+        $accounts = (int) ($row->accounts ?? 0);
+        $here = (int) ($row->here ?? 0);
+
+        return ['list_accounts' => $accounts, 'billed_here' => $here, 'not_billed_here' => $accounts - $here];
+    }
+
+    /**
      * What changed for the customer upload by upload (status / category / meter / route / district / bucket, arrival and
      * disappearance), newest first, with the date of the file that changed it.
      *

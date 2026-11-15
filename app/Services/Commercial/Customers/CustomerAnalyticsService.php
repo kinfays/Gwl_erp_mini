@@ -183,6 +183,94 @@ class CustomerAnalyticsService
         return $out;
     }
 
+    // ---------------------------------------------------------------- Phase 8e: the customer list by canonical route and by district
+
+    /**
+     * The customers of each CANONICAL route (an alias route's accounts are counted under the route it stands for) from the ROUTE-LEVEL rollups
+     * of the batches in view: how many by status code, service category code and meter status code, how many hold a billing status, and
+     * how many are metered (a working or faulty meter, any account status, the figure the reading report's verified strength is checked against).
+     * `list_districts` says which district(s) the LIST puts those accounts in (the list's own district, which scopes the viewer).
+     * The region restriction and the district limit apply like everywhere else here. Counts only: nothing personal is in a rollup.
+     *
+     * @return array<int, array{customers: int, billing: int, metered: int, by_status: array<string, int>, by_category: array<string, int>, by_meter: array<string, int>, list_districts: array<int, int>, aliased: bool}>
+     */
+    public function routeBreakdown(CustomerFilters $f): array
+    {
+        $query = DB::table('commercial_customer_rollups AS r')
+            ->join('commercial_customer_statuses AS s', 's.id', '=', 'r.status_id')
+            ->join('commercial_meter_statuses AS m', 'm.id', '=', 'r.meter_status_id')
+            ->join('commercial_customer_categories AS k', 'k.id', '=', 'r.category_id')
+            ->leftJoin('commercial_routes AS rt', 'rt.id', '=', 'r.route_id')
+            ->whereIn('r.batch_id', $f->batchIds === [] ? [0] : $f->batchIds);
+
+        if ($f->regionRestriction !== null) {
+            $f->regionRestriction === 0 ? $query->whereRaw('1 = 0') : $query->where('r.region_id', $f->regionRestriction);
+        }
+
+        $query->when($f->districtId, fn (Builder $q, int $id) => $q->where('r.district_id', $id));
+        $this->limitDistricts($query, $f, 'r.district_id');
+
+        $rows = $query
+            ->selectRaw("COALESCE(rt.canonical_route_id, r.route_id) AS route, (rt.canonical_route_id IS NOT NULL) AS aliased, s.code AS status_code, s.is_billing AS is_billing, m.code AS meter_code, COALESCE(k.code, '') AS category_code, r.district_id AS list_district, SUM(r.customer_count) AS n")
+            ->groupBy('rt.canonical_route_id', 'r.route_id', 's.code', 's.is_billing', 'm.code', 'k.code', 'r.district_id')
+            ->get();
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $route = (int) $row->route;
+            $n = (int) $row->n;
+            $entry = &$out[$route];
+            $entry ??= ['customers' => 0, 'billing' => 0, 'metered' => 0, 'by_status' => [], 'by_category' => [], 'by_meter' => [], 'list_districts' => [], 'aliased' => false];
+            $entry['customers'] += $n;
+            $entry['billing'] += $row->is_billing ? $n : 0;
+            $entry['metered'] += in_array($row->meter_code, ['W', 'F'], true) ? $n : 0;
+            $entry['by_status'][$row->status_code] = ($entry['by_status'][$row->status_code] ?? 0) + $n;
+            $entry['by_category'][$row->category_code] = ($entry['by_category'][$row->category_code] ?? 0) + $n;
+            $entry['by_meter'][$row->meter_code] = ($entry['by_meter'][$row->meter_code] ?? 0) + $n;
+            $entry['list_districts'][(int) $row->list_district] = ($entry['list_districts'][(int) $row->list_district] ?? 0) + $n;
+            $entry['aliased'] = $entry['aliased'] || (bool) $row->aliased;
+            unset($entry);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per LIST district (the district-level rollups, never the customers table): the customer base, the accounts holding a billing status
+     * and the share that can be contacted (at least one valid mobile number: the "reachable" count the batch stored). A district whose batch
+     * stored no such count has `contactable` null (never a guessed zero).
+     *
+     * @return array<int, array{customers: int, billing: int, contactable: int|null, contactable_share: float|null}>
+     */
+    public function districtBase(CustomerFilters $f): array
+    {
+        $out = [];
+
+        foreach ($this->grouped($f, 'district', ['customer_count']) as $row) {
+            $out[(int) $row->dim_key] = ['customers' => (int) $row->customer_count, 'billing' => 0, 'contactable' => null, 'contactable_share' => null];
+        }
+
+        foreach ($this->grouped($f->with(['billingOnly' => true]), 'district', ['customer_count']) as $row) {
+            if (isset($out[(int) $row->dim_key])) {
+                $out[(int) $row->dim_key]['billing'] = (int) $row->customer_count;
+            }
+        }
+
+        $reach = DB::table('commercial_customer_quality')->whereIn('batch_id', $f->batchIds === [] ? [0] : $f->batchIds)->where('issue', 'reachable')->get(['district_id', 'issue_count']);
+
+        foreach ($reach as $row) {
+            $district = (int) $row->district_id;
+
+            if (isset($out[$district])) {
+                $out[$district]['contactable'] = (int) $row->issue_count;
+                $out[$district]['contactable_share'] = $this->pct((int) $row->issue_count, $out[$district]['customers']);
+            }
+        }
+
+        return $out;
+    }
+
     // ---------------------------------------------------------------- A. customer base
 
     /** @return array<string, mixed> */

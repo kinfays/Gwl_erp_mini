@@ -26,7 +26,7 @@
         @forelse ($shown as $row)
             <tr>
                 @foreach ($cols as $col)
-                    <td @class(['num' => ($col[2] ?? 't') !== 't'])>{{ $fmt(data_get($row, $col[1]), $col[2] ?? 't') }}</td>
+                    <td @class(['num' => ($col[2] ?? 't') !== 't'])>@if (! empty($col[3]) && data_get($row, $col[3]) !== null)<a href="{{ route('commercial.cross.route', data_get($row, $col[3])) }}">{{ $fmt(data_get($row, $col[1]), $col[2] ?? 't') }}</a>@else{{ $fmt(data_get($row, $col[1]), $col[2] ?? 't') }}@endif</td>
                 @endforeach
             </tr>
         @empty

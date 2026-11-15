@@ -10,7 +10,7 @@
         $a = $r['analysis'] ?? null;
         $named = $r['named'];
         $showCca = $named && $r['cca_source'];
-        $routeCols = fn (array $cols) => array_merge([['Route', 'label'], ['District', 'district']], $showCca ? [['CCA', 'cca_label']] : [], $cols);
+        $routeCols = fn (array $cols) => array_merge([['Route', 'label', 't', 'route_id'], ['District', 'district']], $showCca ? [['CCA', 'cca_label']] : [], $cols);
         if ($a) {
             // the CCA beside every route table: "id name" (only for a viewer who may see individual CCAs)
             $a['routes'] = array_map(fn (array $x) => $x + ['cca_label' => $x['cca_staff_id'] ? trim($x['cca_staff_id'].' '.$x['cca_name']) : null], $a['routes']);
@@ -87,7 +87,7 @@
                 ({{ number_format($r['range']['covered_days']) }} of {{ number_format($r['range']['range_days']) }} days covered{{ $r['range']['gaps'] !== [] ? ', not covered: '.\App\Services\Commercial\CommercialPeriods::describeIntervals($r['range']['gaps']) : '' }})
             @endif
             <ul style="padding-left:18px;list-style:disc">@foreach ($r['notes'] as $note)<li>{{ $note }}</li>@endforeach</ul>
-            @if ($showCca)<p>The CCA beside each route is the owner of that route in the reading report by route of {{ $r['cca_source']['label'] }} (batch #{{ $r['cca_source']['batch_id'] }}).</p>@endif
+            @if ($showCca)<p>The CCA beside each route is {{ $r['cca_source']['sentence'] }}.</p>@endif
             @if (! $named)<p>No CCA is named on this page: individual CCA figures need the CCA performance permission.</p>@endif
         </div>
 

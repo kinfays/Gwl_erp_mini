@@ -114,8 +114,53 @@ class CommercialExportController extends Controller
                 ? [$exports->billingDetails($bd, (string) $request->query('section', 'all')), array_filter(['region' => $bd['region_id'], 'district' => $bd['district_id'], 'category' => $bd['category'], 'cca' => $bd['cca'], 'route' => $bd['route_id'], 'section' => $request->query('section'), 'from' => $bd['range']['from'], 'to' => $bd['range']['to']], fn ($value) => $value !== null && $value !== '')]
                 : null,
             'scorecard' => ($card = $data->scorecard($snapshot)) === null ? null : [$exports->scorecard($card), ['snapshot' => $card['snapshot']['id']]],
-            default => null,
+            'cross-route' => $this->crossRoute($request, $data, $exports),
+            default => str_starts_with($report, 'cross-x') ? $this->cross($request, $report, $data, $exports, $region, $district, $from, $to) : null,
         };
+    }
+
+    /**
+     * An "Across the files" analysis (Phase 8e): the same payload its page shows, so the file and the page cannot disagree. The viewer's permissions and
+     * district limit are applied inside CrossFileReport, so a part they may not see is not in the file.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}|null
+     */
+    protected function cross(Request $request, string $report, CommercialReportData $data, CommercialExportService $exports, ?int $region, ?int $district, ?string $from, ?string $to): ?array
+    {
+        $mode = $request->query('mode') === 'same' ? 'same' : 'latest';
+        $d = $data->cross(substr($report, 6), ['region' => $region, 'district' => $district, 'from' => $this->date($request->query('from')), 'to' => $this->date($request->query('to')), 'mode' => $mode]);
+
+        if (! $d['available']) {
+            return null;
+        }
+
+        return [$exports->cross($report, $d), array_filter(['region' => $d['region_id'], 'district' => $d['district_id'], 'from' => $d['from'], 'to' => $d['to'], 'mode' => $mode], fn ($value) => $value !== null && $value !== '')];
+    }
+
+    /**
+     * Route 360 as a file. A route outside the viewer's reach (or that does not exist) is a 404, as its page is.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}|null
+     */
+    protected function crossRoute(Request $request, CommercialReportData $data, CommercialExportService $exports): ?array
+    {
+        $id = ctype_digit((string) $request->query('route')) ? (int) $request->query('route') : 0;
+        $mode = $request->query('mode') === 'same' ? 'same' : 'latest';
+        $d = $data->crossRoute($id, ['from' => $this->date($request->query('from')), 'to' => $this->date($request->query('to')), 'mode' => $mode]);
+
+        abort_if($d === null, 404);
+
+        if (! $d['available']) {
+            return null;
+        }
+
+        return [$exports->crossRoute($d), array_filter(['route' => $d['route']['id'], 'region' => $d['region_id'], 'from' => $d['from'], 'to' => $d['to'], 'mode' => $mode], fn ($value) => $value !== null && $value !== '')];
+    }
+
+    /** A typed date (2026-09-15) or month (2026-09) of a range; anything else is no bound. */
+    protected function date(mixed $value): ?string
+    {
+        return $this->month($value);
     }
 
     /** A category code or a staff id typed into a link: letters, digits and a few separators only; anything else is no filter. */

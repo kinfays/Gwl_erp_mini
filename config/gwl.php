@@ -193,6 +193,8 @@ return [
     // of the water charge AND by at least this amount (GH¢). It checks the billing system's arithmetic, not the tariff itself.
     'commercial_tariff_tolerance_pct' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_PCT', 1.0),
     'commercial_tariff_tolerance_amount' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_AMOUNT', 1.0),
+    // Phase 8e (across the files, X3): a route needs at least this many billing customers before its skip rate and estimation share are correlated.
+    'commercial_cross_min_route_customers' => (int) env('GWL_COMMERCIAL_CROSS_MIN_ROUTE_CUSTOMERS', 30),
     // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
     // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
     // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).

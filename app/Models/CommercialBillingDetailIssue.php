@@ -32,6 +32,12 @@ class CommercialBillingDetailIssue extends Model
 
     public const NEGATIVE_CONSUME = 'negative_consume';
 
+    /** Phase 8e: an account whose status differs between the bill and the customer list (the figure is always 0; written by the customer-list link, not the scan). */
+    public const STATUS_CHANGED = 'status_changed';
+
+    /** The kinds the link writes (kept apart from KINDS, which the Billing details screen lists). */
+    public const LINK_KINDS = [self::STATUS_CHANGED => 'Not used (0)'];
+
     /** kind => what the figure in `amount` means (the Billing details screen and the exports label the column with it). */
     public const KINDS = [
         self::ACTIVE_UNBILLED => 'Balance due (GH¢)',

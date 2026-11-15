@@ -500,7 +500,7 @@ if (config('gwl.commercial_module_enabled')) {
                 ->name('home');
 
             Route::get('/export/{report}/{format}', [CommercialExportController::class, 'download'])
-                ->where('report', '[a-z-]+')
+                ->where('report', '[a-z0-9-]+')
                 ->where('format', 'excel|pdf')
                 ->middleware('permission:commercial.export_reports')
                 ->name('export');
@@ -521,6 +521,21 @@ if (config('gwl.commercial_module_enabled')) {
             Route::get('/billing/details', [CommercialModuleController::class, 'billingDetails'])
                 ->middleware('permission:commercial.view_billing')
                 ->name('billing.details');
+
+            // Phase 8e: the analyses that need more than one file, and route 360. Each part checks the permission of its own data.
+            Route::get('/cross', [CommercialModuleController::class, 'cross'])
+                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
+                ->name('cross');
+
+            Route::get('/cross/route/{route}', [CommercialModuleController::class, 'crossRoute'])
+                ->whereNumber('route')
+                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
+                ->name('cross.route');
+
+            Route::get('/cross/{analysis}', [CommercialModuleController::class, 'crossShow'])
+                ->where('analysis', 'x[0-9]{1,2}')
+                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
+                ->name('cross.show');
 
             Route::get('/kpis', [CommercialModuleController::class, 'kpis'])
                 ->middleware('permission:commercial.view_billing')

@@ -432,7 +432,8 @@ class BillingDetailsScan
 
             if (! $duplicate) {
                 $here[$account] = true;
-                $stage[] = ['batch_id' => $this->batchId, 'account_no' => $account, 'route_seq' => $r['seq']];
+                // the status and the service category as billed (codes only): the customer-list link sets them against the list's own (Phase 8e)
+                $stage[] = ['batch_id' => $this->batchId, 'account_no' => $account, 'route_seq' => $r['seq'], 'status_code' => $this->code($r['v']['status'] ?? null), 'category_code' => $this->category($r['v']['category'] ?? null)];
             }
 
             $this->add($r['seq'], $r['v'], $duplicate);
