@@ -38,6 +38,14 @@ class CommercialModuleController extends Controller
         return view('commercial.reading-routes');
     }
 
+    /** Phase 8d: the detailed billing analyses (B1 to B13). */
+    public function billingDetails(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.billing-details');
+    }
+
     public function settings(Request $request): View
     {
         $this->enforceModule($request, Permission::MODULE_COMMERCIAL);

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Commercial\CommercialBillingDetailsController;
 use App\Http\Controllers\Commercial\CommercialCustomerController;
 use App\Http\Controllers\Commercial\CommercialSmsController;
 use App\Http\Controllers\Commercial\SmsWebhookController;
@@ -516,6 +517,11 @@ if (config('gwl.commercial_module_enabled')) {
                 ->middleware('permission:commercial.view_billing')
                 ->name('billing');
 
+            // Phase 8d: the Detailed Billing Report's analyses B1 to B13
+            Route::get('/billing/details', [CommercialModuleController::class, 'billingDetails'])
+                ->middleware('permission:commercial.view_billing')
+                ->name('billing.details');
+
             Route::get('/kpis', [CommercialModuleController::class, 'kpis'])
                 ->middleware('permission:commercial.view_billing')
                 ->name('kpis');
@@ -548,8 +554,14 @@ if (config('gwl.commercial_module_enabled')) {
                 ->name('batches');
 
             Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
+                ->whereNumber('batch')
                 ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
                 ->name('batches.show');
+
+            // Phase 8d: the Detailed Billing Report (rptBillingDetails_ExP) is a plain POST read in the background (a 130 MB sheet)
+            Route::post('/batches/billing-details', [CommercialBillingDetailsController::class, 'upload'])
+                ->middleware(['permission:commercial.upload_reports', 'throttle:20,1'])
+                ->name('batches.billing-details');
 
             // Customer list (rptCustomerDetails): millions of customers, personal data. Switched on and off by its own flag; every
             // page, list and export also re-checks the viewer's region and permission (CustomerScope / the scoping trait).

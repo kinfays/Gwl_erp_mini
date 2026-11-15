@@ -940,6 +940,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading'),
             ],
             [
+                'label' => 'Billing details',
+                'route' => 'commercial.billing.details',
+                'active' => ['commercial.billing.details'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'receipt',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
+            ],
+            [
                 'label' => 'Billing',
                 'route' => 'commercial.billing',
                 'active' => ['commercial.billing'],

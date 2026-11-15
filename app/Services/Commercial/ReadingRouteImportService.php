@@ -660,25 +660,7 @@ class ReadingRouteImportService extends ReportImportService
      */
     protected function place(string $label, ?int $regionId, array &$districtCache): array
     {
-        $parsed = $this->routes->parse($label);
-        $districtLabel = $parsed['district'];
-        $code = $parsed['code'] !== null ? mb_substr(trim($parsed['code']), 0, 12) : null;
-        $districtId = null;
-
-        if ($districtLabel !== null && $regionId !== null) {
-            $key = $this->locations->normalize($districtLabel);
-            $districtCache[$key] ??= $this->locations->resolveDistrict($districtLabel, $regionId);
-            $district = $districtCache[$key];
-
-            if ($district && $code !== null) {
-                $existing = CommercialRoute::query()->where('district_id', $district->id)->where(fn ($q) => $q->where('code', $code)->orWhere('name', $code))->orderBy('id')->first();
-                $districtId = $existing ? (int) $this->routes->canonical($existing)->district_id : (int) $district->id;
-            } elseif ($district) {
-                $districtId = (int) $district->id;
-            }
-        }
-
-        return ['code' => $code, 'district_label' => $districtLabel, 'district_id' => $districtId];
+        return $this->routes->place($label, $regionId, $districtCache);
     }
 
     /**

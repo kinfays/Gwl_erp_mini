@@ -27,14 +27,14 @@ class BatchLifecycleService
         $batches = CommercialImportBatch::query()
             ->where('region_id', $regionId)
             ->where('report_type', $reportType)
-            ->notVoided()
+            ->live()   // a queued, running, waiting, blocked or failed run is not a period anybody can see yet
             ->orderBy('id')
             ->get();
 
         foreach ($batches as $batch) {
             $isOverridden = match (true) {
                 $batch->isReading() => ! $batch->stats()->effective()->exists(),
-                $batch->isReadingRoute() => $this->routeReadingIsShadowed($batch),
+                $batch->isReadingRoute(), $batch->isBillingDetails() => $this->periodIsShadowed($batch),
                 default => $this->billingSnapshotIsReplaced($batch),
             };
 
@@ -87,6 +87,11 @@ class BatchLifecycleService
                 throw new CommercialImportException('This batch has already been voided.');
             }
 
+            // (the three older report types are always imported or superseded, so this only ever refuses a Detailed Billing Report run that never went live)
+            if (! $locked->isLive()) {
+                throw new CommercialImportException('Only a loaded upload can be voided. Discard this one instead: it never counted in any analysis.');
+            }
+
             $locked->update([
                 'status' => CommercialImportBatch::STATUS_VOIDED,
                 'voided_by' => $actorId ?? auth()->id(),
@@ -114,12 +119,15 @@ class BatchLifecycleService
         });
     }
 
-    /** A reading-by-route batch is only a label "superseded" when a newer batch of the region has the same period or contains it (CommercialPeriods rules 1 and 2). */
-    protected function routeReadingIsShadowed(CommercialImportBatch $batch): bool
+    /**
+     * A reading-by-route or detailed-billing batch is only a label "superseded" when a newer live batch of the region and type has the same period
+     * or contains it (CommercialPeriods rules 1 and 2).
+     */
+    protected function periodIsShadowed(CommercialImportBatch $batch): bool
     {
         return CommercialImportBatch::query()
-            ->ofType(CommercialImportBatch::TYPE_READING_ROUTE_SUMMARY)
-            ->notVoided()
+            ->ofType($batch->report_type)
+            ->live()
             ->where('id', '>', $batch->id)
             ->where('region_id', $batch->region_id)
             ->whereDate('period_from', '<=', $batch->period_from->toDateString())

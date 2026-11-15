@@ -7,6 +7,7 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\CommercialRoute;
 use App\Models\District;
 use App\Models\Permission;
+use App\Models\Region;
 use App\Services\Commercial\RouteResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -163,6 +164,24 @@ class Routes extends Component
         $resolver->confirm($this->route($id)->id);
     }
 
+    /**
+     * Confirms every pending route of the manager's region(s) (Phase 8d, step 0.2): those the region filter names when one is chosen,
+     * else every region the viewer may see. Only the viewer's own reach is ever touched.
+     */
+    public function confirmAllPending(RouteResolver $resolver): void
+    {
+        $this->guardCommercialPermission('commercial.manage_routes');
+
+        $reach = $this->regionIds();
+        $regions = ctype_digit($this->region) && $this->region !== ''
+            ? ($reach === null || in_array((int) $this->region, $reach, true) ? [(int) $this->region] : [])
+            : $reach;
+
+        $count = $resolver->confirmAllPending($regions, auth()->id());
+
+        $this->dispatch('toast', type: 'success', message: $count === 0 ? 'No route is pending.' : $count.' pending route(s) confirmed.');
+    }
+
     public function rebuild(RouteResolver $resolver): void
     {
         $this->guardCommercialPermission('commercial.manage_routes');
@@ -199,7 +218,12 @@ class Routes extends Component
         $editingRoute = $this->editing ? $this->scoped()->with('district:id,district_name')->find($this->editing) : null;
         $regions = $this->regionIds();
 
+        // pending routes the "Confirm all pending" button would confirm: the region filter when set, else the viewer's whole reach
+        $pendingRegions = ctype_digit($this->region) && $this->region !== '' ? [(int) $this->region] : $regions;
+        $pendingCount = $pendingRegions === [] ? 0 : $this->scoped()->where('is_pending', true)->when($pendingRegions !== null, fn (Builder $q) => $q->whereIn('region_id', $pendingRegions))->count();
+
         return view('livewire.commercial.routes', [
+            'pendingCount' => $pendingCount,
             'routes' => $routes,
             'customers' => $customers,
             'filters' => self::FILTERS,
@@ -213,7 +237,7 @@ class Routes extends Component
             'sameCode' => $editingRoute && $editingRoute->code !== null
                 ? $this->scoped()->where('region_id', $editingRoute->region_id)->where('code', $editingRoute->code)->whereKeyNot($editingRoute->id)->with('district:id,district_name')->get()
                 : collect(),
-            'regionOptions' => \App\Models\Region::query()->when($regions !== null, fn (Builder $q) => $regions === [] ? $q->whereRaw('1 = 0') : $q->whereIn('id', $regions))->orderBy('region_name')->get(['id', 'region_name']),
+            'regionOptions' => Region::query()->when($regions !== null, fn (Builder $q) => $regions === [] ? $q->whereRaw('1 = 0') : $q->whereIn('id', $regions))->orderBy('region_name')->get(['id', 'region_name']),
         ]);
     }
 }

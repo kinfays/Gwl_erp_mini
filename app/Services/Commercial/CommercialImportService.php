@@ -3,7 +3,9 @@
 namespace App\Services\Commercial;
 
 use App\Models\CommercialImportBatch;
+use App\Services\Commercial\BillingDetails\BillingDetailsImportService;
 use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 /**
  * The one door the upload screen uses: reads the workbook once, works out which report it is and hands it to the right
@@ -16,8 +18,8 @@ class CommercialImportService
         protected ReadingSummaryImportService $reading,
         protected BillingSummaryImportService $billing,
         protected ReadingRouteImportService $readingRoutes,
-    ) {
-    }
+        protected BillingDetailsImportService $billingDetails,
+    ) {}
 
     /**
      * @param  int|null  $restrictToRegionId  when set, a report for any other region is blocked
@@ -31,6 +33,12 @@ class CommercialImportService
             $result['errors'] = [['row' => 'File', 'message' => 'This is the customer list report (rptCustomerDetails). Upload it on the Customer uploads screen: it is read in the background, it can be very large and it holds personal data.']];
 
             return $result;
+        }
+
+        // Phase 8d: the Detailed Billing Report (one row per customer, 130 MB of sheet XML) is never read inside a page request: it is
+        // recognised from the top of its first sheet by a streamed read, and goes through the background form
+        if ($this->billingDetails->looksLike($file->getRealPath())) {
+            return $this->billingDetails->preview($file->getRealPath(), $restrictToRegionId);
         }
 
         // Phase 8c: the reading report BY ROUTE (rptReadingSumm) is read sheet by sheet, never as one grid of every sheet
@@ -70,6 +78,7 @@ class CommercialImportService
         return match (true) {
             $batch->isReading() => $this->reading->rematchBatch($batch),
             $batch->isReadingRoute() => $this->readingRoutes->rematchBatch($batch),
+            $batch->isBillingDetails() => $this->billingDetails->rematchBatch($batch),
             default => $this->billing->rematchBatch($batch),
         };
     }
@@ -78,7 +87,7 @@ class CommercialImportService
     protected function looksLikeCustomerList(UploadedFile $file): bool
     {
         try {
-            $names = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file->getRealPath())->listWorksheetNames($file->getRealPath());
+            $names = IOFactory::createReaderForFile($file->getRealPath())->listWorksheetNames($file->getRealPath());
         } catch (\Throwable) {
             return false;
         }
@@ -91,7 +100,7 @@ class CommercialImportService
         return [
             'report_type' => null,
             'blocked' => true,
-            'errors' => [['row' => 'File', 'message' => 'This file is not one of the supported reports. Upload the "Customer Meter Reading Report - CCA Summary" (rptReadingSummDate by month, or rptReadingSumm by route) or the "Billing Summary Report By Routes" (rptBillingSumm_ExP) as an .xlsx export.']],
+            'errors' => [['row' => 'File', 'message' => 'This file is not one of the supported reports. Upload the "Customer Meter Reading Report - CCA Summary" (rptReadingSummDate by month, or rptReadingSumm by route) the "Billing Summary Report By Routes" (rptBillingSumm_ExP) or the "Detailed Billing Report" (rptBillingDetails_ExP, with its own form) as an .xlsx export.']],
             'warnings' => [],
             'checks' => [],
             'error_count' => 1,

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Commercial;
 
+use App\Jobs\Commercial\ProcessBillingDetailsBatch;
 use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\CommercialImportBatch;
@@ -12,6 +13,7 @@ use App\Models\Employee;
 use App\Models\Permission;
 use App\Services\Commercial\BatchLifecycleService;
 use App\Services\Commercial\BatchResolutionService;
+use App\Services\Commercial\BillingDetails\BillingDetailsImportService;
 use App\Services\Commercial\CommercialImportException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -77,6 +79,7 @@ class BatchShow extends Component
 
         abort_unless(
             ($this->batch->isBilling() && $this->batch->routes()->whereNull('district_id')->where('district_label_raw', $label)->exists())
+            || ($this->batch->isBillingDetails() && $this->batch->detailRollups()->whereNull('route_id')->where('district_label_raw', $label)->exists())
             || ($this->batch->isReadingRoute() && $this->batch->routeStats()->whereNull('route_id')->whereNotNull('route_label_raw')->where('district_label_raw', $label)->exists()),
             404
         );
@@ -156,11 +159,67 @@ class BatchShow extends Component
         $this->dispatch('toast', type: 'success', message: "CCA linked to {$employee->full_name} ({$rows} rows).");
     }
 
+    // ---------------------------------------------------------------- Phase 8d: a Detailed Billing Report run
+
+    /** The figures of a checked upload go live. */
+    public function loadFigures(BillingDetailsImportService $imports): void
+    {
+        $this->authorizeBatchAction('commercial.upload_reports');
+        abort_unless($this->batch->isBillingDetails(), 404);
+
+        try {
+            $imports->confirm($this->batch);
+        } catch (CommercialImportException $exception) {
+            $this->addError('run', $exception->getMessage());
+
+            return;
+        }
+
+        $this->batch->refresh();
+        $this->dispatch('toast', type: 'success', message: 'The figures are loaded and count in the analyses.');
+    }
+
+    /** An upload that never went live (waiting for its check, blocked or failed) is deleted with everything it wrote. */
+    public function discardRun(BillingDetailsImportService $imports): void
+    {
+        $this->authorizeBatchAction('commercial.upload_reports');
+        abort_unless($this->batch->isBillingDetails(), 404);
+
+        try {
+            $imports->discard($this->batch, auth()->id());
+        } catch (CommercialImportException $exception) {
+            $this->addError('run', $exception->getMessage());
+
+            return;
+        }
+
+        $this->redirectRoute('commercial.batches', navigate: false);
+    }
+
+    /** A failed or blocked upload goes back in the queue (it starts again from its stored file, with the settings as they are now). */
+    public function runAgain(BillingDetailsImportService $imports): void
+    {
+        $this->authorizeBatchAction('commercial.upload_reports');
+        abort_unless($this->batch->isBillingDetails(), 404);
+
+        try {
+            $imports->requeue($this->batch);
+        } catch (CommercialImportException $exception) {
+            $this->addError('run', $exception->getMessage());
+
+            return;
+        }
+
+        ProcessBillingDetailsBatch::dispatch($this->batch->id);
+        $this->batch->refresh();
+        $this->dispatch('toast', type: 'success', message: 'Queued again.');
+    }
+
     public function startVoid(): void
     {
         $this->authorizeBatchAction('commercial.void_batches');
 
-        abort_if($this->batch->isVoided(), 404);
+        abort_if($this->batch->isVoided() || ! $this->batch->isLive(), 404);
 
         $this->confirmingVoid = true;
         $this->voidReason = '';
@@ -236,6 +295,47 @@ class BatchShow extends Component
         ];
     }
 
+    /**
+     * What the page of a Detailed Billing Report upload shows (Phase 8d): where the run is, the figures it found (districts, bill statuses, the
+     * checks), the routes whose district was not matched, the link to the customer list. Counts and route headings only: never a name, address,
+     * phone or meter number, and account numbers only on the Billing details lists.
+     *
+     * @return array<string, mixed>
+     */
+    protected function billingDetailsData(CommercialImportBatch $batch): array
+    {
+        $control = $batch->control_totals ?? [];
+        $names = District::query()->where('region_id', $batch->region_id ?? 0)->pluck('district_name', 'id');
+        $perDistrict = [];
+
+        foreach ($batch->detailRollups()->toBase()->select('district_id', 'district_label_raw', DB::raw('count(distinct route_label_raw) as routes'), DB::raw('sum(customers) as customers'), DB::raw('sum(month_total) as month_total'), DB::raw('sum(paid_this_month) as paid'), DB::raw('sum(balance_due) as balance_due'))->groupBy('district_id', 'district_label_raw')->get() as $r) {
+            $key = $r->district_id !== null ? 'd'.$r->district_id : 'l'.($r->district_label_raw ?? '');
+            $row = &$perDistrict[$key];
+            $row ??= ['name' => $r->district_id !== null ? ($names[$r->district_id] ?? 'District '.$r->district_id) : ($r->district_label_raw !== null ? $r->district_label_raw.' (not matched)' : 'No district in the label'), 'routes' => 0, 'customers' => 0, 'month_total' => 0.0, 'paid' => 0.0, 'balance_due' => 0.0];
+            $row['routes'] += (int) $r->routes;
+            $row['customers'] += (int) $r->customers;
+            $row['month_total'] += (float) $r->month_total;
+            $row['paid'] += (float) $r->paid;
+            $row['balance_due'] += (float) $r->balance_due;
+            unset($row);
+        }
+
+        $unmatched = $batch->detailRollups()->whereNull('route_id')->where('route_label_raw', '!=', BillingDetailsImportService::NO_ROUTE_HEADING)->whereNotNull('district_label_raw')
+            ->select('district_label_raw', DB::raw('count(distinct route_label_raw) as route_count'))->groupBy('district_label_raw')->orderBy('district_label_raw')->get();
+
+        return [
+            'control' => $control,
+            'inFlight' => $batch->isInFlight(),
+            'perDistrict' => collect($perDistrict)->sortBy('name')->values(),
+            'unmatchedDistricts' => $unmatched,
+            'districtOptions' => District::query()->where('region_id', $batch->region_id ?? 0)->orderBy('district_name')->get(),
+            'needsMatching' => $unmatched->count(),
+            'canRun' => $this->actorCan('commercial.upload_reports'),
+            'describeDiffs' => fn (array $diffs) => app(BillingDetailsImportService::class)->describeDiffs($diffs),
+            'blockedErrors' => $control['errors'] ?? [],
+        ];
+    }
+
     /** Every action re-checks the permission AND that the batch is in the actor's region (Livewire calls are replayable). */
     protected function authorizeBatchAction(string $permission): void
     {
@@ -245,10 +345,17 @@ class BatchShow extends Component
 
     public function render()
     {
+        // a Detailed Billing Report run moves on in the background: show where it is now
+        if ($this->batch->isBillingDetails()) {
+            $this->batch->refresh();
+        }
+
         $batch = $this->batch;
         $data = ['batchTypeLabel' => CommercialImportBatch::typeLabel($batch->report_type)];
 
-        if ($batch->isReading()) {
+        if ($batch->isBillingDetails()) {
+            $data += $this->billingDetailsData($batch);
+        } elseif ($batch->isReading()) {
             $data += [
                 'monthSummary' => $batch->stats()->readers()
                     ->select('month', DB::raw('count(*) as readers'), DB::raw('sum(read_count) as read_total'), DB::raw('sum(skipped_count) as skipped_total'), DB::raw('sum(visited_count) as visited_total'))
@@ -293,9 +400,9 @@ class BatchShow extends Component
         }
 
         return view('livewire.commercial.batch-show', $data + [
-            'needsMatching' => $batch->isReadingRoute() ? ($data['needsMatching'] ?? 0) : max(0, $batch->row_count - $batch->matched_count),
+            'needsMatching' => $batch->isReadingRoute() || $batch->isBillingDetails() ? ($data['needsMatching'] ?? 0) : max(0, $batch->row_count - $batch->matched_count),
             'canResolve' => $this->actorCan('commercial.resolve_matches'),
-            'canVoid' => $this->actorCan('commercial.void_batches'),
+            'canVoid' => $this->actorCan('commercial.void_batches') && $batch->isLive(),
             'checks' => $batch->control_totals['checks'] ?? [],
             'importWarnings' => $batch->control_totals['warnings'] ?? [],
         ]);

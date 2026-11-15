@@ -6,7 +6,9 @@ use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
 use App\Models\CommercialBillingBand;
 use App\Models\CommercialBillingRoute;
 use App\Models\CommercialImportBatch;
+use App\Models\CommercialReadingStat;
 use App\Models\Region;
+use App\Services\Commercial\BillingDetails\BillingDetailsReport;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -24,8 +26,7 @@ class CommercialReportData
         protected BillingAnalyticsService $billing,
         protected CommercialInsightsService $insights,
         protected CommercialKpiService $kpi,
-    ) {
-    }
+    ) {}
 
     public function can(string $slug): bool
     {
@@ -238,6 +239,18 @@ class CommercialReportData
     }
 
     /**
+     * The Detailed Billing Report analyses B1 to B13 (Phase 8d, design 8.39): the uploads the typed range uses (the five period rules), the rollups
+     * collapsed over them, the capped account lists, the trend by upload and the CCA of each route, all for the viewer's own scope. The Billing
+     * details screen and the export both call it.
+     *
+     * @return array<string, mixed>
+     */
+    public function billingDetails(?int $regionId = null, ?int $districtId = null, ?string $category = null, ?string $cca = null, ?int $routeId = null, ?string $from = null, ?string $to = null): array
+    {
+        return app(BillingDetailsReport::class)->build($regionId, $districtId, $category, $cca, $routeId, $from, $to);
+    }
+
+    /**
      * A DATE RANGE of billing (Phase 8a, CommercialPeriods): the uploads of the snapshot's region and segment that lie inside it, chosen
      * by the period rules, with their routes added up (flows summed, stocks from the latest period). Null when no range is typed.
      *
@@ -373,7 +386,7 @@ class CommercialReportData
      */
     public function paceCards(?int $regionId = null, ?string $from = null, ?string $to = null, int $limit = 3): array
     {
-        $rows = $this->scopeReadingStatsForActor(\App\Models\CommercialReadingStat::query()->readers())
+        $rows = $this->scopeReadingStatsForActor(CommercialReadingStat::query()->readers())
             ->whereHas('batch', fn ($batch) => $batch->notVoided()
                 ->when($regionId !== null && $this->actorSeesAllRegions(), fn ($query) => $query->where('region_id', $regionId)))
             ->when(is_array(self::monthRange($from, $to)), fn ($query) => $query->whereDate('month', '>=', self::monthRange($from, $to)[0]->toDateString())->whereDate('month', '<=', self::monthRange($from, $to)[1]->toDateString()))
@@ -394,7 +407,7 @@ class CommercialReportData
 
         foreach ($months as $month => $group) {
             $previousMonth = Carbon::parse($month)->subMonth();
-            $previousVisits = $this->scopeReadingStatsForActor(\App\Models\CommercialReadingStat::query()->effective()->readers())
+            $previousVisits = $this->scopeReadingStatsForActor(CommercialReadingStat::query()->effective()->readers())
                 ->whereDate('month', $previousMonth->toDateString())
                 ->when($regionId !== null && $this->actorSeesAllRegions(), fn ($query) => $query->whereHas('batch', fn ($batch) => $batch->where('region_id', $regionId)))
                 ->sum('visited_count');

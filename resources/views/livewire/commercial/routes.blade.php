@@ -1,6 +1,9 @@
 <div>
     <x-ui.page-header title="Route master" description="Every route the reports and the customer list name, with its district. The same code printed under two districts is one route and an alias; which one is the route is decided by the setting below, or by a Commercial Manager.">
         <x-slot:actions>
+            @if ($pendingCount > 0)
+                <button type="button" class="btn btn-primary" wire:click="confirmAllPending" wire:confirm="Confirm all {{ number_format($pendingCount) }} pending route(s)? It only marks that somebody looked at them; no route changes district.">Confirm all pending ({{ number_format($pendingCount) }})</button>
+            @endif
             <button type="button" class="btn btn-secondary" wire:click="rebuild" wire:confirm="Settle every shared code again under the current setting? Routes a manager pinned or marked by hand stay as they are.">Settle shared codes again</button>
         </x-slot:actions>
     </x-ui.page-header>

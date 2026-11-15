@@ -182,6 +182,17 @@ return [
     'commercial_skip_outlier_sigma' => (float) env('GWL_COMMERCIAL_SKIP_OUTLIER_SIGMA', 2.0),
     // A route is listed when its verified strength differs from the metered accounts of the newest customer list by more than this percent.
     'commercial_strength_mismatch_pct' => (float) env('GWL_COMMERCIAL_STRENGTH_MISMATCH_PCT', 15),
+    // Phase 8d, the Detailed Billing Report (rptBillingDetails_ExP; one row per customer, kept as rollups and capped lists).
+    // Largest file accepted by the upload form (MB). PHP's upload_max_filesize / post_max_size must be at least this (design 8.39).
+    'commercial_billing_details_import_max_mb' => (int) env('GWL_COMMERCIAL_BILLING_DETAILS_IMPORT_MAX_MB', 250),
+    // Accounts kept on each exception list, per batch, kind and district (top debtors and the largest adjustments keep the LARGEST).
+    'commercial_billing_detail_issue_cap' => (int) env('GWL_COMMERCIAL_BILLING_DETAIL_ISSUE_CAP', 200),
+    // Account numbers on those lists are deleted after this many months (the rollups follow their batch).
+    'commercial_billing_detail_issue_keep_months' => (int) env('GWL_COMMERCIAL_BILLING_DETAIL_ISSUE_KEEP_MONTHS', 3),
+    // The tariff recompute check (B10): a bill is a mismatch when rate x consume differs from the water charge by more than this percent
+    // of the water charge AND by at least this amount (GH¢). It checks the billing system's arithmetic, not the tariff itself.
+    'commercial_tariff_tolerance_pct' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_PCT', 1.0),
+    'commercial_tariff_tolerance_amount' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_AMOUNT', 1.0),
     // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
     // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
     // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).

@@ -116,6 +116,18 @@
                         </div>
                     @endif
 
+                    @if (! empty($preview['details_report']))
+                        {{-- Phase 8d: the Detailed Billing Report is recognised from the top of its first sheet; it is read in the background by its own form --}}
+                        @php $dr = $preview['details_report']; @endphp
+                        <div data-details-report style="margin-top:10px;font-size:12px">
+                            <p>
+                                <strong>Period read:</strong> {{ $dr['period_label'] ?? 'not found in the file' }}@if ($dr['period_kind'] ?? null) ({{ $dr['period_kind'] === 'range' ? 'a date range' : ($dr['period_kind'] === 'month' ? 'a whole month' : 'one day') }})@endif.
+                                <strong>Region:</strong> {{ $preview['region']['name'] ?? $preview['region']['raw'] ?? 'not found' }}.
+                                <strong>{{ number_format($dr['columns']) }}</strong> of the report's columns were found.
+                            </p>
+                        </div>
+                    @endif
+
                     @if ($preview['checks'])
                         <table style="margin-top:12px">
                             <thead><tr><th>Reconciliation check</th><th>Result</th><th>Detail</th></tr></thead>
@@ -177,6 +189,32 @@
         </div>
     @endif
 
+    @if ($canUpload)
+        {{-- Phase 8d: the Detailed Billing Report is a plain POST (a 130 MB sheet is far bigger than a Livewire temporary upload may be) and is read in the background --}}
+        <div class="pg" style="margin-top:14px" data-billing-details-form>
+            <div class="pg-head"><span class="pg-title">Detailed billing report (one row per customer)</span></div>
+            <form method="POST" action="{{ route('commercial.batches.billing-details') }}" enctype="multipart/form-data" style="padding:14px">
+                @csrf
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label" for="billing-details-file">Report file (.xlsx)</label>
+                        <input id="billing-details-file" type="file" name="file" class="form-input" accept=".xlsx" required>
+                        <span class="form-hint">rptBillingDetails_ExP (Detailed Billing Report). The bill period and the region are read from the file. It is read in the background (a queue worker must be running), so the page you land on shows its progress. Up to {{ $billingDetailsMaxMb }} MB.</span>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label" for="billing-details-notes">Notes</label>
+                        <textarea id="billing-details-notes" name="notes" rows="2" class="form-input" placeholder="Optional">{{ old('notes') }}</textarea>
+                    </div>
+                </div>
+                <label style="display:flex;gap:8px;align-items:center;font-size:12px;margin:6px 0">
+                    <input type="hidden" name="review" value="0">
+                    <input type="checkbox" name="review" value="1" checked> Show me what is in the file (routes, districts, customers, bill statuses and checks) before anything is loaded
+                </label>
+                <button type="submit" class="btn btn-primary">Upload detailed billing report</button>
+            </form>
+        </div>
+    @endif
+
     <div class="pg">
         <div class="pg-head">
             <span class="pg-title">Batches</span>
@@ -190,7 +228,7 @@
                 <select class="form-input" wire:model.live="statusFilter">
                     <option value="">All statuses</option>
                     @foreach ($statuses as $status)
-                        <option value="{{ $status }}">{{ str($status)->title() }}</option>
+                        <option value="{{ $status }}">{{ \App\Models\CommercialImportBatch::statusLabel($status) }}</option>
                     @endforeach
                 </select>
             </div>
@@ -219,7 +257,11 @@
                         </td>
                         <td>{{ $batch->region?->region_name ?? $batch->region_label_raw ?? '-' }}</td>
                         <td>
-                            {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                            @if ($batch->isReadingRoute() || $batch->isBillingDetails())
+                                {{ \App\Services\Commercial\CommercialPeriods::describe($batch->period_from, $batch->period_to) }}
+                            @else
+                                {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                            @endif
                             @if ($batch->customer_segment && $batch->customer_segment !== 'all')
                                 <span class="form-hint">{{ str($batch->customer_segment)->replace('_', ' ')->title() }}</span>
                             @endif
@@ -227,7 +269,7 @@
                         <td>{{ number_format($batch->row_count) }}</td>
                         <td>{{ number_format(max(0, $batch->row_count - $batch->matched_count)) }}</td>
                         <td>
-                            {{ optional($batch->imported_at)->format('d M Y H:i') ?? '-' }}
+                            {{ optional($batch->imported_at ?? $batch->created_at)->format('d M Y H:i') ?? '-' }}
                             <span class="form-hint">{{ $batch->importer?->full_name ?? '' }}</span>
                         </td>
                         <td><x-ui.status-pill domain="commercial" :status="$batch->status" /></td>

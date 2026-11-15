@@ -82,7 +82,11 @@
                         <td>{{ \App\Models\CommercialImportBatch::typeLabel($batch->report_type) }}</td>
                         <td>{{ $batch->region?->region_name ?? $batch->region_label_raw ?? '-' }}</td>
                         <td>
-                            {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                            @if ($batch->isReadingRoute() || $batch->isBillingDetails())
+                                {{ \App\Services\Commercial\CommercialPeriods::describe($batch->period_from, $batch->period_to) }}
+                            @else
+                                {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
+                            @endif
                             @if ($batch->customer_segment && $batch->customer_segment !== 'all')
                                 <span class="form-hint">{{ str($batch->customer_segment)->replace('_', ' ')->title() }}</span>
                             @endif

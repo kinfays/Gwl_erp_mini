@@ -138,7 +138,7 @@ class Home extends Component
         // (a district user has no region-wide upload status to see)
         $latest = $this->scopeBatchesForActor(CommercialImportBatch::query())
             ->when($this->actorDistrictLimited(), fn ($query) => $query->whereRaw('1 = 0'))
-            ->notVoided()
+            ->live()
             ->with('region')
             ->orderByDesc('id')
             ->get()

@@ -48,8 +48,8 @@ class BatchResolutionService
      */
     public function resolveDistrict(CommercialImportBatch $batch, string $rawLabel, District $district): int
     {
-        if (! $batch->isBilling() && ! $batch->isReadingRoute()) {
-            throw new CommercialImportException('Only billing and reading-by-route batches have districts to resolve.');
+        if (! $batch->isBilling() && ! $batch->isReadingRoute() && ! $batch->isBillingDetails()) {
+            throw new CommercialImportException('Only billing, detailed billing and reading-by-route batches have districts to resolve.');
         }
 
         if ($batch->region_id !== null && (int) $district->region_id !== (int) $batch->region_id) {

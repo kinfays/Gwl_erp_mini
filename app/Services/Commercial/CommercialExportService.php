@@ -2,6 +2,7 @@
 
 namespace App\Services\Commercial;
 
+use App\Services\Commercial\BillingDetails\BillingDetailsImportService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -27,6 +28,18 @@ class CommercialExportService
         'kpis' => ['title' => 'District KPIs against targets', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
         'scorecard' => ['title' => 'District scorecard', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing', 'commercial.view_reading'], 'any' => []],
         'reading-routes' => ['title' => 'Meter reading by route and CCA', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_reading'], 'any' => []],
+        'billing-details' => ['title' => 'Detailed billing', 'formats' => ['excel', 'pdf'], 'permissions' => ['commercial.view_billing'], 'any' => []],
+    ];
+
+    /** The sections of the Detailed billing export (the tabs of its screen): each is an export of its own, so one stays inside the row caps. */
+    public const BILLING_DETAIL_SECTIONS = [
+        'all' => 'Every analysis',
+        'overview' => 'B1 Bill status',
+        'estimates' => 'B2 and B3 Estimates and unbilled',
+        'consumption' => 'B4 and B5 Consumption and charges',
+        'money' => 'B6 to B9 Money',
+        'checks' => 'B10 to B12 Checks',
+        'trend' => 'B13 Trend',
     ];
 
     // ---------------------------------------------------------------- summary (C3)
@@ -259,7 +272,7 @@ class CommercialExportService
         foreach (array_filter([$d['total'], ...$d['districts']]) as $block) {
             $tables[] = [
                 'title' => 'KPIs: '.($block['id'] === null && $block['name'] === 'All districts' ? 'all districts' : $block['name']),
-'headings' => ['KPI', 'Annual target', 'Monthly target (annual ÷ 12)', ...$labels, ...array_map(fn ($s) => 'Efficiency '.$s.' (%)', $short), 'Year to date', 'Year-to-date efficiency (%)', 'Of the annual target (%)'],
+                'headings' => ['KPI', 'Annual target', 'Monthly target (annual ÷ 12)', ...$labels, ...array_map(fn ($s) => 'Efficiency '.$s.' (%)', $short), 'Year to date', 'Year-to-date efficiency (%)', 'Of the annual target (%)'],
                 'rows' => array_map(fn (array $row) => [
                     $row['label'].' ('.$row['unit'].')', $this->n($row['annual']), $this->n($row['target']),
                     ...array_map(fn (array $m) => $this->n($row['actuals'][$m['key']] ?? null), $months),
@@ -446,6 +459,160 @@ class CommercialExportService
         ], $d['trend'])];
 
         return $this->report('reading-routes', $meta, $notes, $tables, $meta['Period']);
+    }
+
+    // ---------------------------------------------------------------- detailed billing (B1 to B13)
+
+    /**
+     * The Detailed Billing Report analyses of the Billing details screen, one section at a time ('all' for every table). Built from the same
+     * CommercialReportData::billingDetails() call as the page, so the file and the screen cannot disagree. The lists hold account numbers only.
+     *
+     * @param  array<string, mixed>  $d  CommercialReportData::billingDetails()
+     */
+    public function billingDetails(array $d, string $section = 'all'): array
+    {
+        $section = array_key_exists($section, self::BILLING_DETAIL_SECTIONS) ? $section : 'all';
+        $a = $d['analysis'];
+        $named = (bool) $d['named'] && (bool) $d['cca_source'];
+        $meta = [
+            'Region' => (string) ($d['region'] ?? 'All'),
+            'Period' => (string) ($d['range']['label'] ?? 'no upload'),
+            'District' => $d['district_id'] ? (string) ($d['districts'][$d['district_id']] ?? '') : ($d['district_limited'] ? 'Your district' : 'All districts'),
+            'Category' => $d['category'] ? (string) ($d['categories'][$d['category']] ?? $d['category']) : 'All',
+            'Section' => self::BILLING_DETAIL_SECTIONS[$section],
+        ];
+
+        if ($d['named']) {
+            $meta['CCA'] = $d['cca'] ? (string) ($d['ccas'][$d['cca']] ?? $d['cca']) : 'All';
+        }
+
+        if ($d['route_id']) {
+            $meta['Route'] = (string) ($d['routes_options'][$d['route_id']] ?? '');
+        }
+
+        $notes = [
+            'Money is in GH¢. Ratios are worked out from the sums, never averaged; they are blank when the denominator is zero. A negative balance is a customer credit and is never netted off what customers owe.',
+            'ESTIMATED and ESTIMATE are both estimated bills: the meter is faulty or missing, or a working meter was not read. The cause comes from the meter status, never from the spelling.',
+            ...$d['notes'],
+        ];
+
+        if ($d['range']) {
+            $notes[] = 'Uploads used: '.implode('; ', array_map(fn (array $b) => 'batch #'.$b['id'].' ('.$b['label'].')', $d['range']['batches'])).'. Times of upload, not run dates.';
+        }
+
+        if ($d['named'] && $d['cca_source']) {
+            $notes[] = 'The CCA beside a route is its owner in the reading report by route of '.$d['cca_source']['label'].' (batch #'.$d['cca_source']['batch_id'].').';
+        } elseif (! $d['named']) {
+            $notes[] = 'No CCA is named here: individual CCA figures need the CCA performance permission.';
+        }
+
+        if ($a === null || $a['totals']['customers'] === 0) {
+            return $this->report('billing-details', $meta, $notes, [['title' => 'Nothing to show', 'headings' => ['Note'], 'rows' => [['No upload lies inside this range, or the filters leave no customers.']]]], $meta['Period']);
+        }
+
+        $t = $a['totals'];
+        $n = fn ($v) => $this->n($v);
+        $routeHead = fn (array $heads) => ['Route', 'District', ...($named ? ['CCA'] : []), ...$heads];
+        $routeCells = fn (array $r, array $cells) => [(string) $r['label'], (string) $r['district'], ...($named ? [(string) ($r['cca_staff_id'] ? trim($r['cca_staff_id'].' '.$r['cca_name']) : '')] : []), ...$cells];
+        $list = function (string $kind, string $title) use ($d, $named): array {
+            $l = $d['lists'][$kind];
+
+            return ['title' => $title, 'headings' => ['Account', 'Route', 'District', ...($named ? ['CCA'] : []), $l['amount_label']], 'rows' => array_map(fn (array $r) => [(string) $r['account'], $r['route'], (string) ($r['district'] ?? ''), ...($named ? [(string) ($r['cca'] ?? '')] : []), $r['amount']], array_slice($l['rows'], 0, max(1, (int) config('gwl.commercial_billing_detail_issue_cap', 200))))];
+        };
+        $byGroup = function (string $title, string $firstHead, array $rows, string $nameKey, array $heads, callable $cells): array {
+            return ['title' => $title, 'headings' => [$firstHead, ...$heads], 'rows' => array_map(fn (array $r) => [(string) $r[$nameKey], ...$cells($r)], $rows)];
+        };
+        $byRoute = fn (string $title, array $rows, array $heads, callable $cells): array => ['title' => $title, 'headings' => $routeHead($heads), 'rows' => array_map(fn (array $r) => $routeCells($r, $cells($r)), $rows)];
+
+        $statusHeads = ['Customers', 'Regular', 'Estimated', 'Estimate', 'Unbilled', 'Month total (GH¢)', 'Estimated share (%)', 'Unbilled share (%)'];
+        $statusCells = fn (array $r) => [$r['customers'], $r['bill']['REGULAR']['customers'], $r['bill']['ESTIMATED']['customers'], $r['bill']['ESTIMATE']['customers'], $r['bill']['UNBILLED']['customers'], $r['month_total'], $n($r['estimated_share']), $n($r['unbilled_share'])];
+        $causeHeads = ['Estimated bills', 'Faulty meter (F)', 'No meter (N or blank)', 'Working meter not read (W)', 'Other meter status', 'Billed value (GH¢)', 'Faulty value', 'No meter value', 'Working, not read value'];
+        $causeCells = fn (array $r) => [$r['estimated_customers'], $r['est']['F']['customers'], $r['est']['N']['customers'], $r['est']['W']['customers'], $r['est']['O']['customers'], $r['estimated_value'], $r['est']['F']['month_total'], $r['est']['N']['month_total'], $r['est']['W']['month_total']];
+        $consHeads = ['Billed customers', 'Consumption', 'Per bill', 'Zero-consumption regular bills', 'Share of regular bills (%)'];
+        $consCells = fn (array $r) => [$r['billed_customers'], $r['consume'], $n($r['consume_per_bill']), $r['zero_regular'], $n($r['zero_regular_share'])];
+        $chargeHeads = ['Water', 'Rural water', 'Fire fighting', 'Sewage', 'Service charge', 'Month total', 'Water share (%)', 'Rural share (%)', 'Fire share (%)', 'Sewage share (%)', 'Service share (%)'];
+        $chargeCells = fn (array $r) => [$r['water'], $r['rural'], $r['fire'], $r['sewage'], $r['service'], $r['month_total'], $n($r['component_share']['water']), $n($r['component_share']['rural']), $n($r['component_share']['fire']), $n($r['component_share']['sewage']), $n($r['component_share']['service'])];
+        $colHeads = ['Month total', 'Paid this month', 'Previous-month payment', 'Offset payments', 'Collection ratio (%)', 'Amount due', 'Collected of the amount due (%)'];
+        $colCells = fn (array $r) => [$r['month_total'], $r['paid'], $r['prev_payment'], $r['offset'], $n($r['collection_ratio']), $r['amount_due'], $n($r['collected_of_due'])];
+        $recHeads = ['Previous balance', 'Adjusted', 'Balance due', 'Owing customers', 'Owing (GH¢)', 'Credit customers', 'Credit (GH¢)'];
+        $recCells = fn (array $r) => [$r['previous_balance'], $r['adjusted'], $r['balance_due'], $r['owing'], $r['owing_amount'], $r['credit'], $r['credit_amount']];
+        $tariffHeads = ['Bills tested', 'Mismatches', 'Mismatch share (%)'];
+        $tariffCells = fn (array $r) => [$r['tariff_checked'], $r['tariff_mismatch'], $n($r['tariff_mismatch_pct'])];
+        $recencyHeads = ['Customers', '0 to 30 days', '31 to 60 days', '61 to 90 days', 'Over 90 days', 'Never read', 'Over 90 days or never (%)'];
+        $recencyCells = fn (array $r) => [$r['customers'], $r['read_0_30'], $r['read_31_60'], $r['read_61_90'], $r['read_over_90'], $r['read_never'], $n($r['read_over_90_share'])];
+
+        $sections = [];
+
+        $sections['overview'] = [
+            ['title' => 'Summary', 'headings' => ['Measure', 'Value'], 'rows' => [
+                ['Routes', $d['counts']['routes']], ['Customers', $t['customers']], ['Billed customers', $t['billed_customers']], ['Month total (GH¢)', $t['month_total']], ['Paid this month (GH¢)', $t['paid']],
+                ['Collection ratio (%)', $n($t['collection_ratio'])], ['Estimated bills', $t['estimated_customers']], ['Estimated share of the billed (%)', $n($t['estimated_share'])], ['Unbilled', $t['unbilled']],
+                ['Balance due (GH¢)', $t['balance_due']], ['Owing (GH¢)', $t['owing_amount']], ['Credit (GH¢)', $t['credit_amount']],
+            ]],
+            $byGroup('B1 Status by district', 'District', $a['districts'], 'name', $statusHeads, $statusCells),
+            $byGroup('B1 Status by category', 'Category', $a['categories'], 'name', $statusHeads, $statusCells),
+            $byRoute('B1 Status by route', $a['routes'], $statusHeads, $statusCells),
+        ];
+
+        $sections['estimates'] = [
+            $byGroup('B2 Cause by district', 'District', $a['districts'], 'name', $causeHeads, $causeCells),
+            $byRoute('B2 Cause by route', array_values(array_filter($a['routes'], fn (array $r) => $r['estimated_customers'] > 0)), $causeHeads, $causeCells),
+            ['title' => 'B3 Unbilled by status', 'headings' => ['Account status', 'Active billing status', 'Unbilled customers', 'By meter status'], 'rows' => array_map(fn (array $u) => [$u['status'] === '' ? '(blank)' : $u['status'], $u['status'] === 'HOLD' ? 'Billing paused (HOLD)' : ($u['active_billing'] ? 'Yes' : 'No'), $u['customers'], collect($u['by_meter'])->map(fn ($c, $m) => ($m === '' ? '(blank)' : $m).' '.$c)->implode(', ')], $a['unbilled'])],
+            $list('active_unbilled', 'B3 Active unbilled accounts'),
+            $list('billed_not_active', 'B3 Billed, not active'),
+        ];
+
+        $sections['consumption'] = [
+            $byGroup('B4 Consumption by district', 'District', $a['districts'], 'name', $consHeads, $consCells),
+            $byGroup('B4 Consumption by category', 'Category', $a['categories'], 'name', $consHeads, $consCells),
+            $byRoute('B4 Consumption by route', $a['routes'], $consHeads, $consCells),
+            ['title' => 'B4 Consumption bands', 'headings' => ['Band', 'Customers', 'Share (%)', 'Consumption'], 'rows' => array_map(fn (array $b) => [$b['band'], $b['customers'], $n($b['share']), $b['consume']], $a['bands'])],
+            $list('zero_consume_regular', 'B4 Zero-consumption regular'),
+            $byGroup('B5 Charges by district', 'District', $a['districts'], 'name', $chargeHeads, $chargeCells),
+            $byGroup('B5 Charges by category', 'Category', $a['categories'], 'name', $chargeHeads, $chargeCells),
+        ];
+
+        $con = $d['concentration'];
+        $sections['money'] = [
+            $byGroup('B6 Collections by district', 'District', $a['districts'], 'name', $colHeads, $colCells),
+            $byGroup('B6 Collections by category', 'Category', $a['categories'], 'name', $colHeads, $colCells),
+            $byRoute('B6 Collections by route', $a['routes'], $colHeads, $colCells),
+            $byGroup('B7 Receivables by district', 'District', $a['districts'], 'name', $recHeads, $recCells),
+            $byGroup('B7 Receivables by category', 'Category', $a['categories'], 'name', $recHeads, $recCells),
+            ['title' => 'B7 Top 10 percent of owing', 'headings' => ['Measure', 'Value'], 'rows' => $con['available']
+                ? [['Owing accounts', $con['owing']], ['Owed balance (GH¢)', $con['amount']], ['Accounts in the top 10 percent', $con['top_n']], ['Held by them (GH¢)', $con['top_amount']], ['Share of the owed balance (%)', $n($con['share'])]]
+                : [['Not available', $con['reason']]]],
+            $list('top_debtor', 'B7 Top debtors'),
+            $byGroup('B8 Adjustments by category', 'Category', $a['categories'], 'name', ['Adjusted customers', 'Adjusted (GH¢)'], fn (array $r) => [$r['adjusted_count'], $r['adjusted']]),
+            $byRoute('B8 Adjustments by route', array_values(array_filter($a['routes'], fn (array $r) => $r['adjusted_count'] > 0)), ['Adjusted customers', 'Adjusted (GH¢)'], fn (array $r) => [$r['adjusted_count'], $r['adjusted']]),
+            $list('large_adjustment', 'B8 Largest adjustments'),
+            $byRoute('B9 Billed not paid by route', array_values(array_filter($a['routes'], fn (array $r) => $r['billed_unpaid'] > 0)), ['Billed, not paid', 'Value (GH¢)', 'Share of the billed (%)'], fn (array $r) => [$r['billed_unpaid'], $r['billed_unpaid_amount'], $n($r['billed_unpaid_share'])]),
+            $list('billed_unpaid', 'B9 Largest bills not paid'),
+        ];
+
+        $integrity = $d['integrity'];
+        $service = app(BillingDetailsImportService::class);
+        $sections['checks'] = [
+            $byGroup('B10 Tariff check by district', 'District', $a['districts'], 'name', $tariffHeads, $tariffCells),
+            $byRoute('B10 Tariff check by route', array_values(array_filter($a['routes'], fn (array $r) => $r['tariff_mismatch'] > 0)), $tariffHeads, $tariffCells),
+            $list('tariff_mismatch', 'B10 Tariff mismatches'),
+            $byGroup('B11 Read recency by district', 'District', $a['districts'], 'name', $recencyHeads, $recencyCells),
+            $byRoute('B11 Read recency by route', $a['routes'], $recencyHeads, $recencyCells),
+            $list('stale_read', 'B11 Stale reads'),
+            ['title' => 'B12 Integrity by upload', 'headings' => ['Upload', 'Routes checked', 'Routes that disagree with their totals', 'Accounts repeated', 'Charges do not add up', 'Negative consumption', 'Bill month outside the period'], 'rows' => array_map(fn (array $b) => [$b['period'].' (batch #'.$b['id'].')', $n($b['routes_checked']), $b['routes_failed'], $n($b['duplicates']), $integrity['components_off'], $integrity['negative_consume'], $integrity['bill_month_outside']], $integrity['batches'])],
+            ['title' => 'B12 Routes flagged', 'headings' => ['Upload', 'Route', 'What disagrees'], 'rows' => array_merge(...array_map(fn (array $b) => array_map(fn (array $f) => ['batch #'.$b['id'], $f['label'], $service->describeDiffs($f['diffs'])], $b['flagged']), $integrity['batches']) ?: [[]])],
+            $list('duplicate_account', 'B12 Repeated accounts'),
+            $list('negative_consume', 'B12 Negative consumption'),
+        ];
+
+        $sections['trend'] = [
+            ['title' => 'B13 Trend by upload', 'headings' => ['Period', 'Batch', 'Customers', 'Billed', 'Consumption', 'Month total', 'Paid', 'Collection ratio (%)', 'Estimated bills (%)', 'Unbilled (%)', 'Balance due', 'Owing', 'Billed, not paid', 'Tariff mismatch (%)', 'Read over 90 days or never (%)'], 'rows' => array_map(fn (array $p) => [$p['label'], $p['batch_id'], $p['customers'], $p['billed_customers'], $p['consume'], $p['month_total'], $p['paid'], $n($p['collection_ratio']), $n($p['estimated_share']), $n($p['unbilled_share']), $p['balance_due'], $p['owing_amount'], $p['billed_unpaid'], $n($p['tariff_mismatch_pct']), $n($p['read_over_90_share'])], $d['trend'])],
+            ['title' => 'B13 Trend by district', 'headings' => ['Period', 'District', 'Customers', 'Month total', 'Paid', 'Collection ratio (%)', 'Estimated bills (%)', 'Unbilled (%)', 'Balance due'], 'rows' => array_merge(...array_map(fn (array $p) => array_map(fn (array $x) => [$p['label'], $x['name'], $x['customers'], $x['month_total'], $x['paid'], $n($x['collection_ratio']), $n($x['estimated_share']), $n($x['unbilled_share']), $x['balance_due']], $p['districts']), $d['trend']) ?: [[]])],
+        ];
+
+        $tables = $section === 'all' ? array_merge(...array_values($sections)) : $sections[$section];
+
+        return $this->report('billing-details', $meta, $notes, $tables, $meta['Period']);
     }
 
     // ---------------------------------------------------------------- helpers

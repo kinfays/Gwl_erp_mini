@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Commercial;
 use App\Exports\Commercial\CommercialReportExport;
 use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
+use App\Models\District;
 use App\Models\Permission;
+use App\Models\Region;
 use App\Services\Commercial\CommercialExportService;
 use App\Services\Commercial\CommercialReportData;
 use App\Support\Audit;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -95,9 +98,9 @@ class CommercialExportController extends Controller
 
         $months = ($from || $to) ? ($from ?? 'start').' to '.($to ?? 'latest') : 'All months';
         $readingMeta = fn () => [
-            'Region' => $region && $data->seesAllRegions() ? (\App\Models\Region::query()->whereKey($region)->value('region_name') ?? $data->regionLabelFor()) : $data->regionLabelFor(),
+            'Region' => $region && $data->seesAllRegions() ? (Region::query()->whereKey($region)->value('region_name') ?? $data->regionLabelFor()) : $data->regionLabelFor(),
             'Months' => $months,
-            'Home district' => $district ? (\App\Models\District::query()->whereKey($district)->value('district_name') ?? 'Unknown') : 'Any',
+            'Home district' => $district ? (District::query()->whereKey($district)->value('district_name') ?? 'Unknown') : 'Any',
         ];
 
         return match ($report) {
@@ -107,9 +110,18 @@ class CommercialExportController extends Controller
             'billing' => ($billing = $data->billingSnapshot($snapshot, (string) $request->query('district', ''), $from, $to)) === null ? null : [$exports->billing($billing), ($billing['snapshot']['is_range'] ?? false) ? ['district' => $billing['district'], 'from' => $billing['snapshot']['range_from'], 'to' => $billing['snapshot']['range_to']] : ['snapshot' => $billing['snapshot']['id'], 'district' => $billing['district']]],
             'kpis' => ($kpis = $data->kpis($region, is_string($request->query('segment')) && $request->query('segment') !== '' ? (string) $request->query('segment') : null, max(1, min(12, (int) $request->query('months', 3))), $district)) && ! $kpis['empty'] ? [$exports->kpis($kpis), ['region' => $kpis['region_id'], 'segment' => $kpis['segment'], 'months' => $kpis['months_asked'], 'district' => $district]] : null,
             'reading-routes' => ($route = $data->routeReading($region, $district, $from, $to))['available'] ? [$exports->readingRoutes($route), array_filter(['region' => $route['region_id'], 'district' => $route['district_id'], 'from' => $route['range']['from'], 'to' => $route['range']['to']])] : null,
+            'billing-details' => ($bd = $data->billingDetails($region, $district, $this->code($request->query('category')), $this->code($request->query('cca')), ctype_digit((string) $request->query('route')) && $request->query('route') !== '' ? (int) $request->query('route') : null, $from, $to))['available']
+                ? [$exports->billingDetails($bd, (string) $request->query('section', 'all')), array_filter(['region' => $bd['region_id'], 'district' => $bd['district_id'], 'category' => $bd['category'], 'cca' => $bd['cca'], 'route' => $bd['route_id'], 'section' => $request->query('section'), 'from' => $bd['range']['from'], 'to' => $bd['range']['to']], fn ($value) => $value !== null && $value !== '')]
+                : null,
             'scorecard' => ($card = $data->scorecard($snapshot)) === null ? null : [$exports->scorecard($card), ['snapshot' => $card['snapshot']['id']]],
             default => null,
         };
+    }
+
+    /** A category code or a staff id typed into a link: letters, digits and a few separators only; anything else is no filter. */
+    protected function code(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^[A-Za-z0-9._-]{1,30}$/', $value) ? $value : null;
     }
 
     /** A typed month (2026-09) or date (2026-09-15) of the range; anything else is no bound. */
@@ -123,7 +135,7 @@ class CommercialExportController extends Controller
     }
 
     /** commercial_billing_<region>_<period>_<yyyymmdd>.xlsx */
-    protected function filename(string $report, array $result, string $extension, \Illuminate\Support\Carbon $when): string
+    protected function filename(string $report, array $result, string $extension, Carbon $when): string
     {
         $slug = fn (string $text) => Str::slug($text, '-') ?: 'all';
 

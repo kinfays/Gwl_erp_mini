@@ -205,6 +205,9 @@ if (config('gwl.commercial_module_enabled')) {
 
     Schedule::command('commercial:remind-uploads')->dailyAt('07:45')->withoutOverlapping();
 
+    // Phase 8d: the account lists of the Detailed Billing Report are kept for commercial_billing_detail_issue_keep_months, then deleted.
+    Schedule::command('commercial:billing-details:purge')->dailyAt('03:35')->withoutOverlapping();
+
     // Customer list: per-district upload reminders (by the cadence set for each district) and the personal-data housekeeping.
     if (config('gwl.commercial_customer_list_enabled')) {
         Artisan::command('commercial:remind-customer-uploads {--dry-run : List the overdue districts and who would be told, without sending anything}', function (CustomerUploadReminders $reminders) {

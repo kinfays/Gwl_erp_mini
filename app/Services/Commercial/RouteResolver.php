@@ -27,9 +27,7 @@ use Illuminate\Validation\ValidationException;
  */
 class RouteResolver
 {
-    public function __construct(protected LocationMatcher $locations)
-    {
-    }
+    public function __construct(protected LocationMatcher $locations) {}
 
     // ---------------------------------------------------------------- reading a label
 
@@ -69,6 +67,37 @@ class RouteResolver
     }
 
     // ---------------------------------------------------------------- resolving
+
+    /**
+     * What a printed route label stands for, WITHOUT creating anything (a preview or a scan writes nothing): its code and printed district,
+     * and the resolved district id (the existing canonical route's district when there is one, else the district the label names), or
+     * null when nobody can place it. Phase 8d moved this here from the reading-by-route importer so both route reports share one copy.
+     *
+     * @param  array<string, District|null>  $districtCache  filled as districts are looked up (pass the same array for every label of a file)
+     * @return array{code: string|null, district_label: string|null, district_id: int|null}
+     */
+    public function place(string $label, ?int $regionId, array &$districtCache): array
+    {
+        $parsed = $this->parse($label);
+        $districtLabel = $parsed['district'];
+        $code = $parsed['code'] !== null ? mb_substr(trim($parsed['code']), 0, 12) : null;
+        $districtId = null;
+
+        if ($districtLabel !== null && $regionId !== null) {
+            $key = $this->locations->normalize($districtLabel);
+            $districtCache[$key] ??= $this->locations->resolveDistrict($districtLabel, $regionId);
+            $district = $districtCache[$key];
+
+            if ($district && $code !== null) {
+                $existing = CommercialRoute::query()->where('district_id', $district->id)->where(fn ($q) => $q->where('code', $code)->orWhere('name', $code))->orderBy('id')->first();
+                $districtId = $existing ? (int) $this->canonical($existing)->district_id : (int) $district->id;
+            } elseif ($district) {
+                $districtId = (int) $district->id;
+            }
+        }
+
+        return ['code' => $code, 'district_label' => $districtLabel, 'district_id' => $districtId];
+    }
 
     /**
      * The CANONICAL route a label stands for, created pending when unseen; null when the district it names cannot be placed (the
@@ -338,6 +367,35 @@ class RouteResolver
         $this->audit('commercial.route_confirmed', $route, ['code' => $route->code]);
 
         return $route->fresh();
+    }
+
+    /**
+     * Confirms EVERY pending route of the given regions in one go (Phase 8d, step 0.2): the pending routes an import files from labels
+     * nobody has looked at yet. $regionIds is the caller's own reach (CommercialScope), narrowed by the screen's region filter; null means
+     * every region, an empty list nothing. One audit row of counts and region ids (never a route code). Returns how many were confirmed.
+     *
+     * @param  list<int>|null  $regionIds
+     */
+    public function confirmAllPending(?array $regionIds, ?int $actorId = null): int
+    {
+        if ($regionIds === []) {
+            return 0;
+        }
+
+        $query = CommercialRoute::query()->where('is_pending', true)
+            ->when($regionIds !== null, fn ($q) => $q->whereIn('region_id', $regionIds));
+
+        $count = $query->update(['is_pending' => false, 'updated_at' => now()]);
+
+        if ($count > 0) {
+            Audit::log(
+                action: 'commercial.routes_confirmed_all',
+                module: Permission::MODULE_COMMERCIAL,
+                metadata: ['confirmed' => $count, 'region_ids' => $regionIds, 'actor_id' => $actorId]
+            );
+        }
+
+        return $count;
     }
 
     /** Settles every shared code again under the current authority setting. */

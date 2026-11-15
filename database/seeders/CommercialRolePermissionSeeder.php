@@ -62,7 +62,8 @@ class CommercialRolePermissionSeeder extends Seeder
             'regional_chief_manager' => [...$managementView, $allDistricts],
             'district_manager' => [...$managementView, $allDistricts],
             // Phase 8a: the management views, limited to the district on the employee record; no upload, no SMS, no all-districts.
-            'district_commercial_viewer' => $managementView,
+            // Phase 8d (step 0.1): and the CCAs of THEIR district's routes by name (the districts reached are CommercialScope's, not the permission's).
+            'district_commercial_viewer' => [...$managementView, 'commercial.view_reader_performance'],
         ];
 
         foreach ($map as $roleName => $slugs) {

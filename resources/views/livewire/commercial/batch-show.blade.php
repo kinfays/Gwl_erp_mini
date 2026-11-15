@@ -4,7 +4,7 @@
             <h2>{{ $batchTypeLabel }} - batch #{{ $batch->id }}</h2>
             <p>
                 {{ $batch->region?->region_name ?? $batch->region_label_raw ?? 'No region' }} &middot;
-                @if ($batch->isReadingRoute())
+                @if ($batch->isReadingRoute() || $batch->isBillingDetails())
                     {{ \App\Services\Commercial\CommercialPeriods::describe($batch->period_from, $batch->period_to) }}
                 @else
                     {{ $batch->period_from->format('M Y') }}@if ($batch->period_from->format('Y-m') !== $batch->period_to->format('Y-m')) - {{ $batch->period_to->format('M Y') }}@endif
@@ -54,6 +54,9 @@
         </div>
     @endif
 
+    @if ($batch->isBillingDetails())
+        @include('livewire.commercial.partials.billing-details-batch')
+    @else
     <div class="stats" style="margin-top:14px">
         <div class="stat">
             <div class="stat-lbl">Rows</div>
@@ -518,5 +521,6 @@
             </table>
             <div style="padding:12px">{{ $rows->links() }}</div>
         </div>
+    @endif
     @endif
 </div>

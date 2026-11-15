@@ -4,6 +4,8 @@ namespace Tests\Feature\Commercial;
 
 use App\Livewire\Commercial\ReadingRoutes;
 use App\Models\AuditLog;
+use App\Models\CommercialImportBatch;
+use App\Models\District;
 use App\Models\ModuleAccess;
 use App\Models\Permission;
 use App\Models\Role;
@@ -115,7 +117,7 @@ class ReadingRouteScreensTest extends CommercialTestCase
 
     public function test_with_no_upload_the_screen_explains_how_to_load_one(): void
     {
-        \App\Models\CommercialImportBatch::query()->update(['status' => \App\Models\CommercialImportBatch::STATUS_VOIDED]);
+        CommercialImportBatch::query()->update(['status' => CommercialImportBatch::STATUS_VOIDED]);
         $this->actingAs($this->officer());
 
         Livewire::test(ReadingRoutes::class)->assertSee('No reading report by route has been loaded yet.')->assertSee('rptReadingSumm');
@@ -199,10 +201,47 @@ class ReadingRouteScreensTest extends CommercialTestCase
         $this->assertSame(280, $other['analysis']['totals']['strength']);
     }
 
+    public function test_the_district_viewer_role_sees_the_ccas_of_their_own_districts_routes_by_name_and_no_other_districts(): void
+    {
+        // Phase 8d, step 0.1: the seeded District Commercial Viewer holds view_reader_performance, so the small-group rule no longer hides
+        // the names; the district limit (CommercialScope) is what keeps another district's CCAs out of sight.
+        $viewer = $this->userWithRoles('900961', ['district_commercial_viewer'], $this->accraWest, $this->sowutuom);
+        $this->assertTrue($viewer->hasPermission('commercial.view_reader_performance'));
+        $this->assertFalse($viewer->hasPermission('commercial.view_all_districts'));
+        $this->actingAs($viewer);
+
+        $report = app(CommercialReportData::class)->routeReading();
+
+        $this->assertTrue($report['named']);
+        $this->assertFalse($report['small_group']);
+        $this->assertEqualsCanonicalizing(['80001', '80002'], array_column($report['analysis']['ccas'], 'staff_id'), 'the two CCAs who work Sowutuom routes, by name');
+        $owners = collect($report['analysis']['routes'])->pluck('owner_cca', 'label')->all();
+        $this->assertSame(['SOWUTUOM S1' => '80001', 'SOWUTUOM S2' => '80001', 'SOWUTUOM S3' => '80002'], $owners, 'only Sowutuom routes, each with its owner CCA');
+
+        $page = Livewire::test(ReadingRoutes::class)->set('tab', 'ccas')
+            ->assertSee('80001 AMA TEST')->assertSee('80002 KWAME TEST')
+            ->assertDontSee('EFUA TEST')->assertDontSee('YAW TEST')->assertDontSee('KOFI TEST')->assertDontSee('80003')->assertDontSee('80004')->assertDontSee('80005');
+        $page->set('tab', 'routes')->assertSee('SOWUTUOM S1')->assertSee('80001 AMA TEST')->assertDontSee('ODORKOR O1')->assertDontSee('EFUA TEST');
+        Livewire::test(ReadingRoutes::class)->set('tab', 'checks')->assertDontSee('YAW TEST')->assertDontSee('KOFI TEST')->assertDontSee('ODORKOR O2');
+
+        // a district typed into the URL that is not theirs shows nothing of it; the export names only their district's CCAs too
+        $other = app(CommercialReportData::class)->routeReading(null, $this->odorkor->id);
+        $this->assertNull($other['district_id']);
+        $this->assertEqualsCanonicalizing(['80001', '80002'], array_column($other['analysis']['ccas'], 'staff_id'));
+
+        // an Odorkor district user sees Odorkor's CCAs and none of Sowutuom's
+        $odorkorViewer = $this->userWithRoles('900962', ['district_commercial_viewer'], $this->accraWest, $this->odorkor);
+        $this->actingAs($odorkorViewer);
+        $theirs = app(CommercialReportData::class)->routeReading();
+        $this->assertEqualsCanonicalizing(['80003', '80004', '80005'], array_column($theirs['analysis']['ccas'], 'staff_id'));
+        Livewire::test(ReadingRoutes::class)->set('tab', 'ccas')->assertSee('80003 EFUA TEST')->assertDontSee('AMA TEST')->assertDontSee('KWAME TEST');
+    }
+
     public function test_a_district_user_whose_district_is_small_is_shown_no_figure_at_all(): void
     {
         config(['gwl.commercial_min_readers_for_district_figures' => 3]);   // Sowutuom has two CCAs with visits
-        $viewer = $this->userWithRoles('900960', ['district_commercial_viewer'], $this->accraWest, $this->sowutuom);
+        // (a district user WITHOUT view_reader_performance: the seeded viewer role holds it since 8d, so the rule would not apply to it)
+        $viewer = $this->userWith('900960', ['commercial.view_reading'], allDistricts: false);
         $this->actingAs($viewer);
         $report = app(CommercialReportData::class)->routeReading();
 
@@ -221,7 +260,7 @@ class ReadingRouteScreensTest extends CommercialTestCase
 
     public function test_another_regions_uploads_are_never_offered(): void
     {
-        $ashantiDistrict = \App\Models\District::query()->create(['region_id' => $this->ashanti->id, 'district_name' => 'Kumasi Central']);
+        $ashantiDistrict = District::query()->create(['region_id' => $this->ashanti->id, 'district_name' => 'Kumasi Central']);
         $this->seedRouteReading([['90001', 'ASHANTI TEST', 'K1', $ashantiDistrict, 50, 40, 5, 45]], ['region' => $this->ashanti, 'from' => '2026-11-01', 'to' => '2026-11-30']);
 
         // an Accra West officer never sees Ashanti, however the URL is edited
@@ -333,7 +372,7 @@ class ReadingRouteScreensTest extends CommercialTestCase
 
     public function test_with_no_upload_there_is_nothing_to_export(): void
     {
-        \App\Models\CommercialImportBatch::query()->update(['status' => \App\Models\CommercialImportBatch::STATUS_VOIDED]);
+        CommercialImportBatch::query()->update(['status' => CommercialImportBatch::STATUS_VOIDED]);
 
         $this->export($this->officer())->assertRedirect()->assertSessionHas('error');
     }
@@ -342,7 +381,7 @@ class ReadingRouteScreensTest extends CommercialTestCase
 
     public function test_loading_a_route_report_changes_no_figure_of_the_by_month_reading_report_or_billing(): void
     {
-        \App\Models\CommercialImportBatch::query()->delete();   // start from the legacy data alone
+        CommercialImportBatch::query()->delete();   // start from the legacy data alone
         $this->seedReading(['R1' => ['2026-09-01' => [400, 100]], 'R2' => ['2026-09-01' => [200, 100]]], options: ['names' => ['R1' => 'ADWOA TEST', 'R2' => 'KWESI TEST'], 'districts' => ['R1' => $this->sowutuom->id, 'R2' => $this->odorkor->id]]);
         $this->seedBilling($this->billingFixture(), '2026-09-01', ['districts' => ['SOWUTUOM' => $this->sowutuom->id]]);
 
@@ -354,6 +393,6 @@ class ReadingRouteScreensTest extends CommercialTestCase
         $this->seedRouteReading($this->routeFixtureRows());
 
         $this->assertSame($before, $snapshot());
-        $this->assertSame(1, \App\Models\CommercialImportBatch::query()->where('report_type', 'reading_summary')->count());
+        $this->assertSame(1, CommercialImportBatch::query()->where('report_type', 'reading_summary')->count());
     }
 }

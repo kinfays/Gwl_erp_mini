@@ -194,7 +194,7 @@ class Batches extends Component
     public function render(UploadReminderService $reminders)
     {
         // (the overdue list is a region-wide status: a district user does not have it)
-        $overdue = $this->actorDistrictLimited() ? [] : $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get(), now());
+        $overdue = $this->actorDistrictLimited() ? [] : $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->live()->with('region')->get(), now());
 
         $batches = $this->scopeUploadsForActor(CommercialImportBatch::query())
             ->with(['region', 'importer'])
@@ -210,11 +210,12 @@ class Batches extends Component
         return view('livewire.commercial.batches', [
             'batches' => $batches,
             'types' => CommercialImportBatch::TYPES,
-            'statuses' => CommercialImportBatch::STATUSES,
+            'statuses' => CommercialImportBatch::ALL_STATUSES,
             'regions' => $regions,
             'canUpload' => $this->actorCan('commercial.upload_reports'),
             'canResolve' => $this->actorCan('commercial.resolve_matches'),
             'maxMb' => (int) config('gwl.commercial_import_max_mb', 10),
+            'billingDetailsMaxMb' => (int) config('gwl.commercial_billing_details_import_max_mb', 250),
             'overdue' => $overdue,
         ]);
     }

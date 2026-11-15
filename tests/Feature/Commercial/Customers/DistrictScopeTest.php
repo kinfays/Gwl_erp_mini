@@ -3,9 +3,8 @@
 namespace Tests\Feature\Commercial\Customers;
 
 use App\Livewire\Commercial\Batches;
-use App\Livewire\Commercial\BatchShow;
 use App\Livewire\Commercial\Billing;
-use App\Livewire\Commercial\Customers\BatchDetail;
+use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
 use App\Livewire\Commercial\Customers\Dashboard;
 use App\Livewire\Commercial\Customers\Lists;
 use App\Livewire\Commercial\Customers\Uploads;
@@ -20,11 +19,14 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Commercial\CommercialReportData;
 use App\Services\Commercial\CommercialScope;
+use App\Services\Commercial\Customers\CustomerAnalyticsService;
+use App\Services\Commercial\Customers\CustomerImportService;
 use App\Services\Commercial\Customers\CustomerListService;
 use App\Services\Commercial\Customers\CustomerScope;
 use App\Services\Commercial\Customers\CustomerSnapshots;
 use App\Services\Commercial\UploadReminderService;
-use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
+use Database\Seeders\CommercialRolePermissionSeeder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -115,9 +117,11 @@ class DistrictScopeTest extends CustomerTestCase
         $migration = require base_path('database/migrations/2026_11_20_000002_seed_commercial_district_scope_and_route_permissions.php');
 
         // the state before the migration: nobody holds the two new permissions and the role does not exist
-        $before = DB::table('role_permissions')->get()->map(fn ($r) => $r->role_id.'-'.$r->permission_id)->sort()->values()->all();
-        $newIds = Permission::query()->whereIn('name', ['commercial.view_all_districts', 'commercial.manage_routes'])->pluck('id');
+        // (the viewer's own grants are the migration's to make, so they are left out of "what was there before": since Phase 8d the seeded
+        // role also holds view_reader_performance, which a later migration grants and this one never did)
         $viewerId = Role::query()->where('name', 'district_commercial_viewer')->value('id');
+        $before = DB::table('role_permissions')->where('role_id', '!=', $viewerId)->get()->map(fn ($r) => $r->role_id.'-'.$r->permission_id)->sort()->values()->all();
+        $newIds = Permission::query()->whereIn('name', ['commercial.view_all_districts', 'commercial.manage_routes'])->pluck('id');
         DB::table('role_permissions')->whereIn('permission_id', $newIds)->delete();
         DB::table('role_permissions')->where('role_id', $viewerId)->delete();
         DB::table('role_permissions')->insertOrIgnore([
@@ -157,6 +161,42 @@ class DistrictScopeTest extends CustomerTestCase
         $this->assertSame([], array_values(array_diff(array_diff($before, ['x']), $after)) === [] ? [] : array_values(array_diff($before, $after)), 'no permission was taken from any role');
     }
 
+    public function test_the_phase_8d_migration_gives_the_viewer_role_view_reader_performance_and_nothing_else_and_is_safe_to_run_again(): void
+    {
+        $migration = require base_path('database/migrations/2026_11_23_000001_grant_view_reader_performance_to_district_commercial_viewer.php');
+        $viewer = Role::query()->where('name', 'district_commercial_viewer')->firstOrFail();
+        $permissionId = Permission::query()->where('name', 'commercial.view_reader_performance')->value('id');
+
+        // an existing database: the role was made by 8a with four permissions
+        DB::table('role_permissions')->where('role_id', $viewer->id)->where('permission_id', $permissionId)->delete();
+        $this->assertEqualsCanonicalizing(['commercial.view_dashboard', 'commercial.view_billing', 'commercial.view_reading', 'commercial.view_customer_analytics'], $viewer->permissions()->pluck('name')->all());
+
+        $migration->up();
+        $migration->up();
+
+        $this->assertEqualsCanonicalizing(
+            ['commercial.view_dashboard', 'commercial.view_billing', 'commercial.view_reading', 'commercial.view_customer_analytics', 'commercial.view_reader_performance'],
+            $viewer->permissions()->pluck('name')->all(),
+            'the one permission was added, once'
+        );
+        $this->assertFalse($viewer->permissions()->where('name', 'commercial.view_all_districts')->exists(), 'the role stays limited to the district on the employee record');
+        $this->assertFalse($viewer->permissions()->where('name', 'commercial.upload_reports')->exists());
+
+        // the seeder says the same (a fresh install runs the migration before any role exists)
+        DB::table('role_permissions')->where('role_id', $viewer->id)->delete();
+        $this->seed(CommercialRolePermissionSeeder::class);
+        $this->assertContains('commercial.view_reader_performance', $viewer->permissions()->pluck('name')->all());
+
+        // a database with no such role yet: the migration does nothing and does not fail
+        DB::table('role_permissions')->where('role_id', $viewer->id)->delete();
+        DB::table('module_access')->where('role_id', $viewer->id)->delete();
+        DB::table('roles')->where('id', $viewer->id)->delete();
+        $migration->up();
+        $this->assertSame(0, DB::table('role_permissions')->where('permission_id', $permissionId)->whereNotIn('role_id', DB::table('roles')->pluck('id'))->count());
+
+        $migration->down();   // and it can be rolled back
+    }
+
     public function test_the_seeded_viewer_role_gives_a_district_user_the_views_and_nothing_to_upload_or_send(): void
     {
         $viewer = $this->userWithRoles('910820', ['district_commercial_viewer'], $this->accraWest, $this->sowutuom);
@@ -192,7 +232,7 @@ class DistrictScopeTest extends CustomerTestCase
 
         // the figures themselves: 5 customers, not 10
         $filters = app(CustomerSnapshots::class)->filters(app(CustomerSnapshots::class)->current(null), null, [], [$this->sowutuom->id]);
-        $this->assertSame(5, app(\App\Services\Commercial\Customers\CustomerAnalyticsService::class)->overview($filters)['total']);
+        $this->assertSame(5, app(CustomerAnalyticsService::class)->overview($filters)['total']);
 
         // the league sets districts side by side: a district user's holds their own district only, with no company-wide comparison
         $compare = Livewire::actingAs($this->mine)->test(Dashboard::class)->set('tab', 'compare');
@@ -262,8 +302,8 @@ class DistrictScopeTest extends CustomerTestCase
         // a file of another district is skipped whole: blocked, nothing stored
         $path = ReportWorkbooks::customerList($this->simpleSpec(21, 23, ['district' => 'ODORKOR'], '2003'));
         $this->workbooks[] = $path;
-        $imports = app(\App\Services\Commercial\Customers\CustomerImportService::class);
-        ['batch' => $batch] = $imports->register($path, 'odorkor-more.xlsx', 'monthly', \Illuminate\Support\Carbon::parse('2026-10-20'), $uploader);
+        $imports = app(CustomerImportService::class);
+        ['batch' => $batch] = $imports->register($path, 'odorkor-more.xlsx', 'monthly', Carbon::parse('2026-10-20'), $uploader);
         $batch = $imports->process($batch);
 
         $this->assertSame(CommercialCustomerBatch::STATUS_BLOCKED, $batch->status);

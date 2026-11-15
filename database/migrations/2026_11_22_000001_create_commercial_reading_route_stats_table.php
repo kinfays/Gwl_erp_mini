@@ -28,7 +28,9 @@ return new class extends Migration
         Schema::create('commercial_reading_route_stats', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('batch_id')->constrained('commercial_import_batches')->cascadeOnDelete();
-            $table->foreignId('route_id')->nullable()->constrained('commercial_routes')->nullOnDelete();
+            // commercial_routes.id is an INT UNSIGNED (Phase 1), so this column must be too: a BIGINT column cannot hold a foreign key to it on MySQL
+            $table->unsignedInteger('route_id')->nullable();
+            $table->foreign('route_id')->references('id')->on('commercial_routes')->nullOnDelete();
             $table->foreignId('district_id')->nullable()->constrained('districts')->nullOnDelete();
             $table->string('cca_staff_id', 50);
             $table->string('cca_name_raw', 191)->nullable();

@@ -3,11 +3,13 @@
 namespace Tests\Feature\Commercial;
 
 use App\Livewire\Commercial\Routes;
+use App\Livewire\Commercial\Settings;
 use App\Models\AuditLog;
 use App\Models\CommercialRoute;
 use App\Services\Commercial\CommercialSettings;
 use App\Services\Commercial\LocationMatcher;
 use App\Services\Commercial\RouteResolver;
+use App\Support\ErpNavigation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
@@ -204,7 +206,7 @@ class RouteMasterTest extends Customers\CustomerTestCase
         $this->actingAs($this->userWithRoles('910952', ['district_commercial_viewer'], $this->accraWest, $this->sowutuom))->get(route('commercial.routes'))->assertForbidden();
         Livewire::actingAs($this->officer())->test(Routes::class)->assertForbidden();
 
-        $labels = fn ($user) => collect(app(\App\Support\ErpNavigation::class)->build($user, 'commercial')['sidebar'])->pluck('label')->all();
+        $labels = fn ($user) => collect(app(ErpNavigation::class)->build($user, 'commercial')['sidebar'])->pluck('label')->all();
         $this->assertContains('Route master', $labels($manager));
         $this->assertContains('Route master', $labels($this->superAdmin()));
         $this->assertNotContains('Route master', $labels($this->officer()));
@@ -249,6 +251,55 @@ class RouteMasterTest extends Customers\CustomerTestCase
         $this->assertSame(5, Livewire::actingAs($this->superAdmin())->test(Routes::class)->viewData('routes')->total());
     }
 
+    // ---------------------------------------------------------------- Phase 8d, step 0.2: confirm all pending
+
+    public function test_confirm_all_pending_confirms_every_pending_route_of_the_managers_region_only_and_audits_counts(): void
+    {
+        $this->resolver->resolve('SOWUTUOM 4601', $this->accraWest->id, CommercialRoute::SOURCE_BILLING);
+        $this->resolver->resolve('SOWUTUOM 4602', $this->accraWest->id, CommercialRoute::SOURCE_BILLING);
+        $this->resolver->resolve('ODORKOR 4603', $this->accraWest->id, CommercialRoute::SOURCE_BILLING);
+        $kumasi = $this->resolver->resolve('KUMASI 5001', $this->ashanti->id, CommercialRoute::SOURCE_BILLING);
+        $this->assertSame(4, CommercialRoute::query()->where('is_pending', true)->count());
+
+        $manager = $this->userWithRoles('910954', ['commercial_manager'], $this->accraWest, $this->sowutuom);
+
+        Livewire::actingAs($manager)->test(Routes::class)->assertSee('Confirm all pending (3)')->call('confirmAllPending')->assertHasNoErrors();
+
+        $this->assertSame(0, CommercialRoute::query()->where('region_id', $this->accraWest->id)->where('is_pending', true)->count(), 'every pending route of the manager\'s region is confirmed');
+        $this->assertTrue($kumasi->fresh()->is_pending, 'another region\'s pending route is untouched');
+        $this->assertSame(4, CommercialRoute::query()->count(), 'nothing is created or deleted, no route changes district');
+
+        $audit = AuditLog::query()->where('action', 'commercial.routes_confirmed_all')->firstOrFail();
+        $this->assertSame(3, $audit->metadata['confirmed']);
+        $this->assertSame([$this->accraWest->id], $audit->metadata['region_ids']);
+        $this->assertStringNotContainsString('4601', json_encode($audit->metadata), 'counts and region ids only: never a route code');
+
+        // nothing pending: no button, no second audit row, and the action says so
+        Livewire::actingAs($manager)->test(Routes::class)->assertDontSee('Confirm all pending')->call('confirmAllPending');
+        $this->assertSame(1, AuditLog::query()->where('action', 'commercial.routes_confirmed_all')->count());
+    }
+
+    public function test_confirm_all_pending_needs_manage_routes_and_a_super_admin_can_choose_a_region(): void
+    {
+        $this->resolver->resolve('SOWUTUOM 4601', $this->accraWest->id, CommercialRoute::SOURCE_BILLING);
+        $this->resolver->resolve('KUMASI 5001', $this->ashanti->id, CommercialRoute::SOURCE_BILLING);
+
+        Livewire::actingAs($this->officer())->test(Routes::class)->assertForbidden();
+        Livewire::actingAs($this->userWithRoles('910955', ['district_commercial_viewer'], $this->accraWest, $this->sowutuom))->test(Routes::class)->assertForbidden();
+
+        // the region filter narrows what "all" means: Ashanti only
+        Livewire::actingAs($this->superAdmin())->test(Routes::class)->set('region', (string) $this->ashanti->id)->call('confirmAllPending');
+        $this->assertSame(1, CommercialRoute::query()->where('is_pending', true)->count());
+        $this->assertTrue(CommercialRoute::query()->where('region_id', $this->accraWest->id)->firstOrFail()->is_pending);
+
+        // a manager cannot reach another region by typing its id into the filter
+        $manager = $this->userWithRoles('910956', ['commercial_manager'], $this->ashanti, $this->kumasi);
+        $this->resolver->resolve('KUMASI 5002', $this->ashanti->id, CommercialRoute::SOURCE_BILLING);
+        Livewire::actingAs($manager)->test(Routes::class)->set('region', (string) $this->accraWest->id)->call('confirmAllPending');
+        $this->assertTrue(CommercialRoute::query()->where('region_id', $this->accraWest->id)->firstOrFail()->is_pending, 'Accra West is not the manager\'s region');
+        $this->assertTrue(CommercialRoute::query()->where('code', '5002')->firstOrFail()->is_pending);
+    }
+
     // ---------------------------------------------------------------- the settings
 
     public function test_the_route_authority_and_the_reconciliation_limits_are_editable_settings(): void
@@ -281,7 +332,7 @@ class RouteMasterTest extends Customers\CustomerTestCase
         }
 
         // on the Settings screen, by someone who may edit them
-        Livewire::actingAs($this->superAdmin())->test(\App\Livewire\Commercial\Settings::class)
+        Livewire::actingAs($this->superAdmin())->test(Settings::class)
             ->assertSee('District of a route is decided by')->assertSee('Staff IDs never imported')->assertSee('Block a file when more routes than this fail their totals')
             ->set('values.commercial_route_district_authority', 'customer_list')->call('save');
         $this->assertSame('customer_list', config('gwl.commercial_route_district_authority'));

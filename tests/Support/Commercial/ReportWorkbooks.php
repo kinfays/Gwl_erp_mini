@@ -600,6 +600,17 @@ class ReportWorkbooks
         return \App\Services\Commercial\ReadingRouteSampleFile::write($spec);
     }
 
+    /**
+     * A Detailed Billing Report (rptBillingDetails_ExP; Phase 8d), written by App\Services\Commercial\BillingDetails\BillingDetailsSampleFile (the
+     * one writer of the layout, also used by the sample command and the fixture). With no spec it is THE SAMPLE (see its docblock); otherwise the
+     * spec keys are described there. Every name, id and figure is invented.
+     */
+    public static function billingDetails(array $spec = [], ?array $districts = null): string
+    {
+        $spec = $spec === [] ? \App\Services\Commercial\BillingDetails\BillingDetailsSampleFile::sampleSpec('ACCRA WEST', $districts ?? ['SOWUTUOM', 'ODORKOR', 'AMASAMAN']) : $spec;
+
+        return \App\Services\Commercial\BillingDetails\BillingDetailsSampleFile::write($spec);
+    }
     protected static function save(Spreadsheet $book): string
     {
         $path = tempnam(sys_get_temp_dir(), 'comm').'.xlsx';
