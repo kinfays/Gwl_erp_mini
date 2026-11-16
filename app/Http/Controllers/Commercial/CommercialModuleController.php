@@ -63,6 +63,23 @@ class CommercialModuleController extends Controller
         return view('commercial.cross-show', ['analysis' => $analysis]);
     }
 
+    /** Phase 8f: the trends screen opens on T2. */
+    public function trends(Request $request): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+
+        return view('commercial.trends', ['trend' => 't2']);
+    }
+
+    /** Phase 8f: one of T2 to T8. */
+    public function trendsShow(Request $request, string $trend): View
+    {
+        $this->enforceModule($request, Permission::MODULE_COMMERCIAL);
+        abort_unless(array_key_exists($trend, \App\Services\Commercial\Trends\TrendReport::TRENDS), 404);
+
+        return view('commercial.trends', ['trend' => $trend]);
+    }
+
     /** Phase 8e: route 360 (X2), the page behind every route link. A route outside the viewer's reach is a 404 (the Livewire page decides). */
     public function crossRoute(Request $request, int $route): View
     {

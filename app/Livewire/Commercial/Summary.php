@@ -3,6 +3,7 @@
 namespace App\Livewire\Commercial;
 
 use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
+use App\Livewire\Commercial\Concerns\UsesDateRange;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\Permission;
 use App\Services\Commercial\CommercialInsightsService;
@@ -18,6 +19,7 @@ class Summary extends Component
 {
     use EnforcesModuleAccess;
     use ScopesCommercialByActor;
+    use UsesDateRange;
 
     /** Batch id of the billing snapshot; '' = the default (latest single month). */
     #[Url(as: 'snapshot')]
@@ -31,13 +33,14 @@ class Summary extends Component
 
     public function render(CommercialReportData $data)
     {
-        $result = $data->summary($this->snapshot);
+        $result = $data->summary($this->snapshot, $this->dateFrom, $this->dateTo);
         // The chosen billing snapshot is `$chosen` in the view: `$snapshot` is this component's URL state (a string).
         $result['chosen'] = $result['snapshot'];
         unset($result['snapshot']);
 
         return view('livewire.commercial.summary', [
             ...$result,
+            'monthPresets' => $this->monthPresets(),
             'canExport' => $this->actorCan('commercial.export_reports'),
             'canExportCombined' => $this->actorCan('commercial.export_reports') && $result['can_combine'],
             'canSeeBillingPage' => $this->actorCan('commercial.view_billing'),

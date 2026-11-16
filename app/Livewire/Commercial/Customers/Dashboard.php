@@ -156,6 +156,8 @@ class Dashboard extends Component
             'quality' => ['quality' => $analytics->quality($filters)],
             'coverage' => ['coverage' => $analytics->coverage($filters)],
             'compare' => [
+                // Phase 8f (T2): billing accounts and the contactable share against the previous snapshot of each district (a daily snapshot is labelled by its date)
+                'trendBlock' => app(\App\Services\Commercial\CommercialReportData::class)->trendBlock('customers', ['region' => $regionId, 'district' => $districtId]),
                 'trend' => $analytics->trend($restriction, $regionId, $districtId, 12, $this->trendBy === 'month', $districtIds)['series'],
                 // the league sets every district side by side: a region-wide view a district user does not have
                 'league' => $analytics->league($filters, $restriction === null && $districtIds === null ? $snapshots->filters($everything, null) : null),

@@ -74,8 +74,8 @@ class CustomerImportService
      */
     public function register(string $sourcePath, string $originalName, string $periodType, Carbon $asOf, ?User $actor, ?string $notes = null, bool $review = false): array
     {
-        if (! in_array($periodType, [CommercialCustomerBatch::PERIOD_WEEKLY, CommercialCustomerBatch::PERIOD_MONTHLY], true)) {
-            throw new CustomerImportException('The period must be weekly or monthly.');
+        if (! in_array($periodType, [CommercialCustomerBatch::PERIOD_DAILY, CommercialCustomerBatch::PERIOD_WEEKLY, CommercialCustomerBatch::PERIOD_MONTHLY], true)) {
+            throw new CustomerImportException('The period must be daily, weekly or monthly.');
         }
 
         $hash = (string) hash_file('sha256', $sourcePath);

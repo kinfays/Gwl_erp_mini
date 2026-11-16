@@ -100,6 +100,7 @@
 
             {{-- ============================================================ OVERVIEW: B1 --}}
             @if ($activeTab === 'overview')
+                <x-commercial.trend-block :block="$trendBlock" kind="billing" :query="array_filter(['region' => $r['region_id'], 'district' => $r['district_id'], 'from' => $dateFrom, 'to' => $dateTo, 'route' => $r['route_id'], 'cca' => $r['cca']])" />
                 <div class="ui-stat-grid dash-row">
                     <x-ui.stat-tile label="Customers" :value="number_format($t['customers'])" icon="users" :meta="number_format($t['billed_customers']).' billed'" />
                     <x-ui.stat-tile label="Month total" :value="'GH¢ '.$money($t['month_total'])" icon="banknote" tone="info" meta="billed for the period" />

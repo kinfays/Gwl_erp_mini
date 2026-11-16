@@ -89,7 +89,17 @@ class CrossAnalysis extends Component
             'from' => $this->dateFrom, 'to' => $this->dateTo, 'mode' => $this->mode === 'same' ? 'same' : 'latest',
         ]);
 
+        // Phase 8f (T2): on the district scorecard, the change on the previous comparable period of each report the viewer may see
+        $trendBlocks = [];
+
+        if ($this->analysis === 'x7' && $r['region_id'] !== null) {
+            foreach (['reading', 'billing', 'customers'] as $kind) {
+                $trendBlocks[$kind] = app(\App\Services\Commercial\CommercialReportData::class)->trendBlock($kind, ['region' => $r['region_id'], 'district' => $r['district_id'], 'from' => $this->dateFrom, 'to' => $this->dateTo]);
+            }
+        }
+
         return view('livewire.commercial.cross-analysis', [
+            'trendBlocks' => $trendBlocks,
             'r' => $r, 'analysis' => $this->analysis, 'monthOptions' => $this->monthOptions(), 'canExport' => $this->actorCan('commercial.export_reports'),
             'exportQuery' => array_filter(['region' => $r['region_id'], 'district' => $r['district_id'], 'from' => $this->dateFrom, 'to' => $this->dateTo, 'mode' => $r['mode'] === 'same' ? 'same' : null], fn ($v) => $v !== null && $v !== ''),
             'routeQuery' => array_filter(['from' => $this->dateFrom, 'to' => $this->dateTo, 'mode' => $r['mode'] === 'same' ? 'same' : null], fn ($v) => $v !== null && $v !== ''),

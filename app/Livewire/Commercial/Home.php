@@ -3,6 +3,7 @@
 namespace App\Livewire\Commercial;
 
 use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
+use App\Livewire\Commercial\Concerns\UsesDateRange;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\CommercialBillingRoute;
 use App\Models\CommercialImportBatch;
@@ -11,6 +12,8 @@ use App\Models\CommercialReadingStrength;
 use App\Models\Permission;
 use App\Services\Commercial\BillingAnalyticsService;
 use App\Services\Commercial\ReadingAnalyticsService;
+use App\Services\Commercial\Trends\TrendReport;
+use App\Services\Commercial\UploadReminderService;
 use Livewire\Component;
 
 /**
@@ -21,6 +24,7 @@ class Home extends Component
 {
     use EnforcesModuleAccess;
     use ScopesCommercialByActor;
+    use UsesDateRange;
 
     public function mount(): void
     {
@@ -112,7 +116,7 @@ class Home extends Component
         ];
     }
 
-    public function render(ReadingAnalyticsService $analytics, BillingAnalyticsService $billing)
+    public function render(ReadingAnalyticsService $analytics, BillingAnalyticsService $billing, UploadReminderService $reminders, TrendReport $trends)
     {
         $trend = [];
         $kpis = null;
@@ -146,7 +150,17 @@ class Home extends Component
             ->sortBy([['report_type', 'asc'], ['region_id', 'asc']])
             ->values();
 
+        // the uploads that are overdue (Phase 8f: the route-grain reports too; a district user is told only their own district's)
+        $overdue = $reminders->overdueFor($this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get(), now(), $this->actorDistrictIds());
+
+        // Phase 8f: the route-grain headline figures on the date range typed here (none typed: each report's newest upload)
+        $routeGrain = $trends->headline(['from' => $this->dateFrom, 'to' => $this->dateTo]);
+        $routeGrain = $routeGrain['reading'] === null && $routeGrain['billing'] === null ? null : $routeGrain;
+
         return view('livewire.commercial.home', [
+            'routeGrain' => $routeGrain,
+            'monthPresets' => $this->monthPresets(),
+            'overdue' => $overdue,
             'latest' => $latest,
             'trend' => $trend,
             'kpis' => $kpis,

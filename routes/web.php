@@ -537,6 +537,16 @@ if (config('gwl.commercial_module_enabled')) {
                 ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
                 ->name('cross.show');
 
+            // Phase 8f: trends (T2 to T8). Each part checks the permission of its own data.
+            Route::get('/trends', [CommercialModuleController::class, 'trends'])
+                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
+                ->name('trends');
+
+            Route::get('/trends/{trend}', [CommercialModuleController::class, 'trendsShow'])
+                ->where('trend', 't[0-9]')
+                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
+                ->name('trends.show');
+
             Route::get('/kpis', [CommercialModuleController::class, 'kpis'])
                 ->middleware('permission:commercial.view_billing')
                 ->name('kpis');

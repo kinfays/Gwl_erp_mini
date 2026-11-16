@@ -1,4 +1,7 @@
 {{-- X7: the district scorecard from the real routes (also the headline table of X11) --}}
+@foreach ($trendBlocks ?? [] as $kind => $block)
+    <x-commercial.trend-block :block="$block" :kind="$kind" :query="array_filter(['region' => $r['region_id'], 'district' => $r['district_id'], 'from' => $dateFrom, 'to' => $dateTo])" />
+@endforeach
 @php
     $scorecard = $parts['scorecard'] ?? $parts['districts'];
 @endphp

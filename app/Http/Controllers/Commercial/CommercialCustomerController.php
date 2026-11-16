@@ -92,7 +92,7 @@ class CommercialCustomerController extends Controller
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx', 'max:'.((int) config('gwl.commercial_customer_import_max_mb', 200) * 1024)],
-            'period_type' => ['required', 'in:weekly,monthly'],
+            'period_type' => ['required', 'in:daily,weekly,monthly'],
             'as_of_date' => ['required', 'date', 'before_or_equal:tomorrow'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'review' => ['nullable', 'boolean'],

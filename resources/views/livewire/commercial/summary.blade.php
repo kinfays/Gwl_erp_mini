@@ -7,7 +7,7 @@
         $s = $summary;
         $pct = fn ($value, $digits = 1) => $value === null ? '–' : number_format($value, $digits).'%';
         $money = fn ($value) => $value === null ? '–' : number_format($value, 2);
-        $exportQuery = array_filter(['snapshot' => $snapshot !== '' ? $snapshot : null]);
+        $exportQuery = array_filter(['snapshot' => $snapshot !== '' ? $snapshot : null, 'from' => $dateFrom !== '' ? $dateFrom : null, 'to' => $dateTo !== '' ? $dateTo : null]);
         $met = fn ($value) => $value === null ? null : ($value ? 'good' : 'bad');
     @endphp
 
@@ -20,9 +20,17 @@
         </x-slot:actions>
     </x-ui.page-header>
 
+    @include('livewire.commercial.partials.range-control')
+
+    @if ($dateFrom !== '' || $dateTo !== '')
+        <p class="ui-hint dash-row" data-range-note>A date range is typed: the billing figures below add up the uploads inside it (the single-month figures and the district scorecard keep using the snapshot picked), and the route-grain figures use it too.</p>
+    @endif
+
     @if ($likeForLikeNote)
         <x-ui.alert tone="warning" class="dash-row">{{ $likeForLikeNote }}</x-ui.alert>
     @endif
+
+    @include('livewire.commercial.partials.route-grain', ['routeGrain' => $route_grain])
 
     {{-- Reading headline --}}
     @if ($can_reading)
@@ -76,7 +84,7 @@
             @php $e = $s['exceptions']; @endphp
             <x-ui.card title="Route exceptions" :description="$e['flagged'].' of '.$e['routes'].' routes flagged on placeholder thresholds'" class="dash-row">
                 @if ($canSeeBillingPage)
-                    <x-slot:actions><a href="{{ route('commercial.billing', array_filter(['snapshot' => $chosen['id'] ?? null, 'tab' => 'exceptions'])) }}" class="btn btn-ghost btn-sm">See the routes</a></x-slot:actions>
+                    <x-slot:actions><a href="{{ route('commercial.billing', array_filter(['snapshot' => ($chosen['is_range'] ?? false) ? null : ($chosen['id'] ?? null), 'from' => ($chosen['is_range'] ?? false) ? $chosen['range_from'] : null, 'to' => ($chosen['is_range'] ?? false) ? $chosen['range_to'] : null, 'tab' => 'exceptions'])) }}" class="btn btn-ghost btn-sm">See the routes</a></x-slot:actions>
                 @endif
                 <div class="ui-stat-grid">
                     <x-ui.stat-tile label="No activity" :value="$e['counts']['zero_activity']" icon="triangle-alert" />
@@ -93,8 +101,8 @@
         <x-ui.card title="Data freshness" description="Times are upload times: the reports print no run date.">
             @php $f = $s['freshness']; @endphp
             @foreach ($f['overdue'] as $late)
-                <x-ui.alert tone="warning" wire:key="late-{{ $late['region_id'] }}-{{ $late['report_type'] }}">
-                    {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] }} days since the last one (reminder limit {{ $late['limit'] }} days).
+                <x-ui.alert tone="warning" wire:key="late-{{ $late['region_id'] }}-{{ $late['district_id'] ?? 'r' }}-{{ $late['report_type'] }}">
+                    {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] === null ? 'none has arrived' : $late['days'].' days since the last one' }} (reminder limit {{ $late['limit'] }} days).
                 </x-ui.alert>
             @endforeach
             <dl class="ui-dl">

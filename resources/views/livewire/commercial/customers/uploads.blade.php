@@ -41,7 +41,7 @@
                 </div>
                 <div class="form-field">
                     <label class="form-label" for="cu-period">Upload type</label>
-                    <select id="cu-period" name="period_type" class="form-input"><option value="monthly" @selected(old('period_type') === 'monthly')>Monthly</option><option value="weekly" @selected(old('period_type') === 'weekly')>Weekly</option></select>
+                    <select id="cu-period" name="period_type" class="form-input"><option value="monthly" @selected(old('period_type') === 'monthly')>Monthly</option><option value="weekly" @selected(old('period_type') === 'weekly')>Weekly</option><option value="daily" @selected(old('period_type') === 'daily')>Daily</option></select>
                 </div>
                 <div class="form-field" style="flex:1;min-width:14rem">
                     <label class="form-label" for="cu-notes">Notes (optional)</label>

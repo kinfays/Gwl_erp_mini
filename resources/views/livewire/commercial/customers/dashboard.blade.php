@@ -455,6 +455,7 @@
         {{-- ================================================ I. trends and compare --}}
         @elseif ($activeTab === 'compare')
             @php $series = $trend; $l = $league; $last = end($series) ?: null; @endphp
+            <x-commercial.trend-block :block="$trendBlock" kind="customers" :query="[]" />
             <div class="ui-toolbar dash-row">
                 <select wire:model.live="trendBy" class="form-input" aria-label="Points">
                     <option value="period">One point per upload period</option>

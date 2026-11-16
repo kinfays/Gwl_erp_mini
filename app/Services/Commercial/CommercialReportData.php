@@ -86,7 +86,7 @@ class CommercialReportData
      *
      * @return array<string, mixed>
      */
-    public function summary(?string $snapshotId = null): array
+    public function summary(?string $snapshotId = null, ?string $from = null, ?string $to = null): array
     {
         $asOf = now();
         $canReading = $this->canSeeReadingNumbers();
@@ -95,6 +95,18 @@ class CommercialReportData
         $snapshots = $canBilling || $this->actorCan('commercial.view_dashboard') ? $this->snapshots() : [];
         $snapshot = $canBilling ? $this->chooseSnapshot($snapshots, $snapshotId, $this->billing->defaultSnapshot($snapshots)) : null;
         $routes = $snapshot ? $this->routesOf($snapshot['id']) : null;
+
+        // Phase 8f: a typed date range replaces the single snapshot in the BILLING headline, as it does on the Billing screen (the uploads inside it that do not
+        // overlap are added up). The district scorecard and the estimation analysis below stay on the picked single-month snapshot. With no range typed
+        // nothing here changes.
+        $pickedSnapshot = $snapshot;
+        $pickedRoutes = $routes;
+        $range = $snapshot ? $this->billingRange($snapshot, $from, $to) : null;
+
+        if ($range !== null) {
+            $snapshot = $range['meta'];
+            $routes = $range['routes'];
+        }
 
         $trend = null;
         $unmatched = null;
@@ -114,8 +126,8 @@ class CommercialReportData
         $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())->notVoided()->with('region')->get();
 
         $summary = $this->insights->executiveSummary([
-            // (the overdue list is a region-wide status: a district user does not have it)
-            'overdue' => $this->actorDistrictLimited() ? [] : app(UploadReminderService::class)->overdue($batches, $asOf),
+            // (the regional overdue list is a region-wide status: a district user is given only the route-grain reports of their own district, Phase 8f)
+            'overdue' => app(UploadReminderService::class)->overdueFor($batches, $asOf, $this->actorDistrictIds()),
             'trend' => $trend,
             'unmatched_readers' => $unmatched,
             'snapshot' => $snapshot,
@@ -124,9 +136,15 @@ class CommercialReportData
             'batches' => $batches,
         ]);
 
-        $combined = $this->canCombine() && $snapshot ? $this->combined($snapshot, $routes, $snapshots, $asOf) : null;
+        $combined = $this->canCombine() && $pickedSnapshot ? $this->combined($pickedSnapshot, $pickedRoutes, $snapshots, $asOf) : null;
+
+        // Phase 8f: the route-grain headline figures (reading by route, Detailed Billing), each with the period it used. Null when the viewer may see neither or no
+        // upload exists, so a region without them gets exactly the page and the file it had.
+        $routeGrain = app(Trends\TrendReport::class)->headline(['region' => $pickedSnapshot['region_id'] ?? null, 'from' => $from, 'to' => $to]);
+        $routeGrain = $routeGrain['reading'] === null && $routeGrain['billing'] === null ? null : $routeGrain;
 
         return [
+            'route_grain' => $routeGrain,
             'summary' => $summary,
             'scorecard' => $combined['scorecard'] ?? null,
             'estimation' => $combined['estimation'] ?? null,
@@ -271,6 +289,30 @@ class CommercialReportData
     public function crossRoute(int $routeId, array $filters = []): ?array
     {
         return app(Cross\CrossFileReport::class)->route($routeId, $filters);
+    }
+
+    /**
+     * One TREND (T2 period on period, T4 rolling windows, T5 rank movement, T6 year on year, T7 projection, T8 coverage and timeliness; Phase 8f, design
+     * 8.45) for the viewer's own scope and permissions. The Trends screen and its exports both call it.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function trends(string $key, array $filters): array
+    {
+        return app(Trends\TrendReport::class)->build($key, $filters);
+    }
+
+    /**
+     * The T2 block "change on the previous comparable period" of ONE kind (reading, billing, customers) for the screens that already show the figure; the
+     * same data as the Trends screen's part. Null when the viewer may not have it.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>|null
+     */
+    public function trendBlock(string $kind, array $filters): ?array
+    {
+        return app(Trends\TrendReport::class)->block($kind, $filters);
     }
 
     /**

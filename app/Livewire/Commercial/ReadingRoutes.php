@@ -85,6 +85,8 @@ class ReadingRoutes extends Component
         );
 
         return view('livewire.commercial.reading-routes', [
+            // Phase 8f (T2): the change on the previous comparable period, for the same range and district as this screen
+            'trendBlock' => $report['available'] ? $data->trendBlock('reading', ['region' => $report['region_id'], 'district' => $report['district_id'], 'from' => $this->dateFrom, 'to' => $this->dateTo]) : null,
             'r' => $report,
             'tabs' => self::TABS,
             'activeTab' => $this->activeTab(),

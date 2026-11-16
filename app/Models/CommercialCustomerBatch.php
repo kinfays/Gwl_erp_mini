@@ -36,6 +36,8 @@ class CommercialCustomerBatch extends Model
     public const PHASE_ROLLUP = 'rollup';
     public const PHASE_DONE = 'done';
 
+    public const PERIOD_DAILY = 'daily';
+
     public const PERIOD_WEEKLY = 'weekly';
     public const PERIOD_MONTHLY = 'monthly';
 
@@ -65,7 +67,12 @@ class CommercialCustomerBatch extends Model
     {
         $date = \Illuminate\Support\Carbon::instance($asOf);
 
-        return $periodType === self::PERIOD_WEEKLY ? $date->isoFormat('GGGG-[W]WW') : $date->format('Y-m');
+        // a daily snapshot is keyed by its date (Phase 8f); a weekly one by its ISO week; a monthly one by its month
+        return match ($periodType) {
+            self::PERIOD_DAILY => $date->format('Y-m-d'),
+            self::PERIOD_WEEKLY => $date->isoFormat('GGGG-[W]WW'),
+            default => $date->format('Y-m'),
+        };
     }
 
     /** The file this batch came from (Phase 8b: a file may have several batches, one per district). */

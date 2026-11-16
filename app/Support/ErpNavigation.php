@@ -956,6 +956,14 @@ class ErpNavigation
                 'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading') || $currentUser->hasPermission('commercial.view_billing') || $currentUser->hasPermission('commercial.view_customer_analytics'),
             ],
             [
+                'label' => 'Trends',
+                'route' => 'commercial.trends',
+                'active' => ['commercial.trends', 'commercial.trends.show'],
+                'icon' => $this->icon('report'),
+                'icon_name' => 'trending-up',
+                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading') || $currentUser->hasPermission('commercial.view_billing') || $currentUser->hasPermission('commercial.view_customer_analytics'),
+            ],
+            [
                 'label' => 'Billing',
                 'route' => 'commercial.billing',
                 'active' => ['commercial.billing'],

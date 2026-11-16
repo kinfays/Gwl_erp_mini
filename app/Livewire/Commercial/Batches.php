@@ -193,8 +193,8 @@ class Batches extends Component
 
     public function render(UploadReminderService $reminders)
     {
-        // (the overdue list is a region-wide status: a district user does not have it)
-        $overdue = $this->actorDistrictLimited() ? [] : $reminders->overdue($this->scopeBatchesForActor(CommercialImportBatch::query())->live()->with('region')->get(), now());
+        // (the regional overdue list is a region-wide status: a district user is given only the route-grain reports of their own district, Phase 8f)
+        $overdue = $reminders->overdueFor($this->scopeBatchesForActor(CommercialImportBatch::query())->live()->with('region')->get(), now(), $this->actorDistrictIds());
 
         $batches = $this->scopeUploadsForActor(CommercialImportBatch::query())
             ->with(['region', 'importer'])

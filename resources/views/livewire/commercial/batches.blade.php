@@ -14,8 +14,12 @@
     @include('livewire.commercial.partials.uploads-switch', ['current' => 'reports'])
 
     @foreach ($overdue as $late)
-        <x-ui.alert tone="warning" class="dash-row" wire:key="late-{{ $late['region_id'] }}-{{ $late['report_type'] }}">
-            {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] }} days since the last one on {{ $late['last_upload']->format('d M Y') }} (reminder limit {{ $late['limit'] }} days).
+        <x-ui.alert tone="warning" class="dash-row" wire:key="late-{{ $late['region_id'] }}-{{ $late['district_id'] ?? 'r' }}-{{ $late['report_type'] }}">
+            @if ($late['last_upload'] === null)
+                {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: none has arrived (reminder limit {{ $late['limit'] }} days).
+            @else
+                {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] }} days since the last one on {{ $late['last_upload']->format('d M Y') }} (reminder limit {{ $late['limit'] }} days).
+            @endif
         </x-ui.alert>
     @endforeach
 

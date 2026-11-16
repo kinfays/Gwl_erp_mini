@@ -40,6 +40,12 @@ class CommercialExportService
         'cross-x10' => ['title' => 'Across the files: X10 District and route evidence', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
         'cross-x11' => ['title' => 'Across the files: X11 Executive summary by district', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
         'cross-x12' => ['title' => 'Across the files: X12 Detailed billing against the billing summary', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t2' => ['title' => 'Trends: T2 Period on period', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t4' => ['title' => 'Trends: T4 Rolling windows', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t5' => ['title' => 'Trends: T5 Rank movement', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t6' => ['title' => 'Trends: T6 Year on year', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t7' => ['title' => 'Trends: T7 Projection to month end', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
+        'trends-t8' => ['title' => 'Trends: T8 Coverage and timeliness', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
         'cross-route' => ['title' => 'Route 360', 'formats' => ['excel', 'pdf'], 'permissions' => [], 'any' => ['commercial.view_reading', 'commercial.view_billing', 'commercial.view_customer_analytics']],
     ];
 
@@ -62,6 +68,9 @@ class CommercialExportService
         $s = $data['summary'];
         $tables = [];
         $notes = ['Times shown are upload times: the reports print no run date.'];
+
+        // Phase 8f: the route-grain headline figures sit in their own table, only when there is route-grain data (otherwise the file is what it always was)
+        $routeGrainTable = $this->routeGrainTable($data['route_grain'] ?? null);
 
         if (! empty($s['reading']['month'])) {
             $r = $s['reading'];
@@ -100,6 +109,11 @@ class CommercialExportService
             ]];
         }
 
+        if ($routeGrainTable !== null) {
+            $tables[] = $routeGrainTable;
+            $notes[] = 'The route-grain headline figures name the period each used and how many of its days are covered by uploads; ratios are worked out from sums, never averaged.';
+        }
+
         $f = $s['freshness'];
         $freshRows = [];
 
@@ -110,7 +124,7 @@ class CommercialExportService
         }
 
         foreach ($f['overdue'] as $late) {
-            $freshRows[] = ['OVERDUE: '.$late['label'].' upload, '.$late['region'], $late['days'].' days since the last upload on '.$late['last_upload']->format('d M Y').' (limit '.$late['limit'].' days)'];
+            $freshRows[] = ['OVERDUE: '.$late['label'].' upload, '.$late['region'], $late['last_upload'] === null ? 'none has arrived (limit '.$late['limit'].' days)' : $late['days'].' days since the last upload on '.$late['last_upload']->format('d M Y').' (limit '.$late['limit'].' days)'];
         }
 
         $freshRows[] = ['Reading months loaded', implode(', ', $f['reading_months']) ?: 'None'];
@@ -130,6 +144,36 @@ class CommercialExportService
         ]))];
 
         return $this->report('summary', ['Region' => $data['region_label'], 'Billing snapshot' => $data['snapshot']['label'] ?? 'None'], $notes, $tables, $data['snapshot']['period_label'] ?? null);
+    }
+
+    /**
+     * The route-grain headline figures of the summary as a table (Phase 8f): one row per measure with the report, the period it used and the days covered.
+     * Null when there is none (the summary file is then exactly what it was).
+     *
+     * @param  array<string, mixed>|null  $grain  TrendReport::headline()
+     * @return array{title: string, headings: list<string>, rows: list<list<mixed>>}|null
+     */
+    protected function routeGrainTable(?array $grain): ?array
+    {
+        if ($grain === null) {
+            return null;
+        }
+
+        $rows = [];
+
+        foreach (['reading', 'billing'] as $kind) {
+            $part = $grain[$kind] ?? null;
+
+            if ($part === null) {
+                continue;
+            }
+
+            foreach ($part['measures'] as $m) {
+                $rows[] = [$part['title'], $part['label'], $part['coverage_text'], $m['label'], $this->n($m['value']), $m['target'] === null ? '' : ($m['key'] === 'skip_rate' ? '<= ' : '>= ').$m['target'], $this->met($m['met'])];
+            }
+        }
+
+        return $rows === [] ? null : ['title' => 'Route-grain headline figures', 'headings' => ['Report', 'Period used', 'Days covered', 'Measure', 'Value', 'Configured target', 'Within target'], 'rows' => $rows];
     }
 
     // ---------------------------------------------------------------- reading
@@ -693,6 +737,40 @@ class CommercialExportService
         }
 
         return array_merge($notes, $d['notes'], array_map(fn (array $h) => 'Hidden: '.$h['title'].' ('.$h['reason'].')', $d['hidden']));
+    }
+
+    // ---------------------------------------------------------------- trends (Phase 8f)
+
+    /**
+     * One trend (T2 to T8) as a titled report, from the SAME payload its page shows (TrendReport::build). The periods compared are in the header; a part the
+     * viewer may not see is listed as "not in this file".
+     *
+     * @param  array<string, mixed>  $d  CommercialReportData::trends()
+     */
+    public function trends(string $key, array $d): array
+    {
+        $periods = [];
+
+        foreach ($d['parts'] as $part) {
+            $data = $part['data'] ?? null;
+
+            if (is_array($data) && isset($data['current']['label'])) {
+                $periods[] = $part['title'].': '.$data['current']['label'].(isset($data['compared']['label']) ? ' against '.$data['compared']['label'] : '');
+            } elseif (is_array($data) && isset($data['month_label'])) {
+                $periods[] = $part['title'].': '.$data['month_label'];
+            }
+        }
+
+        $meta = [
+            'Region' => (string) ($d['region'] ?? 'All'),
+            'Period' => $periods === [] ? ($d['key'] === 't8' ? (string) ($d['parts'][array_key_first($d['parts'])]['data']['month_label'] ?? 'no upload') : 'no upload') : implode(' | ', $periods),
+            'District' => $d['district_id'] ? (string) ($d['districts'][$d['district_id']] ?? '') : ($d['district_limited'] ? 'Your districts' : 'All districts'),
+            'Trend' => $d['code'].' '.$d['title'],
+        ];
+
+        $notes = ['A ratio changes in percentage points; a count or an amount changes in absolute terms and in percent. Ratios are worked out from sums, never averaged. A trend compares only periods of about the same length (never a 7-day upload with a 31-day one). Money is in GH¢. A projection is a run rate on the days covered, not a forecast.'];
+
+        return $this->report($key, $meta, array_merge($notes, $d['notes'], array_map(fn (array $h) => 'Hidden: '.$h['title'].' ('.$h['reason'].')', $d['hidden'])), app(Trends\TrendExportTables::class)->tables(substr($key, 7), $d), 'trends-'.substr($key, 7));
     }
 
     // ---------------------------------------------------------------- helpers

@@ -88,7 +88,7 @@ class CustomerPipelineTest extends CustomerTestCase
         $officer = $this->officer();
         $path = $this->workbook($this->simpleSpec(1, 3));
 
-        $this->actingAs($officer)->upload($path, ['period_type' => 'daily'])->assertSessionHasErrors('period_type');
+        $this->actingAs($officer)->upload($path, ['period_type' => 'hourly'])->assertSessionHasErrors('period_type');   // Phase 8f: daily is a period type now
         $this->actingAs($officer)->upload($path, ['as_of_date' => now()->addDays(5)->toDateString()])->assertSessionHasErrors('as_of_date');
 
         $text = tempnam(sys_get_temp_dir(), 'txt').'.xlsx';

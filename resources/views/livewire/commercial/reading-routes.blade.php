@@ -85,6 +85,7 @@
 
             {{-- ============================================================ OVERVIEW --}}
             @if ($activeTab === 'overview')
+                <x-commercial.trend-block :block="$trendBlock" kind="reading" :query="array_filter(['region' => $r['region_id'], 'district' => $r['district_id'], 'from' => $dateFrom, 'to' => $dateTo])" />
                 @php $t = $a['totals']; $c = $r['counts']; @endphp
                 <div class="ui-stat-grid dash-row">
                     <x-ui.stat-tile label="Routes" :value="number_format($c['routes'])" icon="map" :meta="number_format($c['ccas']).' CCAs listed'" />

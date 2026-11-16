@@ -104,7 +104,7 @@ class CommercialExportController extends Controller
         ];
 
         return match ($report) {
-            'summary' => [$exports->summary($data->summary($snapshot)), ['snapshot' => $snapshot]],
+            'summary' => [$exports->summary($data->summary($snapshot, $this->date($request->query('from')), $this->date($request->query('to')))), array_filter(['snapshot' => $snapshot, 'from' => $this->date($request->query('from')), 'to' => $this->date($request->query('to'))], fn ($value) => $value !== null && $value !== '') ?: ['snapshot' => $snapshot]],
             'reading-trend' => [$exports->readingTrend($data->readingTrend($region, $district, $from, $to), $readingMeta()), compact('region', 'district', 'from', 'to')],
             'readers' => [$exports->readers($data->readers($region, $district, $from, $to), $readingMeta()), compact('region', 'district', 'from', 'to')],
             'billing' => ($billing = $data->billingSnapshot($snapshot, (string) $request->query('district', ''), $from, $to)) === null ? null : [$exports->billing($billing), ($billing['snapshot']['is_range'] ?? false) ? ['district' => $billing['district'], 'from' => $billing['snapshot']['range_from'], 'to' => $billing['snapshot']['range_to']] : ['snapshot' => $billing['snapshot']['id'], 'district' => $billing['district']]],
@@ -115,7 +115,8 @@ class CommercialExportController extends Controller
                 : null,
             'scorecard' => ($card = $data->scorecard($snapshot)) === null ? null : [$exports->scorecard($card), ['snapshot' => $card['snapshot']['id']]],
             'cross-route' => $this->crossRoute($request, $data, $exports),
-            default => str_starts_with($report, 'cross-x') ? $this->cross($request, $report, $data, $exports, $region, $district, $from, $to) : null,
+            default => str_starts_with($report, 'cross-x') ? $this->cross($request, $report, $data, $exports, $region, $district, $from, $to)
+                : (str_starts_with($report, 'trends-t') ? $this->trends($request, $report, $data, $exports, $region, $district) : null),
         };
     }
 
@@ -135,6 +136,29 @@ class CommercialExportController extends Controller
         }
 
         return [$exports->cross($report, $d), array_filter(['region' => $d['region_id'], 'district' => $d['district_id'], 'from' => $d['from'], 'to' => $d['to'], 'mode' => $mode], fn ($value) => $value !== null && $value !== '')];
+    }
+
+    /**
+     * A trend (T2 to T8; Phase 8f): the same payload its page shows. The viewer's permissions and district limit are applied inside TrendReport, so a part they
+     * may not see is not in the file.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}|null
+     */
+    protected function trends(Request $request, string $report, CommercialReportData $data, CommercialExportService $exports, ?int $region, ?int $district): ?array
+    {
+        $q = [
+            'region' => $region, 'district' => $district, 'from' => $this->date($request->query('from')), 'to' => $this->date($request->query('to')),
+            'route' => ctype_digit((string) $request->query('route')) && $request->query('route') !== '' ? (int) $request->query('route') : null,
+            'cca' => $this->code($request->query('cca')), 'month' => preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $request->query('month')) ? (string) $request->query('month') : null,
+            'kind' => (string) $request->query('kind', 'all'),
+        ];
+        $d = $data->trends(substr($report, 7), $q);
+
+        if (! $d['available']) {
+            return null;
+        }
+
+        return [$exports->trends($report, $d), array_filter(['region' => $d['region_id'], 'district' => $d['district_id'], 'from' => $d['from'], 'to' => $d['to'], 'route' => $d['route_id'], 'cca' => $d['cca'], 'month' => $d['month'], 'kind' => $d['kind'] === 'all' ? null : $d['kind']], fn ($value) => $value !== null && $value !== '')];
     }
 
     /**

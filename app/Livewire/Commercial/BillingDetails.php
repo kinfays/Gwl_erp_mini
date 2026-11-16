@@ -103,6 +103,12 @@ class BillingDetails extends Component
             $this->dateTo,
         );
 
+        // Phase 8f (T2): the change on the previous comparable period, for the same range, district, route and CCA as this screen
+        $trendBlock = $report['available'] ? $data->trendBlock('billing', [
+            'region' => $report['region_id'], 'district' => $report['district_id'], 'from' => $this->dateFrom, 'to' => $this->dateTo,
+            'route' => ctype_digit($this->route) ? (int) $this->route : null, 'cca' => $this->cca,
+        ]) : null;
+
         // an account on a list opens the existing customer view (which re-checks its own scope and permission; names stay behind view_customer_details)
         $links = [];
 
@@ -117,6 +123,7 @@ class BillingDetails extends Component
         }
 
         return view('livewire.commercial.billing-details', [
+            'trendBlock' => $trendBlock,
             'r' => $report,
             'tabs' => self::TABS,
             'activeTab' => $this->activeTab(),

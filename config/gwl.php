@@ -195,6 +195,13 @@ return [
     'commercial_tariff_tolerance_amount' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_AMOUNT', 1.0),
     // Phase 8e (across the files, X3): a route needs at least this many billing customers before its skip rate and estimation share are correlated.
     'commercial_cross_min_route_customers' => (int) env('GWL_COMMERCIAL_CROSS_MIN_ROUTE_CUSTOMERS', 30),
+    // Phase 8f (trends, design 8.45): an upload is "comparable" with another when their LENGTHS differ by at most this many days (a 7-day upload is never
+    // compared with a 31-day one); the same tolerance finds the same dates a year earlier.
+    'commercial_trend_length_tolerance_days' => (int) env('GWL_COMMERCIAL_TREND_LENGTH_TOLERANCE_DAYS', 3),
+    // The end-of-month projection of a flow measure is withheld until at least this many days of the month are covered by uploads.
+    'commercial_projection_min_days' => (int) env('GWL_COMMERCIAL_PROJECTION_MIN_DAYS', 7),
+    // An upload is on time when it is imported within this many days of the last day of its period (the customer list: of its as-of date).
+    'commercial_upload_deadline_days' => (int) env('GWL_COMMERCIAL_UPLOAD_DEADLINE_DAYS', 3),
     // A reader is under-utilised below / over-loaded above this percentage of the median monthly visits.
     // Privacy: a user who may NOT see individual readers sees no reading figure grouped by home district when fewer than
     // this many distinct readers had visits in the months shown (in a district of one, the row IS that person).

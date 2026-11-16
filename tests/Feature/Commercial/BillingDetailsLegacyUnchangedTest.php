@@ -34,7 +34,8 @@ class BillingDetailsLegacyUnchangedTest extends CommercialTestCase
 
         $snapshot = function () use ($data): string {
             return json_encode([
-                'summary' => $data->summary(),
+                // Phase 8f: the summary gained an ADDITIVE route-grain block (it appears once a detailed billing report is live): every figure that was there is compared
+                'summary' => array_diff_key($data->summary(), ['route_grain' => true]),
                 'snapshots' => $data->snapshots(),
                 'billing' => $data->billingSnapshot(null),
                 'kpis' => $data->kpis(),
@@ -46,6 +47,7 @@ class BillingDetailsLegacyUnchangedTest extends CommercialTestCase
 
         $before = $snapshot();
         $this->assertNotSame('', $before);
+        $this->assertNull($data->summary()['route_grain'], 'nothing route-grain is loaded yet');
 
         $batch = $this->importBilling();
         $this->assertTrue($batch->isLive());
@@ -54,6 +56,7 @@ class BillingDetailsLegacyUnchangedTest extends CommercialTestCase
         $this->importBilling($this->spec([$this->route('SOWUTUOM 4101', 910, 915)], 'June-2026 - June-2026'), ['review' => true]);
 
         $this->assertSame($before, $snapshot(), 'no figure of the summary, the billing snapshots, the KPIs or the reading screens moved');
+        $this->assertNotNull($data->summary()['route_grain']['billing'], 'only the new route-grain block appears');
 
         // and the other way round: a billing summary or a reading upload does not appear in the detailed analyses
         $details = $data->billingDetails();

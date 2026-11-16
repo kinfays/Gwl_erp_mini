@@ -20,6 +20,18 @@
         @endif
     </div>
 
+    @if ($routeGrain || $dateFrom !== '' || $dateTo !== '')
+        @include('livewire.commercial.partials.range-control')
+    @endif
+
+    @include('livewire.commercial.partials.route-grain', ['routeGrain' => $routeGrain])
+
+    @foreach ($overdue as $late)
+        <x-ui.alert tone="warning" class="dash-row" wire:key="home-late-{{ $late['region_id'] }}-{{ $late['district_id'] ?? 'r' }}-{{ $late['report_type'] }}" data-overdue>
+            {{ ucfirst($late['label']) }} upload overdue for {{ $late['region'] }}: {{ $late['days'] === null ? 'none has arrived' : $late['days'].' days since the last one' }} (reminder limit {{ $late['limit'] }} days).
+        </x-ui.alert>
+    @endforeach
+
     @if ($kpis)
         <div class="dash-row" style="margin-top:14px">
             <h3 style="margin-bottom:8px">{{ $kpis['month'] }} <span class="ui-hint">latest complete month</span></h3>
