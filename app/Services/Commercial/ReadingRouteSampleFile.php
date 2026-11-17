@@ -11,13 +11,17 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
  * sample command (commercial:reading-routes:sample, to try the screens without a real file), by the small fixture in tests/Fixtures, and
  * by the test workbook builder (Tests\Support\Commercial\ReportWorkbooks::readingRoute), so there is one writer of the layout.
  *
- * The layout: a "Document map" sheet listing the CCAs as "staffid - NAME", then ONE SHEET PER CCA with a merged filter cell (REPORT PERIOD
- * and REGION), the CCA label, a header row (Route, Verified Strength, Read, Skipped, Visited, Unvisited, each with # and %), one row per
- * route labelled "DISTRICT code" and a "<label> TOTALS :" row. The percentage columns carry deliberately WRONG numbers (99.9): the importer
- * must never read them.
+ * The layout (the REAL one, as described by the Commercial team; the real files were never available): a "Document map" sheet listing the
+ * CCAs as "staffid - NAME", then ONE SHEET PER CCA ("Sheet2", "Sheet3" ...) with a merged two-line filter cell (REPORT PERIOD and REGION),
+ * a merged CCA label cell, a TWO-ROW header with merged cells (row 1: Route over 3 columns, Verified over 3, Read, Skipped and Visited
+ * over 2 each, Unvisited over 4; row 2: Strength under Verified and "#" and "%" under each group), one row per route (the label in a
+ * merged Route cell, "DISTRICT code") and a "<label> TOTALS :" row. The figures sit in the top-left column of each merged group. The
+ * percentage columns carry deliberately WRONG numbers (99.9): the importer must never read them.
  *
- * $spec: region ('ACCRA WEST'), period ('01-October-2026 - 31-October-2026'), header ('groups' = "Read" over "#" and "%" on two rows, as
- * the real export; 'explicit' = "Read #" and "Read %"), document_map (true; false leaves it out), map_extra (ids listed on the map but with
+ * $spec: region ('ACCRA WEST'), period ('01-October-2026 - 31-October-2026'), header ('real' = the layout above, the default;
+ * 'one_row' (also 'groups') = Route and "Verified Strength" on one row with "Read" over a row of "#" and "%" (the older sample);
+ * 'strength_alone' = the same with a lone "Strength"; 'explicit' = "Read #" and "Read %"), strength_shift (real layout only: the
+ * "Strength" cell is put one column to the right of "Verified", the figures stay where they are), document_map (true; false leaves it out), map_extra (ids listed on the map but with
  * no sheet), ccas: list of ['id', 'name', 'routes' => list of ['label', 'strength', 'read', 'skipped', 'visited', 'unvisited' (default
  * strength - visited)], 'totals' => ['strength'|'read'|'skipped'|'visited' => the ABSOLUTE number the TOTALS row prints] or false for no
  * TOTALS row, 'title' => false to leave the title off, 'sheet' => the sheet name].
@@ -41,7 +45,8 @@ final class ReadingRouteSampleFile
     {
         $region = $spec['region'] ?? 'ACCRA WEST';
         $period = $spec['period'] ?? '01-October-2026 - 31-October-2026';
-        $header = $spec['header'] ?? 'groups';
+        $header = $spec['header'] ?? 'real';
+        $header = $header === 'groups' ? 'one_row' : $header;
         $ccas = $spec['ccas'] ?? [];
 
         $book = new Spreadsheet;
@@ -74,13 +79,52 @@ final class ReadingRouteSampleFile
                 $sheet->setCellValue('A1', 'Customer Meter Reading Report - CCA Summary - By Route');
             }
 
-            $sheet->setCellValueExplicit('B3', "REPORT PERIOD: {$period}\nREGION: {$region}\n", DataType::TYPE_STRING);
-            $sheet->mergeCells('B3:K3');
+            $real = $header === 'real';
+            // column letters of each figure; the percentage columns are the ones in between
+            $at = $real
+                ? ['label' => 'B', 'strength' => 'E', 'read' => 'H', 'read_pct' => 'I', 'skipped' => 'J', 'skipped_pct' => 'K', 'visited' => 'L', 'visited_pct' => 'M', 'unvisited' => 'N', 'unvisited_pct' => 'P', 'last' => 'Q']
+                : ['label' => 'B', 'strength' => 'C', 'read' => 'D', 'read_pct' => 'E', 'skipped' => 'F', 'skipped_pct' => 'G', 'visited' => 'H', 'visited_pct' => 'I', 'unvisited' => 'J', 'unvisited_pct' => 'K', 'last' => 'K'];
+
             $label = $cca['id'].' - '.$cca['name'];
+            $sheet->setCellValueExplicit('B3', "REPORT PERIOD: {$period}\nREGION: {$region}\n", DataType::TYPE_STRING);
+            $sheet->mergeCells('B3:'.$at['last'].'3');
             $sheet->setCellValueExplicit('B5', $label, DataType::TYPE_STRING);
 
-            if ($header === 'groups') {
-                foreach (['B7' => 'Route', 'C7' => 'Verified Strength', 'D7' => 'Read', 'F7' => 'Skipped', 'H7' => 'Visited', 'J7' => 'Unvisited'] as $cell => $text) {
+            if ($real) {
+                $sheet->mergeCells('B5:E5');
+            }
+
+            if ($real) {
+                foreach (['B7' => 'Route', 'E7' => 'Verified', 'H7' => 'Read', 'J7' => 'Skipped', 'L7' => 'Visited', 'N7' => 'Unvisited'] as $cell => $text) {
+                    $sheet->setCellValue($cell, $text);
+                }
+
+                foreach (['B7:D7', 'E7:G7', 'H7:I7', 'J7:K7', 'L7:M7', 'N7:Q7'] as $range) {
+                    $sheet->mergeCells($range);
+                }
+
+                $sheet->setCellValue(! empty($spec['strength_shift']) ? 'F8' : 'E8', 'Strength');
+
+                foreach (['H8', 'J8', 'L8', 'N8'] as $cell) {
+                    $sheet->setCellValue($cell, '#');
+                }
+
+                foreach (['I8', 'K8', 'M8', 'P8'] as $cell) {
+                    $sheet->setCellValue($cell, '%');
+                }
+
+                $sheet->mergeCells('N8:O8');
+                $sheet->mergeCells('P8:Q8');
+                $row = 9;
+            } elseif ($header === 'explicit') {
+                foreach (['B7' => 'Route', 'C7' => 'Verified Strength', 'D7' => 'Read #', 'E7' => 'Read %', 'F7' => 'Skipped #', 'G7' => 'Skipped %', 'H7' => 'Visited #', 'I7' => 'Visited %', 'J7' => 'Unvisited #', 'K7' => 'Unvisited %'] as $cell => $text) {
+                    $sheet->setCellValue($cell, $text);
+                }
+
+                $row = 8;
+            } else {
+                // 'one_row' (a) and 'strength_alone' (c): the group headings on the Route row, "#" and "%" on the next
+                foreach (['B7' => 'Route', 'C7' => $header === 'strength_alone' ? 'Strength' : 'Verified Strength', 'D7' => 'Read', 'F7' => 'Skipped', 'H7' => 'Visited', 'J7' => 'Unvisited'] as $cell => $text) {
                     $sheet->setCellValue($cell, $text);
                 }
 
@@ -97,28 +141,32 @@ final class ReadingRouteSampleFile
                 }
 
                 $row = 9;
-            } else {
-                foreach (['B7' => 'Route', 'C7' => 'Verified Strength', 'D7' => 'Read #', 'E7' => 'Read %', 'F7' => 'Skipped #', 'G7' => 'Skipped %', 'H7' => 'Visited #', 'I7' => 'Visited %', 'J7' => 'Unvisited #', 'K7' => 'Unvisited %'] as $cell => $text) {
-                    $sheet->setCellValue($cell, $text);
-                }
-
-                $row = 8;
             }
+
+            $merge = function (int $r) use ($sheet, $real): void {
+                if ($real) {
+                    $sheet->mergeCells("B{$r}:D{$r}");
+                    $sheet->mergeCells("E{$r}:G{$r}");
+                    $sheet->mergeCells("N{$r}:O{$r}");
+                    $sheet->mergeCells("P{$r}:Q{$r}");
+                }
+            };
 
             $sum = ['strength' => 0, 'read' => 0, 'skipped' => 0, 'visited' => 0, 'unvisited' => 0];
 
             foreach ($cca['routes'] ?? [] as $route) {
                 $unvisited = array_key_exists('unvisited', $route) ? $route['unvisited'] : $route['strength'] - $route['visited'];
-                $sheet->setCellValueExplicit("B{$row}", $route['label'], DataType::TYPE_STRING);
-                $sheet->setCellValue("C{$row}", $route['strength']);
-                $sheet->setCellValue("D{$row}", $route['read']);
-                $sheet->setCellValue("E{$row}", 99.9);   // a wrong percentage: never read
-                $sheet->setCellValue("F{$row}", $route['skipped']);
-                $sheet->setCellValue("G{$row}", 99.9);
-                $sheet->setCellValue("H{$row}", $route['visited']);
-                $sheet->setCellValue("I{$row}", 99.9);
-                $sheet->setCellValue("J{$row}", $unvisited);
-                $sheet->setCellValue("K{$row}", 99.9);
+                $sheet->setCellValueExplicit("{$at['label']}{$row}", $route['label'], DataType::TYPE_STRING);
+                $sheet->setCellValue("{$at['strength']}{$row}", $route['strength']);
+                $sheet->setCellValue("{$at['read']}{$row}", $route['read']);
+                $sheet->setCellValue("{$at['read_pct']}{$row}", 99.9);   // a wrong percentage: never read
+                $sheet->setCellValue("{$at['skipped']}{$row}", $route['skipped']);
+                $sheet->setCellValue("{$at['skipped_pct']}{$row}", 99.9);
+                $sheet->setCellValue("{$at['visited']}{$row}", $route['visited']);
+                $sheet->setCellValue("{$at['visited_pct']}{$row}", 99.9);
+                $sheet->setCellValue("{$at['unvisited']}{$row}", $unvisited);
+                $sheet->setCellValue("{$at['unvisited_pct']}{$row}", 99.9);
+                $merge($row);
 
                 foreach (['strength' => $route['strength'], 'read' => $route['read'], 'skipped' => $route['skipped'], 'visited' => $route['visited'], 'unvisited' => $unvisited] as $key => $value) {
                     $sum[$key] += (int) $value;
@@ -129,15 +177,15 @@ final class ReadingRouteSampleFile
 
             if (($cca['totals'] ?? []) !== false) {
                 $totals = array_merge($sum, (array) ($cca['totals'] ?? []));
-                $sheet->setCellValueExplicit("B{$row}", $label.' TOTALS :', DataType::TYPE_STRING);
-                $sheet->setCellValue("C{$row}", $totals['strength']);
-                $sheet->setCellValue("D{$row}", $totals['read']);
-                $sheet->setCellValue("F{$row}", $totals['skipped']);
-                $sheet->setCellValue("H{$row}", $totals['visited']);
-                $sheet->setCellValue("J{$row}", $totals['unvisited']);
+                $sheet->setCellValueExplicit("{$at['label']}{$row}", $label.' TOTALS :', DataType::TYPE_STRING);
+
+                foreach (['strength', 'read', 'skipped', 'visited', 'unvisited'] as $key) {
+                    $sheet->setCellValue("{$at[$key]}{$row}", $totals[$key]);
+                }
+
+                $merge($row);
             }
         }
-
         $path ??= tempnam(sys_get_temp_dir(), 'comm').'.xlsx';
         IOFactory::createWriter($book, 'Xlsx')->save($path);
         $book->disconnectWorksheets();

@@ -63,6 +63,24 @@ final class CommercialPeriods
         };
     }
 
+    // ---------------------------------------------------------------- Phase 8h: the source of a billing summary
+
+    /** The source ('upload' or 'derived') the setting commercial_billing_summary_preference prefers when both cover a period. */
+    public static function preferredSource(): string
+    {
+        return config('gwl.commercial_billing_summary_preference') === 'details' ? 'derived' : 'upload';
+    }
+
+    /**
+     * A billing batch as a period unit that knows its source (so select() applies the preference between an uploaded and a derived summary).
+     *
+     * @return array{id: int, from: string, to: string, order: int, source: string}
+     */
+    public static function unitOf(\App\Models\CommercialImportBatch $batch): array
+    {
+        return ['id' => (int) $batch->id, 'from' => $batch->period_from->toDateString(), 'to' => $batch->period_to->toDateString(), 'order' => (int) $batch->id, 'source' => $batch->isDerived() ? 'derived' : 'upload'];
+    }
+
     // ---------------------------------------------------------------- range from what a person typed
 
     /**
@@ -102,27 +120,38 @@ final class CommercialPeriods
     public function select(array $units, ?string $from = null, ?string $to = null): array
     {
         $units = array_values(array_filter($units, fn (array $u) => ! empty($u['from']) && ! empty($u['to'])));
-        $units = array_map(fn (array $u) => ['id' => $u['id'], 'from' => Carbon::parse($u['from'])->toDateString(), 'to' => Carbon::parse($u['to'])->toDateString(), 'order' => (int) $u['order']], $units);
+        $units = array_map(fn (array $u) => ['id' => $u['id'], 'from' => Carbon::parse($u['from'])->toDateString(), 'to' => Carbon::parse($u['to'])->toDateString(), 'order' => (int) $u['order']] + (isset($u['source']) ? ['source' => (string) $u['source']] : []), $units);
         $byId = [];
 
         foreach ($units as $unit) {
             $byId[$unit['id']] = $unit;
         }
 
-        // rules 1 and 2: a newer unit that contains (or is identical to) an older one shadows it, whatever the range
+        // rules 1 and 2: a newer unit that contains (or is identical to) an older one shadows it, whatever the range. Phase 8h: a billing unit
+        // carries a `source` ('upload' or 'derived'); against a unit of the OTHER source the newest does not win, the preference does: the
+        // preferred source's unit shadows the other's whenever it covers its period (the same or a containing one). Two units of one source keep
+        // the newest-wins rule, and a unit without a source (every other report) behaves exactly as before.
         $shadowed = [];
+        $preferred = self::preferredSource();
 
         foreach ($units as $old) {
             $winner = null;
 
             foreach ($units as $new) {
-                if ($new['order'] > $old['order'] && $new['from'] <= $old['from'] && $new['to'] >= $old['to'] && ($winner === null || $new['order'] > $winner['order'])) {
-                    $winner = $new;
+                if ($new['from'] > $old['from'] || $new['to'] < $old['to'] || $new['id'] === $old['id']) {
+                    continue;
+                }
+
+                $crossSource = isset($new['source'], $old['source']) && $new['source'] !== $old['source'];
+                $beats = $crossSource ? $new['source'] === $preferred : $new['order'] > $old['order'];
+
+                if ($beats && ($winner === null || ($crossSource && ! $winner['cross']) || ($crossSource === $winner['cross'] && $new['order'] > $winner['unit']['order']))) {
+                    $winner = ['unit' => $new, 'cross' => $crossSource];
                 }
             }
 
             if ($winner) {
-                $shadowed[] = ['id' => $old['id'], 'by' => $winner['id'], 'reason' => $winner['from'] === $old['from'] && $winner['to'] === $old['to'] ? 'identical' : 'contained'];
+                $shadowed[] = ['id' => $old['id'], 'by' => $winner['unit']['id'], 'reason' => $winner['cross'] ? 'source' : ($winner['unit']['from'] === $old['from'] && $winner['unit']['to'] === $old['to'] ? 'identical' : 'contained')];
             }
         }
 

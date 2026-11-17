@@ -42,6 +42,9 @@ class BillingAnalyticsService
         'unbilled_other' => 'Other status',
     ];
 
+    /** The label shown with every figure that comes from a summary derived from the Detailed Billing Report (Phase 8h). */
+    public const DERIVED_NOTE = 'from the detailed billing report';
+
     public const PARETO_TOP = 10;
 
     public const TOP_CREDITS = 10;
@@ -67,7 +70,7 @@ class BillingAnalyticsService
             ->get()
             ->groupBy(fn (CommercialImportBatch $batch) => $batch->region_id.'|'.$batch->customer_segment)
             ->flatMap(function (Collection $family) use ($periods): Collection {
-                $units = $family->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->all();
+                $units = $family->map(fn (CommercialImportBatch $b) => CommercialPeriods::unitOf($b))->all();
                 $shadowed = array_column($periods->select($units)['shadowed'], 'id');
 
                 return $family->reject(fn (CommercialImportBatch $b) => in_array($b->id, $shadowed, true));
@@ -115,6 +118,10 @@ class BillingAnalyticsService
             'region' => $batch->region?->region_name ?? $batch->region_label_raw ?? 'Unknown region',
             'segment' => $batch->customer_segment,
             'segment_label' => $segment,
+            // Phase 8h: a summary built from the Detailed Billing Report says so wherever a figure of it is shown
+            'source' => $batch->source ?? CommercialImportBatch::SOURCE_UPLOAD,
+            'is_derived' => $batch->isDerived(),
+            'source_note' => $batch->isDerived() ? self::DERIVED_NOTE : null,
             'period_from' => $from->toDateString(),
             'period_to' => $to->toDateString(),
             'month' => $from->format('Y-m-01'),
@@ -122,7 +129,7 @@ class BillingAnalyticsService
             'is_single_month' => $single,
             'in_one_month' => $inOneMonth,
             'is_part_month' => $part,
-            'label' => ($batch->region?->region_name ?? $batch->region_label_raw ?? 'Unknown region').' · '.$segment.' · '.$period.($single ? '' : ' (period)'),
+            'label' => ($batch->region?->region_name ?? $batch->region_label_raw ?? 'Unknown region').' · '.$segment.' · '.$period.($single ? '' : ' (period)').($batch->isDerived() ? ' · '.self::DERIVED_NOTE : ''),
         ];
     }
 

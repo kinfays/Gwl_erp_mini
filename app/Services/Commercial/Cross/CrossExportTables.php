@@ -297,6 +297,51 @@ class CrossExportTables
 
     protected function x12(array $d): array
     {
+        return [...$this->x12Compare($d), ...$this->x12Derived($d)];
+    }
+
+    /** Phase 8h: every column of the derived summary against the uploaded one, per pair of batches. @return list<array<string, mixed>> */
+    protected function x12Derived(array $d): array
+    {
+        $c = $this->data($d, 'derived');
+
+        if (! $c) {
+            return [];
+        }
+
+        if (! $c['available']) {
+            return [['title' => 'X12 Derived summary: nothing to compare', 'headings' => ['Note'], 'rows' => [['No uploaded billing summary has a derived twin for the period.']]]];
+        }
+
+        $tables = [];
+
+        foreach ($c['pairs'] as $pair) {
+            $r = $pair['result'];
+            $tables[] = [
+                'title' => 'X12 Derived against uploaded billing summary ('.$pair['period'].', uploaded #'.$pair['uploaded_batch'].', derived #'.$pair['derived_batch'].')',
+                'headings' => ['Column', 'Uploaded (total)', 'Derived (total)', 'Difference', 'Difference (%)', 'Routes differing', 'Result'],
+                'rows' => array_merge(
+                    [[$r['verdict'], '', '', '', '', '', 'The analyses count '.$pair['counted']]],
+                    array_map(fn (array $x) => [$x['label'], $this->n($x['uploaded']), $this->n($x['derived']), $this->n($x['difference']), $this->n($x['difference_pct']), $x['routes_differing'], ucfirst($x['text'])], $r['columns']),
+                    array_map(fn (array $x) => [$x['label'], '', '', '', '', '', ucfirst($x['text'])], $r['bands']),
+                ),
+            ];
+
+            if ($r['worst'] !== []) {
+                $tables[] = ['title' => 'X12 Routes that differ most (uploaded #'.$pair['uploaded_batch'].')', 'headings' => ['Route', 'Columns differing', 'Money difference (GH¢, absolute)', 'Columns'], 'rows' => array_map(fn (array $w) => [$w['route'], $w['columns'], $this->n($w['money']), implode('; ', array_map(fn ($x) => $x['label'].' '.$x['difference'], $w['differences']))], $r['worst'])];
+            }
+
+            if ($r['only_in_uploaded'] !== [] || $r['only_in_derived'] !== []) {
+                $tables[] = ['title' => 'X12 Routes in only one of the two (uploaded #'.$pair['uploaded_batch'].')', 'headings' => ['Route', 'Found in'], 'rows' => array_merge(array_map(fn ($x) => [$x, 'the uploaded summary only'], $r['only_in_uploaded']), array_map(fn ($x) => [$x, 'the derived summary only'], $r['only_in_derived']))];
+            }
+        }
+
+        return $tables;
+    }
+
+    /** @return list<array<string, mixed>> */
+    protected function x12Compare(array $d): array
+    {
         $c = $this->data($d, 'compare');
 
         if (! $c) {

@@ -61,6 +61,9 @@ class PhonesList extends Component
 
     public ?int $editingAssetId = null;
 
+    /** Set once a save was attempted, so the serial/IMEI message then tracks the form live (see refreshIdentityErrors()). */
+    public bool $identityChecked = false;
+
     public ?string $previousAssignedLabel = null;
 
     /**
@@ -132,6 +135,8 @@ class PhonesList extends Component
 
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
+        $this->identityChecked = false;
+        $this->resetErrorBag();
         // Read-only: derived from the assignment history, never typed in or stored on the asset.
         $this->previousAssignedLabel = $asset->previousHolder()?->full_name;
         $this->rememberOriginalAssignee($asset->assigned_to_employee_id);
@@ -167,8 +172,30 @@ class PhonesList extends Component
     /** POS terminals are general use: choosing that type on a new device with no holder ticks the box (it can be unticked). */
     public function updatedForm($value, $key): void
     {
+        if (in_array($key, ['asset_type', 'serial_number', 'imei'], true)) {
+            $this->refreshIdentityErrors();
+        }
+
         if ($key === 'asset_type' && $value === 'POS' && ! $this->editingAssetId && blank($this->form['assigned_to_employee_id'] ?? null)) {
             $this->form['is_general_use'] = true;
+        }
+    }
+
+    /**
+     * "A phone needs a serial number or an IMEI" follows the form as it changes (the type moving to or from phone, a
+     * value typed or cleared), once the person has tried to save. The service still enforces it on save.
+     */
+    protected function refreshIdentityErrors(): void
+    {
+        if (! $this->identityChecked) {
+            return;
+        }
+
+        $this->resetErrorBag(['form.serial_number', 'form.imei']);
+
+        if (AssetRecordService::phoneIdentityMissing($this->form['asset_type'] ?? null, $this->form['serial_number'] ?? null, $this->form['imei'] ?? null)) {
+            $this->addError('form.serial_number', AssetRecordService::PHONE_IDENTITY_MESSAGE);
+            $this->addError('form.imei', AssetRecordService::PHONE_IDENTITY_MESSAGE);
         }
     }
 
@@ -208,6 +235,8 @@ class PhonesList extends Component
         $this->authorizeAction($permission);
 
         $regionId = $this->requireActorRegionId();
+
+        $this->identityChecked = true;
 
         $validated = $this->validate($this->rules())['form'];
         $validated['region_id'] = $regionId;
@@ -365,6 +394,7 @@ class PhonesList extends Component
     protected function resetForm(): void
     {
         $this->previousAssignedLabel = null;
+        $this->identityChecked = false;
         $this->forgetOriginalAssignee();
         $this->form = [
             'asset_name' => '',

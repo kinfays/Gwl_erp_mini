@@ -402,7 +402,8 @@ class BatchShow extends Component
         return view('livewire.commercial.batch-show', $data + [
             'needsMatching' => $batch->isReadingRoute() || $batch->isBillingDetails() ? ($data['needsMatching'] ?? 0) : max(0, $batch->row_count - $batch->matched_count),
             'canResolve' => $this->actorCan('commercial.resolve_matches'),
-            'canVoid' => $this->actorCan('commercial.void_batches') && $batch->isLive(),
+            'canVoid' => $this->actorCan('commercial.void_batches') && $batch->isLive() && ! $batch->isDerived(),
+            'notUsed' => app(\App\Services\Commercial\BillingSummaryFromDetails::class)->notUsedReason($batch),
             'checks' => $batch->control_totals['checks'] ?? [],
             'importWarnings' => $batch->control_totals['warnings'] ?? [],
         ]);

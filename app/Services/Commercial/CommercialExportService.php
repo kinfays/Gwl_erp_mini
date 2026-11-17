@@ -143,6 +143,8 @@ class CommercialExportService
             $q['multi_month_snapshots'] !== null ? ['Billing snapshots that cover several months (not comparable)', $q['multi_month_snapshots']] : null,
         ]))];
 
+        $notes = $this->derivedNotes($notes, [$data['snapshot'] ?? null]);
+
         return $this->report('summary', ['Region' => $data['region_label'], 'Billing snapshot' => $data['snapshot']['label'] ?? 'None'], $notes, $tables, $data['snapshot']['period_label'] ?? null);
     }
 
@@ -241,6 +243,20 @@ class CommercialExportService
         ], $tables);
     }
 
+    /** Phase 8h: a line in the notes of an export whose billing figures come from a summary derived from the detailed billing report. @param  list<array<string, mixed>|null>  $snapshots */
+    protected function derivedNotes(array $notes, array $snapshots): array
+    {
+        foreach ($snapshots as $s) {
+            if (is_array($s) && ($s['is_derived'] ?? false)) {
+                $notes[] = 'Billing figures: '.BillingAnalyticsService::DERIVED_NOTE.' (a billing summary derived from it, period '.($s['period_label'] ?? '').'). The unit of its Consume column is pending confirmation by the Commercial team.';
+
+                break;
+            }
+        }
+
+        return $notes;
+    }
+
     // ---------------------------------------------------------------- billing
 
     /** @param  array<string, mixed>  $d  CommercialReportData::billingSnapshot() */
@@ -258,6 +274,7 @@ class CommercialExportService
         }
 
         $notes[] = 'A negative balance is a customer credit (confirmed by the Commercial team).';
+        $notes = $this->derivedNotes($notes, [$d['snapshot']]);
 
         $tables = [
             ['title' => 'Overview', 'headings' => ['District', 'Routes', 'Billing (GH¢)', 'Share (%)', 'Volume (000 litres)', 'Customers billed', 'GH¢ per customer', 'GH¢ per m3'], 'rows' => [
@@ -323,6 +340,7 @@ class CommercialExportService
             }
         }
 
+        $notes = $this->derivedNotes($notes, array_map(fn (array $m) => $m['is_derived'] ?? false ? ['is_derived' => true, 'period_label' => $m['period_used'] ?? $m['label']] : null, $months));
         $tables = [];
 
         foreach (array_filter([$d['total'], ...$d['districts']]) as $block) {

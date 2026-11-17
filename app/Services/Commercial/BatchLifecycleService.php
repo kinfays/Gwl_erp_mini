@@ -65,6 +65,12 @@ class BatchLifecycleService
             }
         }
 
+        // Phase 8h: a derived billing summary follows its detailed batch (voided, superseded or restored): made to agree here, the one place that
+        // already runs after every import and every void
+        if ($reportType === CommercialImportBatch::TYPE_BILLING_DETAILS) {
+            app(BillingSummaryFromDetails::class)->reconcile($regionId);
+        }
+
         return ['superseded' => $superseded, 'restored' => $restored];
     }
 
@@ -85,6 +91,11 @@ class BatchLifecycleService
 
             if ($locked->isVoided()) {
                 throw new CommercialImportException('This batch has already been voided.');
+            }
+
+            // Phase 8h: a derived summary has no life of its own: it follows the detailed batch it was built from
+            if ($locked->isDerived()) {
+                throw new CommercialImportException('This summary is derived from the detailed billing report (batch #'.$locked->derived_from_batch_id.'): void that batch and this one goes with it.');
             }
 
             // (the three older report types are always imported or superseded, so this only ever refuses a Detailed Billing Report run that never went live)
@@ -141,6 +152,7 @@ class BatchLifecycleService
             ->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)
             ->notVoided()
             ->where('id', '>', $batch->id)
+            ->where('source', $batch->source ?? CommercialImportBatch::SOURCE_UPLOAD)   // an uploaded and a derived summary never replace each other: the preference decides (CommercialPeriods)
             ->where('region_id', $batch->region_id)
             ->where('customer_segment', $batch->customer_segment)
             ->whereDate('period_from', $batch->period_from->toDateString())

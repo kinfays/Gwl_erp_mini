@@ -45,7 +45,9 @@ class TrendsSampleCommandTest extends CustomerTestCase
         $reading = CommercialImportBatch::query()->where('region_id', $region->id)->where('report_type', 'reading_route_summary')->orderBy('period_from')->get();
         $billing = CommercialImportBatch::query()->where('region_id', $region->id)->where('report_type', 'billing_details')->orderBy('period_from')->get();
 
-        $this->assertSame($before + 10, CommercialImportBatch::query()->count(), 'five reading and five billing uploads, in the invented region only');
+        // Phase 8h: each live detailed upload also gets its derived billing summary (a batch of its own, no workbook)
+        $this->assertSame($before + 10, CommercialImportBatch::query()->where('source', 'upload')->count(), 'five reading and five billing uploads, in the invented region only');
+        $this->assertSame(5, CommercialImportBatch::query()->where('source', 'derived')->where('region_id', $region->id)->count(), 'one derived billing summary per detailed upload');
         $this->assertCount(5, $reading);
         $this->assertCount(5, $billing);
         $this->assertSame(['2025-10-01', '2026-09-01', '2026-10-01', '2026-10-08', '2026-10-22'], $reading->map(fn ($b) => $b->period_from->toDateString())->all());

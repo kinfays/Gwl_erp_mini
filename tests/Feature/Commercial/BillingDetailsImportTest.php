@@ -243,7 +243,7 @@ class BillingDetailsImportTest extends CommercialTestCase
         $this->assertStringContainsString('5 of 20 routes (25.0%)', (string) $large->error_message);
         $this->assertSame(0, $large->detailRollups()->count());
         $this->assertFalse($large->isLive(), 'a blocked file never counts');
-        $this->assertSame([$batch->id], CommercialImportBatch::query()->live()->pluck('id')->all(), 'only the sample that was loaded earlier');
+        $this->assertSame([$batch->id], CommercialImportBatch::query()->ofType('billing_details')->live()->pluck('id')->all(), 'only the sample that was loaded earlier');
     }
 
     public function test_a_grand_total_beyond_the_tolerance_blocks_a_file(): void

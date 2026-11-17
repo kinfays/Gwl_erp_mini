@@ -34,7 +34,9 @@ class UploadTimeliness
     public const TYPES = [
         'reading_route' => ['label' => 'Reading by route and CCA', 'type' => CommercialImportBatch::TYPE_READING_ROUTE_SUMMARY, 'needs' => 'reading', 'table' => 'commercial_reading_route_stats'],
         'billing_details' => ['label' => 'Detailed billing', 'type' => CommercialImportBatch::TYPE_BILLING_DETAILS, 'needs' => 'billing', 'table' => 'commercial_billing_detail_rollups'],
-        'billing_summary' => ['label' => 'Billing summary', 'type' => CommercialImportBatch::TYPE_BILLING_SUMMARY, 'needs' => 'billing', 'table' => 'commercial_billing_routes'],
+        'billing_summary' => ['label' => 'Billing summary', 'type' => CommercialImportBatch::TYPE_BILLING_SUMMARY, 'needs' => 'billing', 'table' => 'commercial_billing_routes', 'source' => CommercialImportBatch::SOURCE_UPLOAD],
+        // Phase 8h: the summary built from the Detailed Billing Report is counted on its own line (it is an upload of the detailed report, with that report's own timing)
+        'billing_summary_derived' => ['label' => 'Billing summary (from the detailed report)', 'type' => CommercialImportBatch::TYPE_BILLING_SUMMARY, 'needs' => 'billing', 'table' => 'commercial_billing_routes', 'source' => CommercialImportBatch::SOURCE_DERIVED],
         'reading_legacy' => ['label' => 'Meter reading by month (older report)', 'type' => CommercialImportBatch::TYPE_READING_SUMMARY, 'needs' => 'reading', 'table' => 'commercial_reading_stats'],
         'customers' => ['label' => 'Customer list', 'type' => null, 'needs' => 'customers', 'table' => null],
     ];
@@ -127,7 +129,7 @@ class UploadTimeliness
      */
     protected function routeUploads(array $def, int $regionId, ?int $districtId): array
     {
-        $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())->ofType($def['type'])->live()->where('region_id', $regionId)->get();
+        $batches = $this->scopeBatchesForActor(CommercialImportBatch::query())->ofType($def['type'])->live()->where('region_id', $regionId)->when(isset($def['source']), fn ($q) => $q->where('source', $def['source']))->get();
 
         if ($batches->isEmpty()) {
             return [];

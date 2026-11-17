@@ -8,6 +8,7 @@ use App\Models\CommercialImportBatch;
 use App\Models\Permission;
 use App\Models\Region;
 use App\Services\Commercial\BatchResolutionService;
+use App\Services\Commercial\BillingSummaryFromDetails;
 use App\Services\Commercial\CommercialImportException;
 use App\Services\Commercial\CommercialImportService;
 use App\Services\Commercial\UploadReminderService;
@@ -203,6 +204,12 @@ class Batches extends Component
             ->orderByDesc('id')
             ->paginate(12);
 
+        // Phase 8h: which billing summaries are stored but not counted (an uploaded and a derived one cover the same period), and whether this upload is optional
+        $source = app(BillingSummaryFromDetails::class);
+        $notUsed = $batches->getCollection()->filter(fn (CommercialImportBatch $b) => $b->isBilling())->mapWithKeys(fn (CommercialImportBatch $b) => [$b->id => $source->notUsedReason($b)])->filter()->all();
+        $optional = config('gwl.commercial_billing_summary_preference') === 'details'
+            || $this->scopeBatchesForActor(CommercialImportBatch::query())->ofType(CommercialImportBatch::TYPE_BILLING_DETAILS)->where('status', CommercialImportBatch::STATUS_IMPORTED)->exists();
+
         $regions = $this->uploadRegionRestriction() === null
             ? Region::query()->orderBy('region_name')->get()
             : Region::query()->whereKey($this->actorRegionId())->get();
@@ -217,6 +224,8 @@ class Batches extends Component
             'maxMb' => (int) config('gwl.commercial_import_max_mb', 10),
             'billingDetailsMaxMb' => (int) config('gwl.commercial_billing_details_import_max_mb', 250),
             'overdue' => $overdue,
+            'notUsed' => $notUsed,
+            'summaryUploadOptional' => $optional,
         ]);
     }
 }

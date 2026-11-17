@@ -113,6 +113,7 @@ class PhonesFormTest extends TestCase
             ->set('form.asset_name', 'Field POS 04')
             // A phone (POS terminals default to general use, which has no assignee to back-fill from).
             ->set('form.asset_type', 'Ph')
+            ->set('form.serial_number', 'PH-0004')
             ->set('form.assigned_to_employee_id', $assignee->id)
             ->set('form.status', IctAsset::STATUS_ACTIVE)
             ->call('save')
@@ -134,6 +135,7 @@ class PhonesFormTest extends TestCase
             ->set('form.asset_name', 'Field POS 05')
             // A phone (POS terminals default to general use, which has no assignee to back-fill from).
             ->set('form.asset_type', 'Ph')
+            ->set('form.serial_number', 'PH-0005')
             ->set('form.assigned_to_employee_id', $assignee->id)
             ->set('form.status', IctAsset::STATUS_ACTIVE)
             ->call('save')

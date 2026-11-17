@@ -3,6 +3,7 @@
 namespace App\Services\Commercial\BillingDetails;
 
 use App\Models\CommercialBillingDetailBand;
+use App\Models\CommercialBillingDetailDomesticBand;
 use App\Models\CommercialBillingDetailIssue;
 use App\Models\CommercialRoute;
 use App\Models\District;
@@ -189,6 +190,12 @@ class BillingDetailsScan
     /** @var array<string, array<string, array{0: int, 1: int}>> "district\x1fcategory" => band => [customers, consume thousandths] */
     protected array $bands = [];
 
+    /** @var array<string, array<string, array{0: int, 1: int, 2: int}>> district key => '<=5' / '>5' => [customers, consume in thousandths of the SUMMARY's unit, month total in pesewas]: category 611 only (Phase 8h) */
+    protected array $domestic = [];
+
+    /** Consume column -> the billing summary's unit (thousand litres): commercial_details_consume_factor at the time of the upload. */
+    protected float $consumeFactor = 1.0;
+
     /** @var array<string, array<string, list<array{0: int, 1: string, 2: int, 3: int}>>> kind => district key => [abs amount, account, seq, signed amount in pesewas] */
     protected array $issues = [];
 
@@ -268,6 +275,7 @@ class BillingDetailsScan
         $this->cap = max(1, (int) ($options['issue_cap'] ?? config('gwl.commercial_billing_detail_issue_cap', 200)));
         $this->tolPct = (float) ($options['tariff_pct'] ?? config('gwl.commercial_tariff_tolerance_pct', 1.0));
         $this->tolAmount = (float) ($options['tariff_amount'] ?? config('gwl.commercial_tariff_tolerance_amount', 1.0));
+        $this->consumeFactor = (float) ($options['consume_factor'] ?? config('gwl.commercial_details_consume_factor', 1.0));
         $this->progress = $progress;
 
         $this->statusFlags = [];
@@ -284,7 +292,7 @@ class BillingDetailsScan
 
         $this->districtCache = [];
         $this->labels = $this->placed = $this->dKeys = $this->skip = $this->routeIds = $this->districtModels = $this->blocks = $this->buffer = [];
-        $this->rollups = $this->bands = $this->issues = $this->owing = [];
+        $this->rollups = $this->bands = $this->issues = $this->owing = $this->domestic = [];
         $this->counts = ['bill' => [], 'status' => [], 'meter' => [], 'category' => []];
         $this->current = null;
         $this->rowsSeen = $this->rowsKept = $this->skippedRows = $this->malformed = $this->duplicates = $this->orphanRows = $this->orphanTotals = 0;
@@ -615,6 +623,18 @@ class BillingDetailsScan
             unset($b);
         }
 
+        // ---- Phase 8h: the domestic (category 611) split at 5 thousand litres the billing summary's band table is made of: billed customers only,
+        // the consumption in the summary's unit (Consume x the factor), the month total beside it
+        if ($billed && $consumeK >= 0 && $category === CommercialBillingDetailDomesticBand::CATEGORY) {
+            $scaledK = (int) round($consumeK * $this->consumeFactor);
+            $d = &$this->domestic[$dKey][$scaledK <= CommercialBillingDetailDomesticBand::LIMIT * 1000 ? CommercialBillingDetailDomesticBand::UNDER : CommercialBillingDetailDomesticBand::OVER];
+            $d ??= [0, 0, 0];
+            $d[0]++;
+            $d[1] += $scaledK;
+            $d[2] += $monthTotal;
+            unset($d);
+        }
+
         // ---- what the preview says about the file
         $this->counts['bill'][$bill] = ($this->counts['bill'][$bill] ?? 0) + 1;
         $this->counts['status'][$status] = ($this->counts['status'][$status] ?? 0) + 1;
@@ -696,6 +716,8 @@ class BillingDetailsScan
             'grand' => $grand,
             'rollups' => $this->rollups,
             'bands' => $this->bands,
+            'domestic' => $this->domestic,
+            'consume_factor' => $this->consumeFactor,
             'issues' => $this->issues,
             'counts' => $this->counts,
             'concentration' => $this->concentration(),

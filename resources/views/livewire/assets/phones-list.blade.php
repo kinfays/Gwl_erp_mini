@@ -162,7 +162,7 @@
                     @endforeach
                 </x-ui.select>
 
-                <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" />
+                <x-ui.input label="Serial Number" wire:model.defer="form.serial_number" class="mono" :hint="($form['asset_type'] ?? '') === \App\Services\Assets\AssetRecordService::PHONE_IDENTITY_TYPE ? 'A phone needs a serial number or an IMEI.' : null" />
                 <div>
                     <x-assets.model-select :models="$models" />
                     <x-assets.add-model-button :can="$canAddModel" :open="$showNewModel" />

@@ -193,6 +193,15 @@ return [
     // of the water charge AND by at least this amount (GH¢). It checks the billing system's arithmetic, not the tariff itself.
     'commercial_tariff_tolerance_pct' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_PCT', 1.0),
     'commercial_tariff_tolerance_amount' => (float) env('GWL_COMMERCIAL_TARIFF_TOLERANCE_AMOUNT', 1.0),
+    // Phase 8h (design 8.52): the billing summary DERIVED from the Detailed Billing Report. The summary's volume is in thousands of litres and the detailed
+    // report's Consume unit is UNCONFIRMED (very probably cubic metres, which is numerically the same), so the derived volumes are Consume times this factor.
+    'commercial_details_consume_factor' => (float) env('GWL_COMMERCIAL_DETAILS_CONSUME_FACTOR', 1.0),
+    // Which billing summary counts when a region and period have BOTH an uploaded one and one derived from the detailed report: 'uploaded' (the default) or
+    // 'details'. The other stays stored and is marked "not used".
+    'commercial_billing_summary_preference' => in_array(env('GWL_COMMERCIAL_BILLING_SUMMARY_PREFERENCE', 'uploaded'), ['uploaded', 'details'], true) ? env('GWL_COMMERCIAL_BILLING_SUMMARY_PREFERENCE', 'uploaded') : 'uploaded',
+    // X12 (derived summary against the uploaded one): money within this many cedis per route, volume within this many thousand litres per route, counts exactly.
+    'commercial_x12_money_tolerance' => (float) env('GWL_COMMERCIAL_X12_MONEY_TOLERANCE', 0.10),
+    'commercial_x12_volume_tolerance' => (float) env('GWL_COMMERCIAL_X12_VOLUME_TOLERANCE', 0.5),
     // Phase 8e (across the files, X3): a route needs at least this many billing customers before its skip rate and estimation share are correlated.
     'commercial_cross_min_route_customers' => (int) env('GWL_COMMERCIAL_CROSS_MIN_ROUTE_CUSTOMERS', 30),
     // Phase 8f (trends, design 8.45): an upload is "comparable" with another when their LENGTHS differ by at most this many days (a 7-day upload is never

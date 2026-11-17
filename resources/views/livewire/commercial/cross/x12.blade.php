@@ -32,3 +32,45 @@
     @endif
 </x-commercial.cross-part>
 @endif
+
+
+{{-- Phase 8h: the summary derived from the detailed report against the uploaded one, every column --}}
+@if (isset($parts['derived']))
+    @if ($parts['derived']['data'] === null)
+        <x-commercial.cross-part :part="$parts['derived']" />
+    @else
+    <x-commercial.cross-part :part="$parts['derived']" description="Where an uploaded billing summary and a billing summary derived from the Detailed Billing Report exist for the same region, customer segment and period, EVERY column is compared route by route and in total. This is how to decide whether the setting can be switched to the detailed report.">
+        @php $dd = $parts['derived']['data']; @endphp
+        @if (! $dd['available'])
+            <p class="ui-hint">No uploaded billing summary has a derived twin for {{ $dd['details_period'] ?? 'this period' }}: nothing to compare. (Upload the billing summary for a period the detailed report covers, or load a detailed report for a period a summary covers.)</p>
+        @else
+            <p class="ui-hint">Tolerance: money within GH¢ {{ number_format($dd['tolerance']['money'], 2) }} per route, volume within {{ number_format($dd['tolerance']['volume'], 2) }} thousand litres per route, customer counts exactly (Settings, Detailed billing).@if ($dd['district_limited']) You see your own district only: no region-wide total and no band table.@endif</p>
+            @foreach ($dd['pairs'] as $pair)
+                @php $r = $pair['result']; @endphp
+                <div class="dash-row" data-testid="x12-derived-pair">
+                    <p><strong data-testid="x12-verdict">{{ $r['verdict'] }}</strong> <span class="ui-hint">{{ $pair['period'] }}, uploaded batch #{{ $pair['uploaded_batch'] }} against derived batch #{{ $pair['derived_batch'] }}; the analyses count {{ $pair['counted'] }}.</span></p>
+                    <x-ui.table label="Every column, derived against uploaded">
+                        <x-slot:head><tr><th>Column</th><th class="num">Uploaded (total)</th><th class="num">Derived (total)</th><th>Result</th></tr></x-slot:head>
+                        @foreach ($r['columns'] as $c)
+                            <tr><td>{{ $c['label'] }}</td>
+                                <td class="num">{{ $c['uploaded'] === null ? '–' : number_format($c['uploaded'], $c['kind'] === 'count' ? 0 : 2) }}</td>
+                                <td class="num">{{ $c['derived'] === null ? '–' : number_format($c['derived'], $c['kind'] === 'count' ? 0 : 2) }}</td>
+                                <td>{{ ucfirst($c['text']) }}</td></tr>
+                        @endforeach
+                        @foreach ($r['bands'] as $c)
+                            <tr><td>{{ $c['label'] }}</td><td class="num">–</td><td class="num">–</td><td>{{ ucfirst($c['text']) }}</td></tr>
+                        @endforeach
+                    </x-ui.table>
+                    @if ($r['only_in_uploaded'] !== [] || $r['only_in_derived'] !== [])
+                        <p class="ui-hint">Routes only in the uploaded summary: {{ count($r['only_in_uploaded']) }}@if ($r['only_in_uploaded'] !== []) ({{ implode(', ', array_slice($r['only_in_uploaded'], 0, 10)) }})@endif. Only in the derived summary: {{ count($r['only_in_derived']) }}@if ($r['only_in_derived'] !== []) ({{ implode(', ', array_slice($r['only_in_derived'], 0, 10)) }})@endif.</p>
+                    @endif
+                    @if ($r['worst'] !== [])
+                        <p class="ui-hint">The routes that differ most:</p>
+                        <ul class="ui-hint">@foreach ($r['worst'] as $w)<li>{{ $w['route'] }}: {{ $w['columns'] }} column(s) ({{ implode('; ', array_map(fn ($d) => $d['label'].' '.number_format($d['difference'], 2), array_slice($w['differences'], 0, 4))) }})</li>@endforeach</ul>
+                    @endif
+                </div>
+            @endforeach
+        @endif
+    </x-commercial.cross-part>
+    @endif
+@endif

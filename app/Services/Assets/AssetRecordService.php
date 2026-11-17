@@ -14,6 +14,13 @@ class AssetRecordService
 {
     public const DUPLICATE_NAME_MESSAGE = 'An asset with this name already exists.';
 
+    public const DUPLICATE_SERIAL_MESSAGE = 'An asset with this serial number already exists.';
+
+    public const PHONE_IDENTITY_MESSAGE = 'Enter at least a serial number or an IMEI for a phone.';
+
+    /** The one asset type that must carry a serial number or an IMEI (POS terminals and SIM cards need neither). */
+    public const PHONE_IDENTITY_TYPE = 'Ph';
+
     public function __construct(
         protected IpRangeService $ipRanges,
         protected AssetTransferService $transfers,
@@ -27,6 +34,31 @@ class AssetRecordService
             ->where('asset_name_key', IctAsset::nameKey($name))
             ->when($ignoreId, fn ($query, $id) => $query->whereKeyNot($id))
             ->exists();
+    }
+
+    /** Whether another asset already uses this serial number (compared in lower case, as MySQL's index does). */
+    public static function serialTaken(string $serial, ?int $ignoreId = null): bool
+    {
+        return IctAsset::query()
+            ->whereRaw('LOWER(serial_number) = ?', [mb_strtolower(trim($serial))])
+            ->when($ignoreId, fn ($query, $id) => $query->whereKeyNot($id))
+            ->exists();
+    }
+
+    /** Trimmed text, or NULL when blank: a blank must never reach a unique index as ''. */
+    public static function blankToNull(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /** True when a phone (type Ph) has neither a serial number nor an IMEI. Other types never need one. */
+    public static function phoneIdentityMissing(?string $assetType, mixed $serial, mixed $imei): bool
+    {
+        return $assetType === self::PHONE_IDENTITY_TYPE
+            && self::blankToNull($serial) === null
+            && self::blankToNull($imei) === null;
     }
 
     /**
@@ -66,6 +98,16 @@ class AssetRecordService
             }
         }
 
+        // Serial and IMEI: trimmed, a blank is NULL. `serial_number` carries a unique index, so a second blank stored as ''
+        // would collide with the first (this is what made brand-new phones look like duplicate names).
+        foreach (['serial_number', 'imei'] as $identityKey) {
+            if (array_key_exists($identityKey, $data)) {
+                $data[$identityKey] = self::blankToNull($data[$identityKey]);
+            }
+        }
+
+        $this->guardIdentity($data, $category, $existing);
+
         // A cleared <select>/date input arrives as '' — store NULL rather than
         // hand a strict-mode database an empty string for an integer/date column.
         if (array_key_exists('tag_no', $data)) {
@@ -102,8 +144,52 @@ class AssetRecordService
         try {
             return $this->persist($data, $category, $existing, $changesHolder, $newHolder ? (int) $newHolder : null, $assignmentChange, $audit);
         } catch (UniqueConstraintViolationException $e) {
-            // Lost a race with another save of the same name (the index is the final word).
-            throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
+            // Lost a race with another save (the indexes are the final word). Say WHICH field clashed; anything else is
+            // not a name problem and is not dressed up as one.
+            if (isset($data['asset_name']) && self::nameTaken($data['asset_name'], $existing?->id)) {
+                throw ValidationException::withMessages(['form.asset_name' => self::DUPLICATE_NAME_MESSAGE]);
+            }
+
+            if (filled($data['serial_number'] ?? null) && self::serialTaken($data['serial_number'], $existing?->id)) {
+                throw ValidationException::withMessages(['form.serial_number' => self::DUPLICATE_SERIAL_MESSAGE]);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Serial number and IMEI rules, checked on the values the record will have after this save:
+     *  - a serial number already used by another asset is refused, naming the serial field;
+     *  - a phone (type Ph) needs a serial number or an IMEI. A save that creates a record, or that mentions the type,
+     *    serial or IMEI, is checked; a partial save that touches none of them (a status change, an audit correction)
+     *    leaves an old phone that has neither alone, so those records are not locked out of unrelated changes.
+     */
+    protected function guardIdentity(array $data, string $category, ?IctAsset $existing): void
+    {
+        if (filled($data['serial_number'] ?? null) && self::serialTaken($data['serial_number'], $existing?->id)) {
+            throw ValidationException::withMessages(['form.serial_number' => self::DUPLICATE_SERIAL_MESSAGE]);
+        }
+
+        if ($category !== IctAsset::DEVICE_CATEGORY_PHONE) {
+            return;
+        }
+
+        $touches = ! $existing || array_key_exists('asset_type', $data) || array_key_exists('serial_number', $data) || array_key_exists('imei', $data);
+
+        if (! $touches) {
+            return;
+        }
+
+        $type = array_key_exists('asset_type', $data) ? $data['asset_type'] : $existing?->asset_type;
+        $serial = array_key_exists('serial_number', $data) ? $data['serial_number'] : $existing?->serial_number;
+        $imei = array_key_exists('imei', $data) ? $data['imei'] : $existing?->imei;
+
+        if (self::phoneIdentityMissing($type, $serial, $imei)) {
+            throw ValidationException::withMessages([
+                'form.serial_number' => self::PHONE_IDENTITY_MESSAGE,
+                'form.imei' => self::PHONE_IDENTITY_MESSAGE,
+            ]);
         }
     }
 

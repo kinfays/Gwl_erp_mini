@@ -74,7 +74,7 @@ class CommercialKpiService
 
         foreach ($groups as $month => $family) {
             $start = Carbon::parse($month)->startOfMonth();
-            $units = array_map(fn (array $s) => ['id' => $s['id'], 'from' => $s['period_from'], 'to' => $s['period_to'], 'order' => (int) $s['id']], $family);
+            $units = array_map(fn (array $s) => ['id' => $s['id'], 'from' => $s['period_from'], 'to' => $s['period_to'], 'order' => (int) $s['id'], 'source' => $s['source'] ?? 'upload'], $family);
             $pick = $periods->select($units, $start->toDateString(), $start->copy()->endOfMonth()->toDateString());
 
             if ($pick['chosen'] === []) {
@@ -85,7 +85,11 @@ class CommercialKpiService
             $latest = $byId[$pick['chosen'][count($pick['chosen']) - 1]];
             $full = $pick['gaps'] === [];
 
-            $months[] = $latest + [
+            $months[] = [
+                // Phase 8h: a month built (even in part) from a summary derived from the detailed billing report says so, and names the dates it used
+                'is_derived' => (bool) array_filter($pick['chosen'], fn ($id) => ($byId[$id]['is_derived'] ?? false)),
+                'period_used' => CommercialPeriods::describe($start->toDateString(), $start->copy()->endOfMonth()->toDateString()),
+            ] + $latest + [
                 'batch_ids' => $pick['chosen'],
                 'is_full_month' => $full,
                 'days_covered' => $pick['covered_days'],
@@ -115,6 +119,8 @@ class CommercialKpiService
             // a part month (step 0.1): the days it covers and the ones it does not; null / true for a full month
             'full' => $m['is_full_month'] ?? true, 'days_covered' => $m['days_covered'] ?? null, 'days_in_month' => $m['days_in_month'] ?? null,
             'part_label' => $m['part_label'] ?? null, 'missing' => $m['missing'] ?? null,
+            // Phase 8h: the month's billing comes from a summary derived from the detailed billing report
+            'is_derived' => (bool) ($m['is_derived'] ?? false), 'period_used' => $m['period_used'] ?? null,
         ], $months);
 
         $perDistrict = [];   // key => [name, id, month => sums]

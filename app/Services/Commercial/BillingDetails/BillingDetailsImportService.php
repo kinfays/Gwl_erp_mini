@@ -9,6 +9,7 @@ use App\Models\District;
 use App\Models\Permission;
 use App\Models\User;
 use App\Services\Commercial\BatchLifecycleService;
+use App\Services\Commercial\BillingSummaryFromDetails;
 use App\Services\Commercial\CommercialImportException;
 use App\Services\Commercial\CommercialPeriods;
 use App\Services\Commercial\LocationMatcher;
@@ -432,6 +433,8 @@ class BillingDetailsImportService extends ReportImportService
 
         return [
             'district_filter' => $batch->control_totals['district_filter'] ?? null,
+            // Phase 8h: the Consume factor in force when the category 611 band split was counted (a batch loaded before 8h has no such key and no band table)
+            'domestic_factor' => $scan['consume_factor'] ?? null,
             'period_raw' => $batch->control_totals['period_raw'] ?? ($scan['filters']['period'] ?? null),
             'columns' => $batch->control_totals['columns'] ?? [],
             'scan' => [
@@ -555,6 +558,18 @@ class BillingDetailsImportService extends ReportImportService
 
             $flush('commercial_billing_detail_bands', 1);
 
+            foreach ($scan['domestic'] ?? [] as $dKey => $byBand) {
+                foreach ($byBand as $band => [$customers, $consumeK, $monthTotal]) {
+                    $buffer[] = [
+                        'batch_id' => $batch->id, 'district_id' => ctype_digit((string) $dKey) ? (int) $dKey : null, 'district_key' => (string) $dKey, 'band' => (string) $band,
+                        'customers' => $customers, 'consume' => $this->decimal($consumeK, 1000, 3), 'amount' => $this->decimal($monthTotal, 100, 2),
+                    ];
+                    $flush('commercial_billing_detail_domestic_bands', 200);
+                }
+            }
+
+            $flush('commercial_billing_detail_domestic_bands', 1);
+
             foreach ($scan['issues'] as $kind => $byD) {
                 foreach ($byD as $list) {
                     foreach ($list as [, $account, $seq, $amount]) {
@@ -583,6 +598,7 @@ class BillingDetailsImportService extends ReportImportService
         DB::table('commercial_billing_detail_rollups')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_bands')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_issues')->where('batch_id', $batch->id)->delete();
+        DB::table('commercial_billing_detail_domestic_bands')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_transitions')->where('batch_id', $batch->id)->delete();
         DB::table('commercial_billing_detail_district_matrix')->where('batch_id', $batch->id)->delete();
 
@@ -940,6 +956,11 @@ class BillingDetailsImportService extends ReportImportService
 
         $batch->forceFill(['control_totals' => $control])->save();
 
+        // Phase 8h: a route that was parked can now be written to the derived billing summary, which is refreshed
+        if ($placed > 0 && $batch->status === CommercialImportBatch::STATUS_IMPORTED) {
+            app(BillingSummaryFromDetails::class)->build($batch);
+        }
+
         return $placed;
     }
 
@@ -998,6 +1019,11 @@ class BillingDetailsImportService extends ReportImportService
 
         try {
             $month = null;
+
+            // a numeric date is DAY FIRST (01/09/2026 is the first of September; Carbon would read it as the ninth of January)
+            if (preg_match('/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/', $text, $m)) {
+                return checkdate((int) $m[2], (int) $m[1], (int) $m[3]) ? Carbon::create((int) $m[3], (int) $m[2], (int) $m[1])->startOfDay() : null;
+            }
 
             if (preg_match('/^([A-Za-z]{3,9})[\s\-\/]+(\d{4})$/', $text, $m)) {
                 $month = Carbon::parse('1 '.$m[1].' '.$m[2]);

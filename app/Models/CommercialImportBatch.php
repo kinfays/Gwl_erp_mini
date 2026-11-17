@@ -59,6 +59,11 @@ class CommercialImportBatch extends Model
     /** The states a background run is still working or waiting in. */
     public const IN_FLIGHT = [self::STATUS_QUEUED, self::STATUS_PROCESSING];
 
+    /** Phase 8h: where a batch's rows came from. 'upload' = a workbook somebody uploaded (every batch before 8h); 'derived' = built from a Detailed Billing Report. */
+    public const SOURCE_UPLOAD = 'upload';
+
+    public const SOURCE_DERIVED = 'derived';
+
     public const GRANULARITY_MONTHLY = 'monthly';
 
     public const GRANULARITY_MULTI_MONTH = 'multi_month';
@@ -70,6 +75,8 @@ class CommercialImportBatch extends Model
 
     protected $fillable = [
         'report_type',
+        'source',
+        'derived_from_batch_id',
         'region_id',
         'region_label_raw',
         'period_from',
@@ -115,6 +122,7 @@ class CommercialImportBatch extends Model
         'finished_at' => 'datetime',
         'reconciliation_passed' => 'boolean',
         'supersedes_batch_id' => 'integer',
+        'derived_from_batch_id' => 'integer',
         'imported_by' => 'integer',
         'voided_by' => 'integer',
         'imported_at' => 'datetime',
@@ -210,6 +218,30 @@ class CommercialImportBatch extends Model
     public function isReading(): bool
     {
         return $this->report_type === self::TYPE_READING_SUMMARY;
+    }
+
+    /** A billing summary built from a Detailed Billing Report (Phase 8h): no workbook, rebuilt whenever its source changes. */
+    public function isDerived(): bool
+    {
+        return $this->source === self::SOURCE_DERIVED;
+    }
+
+    /** The Detailed Billing Report batch a derived summary was built from. */
+    public function derivedFrom(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'derived_from_batch_id');
+    }
+
+    /** The derived billing summary built from this (detailed) batch, if one exists. */
+    public function derivedBatch(): HasMany
+    {
+        return $this->hasMany(self::class, 'derived_from_batch_id');
+    }
+
+    /** The label used wherever a figure of a derived batch is shown. */
+    public function sourceLabel(): ?string
+    {
+        return $this->isDerived() ? 'from the detailed billing report' : null;
     }
 
     public function isBilling(): bool

@@ -337,7 +337,7 @@ class CommercialReportData
             ->when($snapshot['segment'] === null, fn ($q) => $q->whereNull('customer_segment'), fn ($q) => $q->where('customer_segment', $snapshot['segment']))
             ->get()->keyBy('id');
 
-        $selection = $periods->select($batches->map(fn (CommercialImportBatch $b) => ['id' => $b->id, 'from' => $b->period_from->toDateString(), 'to' => $b->period_to->toDateString(), 'order' => $b->id])->values()->all(), $start?->toDateString(), $end?->toDateString());
+        $selection = $periods->select($batches->map(fn (CommercialImportBatch $b) => CommercialPeriods::unitOf($b))->values()->all(), $start?->toDateString(), $end?->toDateString());
         $chosen = array_map('intval', $selection['chosen']);
         $routesByBatch = $chosen === [] ? collect() : $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->whereIn('batch_id', $chosen))->with('district:id,district_name')->get()->groupBy('batch_id');
         $routes = $chosen === [] ? collect() : $periods->combineBillingRoutes($routesByBatch->all(), $chosen);
@@ -363,7 +363,7 @@ class CommercialReportData
 
         foreach ($selection['shadowed'] as $shadow) {
             if ($batches->has($shadow['id']) && $this->periodsInRange($batches[$shadow['id']], $selection)) {
-                $notes[] = 'Batch #'.$shadow['id'].' is replaced by the newer batch #'.$shadow['by'].' ('.($shadow['reason'] === 'identical' ? 'the same period' : 'a period that contains it').').';
+                $notes[] = 'Batch #'.$shadow['id'].' is '.($shadow['reason'] === 'source' ? 'not used: the '.(CommercialPeriods::preferredSource() === 'derived' ? 'detailed report' : 'uploaded summary').' (batch #'.$shadow['by'].') covers this period' : 'replaced by the newer batch #'.$shadow['by'].' ('.($shadow['reason'] === 'identical' ? 'the same period' : 'a period that contains it').')').'.';
             }
         }
 
@@ -371,12 +371,19 @@ class CommercialReportData
             $notes[] = 'Left out because their period is only partly inside the range: '.implode(', ', array_map(fn ($id) => '#'.$id.' ('.CommercialPeriods::describe($batches[$id]->period_from, $batches[$id]->period_to).')', $selection['partly_outside'])).'.';
         }
 
+        $derivedIds = array_values(array_filter($chosen, fn ($id) => $batches->has($id) && $batches[$id]->isDerived()));
+
+        if ($derivedIds !== []) {
+            $notes[] = 'Batch '.implode(', ', array_map(fn ($id) => '#'.$id, $derivedIds)).' '.(count($derivedIds) === 1 ? 'is' : 'are').' a billing summary derived from the detailed billing report.';
+        }
+
         $meta = [
+            'is_derived' => $derivedIds !== [], 'source_note' => $derivedIds !== [] ? BillingAnalyticsService::DERIVED_NOTE : null,
             'id' => 'range', 'batch' => null, 'is_range' => true, 'range_from' => $selection['from'], 'range_to' => $selection['to'], 'batch_ids' => $chosen,
             'region_id' => $snapshot['region_id'], 'region' => $snapshot['region'], 'segment' => $snapshot['segment'], 'segment_label' => $snapshot['segment_label'],
             'period_from' => $selection['from'], 'period_to' => $selection['to'], 'month' => $selection['from'] ? substr($selection['from'], 0, 7).'-01' : null,
             'period_label' => $label, 'is_single_month' => false, 'in_one_month' => false, 'is_part_month' => false,
-            'label' => $snapshot['region'].' · '.$snapshot['segment_label'].' · '.$label.(count($chosen) > 1 ? ' ('.count($chosen).' uploads added up)' : ''),
+            'label' => $snapshot['region'].' · '.$snapshot['segment_label'].' · '.$label.(count($chosen) > 1 ? ' ('.count($chosen).' uploads added up)' : '').($derivedIds !== [] ? ' · '.BillingAnalyticsService::DERIVED_NOTE : ''),
         ];
 
         return ['meta' => $meta, 'routes' => $routes, 'notes' => $notes, 'batch_ids' => $chosen, 'selection' => $selection];

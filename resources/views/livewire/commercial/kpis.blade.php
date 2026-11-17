@@ -47,6 +47,10 @@
             <x-ui.alert tone="info" class="dash-row">No single-month billing upload of this customer segment in this region yet.</x-ui.alert>
         @else
             <p class="ui-hint dash-row">{{ $kpis['region'] }} · {{ $kpis['segments'][$kpis['segment']]['label'] ?? 'All customers' }} · {{ count($kpis['months']) }} month(s). Targets are yearly: a month's target is the annual target ÷ 12 and efficiency = actual ÷ that target × 100.@if ($charts) Year to date compares the {{ $charts['ytd_months'] }} month(s) uploaded in {{ $charts['ytd_year'] }} with the annual target × those months ÷ 12.@endif Blank where the year has no target.</p>
+            @php $derivedMonths = collect($kpis['months'])->filter(fn ($m) => $m['is_derived'] ?? false); @endphp
+            @if ($derivedMonths->isNotEmpty())
+                <p class="ui-hint dash-row" data-testid="derived-kpi-note">{{ $derivedMonths->map(fn ($m) => $m['label'].' '.$m['year'].' ('.($m['period_used'] ?? '').')')->implode(', ') }}: billing figures {{ \App\Services\Commercial\BillingAnalyticsService::DERIVED_NOTE }}.</p>
+            @endif
             @php $partMonths = array_values(array_filter($kpis['months'], fn ($m) => ! ($m['full'] ?? true))); @endphp
             @if ($partMonths !== [])
                 <x-ui.alert tone="warning" class="dash-row">

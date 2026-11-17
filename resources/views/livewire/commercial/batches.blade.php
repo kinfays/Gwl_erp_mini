@@ -32,6 +32,9 @@
                 </div>
             </div>
             <div style="padding:14px">
+                @if ($summaryUploadOptional)
+                    <p class="ui-hint" data-testid="summary-optional" style="margin-bottom:8px">The detailed billing report already gives the figures of the billing summary; uploading the billing summary is optional.</p>
+                @endif
                 <div class="form-row">
                     <div class="form-field">
                         <label class="form-label">Report file (.xlsx)</label>
@@ -258,6 +261,12 @@
                         <td>
                             {{ \App\Models\CommercialImportBatch::typeLabel($batch->report_type) }}
                             <span class="form-hint">{{ $batch->source_filename }}</span>
+                            @if ($batch->isDerived())
+                                <span class="form-hint" data-testid="derived-label">Derived from the detailed billing report (batch {{ $batch->derived_from_batch_id }})</span>
+                            @endif
+                            @if (isset($notUsed[$batch->id]))
+                                <span class="form-hint" data-testid="not-used">{{ ucfirst($notUsed[$batch->id]) }}</span>
+                            @endif
                         </td>
                         <td>{{ $batch->region?->region_name ?? $batch->region_label_raw ?? '-' }}</td>
                         <td>

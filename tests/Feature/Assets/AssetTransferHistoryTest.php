@@ -83,7 +83,7 @@ class AssetTransferHistoryTest extends TestCase
         $this->assertSame(0, IctAsset::query()->count());
 
         Livewire::test(PhonesList::class)->call('openCreate')
-            ->set('form.asset_name', 'Phone')->set('form.asset_type', 'Ph')
+            ->set('form.asset_name', 'Phone')->set('form.asset_type', 'Ph')->set('form.imei', '356938035643809')
             ->set('form.status', IctAsset::STATUS_DAMAGED)->set('form.status_reason', 'Cracked screen')
             ->call('save')->assertHasNoErrors();
 

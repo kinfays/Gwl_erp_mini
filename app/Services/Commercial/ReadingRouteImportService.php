@@ -60,17 +60,35 @@ class ReadingRouteImportService extends ReportImportService
         $excluded = [];
         $periodTexts = [];
         $regionTexts = [];
-        $problems = [];
+        $problems = [];          // message => ['count' => sheets, 'diagnostic' => words at the top of the first such sheet]
+        $problemIds = [];        // staff ids of sheets that could not be read but carry a CCA label (they are not "missing" from the workbook)
+        $unlabelled = 0;         // sheets that could not be read and whose CCA label could not be read either
+        $scanned = 0;
 
         foreach ($this->reader->sheetNames($file) as $name) {
             if (preg_match('/^\s*document\s*map\s*$/i', $name)) {
                 continue;
             }
 
+            $scanned++;
             $parsed = $this->parseSheet($this->reader->readSheetGrid($file, $name), $name);   // the grid goes out of scope here
 
+            // The filter lines are read from every sheet that is a CCA sheet, WHETHER OR NOT its header could be read: a layout problem
+            // must never also be reported as "period not found" or "region not found".
+            if ($parsed['cca'] !== null || $parsed['problem'] !== null) {
+                $periodTexts[$parsed['period_text'] ?? ''] = true;
+                $regionTexts[$parsed['region_text'] ?? ''] = true;
+            }
+
             if ($parsed['problem'] !== null) {
-                $problems[$parsed['problem']][] = $name;
+                $problems[$parsed['problem']]['count'] = ($problems[$parsed['problem']]['count'] ?? 0) + 1;
+                $problems[$parsed['problem']]['diagnostic'] ??= $parsed['diagnostic'];
+
+                if ($parsed['cca'] !== null) {
+                    $problemIds[$parsed['cca']['staff_id']] = true;
+                } else {
+                    $unlabelled++;
+                }
 
                 continue;
             }
@@ -78,9 +96,6 @@ class ReadingRouteImportService extends ReportImportService
             if ($parsed['cca'] === null) {
                 continue;   // a sheet that is not a CCA sheet (no "staffid - NAME" label): nothing to import
             }
-
-            $periodTexts[$parsed['period_text'] ?? ''] = true;
-            $regionTexts[$parsed['region_text'] ?? ''] = true;
 
             if (self::isExcludedAccount($parsed['cca']['staff_id'], $parsed['cca']['name'])) {
                 $excluded[$parsed['cca']['staff_id']] = ['staff_id' => $parsed['cca']['staff_id'], 'rows' => count($parsed['rows']), 'read' => array_sum(array_column($parsed['rows'], 'read')), 'skipped' => array_sum(array_column($parsed['rows'], 'skipped')), 'visited' => array_sum(array_column($parsed['rows'], 'visited'))];
@@ -91,8 +106,17 @@ class ReadingRouteImportService extends ReportImportService
             $sheets[] = $parsed;
         }
 
-        foreach ($problems as $message => $names) {
-            $errors[] = ['row' => 'Layout', 'message' => $message.' ('.count($names).' sheet'.(count($names) === 1 ? '' : 's').': '.implode(', ', array_slice($names, 0, 3)).(count($names) > 3 ? ', ...' : '').')'];
+        // ONE line for the whole file (never one per sheet): how many sheets, why, and what the first of them holds at the top.
+        if ($problems !== []) {
+            $unreadable = array_sum(array_column($problems, 'count'));
+            $reasons = [];
+
+            foreach ($problems as $message => $info) {
+                $reasons[] = $message.(count($problems) > 1 ? ' ('.$info['count'].')' : '');
+            }
+
+            $diagnostic = (string) (array_values($problems)[0]['diagnostic'] ?? '');
+            $errors[] = ['row' => 'Layout', 'message' => number_format($unreadable).' of '.number_format($scanned).' CCA sheet'.($scanned === 1 ? '' : 's').' could not be read: '.implode('; ', $reasons).'.'.($diagnostic !== '' ? ' Found at the top of the first of them: "'.$diagnostic.'".' : '')];
         }
 
         if ($sheets === [] && $problems === [] && $excluded === []) {
@@ -115,10 +139,13 @@ class ReadingRouteImportService extends ReportImportService
 
         if ($mapped !== null) {
             $sheetIds = array_merge(array_keys($seen), array_keys($excluded));
-            $missingSheet = array_values(array_diff(array_keys($mapped), $sheetIds));
+            // matched by staff id, never by sheet name; a sheet that could not be read still has its CCA (when its label was read)
+            $missingSheet = array_values(array_diff(array_map('strval', array_keys($mapped)), array_map('strval', $sheetIds), array_map('strval', array_keys($problemIds))));
             $notMapped = array_values(array_diff($sheetIds, array_keys($mapped)));
 
-            if ($missingSheet !== []) {
+            // "no sheet" is said only when at least one sheet WAS read and every unreadable sheet still named its CCA: otherwise the
+            // count would be the unreadable sheets again, and the layout error above already says so
+            if ($missingSheet !== [] && ($sheets !== [] || $excluded !== []) && $unlabelled === 0) {
                 $warnings[] = ['row' => 'Document map', 'message' => count($missingSheet).' CCA(s) are listed on the Document map but have no sheet in the workbook.'];
             }
 
@@ -136,7 +163,7 @@ class ReadingRouteImportService extends ReportImportService
         if (count($periodTexts) > 1) {
             $errors[] = ['row' => 'Filters', 'message' => 'The CCA sheets do not all carry the same REPORT PERIOD ('.count($periodTexts).' different ones), so the file is not one report.'];
         } elseif ($periodRaw === null) {
-            if ($sheets !== []) {
+            if ($sheets !== [] || $problems !== []) {
                 $errors[] = ['row' => 'Filters', 'message' => 'The REPORT PERIOD line was not found on the CCA sheets, so the batch cannot be given dates.'];
             }
         } elseif (! ($period = $this->readPeriod($periodRaw))) {
@@ -149,7 +176,7 @@ class ReadingRouteImportService extends ReportImportService
 
         if (count($regionTexts) > 1) {
             $errors[] = ['row' => 'Filters', 'message' => 'The CCA sheets do not all name the same REGION.'];
-        } elseif ($sheets !== [] || $excluded !== []) {
+        } elseif ($sheets !== [] || $excluded !== [] || $problems !== []) {
             if ($regionLabel === null) {
                 $errors[] = ['row' => 'Filters', 'message' => 'The REGION line was not found in the report, so the batch cannot be tied to a region.'];
             } else {
@@ -753,7 +780,9 @@ class ReadingRouteImportService extends ReportImportService
     }
 
     /**
-     * "01-October-2026 - 31-October-2026" (any two dates, inclusive) as ['from' => Y-m-d, 'to' => Y-m-d]; null when it cannot be read.
+     * The REPORT PERIOD line as ['from' => Y-m-d, 'to' => Y-m-d]; null when it cannot be read. Any two dates joined by a dash or "to"
+     * ("01-September-2026 - 30-September-2026", "01-Sep-2026 - 30-Sep-2026", "01/09/2026 - 30/09/2026", ISO dates) or ONE date (that day).
+     * A numeric date is DAY FIRST (01/09/2026 is the first of September, never the ninth of January).
      *
      * @return array{from: string, to: string}|null
      */
@@ -761,18 +790,38 @@ class ReadingRouteImportService extends ReportImportService
     {
         $parts = preg_split('/\s+(?:-|–|—|to)\s+/iu', trim($text));
 
-        if (! is_array($parts) || count($parts) !== 2) {
+        if (! is_array($parts) || count($parts) < 1 || count($parts) > 2 || trim($parts[0]) === '') {
             return null;
         }
 
+        $from = $this->readDate($parts[0]);
+        $to = $this->readDate($parts[count($parts) - 1]);
+
+        return $from && $to && ! $to->lessThan($from) ? ['from' => $from->toDateString(), 'to' => $to->toDateString()] : null;
+    }
+
+    protected function readDate(string $text): ?Carbon
+    {
+        $text = trim($text);
+
         try {
-            $from = Carbon::parse(trim($parts[0]))->startOfDay();
-            $to = Carbon::parse(trim($parts[1]))->startOfDay();
+            if (preg_match('/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/', $text, $m)) {
+                return checkdate((int) $m[2], (int) $m[1], (int) $m[3]) ? Carbon::create((int) $m[3], (int) $m[2], (int) $m[1])->startOfDay() : null;
+            }
+
+            if (preg_match('/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/', $text, $m)) {
+                return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? Carbon::create((int) $m[1], (int) $m[2], (int) $m[3])->startOfDay() : null;
+            }
+
+            // a date with the month spelled out ("01-September-2026", "1 Sep 2026", "September 1, 2026")
+            if (preg_match('/[A-Za-z]{3}/', $text) && preg_match('/\d{4}/', $text)) {
+                return Carbon::parse($text)->startOfDay();
+            }
         } catch (\Throwable) {
             return null;
         }
 
-        return $to->lessThan($from) ? null : ['from' => $from->toDateString(), 'to' => $to->toDateString()];
+        return null;
     }
 
     /**
@@ -812,16 +861,17 @@ class ReadingRouteImportService extends ReportImportService
 
     /**
      * One sheet grid into a compact array (the grid is not kept): the CCA label, the filter lines, the route rows and the TOTALS row.
-     * Everything is found from the text: the header row is the one with a "Route" cell and a "Strength" cell, a group header ("Read"
-     * over "#" and "%") is resolved to its "#" column, and a percentage column is never read.
+     * Everything is found from the text, never by column letter. The header is ONE or TWO rows (see headerRow()), the count of a group
+     * ("Read" over "#" and "%") is its "#" column, a merged cell is read from its top-left cell only, and a percentage column is never read.
      *
      * @param  array<int, array<int, mixed>>  $grid
-     * @return array{sheet: string, cca: array{staff_id: string, name: string}|null, period_text: string|null, region_text: string|null, rows: list<array<string, mixed>>, totals: array<string, int|null>|null, problem: string|null}
+     * @return array{sheet: string, cca: array{staff_id: string, name: string}|null, period_text: string|null, region_text: string|null, rows: list<array<string, mixed>>, totals: array<string, int|null>|null, problem: string|null, diagnostic: string}
      */
     protected function parseSheet(array $grid, string $sheet): array
     {
-        $out = ['sheet' => $sheet, 'cca' => null, 'period_text' => null, 'region_text' => null, 'rows' => [], 'totals' => null, 'problem' => null];
+        $out = ['sheet' => $sheet, 'cca' => null, 'period_text' => null, 'region_text' => null, 'rows' => [], 'totals' => null, 'problem' => null, 'diagnostic' => ''];
 
+        // read BEFORE (and independently of) the header, so a header problem can never also be a missing period or region
         $out['period_text'] = $this->reader->labelValue($grid, '/^\s*report\s*period\b\s*:?\s*(.*)$/i', 25);
         $out['region_text'] = $this->reader->labelValue($grid, '/^\s*region\b\s*:?\s*(.*)$/i', 25);
 
@@ -838,27 +888,30 @@ class ReadingRouteImportService extends ReportImportService
         $header = $this->headerRow($grid);
 
         if ($header === null) {
-            // a CCA sheet with a label but no header row is a CCA with nothing to read (kept); without a label it is not a CCA sheet
-            if ($out['cca'] !== null && $this->hasHeaderWords($grid)) {
+            // words of a header on a sheet we cannot read is a layout problem; a sheet with none is simply not a CCA sheet
+            if ($this->hasHeaderWords($grid, $out['cca'] === null)) {
                 $out['problem'] = 'Could not find the Route and Verified Strength column headers';
+                $out['diagnostic'] = $this->diagnostic($grid);
             }
 
             return $out;
         }
 
-        [$headerIndex, $columns] = $header;
+        [$firstData, $columns, $alternatives] = $header;
         $missing = array_keys(array_filter(['route' => $columns['route'], 'strength' => $columns['strength'], 'read' => $columns['read'], 'skipped' => $columns['skipped'], 'visited' => $columns['visited']], fn ($c) => $c === null));
 
         if ($missing !== []) {
             $names = ['route' => 'Route', 'strength' => 'Verified Strength', 'read' => 'Read #', 'skipped' => 'Skipped #', 'visited' => 'Visited #'];
             $out['problem'] = 'Could not find the '.implode(', ', array_map(fn ($k) => $names[$k], $missing)).' column header'.(count($missing) === 1 ? '' : 's');
+            $out['diagnostic'] = $this->diagnostic($grid);
 
             return $out;
         }
 
+        $columns = $this->settleColumns($grid, $firstData, $columns, $alternatives);
         $count = fn (array $row, string $measure): ?int => $columns[$measure] === null ? null : $this->reader->integer($row[$columns[$measure]] ?? null);
 
-        for ($i = $headerIndex + 1; $i < count($grid); $i++) {
+        for ($i = $firstData; $i < count($grid); $i++) {
             $row = $grid[$i];
             $first = $this->reader->firstFilledIndex($row);
 
@@ -874,8 +927,8 @@ class ReadingRouteImportService extends ReportImportService
                 continue;
             }
 
-            // a sub-header row ("#", "%") under the header is not data
-            if (in_array(strtolower($text), ['#', '%', 'no', 'no.', 'count'], true) || $this->classify($text) !== null) {
+            // a header row ("Strength", "#", "%", a group word; also a header repeated further down) is never data
+            if ($this->isHeaderRow($row) || $this->classify($text) !== null) {
                 continue;
             }
 
@@ -892,56 +945,138 @@ class ReadingRouteImportService extends ReportImportService
             ];
         }
 
+        // a sheet with a header and rows but no "staff id - NAME" line cannot be tied to a CCA: say so rather than drop it silently
+        if ($out['cca'] === null && $out['rows'] !== []) {
+            $out['problem'] = 'Could not find the CCA line ("staff id - NAME") above the header';
+            $out['diagnostic'] = $this->diagnostic($grid);
+            $out['rows'] = [];
+            $out['totals'] = null;
+        }
+
         return $out;
     }
 
-    /** True when the sheet has words of a header row at all (used to tell "no header" from "not a CCA sheet"). */
-    protected function hasHeaderWords(array $grid): bool
+    /**
+     * True when the sheet has words of a header row at all (used to tell "no header" from "not a CCA sheet"). A sheet with a CCA line needs
+     * only "Strength" or "Verified" somewhere; a sheet without one must also have a "Route" cell, so a notes sheet is not taken for a CCA sheet.
+     */
+    protected function hasHeaderWords(array $grid, bool $needRoute = false): bool
     {
+        $route = false;
+        $words = false;
+
         foreach (array_slice($grid, 0, 40) as $row) {
             foreach ($row as $cell) {
-                if (str_contains(strtolower($this->reader->text($cell)), 'strength')) {
-                    return true;
-                }
+                $text = strtolower($this->reader->text($cell));
+                $route = $route || preg_replace('/[^a-z]/', '', $text) === 'route';
+                $words = $words || str_contains($text, 'strength') || str_contains($text, 'verified');
             }
         }
 
-        return false;
+        return $words && (! $needRoute || $route);
     }
 
     /**
-     * The header row (the first with a "Route" cell and a "Strength" cell) and the column index of each measure. A measure header with a
-     * "#" (Read #) is that column; a bare group header ("Read" over "#" and "%") is resolved to the "#" cell of the row(s) below, else to
-     * its own column. A percentage column is never mapped.
+     * What the top of a sheet holds, for the error of a layout nobody has seen: the first few short cells of the first 15 rows, in order,
+     * at most 120 characters. A cell with a digit in it is left out, so no staff id, route, name with a number or figure is ever shown.
+     */
+    protected function diagnostic(array $grid): string
+    {
+        $words = [];
+
+        foreach (array_slice($grid, 0, 15) as $row) {
+            foreach ($row as $cell) {
+                $text = (string) preg_replace('/\s+/u', ' ', $this->reader->text($cell));
+
+                if ($text === '' || preg_match('/\d/', $text) || mb_strlen($text) > 60) {
+                    continue;
+                }
+
+                $words[$text] = true;
+            }
+        }
+
+        $out = '';
+
+        foreach (array_keys($words) as $word) {
+            $next = $out === '' ? (string) $word : $out.' | '.$word;
+
+            if (mb_strlen($next) > 120) {
+                break;
+            }
+
+            $out = $next;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The header and the column index of each measure; returns [first data row, columns, alternatives] or null.
      *
-     * @return array{0: int, 1: array<string, int|null>}|null
+     * A "Route row" is a row with a "Route" cell where that row or the next also holds at least two of the words Verified, Strength, Read,
+     * Skipped, Visited, Unvisited. These layouts give the same answer:
+     *   (a) one row   : Route | Verified Strength | Read | Skipped | Visited | Unvisited   then a row of "#" and "%"
+     *   (b) two rows  : Route | Verified | Read | ...   then   Strength | # | % | ...      (the real export; cells merged)
+     *   (c) one row   : Route | Strength | Read | ...   then a row of "#" and "%"
+     * and "Read #" / "Read %" in one row. The "#" of a group is the one found in the rows below its heading (the part of the row up to the
+     * next heading); with none, the group's own column. A column headed "%" is never mapped. A merged cell is read from its top-left cell only
+     * (that is where the file keeps the value), and the first data row is the row after the last header row. $alternatives holds the other
+     * column a measure could sit in (the group's own column beside its "#", "Verified" beside "Strength"); settleColumns() takes it only when the
+     * first choice holds no number.
+     *
+     * @return array{0: int, 1: array<string, int|null>, 2: array<string, list<int>>}|null
      */
     protected function headerRow(array $grid): ?array
     {
         foreach (array_slice($grid, 0, 40, true) as $index => $row) {
             $route = null;
-            $strength = null;
 
             foreach ($row as $column => $cell) {
-                $text = $this->reader->text($cell);
-
-                if ($route === null && preg_replace('/[^a-z]/', '', strtolower($text)) === 'route') {
+                if (preg_replace('/[^a-z]/', '', strtolower($this->reader->text($cell))) === 'route') {
                     $route = $column;
-                }
 
-                if ($strength === null && str_contains(strtolower($text), 'strength') && ! str_contains($text, '%')) {
-                    $strength = $column;
+                    break;
                 }
             }
 
-            if ($route === null || $strength === null) {
+            if ($route === null) {
+                continue;
+            }
+
+            // the words of the header on this row and the next; "Verified Strength" is two words in one cell
+            $words = [];
+            $strength = null;
+            $verified = null;
+
+            foreach ([$index, $index + 1] as $i) {
+                foreach ($grid[$i] ?? [] as $column => $cell) {
+                    $text = strtolower($this->reader->text($cell));
+
+                    if (preg_match_all('/\b(unvisited|verified|strength|visited|skipped|read)\b/', $text, $found)) {
+                        foreach ($found[1] as $word) {
+                            $words[$word] = true;
+                        }
+                    }
+
+                    if ($strength === null && str_contains($text, 'strength') && ! str_contains($text, '%')) {
+                        $strength = $column;
+                    }
+
+                    if ($verified === null && str_contains($text, 'verified') && ! str_contains($text, '%')) {
+                        $verified = $column;
+                    }
+                }
+            }
+
+            if (count($words) < 2) {
                 continue;
             }
 
             $explicit = [];
             $bare = [];
 
-            // the group headers (Read, Skipped ...) may sit on the header row or the row above it, the "#" cells on the row(s) below
+            // the group headings (Read, Skipped ...) sit on the Route row or the row above it, the "#" cells on the row(s) below them
             foreach ([$index - 1, $index, $index + 1, $index + 2] as $i) {
                 foreach ($grid[$i] ?? [] as $column => $cell) {
                     $classified = $this->classify($this->reader->text($cell));
@@ -960,22 +1095,89 @@ class ReadingRouteImportService extends ReportImportService
                 }
             }
 
-            $columns = ['route' => $route, 'strength' => $strength];
+            $columns = ['route' => $route, 'strength' => null];
+            $alternatives = [];
+
+            if ($strength !== null) {
+                $columns['strength'] = $strength;
+
+                if ($verified !== null && $verified !== $strength) {
+                    $alternatives['strength'] = [$verified];
+                }
+            } elseif ($verified !== null) {
+                $headingRow = isset($grid[$index][$verified]) && str_contains(strtolower($this->reader->text($grid[$index][$verified])), 'verified') ? $index : $index + 1;
+                $columns['strength'] = $this->subHeader($grid, $headingRow, $verified) ?? $verified;
+
+                if ($columns['strength'] !== $verified) {
+                    $alternatives['strength'] = [$verified];
+                }
+            }
 
             foreach (['read', 'skipped', 'visited', 'unvisited'] as $key) {
                 if (isset($explicit[$key])) {
                     $columns[$key] = $explicit[$key];
                 } elseif (isset($bare[$key])) {
                     $columns[$key] = $this->subHeader($grid, $bare[$key][1], $bare[$key][0]) ?? $bare[$key][0];
+
+                    if ($columns[$key] !== $bare[$key][0]) {
+                        $alternatives[$key] = [$bare[$key][0]];
+                    }
                 } else {
                     $columns[$key] = null;
                 }
             }
 
-            return [$index + 1 < count($grid) && $this->isSubHeaderRow($grid[$index + 1] ?? []) ? $index + 1 : $index, $columns];
+            // the header ends at the last row that holds only header words; the data starts on the next
+            $last = $index;
+
+            for ($j = $index + 1; $j <= $index + 3 && isset($grid[$j]) && $this->isHeaderRow($grid[$j]); $j++) {
+                $last = $j;
+            }
+
+            return [$last + 1, $columns, $alternatives];
         }
 
         return null;
+    }
+
+    /**
+     * A measure keeps the column the header pointed at unless that column holds NO number in the first rows of data and its alternative
+     * does (a merged heading whose "#" sits beside the cell the file keeps the figures in). Nothing else is ever re-chosen.
+     *
+     * @param  array<string, int|null>  $columns
+     * @param  array<string, list<int>>  $alternatives
+     * @return array<string, int|null>
+     */
+    protected function settleColumns(array $grid, int $firstData, array $columns, array $alternatives): array
+    {
+        $sample = array_slice($grid, $firstData, 40);
+        $numbers = function (int $column) use ($sample): int {
+            $n = 0;
+
+            foreach ($sample as $row) {
+                if ($this->reader->integer($row[$column] ?? null) !== null) {
+                    $n++;
+                }
+            }
+
+            return $n;
+        };
+
+        foreach ($alternatives as $measure => $others) {
+            if ($columns[$measure] === null || $numbers($columns[$measure]) > 0) {
+                continue;
+            }
+
+            foreach ($others as $other) {
+                if ($numbers($other) > 0) {
+                    $columns[$measure] = $other;
+
+                    break;
+                }
+            }
+        }
+
+        return $columns;
     }
 
     /** @return array{0: string, 1: string}|null [measure, count|pct|bare] */
@@ -994,11 +1196,24 @@ class ReadingRouteImportService extends ReportImportService
         }];
     }
 
-    /** The "#" cell under (or beside) a merged group header. */
+    /**
+     * The "#" cell under a (merged) group heading: in the rows below it, from the heading's own column up to the column before the next
+     * heading on the same row (at most three columns on when it is the last).
+     */
     protected function subHeader(array $grid, int $headerRow, int $column): ?int
     {
+        $limit = $column + 3;
+
+        foreach ($grid[$headerRow] ?? [] as $other => $cell) {
+            if ($other > $column && $this->reader->text($cell) !== '') {
+                $limit = min($limit, $other - 1);
+
+                break;
+            }
+        }
+
         for ($i = $headerRow + 1; $i <= $headerRow + 2; $i++) {
-            foreach ([$column, $column + 1] as $candidate) {
+            for ($candidate = $column; $candidate <= $limit; $candidate++) {
                 if (in_array(strtolower($this->reader->text($grid[$i][$candidate] ?? null)), ['#', 'no', 'no.', 'count', 'number'], true)) {
                     return $candidate;
                 }
@@ -1008,11 +1223,28 @@ class ReadingRouteImportService extends ReportImportService
         return null;
     }
 
-    /** A row made only of "#" and "%" cells under the group headers. */
-    protected function isSubHeaderRow(array $row): bool
+    /**
+     * A row made only of header words: "#", "%", "Strength", "Verified", a group word, "Route" (a header repeated on a page break). A row
+     * that holds anything else (a route label, a number) is data.
+     */
+    protected function isHeaderRow(array $row): bool
     {
-        $filled = array_values(array_filter(array_map(fn ($c) => strtolower($this->reader->text($c)), $row), fn ($t) => $t !== ''));
+        $filled = array_values(array_filter(array_map(fn ($c) => $this->reader->text($c), $row), fn ($t) => $t !== ''));
 
-        return $filled !== [] && count(array_diff($filled, ['#', '%', 'no', 'no.', 'count', 'number'])) === 0;
+        if ($filled === []) {
+            return false;
+        }
+
+        foreach ($filled as $text) {
+            $normalized = strtolower((string) preg_replace('/[^a-z#%.]/i', '', $text));
+
+            if (in_array($normalized, ['#', '%', 'no', 'no.', 'count', 'number', 'strength', 'verified', 'verifiedstrength', 'route'], true) || $this->classify($text) !== null) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 }

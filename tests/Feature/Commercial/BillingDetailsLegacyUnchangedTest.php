@@ -32,21 +32,29 @@ class BillingDetailsLegacyUnchangedTest extends CommercialTestCase
         $this->actingAs($officer);
         $data = app(CommercialReportData::class);
 
-        $snapshot = function () use ($data): string {
-            return json_encode([
-                // Phase 8f: the summary gained an ADDITIVE route-grain block (it appears once a detailed billing report is live): every figure that was there is compared
-                'summary' => array_diff_key($data->summary(), ['route_grain' => true]),
-                'snapshots' => $data->snapshots(),
-                'billing' => $data->billingSnapshot(null),
-                'kpis' => $data->kpis(),
+        // Phase 8h: a live Detailed Billing Report now ALSO gives a billing summary of its own (derived, segment "all"), which is new data and appears in the
+        // snapshot lists, the segment list and the default snapshot. What must not move is every figure that was there: the UPLOADED summary read by its id,
+        // the KPIs of its segment, and every reading screen.
+        $uploadedId = (string) \App\Models\CommercialImportBatch::query()->where('report_type', 'billing_summary')->value('id');
+        $snapshot = function () use ($data, $uploadedId): array {
+            $summary = $data->summary($uploadedId);
+            // the route-grain block is additive (8f); the freshness line (newest billing upload, list of periods) and the data-quality count of multi-month
+            // snapshots now also see the derived summary (8h); every other figure of the summary is compared
+            unset($summary['route_grain'], $summary['snapshots'], $summary['summary']['freshness'], $summary['summary']['quality']);
+
+            return [
+                'summary' => $summary,
+                'snapshots' => array_values(array_filter($data->snapshots(), fn (array $s) => ! ($s['is_derived'] ?? false))),
+                'billing' => $data->billingSnapshot($uploadedId),
+                'kpis' => array_diff_key($data->kpis(null, 'new_service'), ['segments' => true]),
                 'trend' => $data->readingTrend(null, null, null, null),
                 'readers' => $data->readers(null, null, null, null),
                 'route_reading' => $data->routeReading(),
-            ]);
+            ];
         };
 
         $before = $snapshot();
-        $this->assertNotSame('', $before);
+        $this->assertNotSame([], $before);
         $this->assertNull($data->summary()['route_grain'], 'nothing route-grain is loaded yet');
 
         $batch = $this->importBilling();
@@ -55,7 +63,13 @@ class BillingDetailsLegacyUnchangedTest extends CommercialTestCase
         $this->registerBilling($this->spec([$this->route('SOWUTUOM 4101', 900, 905)], 'July-2026 - July-2026'));
         $this->importBilling($this->spec([$this->route('SOWUTUOM 4101', 910, 915)], 'June-2026 - June-2026'), ['review' => true]);
 
-        $this->assertSame($before, $snapshot(), 'no figure of the summary, the billing snapshots, the KPIs or the reading screens moved');
+        $after = $snapshot();
+
+        foreach ($before as $part => $figures) {
+            $this->assertSame(json_encode($figures), json_encode($after[$part]), "no figure of the uploaded summary, the KPIs of its segment or the reading screens moved: {$part}");
+        }
+
+        $this->assertCount(1, array_filter($data->snapshots(), fn (array $s) => $s['is_derived'] ?? false), 'the one new thing is the derived billing summary (Phase 8h)');
         $this->assertNotNull($data->summary()['route_grain']['billing'], 'only the new route-grain block appears');
 
         // and the other way round: a billing summary or a reading upload does not appear in the detailed analyses

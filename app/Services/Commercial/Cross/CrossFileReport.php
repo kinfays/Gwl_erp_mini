@@ -3,6 +3,7 @@
 namespace App\Services\Commercial\Cross;
 
 use App\Livewire\Commercial\Concerns\ScopesCommercialByActor;
+use App\Models\CommercialBillingBand;
 use App\Models\CommercialBillingRoute;
 use App\Models\CommercialImportBatch;
 use App\Models\CommercialReadingRouteStat;
@@ -353,6 +354,55 @@ class CrossFileReport
 
             return $out;
         });
+
+        // Phase 8h: the summary DERIVED from the detailed report against the one an officer uploaded, column by column, route by route and in total
+        $this->part($parts, $b, 'derived', 'The detailed report against the uploaded billing summary, every column', ['billing'], function () use ($b) {
+            $w = $b['windows']['billing'];
+
+            return $this->derivedComparison((int) $b['region_id'], $w['from'] ?? null, $w['to'] ?? null, (bool) $b['district_limited']);
+        });
+    }
+
+    /**
+     * Every uploaded billing summary that has a derived twin (same region, customer segment and identical period) inside the billing window, compared by
+     * DerivedSummaryCheck. Only what the viewer's scope reaches is read; a district user gets no region-wide total and no band table.
+     *
+     * @return array<string, mixed>
+     */
+    protected function derivedComparison(int $regionId, ?string $from, ?string $to, bool $districtLimited): array
+    {
+        $batches = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)->where('region_id', $regionId)->notVoided()
+            ->when($from !== null && $to !== null, fn ($q) => $q->whereDate('period_from', '<=', $to)->whereDate('period_to', '>=', $from))->orderBy('id')->get();
+
+        $pairs = [];
+
+        foreach ($batches->groupBy(fn (CommercialImportBatch $x) => $x->customer_segment.'|'.$x->period_from->toDateString().'|'.$x->period_to->toDateString()) as $group) {
+            $uploaded = $group->filter(fn (CommercialImportBatch $x) => ! $x->isDerived())->last();
+            $derived = $group->filter(fn (CommercialImportBatch $x) => $x->isDerived())->last();
+
+            if ($uploaded && $derived) {
+                $pairs[] = [$uploaded, $derived];
+            }
+        }
+
+        usort($pairs, fn (array $x, array $y) => [$y[0]->period_to->toDateString(), $y[0]->id] <=> [$x[0]->period_to->toDateString(), $x[0]->id]);
+        $pairs = array_slice($pairs, 0, 6);
+        $check = new DerivedSummaryCheck;
+        $tolerance = ['money' => (float) config('gwl.commercial_x12_money_tolerance', 0.10), 'volume' => (float) config('gwl.commercial_x12_volume_tolerance', 0.5)];
+        $rowsOf = fn (CommercialImportBatch $x) => $this->scopeBillingRoutesForActor(CommercialBillingRoute::query()->where('batch_id', $x->id))->get()->map(fn ($r) => $r->toArray())->all();
+        $bandsOf = fn (CommercialImportBatch $x) => $districtLimited ? null : CommercialBillingBand::query()->where('batch_id', $x->id)->get()->map(fn ($r) => $r->toArray())->all();
+        $out = [];
+
+        foreach ($pairs as [$uploaded, $derived]) {
+            $out[] = [
+                'uploaded_batch' => (int) $uploaded->id, 'derived_batch' => (int) $derived->id, 'segment' => (string) $uploaded->customer_segment,
+                'period' => CommercialPeriods::describe($uploaded->period_from, $uploaded->period_to),
+                'counted' => CommercialPeriods::preferredSource() === 'derived' ? 'the summary derived from the detailed report' : 'the uploaded summary',
+                'result' => $check->compare($rowsOf($uploaded), $rowsOf($derived), $bandsOf($uploaded), $bandsOf($derived), $tolerance, ! $districtLimited),
+            ];
+        }
+
+        return ['available' => $out !== [], 'pairs' => $out, 'tolerance' => $tolerance, 'district_limited' => $districtLimited, 'details_period' => $from !== null && $to !== null ? CommercialPeriods::describe($from, $to) : null];
     }
 
     /**
@@ -363,7 +413,7 @@ class CrossFileReport
      */
     protected function summaryFigures(int $regionId, string $from, string $to): array
     {
-        $batches = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)->where('region_id', $regionId)->notVoided()
+        $batches = CommercialImportBatch::query()->ofType(CommercialImportBatch::TYPE_BILLING_SUMMARY)->where('source', CommercialImportBatch::SOURCE_UPLOAD)->where('region_id', $regionId)->notVoided()   // Phase 8h: a derived summary would only be compared with its own source
             ->whereDate('period_from', '<=', $to)->whereDate('period_to', '>=', $from)->orderBy('id')->get()
             ->groupBy('customer_segment')->map(fn ($group) => $group->last())->values();
 

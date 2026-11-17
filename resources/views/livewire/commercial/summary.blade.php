@@ -76,7 +76,7 @@
                     <x-ui.stat-tile label="Estimated share of volume" :value="$pct($b['estimation'])" icon="gauge" tone="warning" />
                     <x-ui.stat-tile label="Unbilled rate" :value="$pct($b['unbilled_rate'])" icon="triangle-alert" tone="danger" />
                 </div>
-                <p class="ui-hint" style="margin-top:6px">Snapshot period: {{ $b['snapshot']['period_label'] }} ({{ $b['snapshot']['segment_label'] }}). Targets are placeholders until the Commercial team confirms them.</p>
+                <p class="ui-hint" style="margin-top:6px">Snapshot period: {{ $b['snapshot']['period_label'] }} ({{ $b['snapshot']['segment_label'] }}){{ ($b['snapshot']['is_derived'] ?? false) ? ', '.\App\Services\Commercial\BillingAnalyticsService::DERIVED_NOTE : '' }}. Targets are placeholders until the Commercial team confirms them.</p>
             @endif
         </div>
 

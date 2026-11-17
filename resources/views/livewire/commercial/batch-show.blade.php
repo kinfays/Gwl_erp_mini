@@ -35,6 +35,34 @@
         <p class="form-hint" style="margin-top:10px">A newer batch now supplies this data; this one stays on record but is no longer used.</p>
     @endif
 
+    @if ($notUsed)
+        <p class="form-hint" style="margin-top:10px" data-testid="not-used">{{ ucfirst($notUsed) }}. It stays stored; the setting "Count" for billing summaries (Commercial > Settings) decides which of the two counts.</p>
+    @endif
+
+    @if ($batch->isDerived())
+        @php $dt = $batch->control_totals ?? []; $src = $batch->derivedFrom; @endphp
+        <div class="pg" style="margin-top:10px" data-testid="derived-panel">
+            <div class="pg-head"><span class="pg-title">Derived from the detailed billing report</span></div>
+            <div style="padding:12px;font-size:12px">
+                <p>Built from the rollups of detailed billing batch @if ($src)<a href="{{ route('commercial.batches.show', $src) }}">#{{ $src->id }}</a>@else #{{ $batch->derived_from_batch_id }}@endif ({{ $dt['routes'] ?? 0 }} routes). It has no workbook and follows that batch: void or discard the detailed batch and this one goes with it. Volumes use the Consume factor {{ $dt['consume_factor'] ?? 1 }} (the unit of Consume is pending confirmation by the Commercial team).</p>
+                @if (($dt['parked_routes'] ?? 0) > 0)
+                    <p class="form-error">{{ $dt['parked_routes'] }} route(s) of the detailed report are not in this summary because their district is not known yet: {{ implode(', ', $dt['parked_labels'] ?? []) }}. Resolve them on the detailed batch and this summary is refreshed.</p>
+                @endif
+                @if (($dt['identity_flagged'] ?? 0) > 0)
+                    <p class="form-error">{{ $dt['identity_flagged'] }} of {{ $dt['identity_checked'] ?? 0 }} routes do not satisfy closing balance = total receivable - total payments (they are shown as the report gives them, never forced to balance):</p>
+                    <ul>
+                        @foreach (($dt['identity_failures'] ?? []) as $f)
+                            <li>{{ $f['district'] }} {{ $f['route'] }}: closing {{ number_format($f['closing'], 2) }}, receivable less payments {{ number_format($f['receivable_less_payments'], 2) }} (difference {{ number_format($f['difference'], 2) }})</li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p>Every route satisfies closing balance = total receivable - total payments.</p>
+                @endif
+                <p>Band table (category 611): {{ $dt['bands'] ?? 'not built' }}.@if (($dt['customers_in_neither_column'] ?? 0) > 0) {{ $dt['customers_in_neither_column'] }} customer(s) have a bill status that is neither billed nor unbilled and are in "number of customers" only.@endif</p>
+            </div>
+        </div>
+    @endif
+
     @if ($confirmingVoid)
         <div class="pg">
             <div class="pg-head"><span class="pg-title">Void this batch</span></div>
