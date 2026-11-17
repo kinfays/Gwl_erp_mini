@@ -496,7 +496,10 @@ class AssetImportService
         $generalText = mb_strtolower(trim($cells['general_use'] ?? ''));
         $general = null;
 
-        if ($generalText === '' || in_array($generalText, ['no', 'n', '0', 'false'], true)) {
+        if ($generalText === '' && trim($cells['assigned_to'] ?? '') === '' && in_array($type, IctAsset::GENERAL_USE_BY_DEFAULT_TYPES, true)) {
+            // Left blank on a type that is shared by default (a Counting Machine) with nobody named: general use. "No" still means no.
+            $general = true;
+        } elseif ($generalText === '' || in_array($generalText, ['no', 'n', '0', 'false'], true)) {
             $general = false;
         } elseif (in_array($generalText, ['yes', 'y', '1', 'true'], true)) {
             $general = true;

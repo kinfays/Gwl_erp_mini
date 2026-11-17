@@ -3,7 +3,7 @@
     The Livewire component supplies two actions, one that toggles a value and one that clears the choice.
         <x-ui.multi-select label="Asset type" all-label="All types" :options="['PC' => 'Desktop', ...]"
             :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
-    Nothing selected means "all".
+    Nothing selected means "all". Optional `select` is a third action that ticks every option (a "Select all" link shows).
 --}}
 @props([
     'options' => [],
@@ -12,6 +12,7 @@
     'allLabel' => 'All',
     'toggle',
     'clear',
+    'select' => null,
 ])
 
 @php
@@ -21,6 +22,7 @@
         $count === 1 => $options[$selected[0]] ?? $selected[0],
         default => $count.' selected',
     };
+    $total = count($options);
 @endphp
 
 <div class="ui-multiselect" x-data="{ open: false }" x-on:click.outside="open = false" x-on:keydown.escape="open = false">
@@ -34,6 +36,10 @@
             <input type="checkbox" @checked($count === 0) wire:click="{{ $clear }}">
             <span>{{ $allLabel }}</span>
         </label>
+
+        @if ($select && $total > 1)
+            <button type="button" class="btn btn-ghost btn-sm" wire:click="{{ $select }}" @disabled($count === $total)>Select all ({{ $total }})</button>
+        @endif
 
         @foreach ($options as $value => $optionLabel)
             <label class="ui-column-option" wire:key="multi-{{ $toggle }}-{{ $value }}">

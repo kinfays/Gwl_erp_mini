@@ -2,9 +2,19 @@
 
 namespace App\Services\Assets;
 
+use App\Models\AgentReport;
 use App\Models\AuditLog;
 use App\Models\IctAsset;
+use App\Models\IctAssetAssignment;
+use App\Models\IctAssetAuditLine;
+use App\Models\IctAssetIssueReport;
+use App\Models\IctAssetMaintenance;
+use App\Models\IctAssetTransfer;
+use App\Models\MdmDevice;
 use App\Models\Permission;
+use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +44,126 @@ class AssetRecordService
             ->where('asset_name_key', IctAsset::nameKey($name))
             ->when($ignoreId, fn ($query, $id) => $query->whereKeyNot($id))
             ->exists();
+    }
+
+    public const DELETE_PERMISSION = 'assets.delete';
+
+    /** Whether this person holds the permission to delete assets (super_admin always does). */
+    public static function mayDelete(User $actor): bool
+    {
+        return $actor->hasRoles('super_admin') || $actor->hasPermission(self::DELETE_PERMISSION);
+    }
+
+    /**
+     * Whether $actor may CHANGE this asset: the write scope. Anyone not ICT-scoped may; a regional or Head Office ICT
+     * user only the assets stamped with their own region (the service-level twin of scopeAssetsForActor(); reading is
+     * wider than this and is not decided here).
+     */
+    public static function mayWrite(User $actor, IctAsset $asset): bool
+    {
+        if (! $actor->isScopedIct()) {
+            return true;
+        }
+
+        $regionId = ($actor->employee ?? $actor->employeeByStaffId)?->region_id;
+
+        return $regionId !== null && (int) $regionId === (int) $asset->region_id;
+    }
+
+    /**
+     * Why an asset cannot be deleted, as short phrases ([] = it can). A hard delete would cascade away its assignment,
+     * transfer, maintenance and stock-check history, orphan its issue reports and is blocked by the database for a
+     * managed phone, so anything that has such a trail is refused (retire it instead); only a record that never did
+     * anything can go.
+     *
+     * @return array<int, string>
+     */
+    public static function deletionBlockers(IctAsset $asset): array
+    {
+        $blockers = [];
+
+        if ($asset->assigned_to_employee_id || IctAssetAssignment::query()->where('ict_asset_id', $asset->id)->where('is_current', 1)->exists()) {
+            $blockers[] = 'it is currently assigned to a person';
+        }
+
+        // Any row, even a deleted one: the foreign key to the asset is RESTRICT.
+        if (MdmDevice::query()->where('ict_asset_id', $asset->id)->exists()) {
+            $blockers[] = 'it is linked to a managed phone (MDM)';
+        }
+
+        $history = [
+            'assignment record' => IctAssetAssignment::query()->where('ict_asset_id', $asset->id)->count(),
+            'transfer record' => IctAssetTransfer::query()->where(fn ($q) => $q->where('ict_asset_id', $asset->id)->orWhere('related_asset_id', $asset->id))->count(),
+            'maintenance record' => IctAssetMaintenance::query()->where('ict_asset_id', $asset->id)->count(),
+            'issue report' => IctAssetIssueReport::query()->where('linked_asset_id', $asset->id)->count(),
+            'stock-check line' => IctAssetAuditLine::query()->where('ict_asset_id', $asset->id)->count(),
+            'agent report' => AgentReport::query()->where('ict_asset_id', $asset->id)->count(),
+        ];
+
+        foreach ($history as $label => $count) {
+            if ($count > 0) {
+                $blockers[] = "it has {$count} {$label}".($count === 1 ? '' : 's');
+            }
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * Delete one asset. The permission is checked here (a hidden button is only a courtesy), then, inside one
+     * transaction, the asset is re-read `lockForUpdate` and the write scope and the blockers are judged on THAT copy.
+     *
+     * - no permission: AuthorizationException (403);
+     * - gone, or outside the actor's write scope: ModelNotFoundException (404, never "forbidden", so another region's
+     *   asset is not confirmed to exist);
+     * - assigned, MDM-linked or with a history: ValidationException on `delete` with the reasons; nothing changes.
+     *
+     * One audit row holds ids and codes only (never the name, serial, IMEI or holder).
+     */
+    public function delete(IctAsset $asset, ?User $actor = null): void
+    {
+        $actor ??= Auth::user();
+
+        if (! $actor || ! self::mayDelete($actor)) {
+            throw new AuthorizationException('You do not have permission to delete assets.');
+        }
+
+        DB::transaction(function () use ($asset, $actor) {
+            $locked = IctAsset::query()->lockForUpdate()->find($asset->id);
+
+            if (! $locked || ! self::mayWrite($actor, $locked)) {
+                throw (new ModelNotFoundException)->setModel(IctAsset::class, [$asset->id]);
+            }
+
+            $blockers = self::deletionBlockers($locked);
+
+            if ($blockers !== []) {
+                throw ValidationException::withMessages([
+                    'delete' => 'This asset cannot be deleted because '.implode(', and ', $blockers).'. Set its status to Retired instead.',
+                ]);
+            }
+
+            $record = [
+                'id' => $locked->id,
+                'device_category' => $locked->device_category,
+                'asset_type' => $locked->asset_type,
+                'status' => $locked->status,
+                'ict_asset_model_id' => $locked->ict_asset_model_id,
+                'region_id' => $locked->region_id,
+                'district_id' => $locked->district_id,
+            ];
+
+            $locked->delete();
+
+            AuditLog::record(
+                action: "delete_{$locked->device_category}",
+                module: Permission::MODULE_ASSETS,
+                targetType: 'ict_assets',
+                targetId: $record['id'],
+                old: $record,
+                new: null,
+            );
+        });
     }
 
     /** Whether another asset already uses this serial number (compared in lower case, as MySQL's index does). */

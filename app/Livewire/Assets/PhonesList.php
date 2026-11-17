@@ -4,9 +4,12 @@ namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\AsksAssignmentChangeReason;
 use App\Livewire\Assets\Concerns\CreatesModelInline;
+use App\Livewire\Assets\Concerns\DeletesAssets;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
+use App\Livewire\Assets\Concerns\FiltersByLocationAndModel;
+use App\Livewire\Assets\Concerns\PrefillsLocationFromAssignee;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Assets\Concerns\SearchesEmployeePicker;
@@ -37,11 +40,14 @@ class PhonesList extends Component
 {
     use AsksAssignmentChangeReason;
     use CreatesModelInline;
+    use DeletesAssets;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
     use FiltersByAssetTypes;
+    use FiltersByLocationAndModel;
     use HasSelectableColumns;
+    use PrefillsLocationFromAssignee;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
     use SearchesEmployeePicker;
@@ -110,7 +116,7 @@ class PhonesList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->analyticsFilterProperties()], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->locationModelFilterProperties(), ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
     }
@@ -136,6 +142,7 @@ class PhonesList extends Component
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
         $this->identityChecked = false;
+        $this->locationHint = null;
         $this->resetErrorBag();
         // Read-only: derived from the assignment history, never typed in or stored on the asset.
         $this->previousAssignedLabel = $asset->previousHolder()?->full_name;
@@ -174,6 +181,11 @@ class PhonesList extends Component
     {
         if (in_array($key, ['asset_type', 'serial_number', 'imei'], true)) {
             $this->refreshIdentityErrors();
+        }
+
+        // An explicit pick of a person suggests their district as the Location (still editable); see the trait.
+        if ($key === 'assigned_to_employee_id') {
+            $this->prefillLocationFromAssignee($value);
         }
 
         if ($key === 'asset_type' && $value === 'POS' && ! $this->editingAssetId && blank($this->form['assigned_to_employee_id'] ?? null)) {
@@ -394,6 +406,7 @@ class PhonesList extends Component
     protected function resetForm(): void
     {
         $this->previousAssignedLabel = null;
+        $this->locationHint = null;
         $this->identityChecked = false;
         $this->forgetOriginalAssignee();
         $this->form = [
@@ -425,6 +438,7 @@ class PhonesList extends Component
             'search' => $this->search,
             'status' => $this->status,
             'type' => $this->assetType,
+            ...$this->locationModelFilterValues(),
             ...$this->analyticsFilterValues(),
         ];
     }
@@ -452,6 +466,8 @@ class PhonesList extends Component
             ...$this->columnViewData(),
             ...$this->exportViewData('assets.export_inventory'),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
+            ...$this->locationModelViewData(),
+            ...$this->deleteViewData(),
             'mdmLinks' => $mdmEnabled && app(MdmAccessGuard::class)->has($this->actor(), 'assets.mdm_view'),
             'mdmPromptDevice' => $mdmEnabled && $this->mdmPromptDeviceId
                 ? app(MdmAccessGuard::class)->devices($this->actor())->with('asset.assignedTo')->find($this->mdmPromptDeviceId)

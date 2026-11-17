@@ -35,6 +35,11 @@ class NetworkListExportController extends AssetListExportController
         return 'assets.network';
     }
 
+    protected function category(): ?string
+    {
+        return IctAsset::DEVICE_CATEGORY_NETWORK;
+    }
+
     protected function query(array $filters): Builder
     {
         return app(AssetListQuery::class)->assets(

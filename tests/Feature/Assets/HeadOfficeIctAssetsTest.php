@@ -100,11 +100,11 @@ class HeadOfficeIctAssetsTest extends TestCase
             ->assertSee('Tema District (Greater Accra)')
             ->assertSee('Obuasi District (Ashanti)');
 
-        $screen->set('districtId', (string) $this->obuasiDistrict->id)
+        $screen->set('districtIds', [$this->obuasiDistrict->id])
             ->assertSee('Kumasi Laptop')
             ->assertDontSee('Accra Laptop');
 
-        $screen->set('districtId', (string) $this->temaDistrict->id)
+        $screen->set('districtIds', [$this->temaDistrict->id])
             ->assertSee('Accra Laptop')
             ->assertDontSee('Kumasi Laptop');
 

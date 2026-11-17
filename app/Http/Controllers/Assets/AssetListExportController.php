@@ -7,6 +7,8 @@ use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Models\AuditLog;
+use App\Models\District;
+use App\Models\IctAssetModel;
 use App\Models\Permission;
 use App\Services\Assets\AssetListColumns;
 use App\Support\ListColumns;
@@ -31,7 +33,6 @@ abstract class AssetListExportController extends Controller
         'q' => 'search',
         'status' => 'status',
         'type' => 'type',
-        'district' => 'district',
         'ups' => 'ups',
         'age_min' => 'age_min',
         'age_max' => 'age_max',
@@ -130,7 +131,19 @@ abstract class AssetListExportController extends Controller
         ]);
     }
 
-    /** @return array<string, string> the list filters named as AssetListQuery names them; blank when not sent */
+    /** The device category of a list export (asset, phone, network); null for a list that is not of devices. */
+    protected function category(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * The list filters named as AssetListQuery names them; blank when not sent. `districts` and `models` are lists of
+     * ids that are cut down to what this user may see (never trusted as sent); an old single ?district= / ?district_id=
+     * is folded into `districts` first.
+     *
+     * @return array<string, string|array<int, int>>
+     */
     protected function filters(Request $request): array
     {
         $filters = [];
@@ -140,7 +153,31 @@ abstract class AssetListExportController extends Controller
             $filters[$filter] = is_scalar($value) ? trim((string) $value) : '';
         }
 
+        if ($this->category() !== null) {
+            $districts = [...$this->idsFrom($request->query('districts')), ...$this->idsFrom($request->query('district')), ...$this->idsFrom($request->query('district_id'))];
+
+            $filters['districts'] = $this->permittedDistrictIds($districts);
+            $filters['models'] = $this->permittedModelIds($this->idsFrom($request->query('models')), $this->category());
+        }
+
         return $filters;
+    }
+
+    /** @return array<int, mixed> a query value that may be one thing or a list, as a list */
+    private function idsFrom(mixed $value): array
+    {
+        return is_array($value) ? array_values($value) : (is_scalar($value) && $value !== '' ? [$value] : []);
+    }
+
+    /** Names for a list filter's ids, for the summary line of a PDF ("districts Tema, Kumasi Central"). */
+    private function describeIds(string $filter, array $ids): string
+    {
+        return match ($filter) {
+            'districts' => District::query()->whereIn('id', $ids)->orderBy('district_name')->pluck('district_name')->implode(', '),
+            'models' => IctAssetModel::query()->with('manufacturer')->whereIn('id', $ids)->orderBy('name')->get()
+                ->map(fn ($model) => trim(($model->manufacturer?->name ?? '').' '.$model->name))->implode(', '),
+            default => implode(', ', $ids),
+        };
     }
 
     /** One line saying what the file holds, e.g. "Filters: status Damaged; search "dell"". */
@@ -149,7 +186,7 @@ abstract class AssetListExportController extends Controller
         $parts = [];
 
         foreach (array_filter($filters, fn ($value) => filled($value)) as $name => $value) {
-            $parts[] = str_replace('_', ' ', $name).' '.$value;
+            $parts[] = str_replace('_', ' ', $name).' '.(is_array($value) ? $this->describeIds($name, $value) : $value);
         }
 
         return $parts === [] ? 'No filters: every row you may see.' : 'Filters: '.implode('; ', $parts);

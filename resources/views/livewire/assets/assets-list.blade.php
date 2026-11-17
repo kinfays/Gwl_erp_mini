@@ -27,7 +27,7 @@
         <div class="ui-toolbar" role="search" aria-label="Filter assets">
             <div class="ui-input-wrap toolbar-grow">
                 <x-ui.icon name="search" class="ui-input-icon" />
-                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, assignee" aria-label="Search assets">
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, model, assignee" aria-label="Search assets">
             </div>
             <select wire:model.live="status" class="form-input" aria-label="Status">
                 <option value="">All statuses</option>
@@ -36,12 +36,8 @@
                 @endforeach
             </select>
             <x-ui.multi-select label="Asset type" all-label="All types" :options="$assetTypes" :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
-            <select wire:model.live="districtId" class="form-input" aria-label="District">
-                <option value="">All districts</option>
-                @foreach ($districts as $district)
-                    <option value="{{ $district->id }}">{{ $district->district_name.($seesAllRegions && $district->region ? ' ('.$district->region->region_name.')' : '') }}</option>
-                @endforeach
-            </select>
+            <x-ui.multi-select label="Model" all-label="All models" :options="$modelOptions" :selected="$selectedModels" toggle="toggleModel" clear="clearModels" select="selectAllModels" />
+            <x-ui.multi-select label="District" all-label="All districts" :options="$districtOptions" :selected="$selectedDistricts" toggle="toggleDistrict" clear="clearDistricts" select="selectAllDistricts" />
             <select wire:model.live="ups" class="form-input" aria-label="UPS">
                 <option value="">All UPS states</option>
                 @foreach ($upsFilters as $value => $label)
@@ -159,13 +155,23 @@
                         </td>
                         @endif
                         <td class="actions">
-                            @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
+                            @php($inWriteScope = ! $regionLimited || (int) $asset->region_id === (int) $ownRegionId)
+                            <a href="{{ route('assets.show', $asset) }}" class="btn btn-ghost btn-sm btn-icon" title="View" aria-label="View {{ $asset->asset_name }}">
+                                <x-ui.icon name="eye" />
+                            </a>
+                            @if ($canEdit && $inWriteScope)
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
                                     <x-ui.icon name="pencil" />
                                 </button>
-                            @else
-                                <span class="ui-hint">Read only</span>
                             @endif
+                            @if ($canDelete && $inWriteScope)
+                                <button type="button" wire:click="confirmDelete({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Delete" aria-label="Delete {{ $asset->asset_name }}">
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            @endif
+                            @unless ($inWriteScope && ($canEdit || $canDelete))
+                                <span class="ui-hint">Read only</span>
+                            @endunless
                         </td>
                     </tr>
                 @empty
@@ -217,7 +223,7 @@
                         search="searchEmployees"
                         :initial-label="$assignedToLabel"
                         placeholder="Unassigned: search by name or staff ID"
-                        :live="(bool) $editingAssetId"
+                        :live="true"
                     />
                 @endunless
                 <x-ui.input label="Previous Assigned" id="f-previous-assigned" :value="$previousAssignedLabel ?: 'None'" disabled :error="false" />
@@ -228,7 +234,7 @@
                         <option value="{{ $option }}">{{ $option }}</option>
                     @endforeach
                 </x-ui.select>
-                <x-ui.select label="Location" wire:model.defer="form.district_id">
+                <x-ui.select label="Location" wire:model.defer="form.district_id" :hint="$locationHint">
                     <option value="">Select location</option>
                     @foreach ($formDistricts as $district)
                         <option value="{{ $district->id }}">{{ $district->district_name }}</option>
@@ -300,5 +306,9 @@
                 </button>
             </x-slot:footer>
         </x-ui.modal>
+    @endif
+
+    @if ($deletingAssetId)
+        <x-assets.delete-modal :name="$deletingName" />
     @endif
 </div>

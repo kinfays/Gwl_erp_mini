@@ -3,9 +3,11 @@
 namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\CreatesModelInline;
+use App\Livewire\Assets\Concerns\DeletesAssets;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
+use App\Livewire\Assets\Concerns\FiltersByLocationAndModel;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
@@ -24,10 +26,12 @@ use Livewire\WithPagination;
 class NetworkList extends Component
 {
     use CreatesModelInline;
+    use DeletesAssets;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
     use FiltersByAssetTypes;
+    use FiltersByLocationAndModel;
     use HasSelectableColumns;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
@@ -84,7 +88,7 @@ class NetworkList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->analyticsFilterProperties()], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'perPage', ...$this->locationModelFilterProperties(), ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
 
@@ -261,6 +265,7 @@ class NetworkList extends Component
             'search' => $this->search,
             'status' => $this->status,
             'type' => $this->assetType,
+            ...$this->locationModelFilterValues(),
             ...$this->analyticsFilterValues(),
         ];
     }
@@ -289,6 +294,8 @@ class NetworkList extends Component
             ...$this->columnViewData(),
             ...$this->exportViewData('assets.export_inventory'),
             'history' => $this->editingAssetId ? $this->historyFor($this->editingAssetId) : collect(),
+            ...$this->locationModelViewData(),
+            ...$this->deleteViewData(),
             'assets' => $assets,
             'assetTypes' => IctAsset::ASSET_TYPES[self::CATEGORY],
             'selectedTypes' => $this->selectedAssetTypes(),

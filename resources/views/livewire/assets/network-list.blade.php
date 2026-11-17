@@ -20,7 +20,7 @@
         <div class="ui-toolbar" role="search" aria-label="Filter network devices">
             <div class="ui-input-wrap toolbar-grow">
                 <x-ui.icon name="search" class="ui-input-icon" />
-                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, IP, SSID" aria-label="Search network devices">
+                <input type="text" wire:model.live="search" class="form-input ui-input has-icon" placeholder="Search name, serial, model, IP, SSID" aria-label="Search network devices">
             </div>
             <select wire:model.live="status" class="form-input" aria-label="Status">
                 <option value="">All statuses</option>
@@ -29,6 +29,8 @@
                 @endforeach
             </select>
             <x-ui.multi-select label="Device type" all-label="All types" :options="$assetTypes" :selected="$selectedTypes" toggle="toggleAssetType" clear="clearAssetTypes" />
+            <x-ui.multi-select label="Model" all-label="All models" :options="$modelOptions" :selected="$selectedModels" toggle="toggleModel" clear="clearModels" select="selectAllModels" />
+            <x-ui.multi-select label="District" all-label="All districts" :options="$districtOptions" :selected="$selectedDistricts" toggle="toggleDistrict" clear="clearDistricts" select="selectAllDistricts" />
             <select wire:model.live="perPage" class="form-input" aria-label="Rows per page">
                 <option value="15">15 per page</option>
                 <option value="30">30 per page</option>
@@ -133,13 +135,23 @@
                             <td><x-ui.status-pill domain="asset" :status="$asset->status" /></td>
                         @endif
                         <td class="actions">
-                            @if ($canEdit && (! $regionLimited || (int) $asset->region_id === (int) $ownRegionId))
+                            @php($inWriteScope = ! $regionLimited || (int) $asset->region_id === (int) $ownRegionId)
+                            <a href="{{ route('assets.show', $asset) }}" class="btn btn-ghost btn-sm btn-icon" title="View" aria-label="View {{ $asset->asset_name }}">
+                                <x-ui.icon name="eye" />
+                            </a>
+                            @if ($canEdit && $inWriteScope)
                                 <button type="button" wire:click="openEdit({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Edit" aria-label="Edit {{ $asset->asset_name }}">
                                     <x-ui.icon name="pencil" />
                                 </button>
-                            @else
-                                <span class="ui-hint">Read only</span>
                             @endif
+                            @if ($canDelete && $inWriteScope)
+                                <button type="button" wire:click="confirmDelete({{ $asset->id }})" class="btn btn-ghost btn-sm btn-icon" title="Delete" aria-label="Delete {{ $asset->asset_name }}">
+                                    <x-ui.icon name="trash-2" />
+                                </button>
+                            @endif
+                            @unless ($inWriteScope && ($canEdit || $canDelete))
+                                <span class="ui-hint">Read only</span>
+                            @endunless
                         </td>
                     </tr>
                 @empty
@@ -217,5 +229,9 @@
                 </button>
             </x-slot:footer>
         </x-ui.modal>
+    @endif
+
+    @if ($deletingAssetId)
+        <x-assets.delete-modal :name="$deletingName" />
     @endif
 </div>

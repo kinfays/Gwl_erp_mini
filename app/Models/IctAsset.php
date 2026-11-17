@@ -54,6 +54,12 @@ class IctAsset extends Model
      */
     public const PERSONALLY_ASSIGNED_TYPES = ['PC', 'AIO', 'Laptop', 'PRT', 'PTC', 'Ph', 'SIM'];
 
+    /**
+     * Types that start out as general use (shared, no holder) when a new device of that type is created on the form or
+     * imported with the General Use column left blank. It is only a default: the box can be unticked, or "No" typed.
+     */
+    public const GENERAL_USE_BY_DEFAULT_TYPES = ['CM'];
+
     public const DEVICE_CATEGORY_ASSET = 'asset';
     public const DEVICE_CATEGORY_PHONE = 'phone';
     public const DEVICE_CATEGORY_NETWORK = 'network';
@@ -80,6 +86,8 @@ class IctAsset extends Model
             // Receipt/label printer: shared equipment (a counter or a vehicle), so not in PERSONALLY_ASSIGNED_TYPES, and
             // small enough that it is not on the building UPS (not in UPS_ASSET_TYPES). Counted in the Printers card.
             'TPR' => 'Thermal Printer',
+            // Shared counter equipment (cash counting): general use by default, so not in PERSONALLY_ASSIGNED_TYPES.
+            'CM' => 'Counting Machine',
         ],
         self::DEVICE_CATEGORY_PHONE => [
             'POS' => 'POS Terminal',

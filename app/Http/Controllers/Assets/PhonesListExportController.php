@@ -34,6 +34,11 @@ class PhonesListExportController extends AssetListExportController
         return 'assets.phones';
     }
 
+    protected function category(): ?string
+    {
+        return IctAsset::DEVICE_CATEGORY_PHONE;
+    }
+
     protected function query(array $filters): Builder
     {
         return app(AssetListQuery::class)->assets(

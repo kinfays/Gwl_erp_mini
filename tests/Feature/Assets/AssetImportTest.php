@@ -332,6 +332,26 @@ class AssetImportTest extends TestCase
         $this->assertSame(0, $preview['warning_count']);
     }
 
+    public function test_a_counting_machine_with_the_general_use_column_blank_is_general_use(): void
+    {
+        $glory = IctAssetManufacturer::query()->create(['name' => 'Glory']);
+        IctAssetModel::query()->create(['name' => 'UW-F 200', 'category' => 'CM', 'ict_asset_manufacturer_id' => $glory->id, 'is_active' => true]);
+
+        $cm = ['asset_type' => 'Counting Machine', 'manufacturer' => 'Glory', 'model' => 'UW-F 200'];
+        $rows = [
+            $this->row([...$cm, 'asset_name' => 'Counter Blank', 'assigned_to' => '', 'general_use' => '']),
+            $this->row([...$cm, 'asset_name' => 'Counter No', 'assigned_to' => '', 'general_use' => 'No']),
+            $this->row([...$cm, 'asset_name' => 'Counter Held', 'assigned_to' => 'GW1001', 'general_use' => '']),
+        ];
+
+        $this->preview($this->ict, $this->workbook($rows));
+        $this->assertSame(3, session('asset_import_preview')['valid_count']);
+        $this->confirmImport($this->ict);
+
+        $general = IctAsset::query()->whereIn('asset_name', ['Counter Blank', 'Counter No', 'Counter Held'])->pluck('is_general_use', 'asset_name')->map(fn ($v) => (bool) $v)->all();
+        $this->assertSame(['Counter Blank' => true, 'Counter No' => false, 'Counter Held' => false], $general);
+    }
+
     public function test_a_tag_already_in_use_is_only_a_warning(): void
     {
         $this->makeAsset($this->accra, ['tag_no' => 'GWCL/FOE/2026/777']);

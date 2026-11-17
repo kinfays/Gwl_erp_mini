@@ -4,16 +4,18 @@ namespace App\Livewire\Assets;
 
 use App\Livewire\Assets\Concerns\AsksAssignmentChangeReason;
 use App\Livewire\Assets\Concerns\CreatesModelInline;
+use App\Livewire\Assets\Concerns\DeletesAssets;
 use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
+use App\Livewire\Assets\Concerns\FiltersByLocationAndModel;
+use App\Livewire\Assets\Concerns\PrefillsLocationFromAssignee;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Assets\Concerns\SearchesEmployeePicker;
 use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Livewire\Concerns\HasSelectableColumns;
 use App\Models\Department;
-use App\Models\District;
 use App\Models\Employee;
 use App\Models\IctAsset;
 use App\Models\IctAssetModel;
@@ -32,11 +34,14 @@ class AssetsList extends Component
 {
     use AsksAssignmentChangeReason;
     use CreatesModelInline;
+    use DeletesAssets;
     use EnforcesModuleAccess;
     use ExportsAssetLists;
     use FiltersByAnalytics;
     use FiltersByAssetTypes;
+    use FiltersByLocationAndModel;
     use HasSelectableColumns;
+    use PrefillsLocationFromAssignee;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
     use SearchesEmployeePicker;
@@ -49,8 +54,6 @@ class AssetsList extends Component
     public string $search = '';
 
     public string $status = '';
-
-    public string $districtId = '';
 
     /** ?ups= has_ups | no_ups | spoiled (AssetDashboardService::UPS_FILTERS); anything else means all. */
     #[Url(as: 'ups', except: '')]
@@ -102,7 +105,7 @@ class AssetsList extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'status', 'assetType', 'districtId', 'ups', 'perPage', ...$this->analyticsFilterProperties()], true)) {
+        if (in_array($name, ['search', 'status', 'assetType', 'ups', 'perPage', ...$this->locationModelFilterProperties(), ...$this->analyticsFilterProperties()], true)) {
             $this->resetPage();
         }
     }
@@ -141,6 +144,7 @@ class AssetsList extends Component
 
         $this->editingAssetId = $asset->id;
         $this->showForm = true;
+        $this->locationHint = null;
         // Read-only: derived from the assignment history, never typed in or stored on the asset.
         $this->previousAssignedLabel = $asset->previousHolder()?->full_name;
         $this->rememberOriginalAssignee($asset->assigned_to_employee_id);
@@ -322,6 +326,11 @@ class AssetsList extends Component
     /** Picking a type that carries no UPS (or no processor) drops whatever was entered for one. */
     public function updatedForm($value, $key): void
     {
+        // An explicit pick of a person suggests their district as the Location (still editable); see the trait.
+        if ($key === 'assigned_to_employee_id') {
+            $this->prefillLocationFromAssignee($value);
+        }
+
         // Ticking "General use" drops the holder, like the pool-car checkbox on vehicles.
         if ($key === 'is_general_use' && $value) {
             $this->form['assigned_to_employee_id'] = null;
@@ -329,6 +338,11 @@ class AssetsList extends Component
 
         if ($key !== 'asset_type') {
             return;
+        }
+
+        // Shared equipment (a Counting Machine) starts as general use on a NEW device with nobody picked yet; it can be unticked.
+        if (! $this->editingAssetId && in_array($value, IctAsset::GENERAL_USE_BY_DEFAULT_TYPES, true) && blank($this->form['assigned_to_employee_id'] ?? null)) {
+            $this->form['is_general_use'] = true;
         }
 
         if (! $this->formSupportsUps()) {
@@ -354,7 +368,7 @@ class AssetsList extends Component
             'search' => $this->search,
             'status' => $this->status,
             'type' => $this->assetType,
-            'district' => $this->districtId,
+            ...$this->locationModelFilterValues(),
             'ups' => $this->ups,
             ...$this->analyticsFilterValues(),
         ];
@@ -372,6 +386,7 @@ class AssetsList extends Component
     protected function resetForm(): void
     {
         $this->previousAssignedLabel = null;
+        $this->locationHint = null;
         $this->forgetOriginalAssignee();
         $this->form = [
             'asset_name' => '',
@@ -405,13 +420,6 @@ class AssetsList extends Component
             ->latest()
             ->paginate($this->perPage);
 
-        // List filter: follows what the actor can see, not the form's region lock.
-        $districts = District::query()
-            ->with('region')
-            ->when(! $this->actorSeesAllRegions(), fn ($query) => $query->where('region_id', $this->actorRegionId()))
-            ->orderBy('district_name')
-            ->get();
-
         $models = IctAssetModel::query()
             ->with('manufacturer')
             ->where('is_active', true)
@@ -433,7 +441,8 @@ class AssetsList extends Component
             ...$this->assignmentChangeViewData(),
             ...$this->columnViewData(),
             ...$this->exportViewData('assets.export_inventory'),
-            'districts' => $districts,
+            ...$this->locationModelViewData(),
+            ...$this->deleteViewData(),
             'formDistricts' => $this->actorRegionDistricts(),
             'actorRegion' => $this->actorRegion(),
             ...$this->regionViewData(),
