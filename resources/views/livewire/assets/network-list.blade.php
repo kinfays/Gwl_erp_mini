@@ -3,11 +3,18 @@
         $viewer = auth()->user();
         $canCreate = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.create');
         $canEdit = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.edit');
+        $canImport = $canCreate && ($viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.import'));
     @endphp
 
     <x-ui.page-header title="Network" description="Routers, switches, access points, MiFi and P2P radios.">
         @if ($canCreate)
             <x-slot:actions>
+                @if ($canImport)
+                    <a href="{{ route('assets.import.network') }}" class="btn btn-secondary">
+                        <x-ui.icon name="upload" />
+                        Upload network devices
+                    </a>
+                @endif
                 <button type="button" wire:click="openCreate" class="btn btn-primary">
                     <x-ui.icon name="plus" />
                     Add Network Device

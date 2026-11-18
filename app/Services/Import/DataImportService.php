@@ -472,12 +472,12 @@ class DataImportService
      *
      * @return Collection<int, Collection<int, mixed>>
      */
-    public function readStoredFile(string $path, string $extension = 'xlsx'): Collection
+    public function readStoredFile(string $path, string $extension = 'xlsx', bool $firstSheetOnly = false): Collection
     {
-        return $this->readPath($path, $extension);
+        return $this->readPath($path, $extension, $firstSheetOnly);
     }
 
-    protected function readPath(string $source, string $extension): Collection
+    protected function readPath(string $source, string $extension, bool $firstSheetOnly = false): Collection
     {
         // Excel 4.x opens an UploadedFile through getRealPath(), which is false for PHP's upload temp file on some
         // Windows setups ("Path must not be empty"). Read a copy kept under storage instead, where realpath() works.
@@ -491,7 +491,7 @@ class DataImportService
         }
 
         try {
-            $import = new RawRowsImport;
+            $import = new RawRowsImport($firstSheetOnly);
             Excel::import($import, $path);
 
             return $import->rows;

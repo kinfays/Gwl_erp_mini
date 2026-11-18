@@ -2,7 +2,6 @@
 
 namespace App\Exports\Assets\Sheets;
 
-use App\Services\Assets\AssetImportService;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
@@ -15,7 +14,7 @@ class ImportDataSheet extends SummarySheet implements WithColumnFormatting
     {
         $formats = [];
 
-        foreach (array_keys(AssetImportService::COLUMNS) as $index => $key) {
+        foreach (array_keys($this->headings) as $index) {
             $formats[Coordinate::stringFromColumnIndex($index + 1)] = NumberFormat::FORMAT_TEXT;
         }
 

@@ -146,7 +146,7 @@ class AssetImportTest extends TestCase
         $this->assertSame(1, $preview['warning_count']);
         $this->assertStringContainsString('Unassigned', $preview['warnings'][0]['message']);
 
-        $this->get(route('assets.import'))->assertOk()->assertSee('Preview Results')->assertSee('2 valid rows');
+        $this->get(route('assets.import'))->assertOk()->assertSee('Preview Results')->assertSee('2 valid');
 
         $this->confirmImport($this->ict)->assertSessionHasNoErrors()->assertSessionHas('success');
 
@@ -507,23 +507,46 @@ class AssetImportTest extends TestCase
 
     // ---------------------------------------------------------------- Template
 
-    public function test_the_template_has_the_columns_and_an_instructions_sheet(): void
+    public function test_the_template_has_the_columns_an_example_row_allowed_values_and_instructions(): void
     {
         $response = $this->actingAs($this->ict)->get(route('assets.import.template'))->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'tp').'.xlsx';
         file_put_contents($path, $response->baseResponse->getFile()->getContent());
 
         $book = IOFactory::load($path);
-        $this->assertSame(['Assets', 'Instructions'], $book->getSheetNames());
+        $this->assertSame(['Assets', 'Allowed values', 'Instructions'], $book->getSheetNames());
 
-        $headings = array_values(array_filter($book->getSheet(0)->toArray()[0]));
+        $data = $book->getSheet(0)->toArray();
+        $headings = array_values(array_filter($data[0]));
         $this->assertSame(array_map(fn ($c) => $c[0], array_values(AssetImportService::COLUMNS)), $headings);
         $this->assertContains('Asset Tag', $headings);
         $this->assertContains('Manufacturer', $headings);
         $this->assertContains('Warranty Expires', $headings);
+        $this->assertCount(2, $data, 'headings and exactly one example row');
+        $this->assertStringStartsWith('EXAMPLE - ', $data[1][0]);
 
-        $text = json_encode($book->getSheet(1)->toArray());
-        $this->assertStringContainsString('Thermal Printer', $text);
+        $allowed = json_encode($book->getSheet(1)->toArray());
+        $this->assertStringContainsString('Thermal Printer', $allowed);
+        $this->assertStringContainsString('Accra Central', $allowed);
+        $this->assertStringNotContainsString('Kumasi Central', $allowed);
+
+        $text = json_encode($book->getSheet(2)->toArray());
         $this->assertStringContainsString('only CREATES assets', $text);
+    }
+
+    public function test_the_template_example_row_is_never_imported(): void
+    {
+        $response = $this->actingAs($this->ict)->get(route('assets.import.template'))->assertOk();
+        $path = tempnam(sys_get_temp_dir(), 'tp').'.xlsx';
+        file_put_contents($path, $response->baseResponse->getFile()->getContent());
+
+        // The untouched template: only the example row, which is ignored, so there is nothing to import.
+        $this->preview($this->ict, new UploadedFile($path, 'template.xlsx', null, null, true));
+        $preview = session('asset_import_preview');
+
+        $this->assertFalse($preview['can_confirm']);
+        $this->assertSame(1, $preview['example_rows']);
+        $this->assertStringContainsString('no data rows', $preview['errors'][0]['message']);
+        $this->assertSame(0, IctAsset::query()->count());
     }
 }

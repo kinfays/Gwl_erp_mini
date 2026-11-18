@@ -3,11 +3,18 @@
         $viewer = auth()->user();
         $canCreate = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.create');
         $canEdit = $viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.edit');
+        $canImport = $canCreate && ($viewer->hasRoles('super_admin') || $viewer->hasPermission('assets.import'));
     @endphp
 
     <x-ui.page-header title="Phones" description="POS terminals, SIM cards and mobile phones.">
         @if ($canCreate)
             <x-slot:actions>
+                @if ($canImport)
+                    <a href="{{ route('assets.import.phones') }}" class="btn btn-secondary">
+                        <x-ui.icon name="upload" />
+                        Upload phones
+                    </a>
+                @endif
                 <button type="button" wire:click="openCreate" class="btn btn-primary">
                     <x-ui.icon name="plus" />
                     Add Phone Device
@@ -214,6 +221,7 @@
 
                 <x-assets.actor-region :region="$actorRegion" />
                 <x-ui.input label="Device Phone Number" type="tel" wire:model.defer="form.device_phone_number" />
+                <x-ui.input label="Date" type="date" wire:model.defer="form.purchased_at" hint="Date the phone was purchased or received." />
                 <div class="span-2">
                     <x-ui.textarea label="Status reason" wire:model.defer="form.status_reason" rows="2" hint="Required when the status is Damaged (e.g. faulty power button)." />
                 </div>

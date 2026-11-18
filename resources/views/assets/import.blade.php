@@ -1,4 +1,4 @@
-<x-erp-layout module="assets" title="Upload Assets">
+<x-erp-layout module="assets" :title="'Upload '.$profile->label">
     <div class="content">
         @php
             $steps = [
@@ -9,16 +9,50 @@
             $currentStep = $preview && ($preview['can_confirm'] ?? false) ? 3 : 2;
             $maxMb = (int) config('gwl.assets_import_max_mb', 5);
             $maxRows = (int) config('gwl.assets_import_max_rows', 1000);
+            $base = $profile->routeBase;
+            $tabs = [
+                'assets' => ['Assets', 'assets.import'],
+                'phones' => ['Phones', 'assets.import.phones'],
+                'network' => ['Network', 'assets.import.network'],
+            ];
+            $descriptions = [
+                'assets' => 'Add many computers, laptops, printers and other assets at once from an Excel sheet.',
+                'phones' => 'Add many phones, POS terminals and SIM cards at once from an Excel sheet.',
+                'network' => 'Add many routers, switches, access points and other network devices at once from an Excel sheet.',
+            ];
+            $checks = [
+                'assets' => [
+                    ['Names and serial numbers', 'Each must be unique, in the system and inside the file.'],
+                    ['Manufacturer and model', 'They must already exist. Add a missing one under Settings first.'],
+                    ['Your region only', 'The location must be in your own region; a row for another region is an error.'],
+                ],
+                'phones' => [
+                    ['Serial number or IMEI', 'A phone needs at least one. Neither may repeat in the file or in the system.'],
+                    ['Manufacturer and model', 'They must already exist (required for a phone). Add a missing one under Settings first.'],
+                    ['Holder and location', 'The holder is found by staff ID and never created. A blank location is the holder\'s district; one you type wins and must be in your region.'],
+                ],
+                'network' => [
+                    ['Names, serial numbers and MAC addresses', 'Each must be unique, in the system and inside the file.'],
+                    ['IP and MAC format', 'The IP address must be valid (and inside the location\'s ranges, where set); the MAC needs 12 hexadecimal digits.'],
+                    ['Your region only', 'The location must be in your own region. Passwords are not imported.'],
+                ],
+            ];
         @endphp
 
-        <x-ui.page-header title="Upload Assets" description="Add many assets at once from an Excel sheet. The upload only creates assets; it never changes or deletes one.">
+        <x-ui.page-header :title="'Upload '.$profile->label" :description="$descriptions[$profile->type].' The upload only creates records; it never changes or deletes one.'">
             <x-slot:actions>
-                <a href="{{ route('assets.assets') }}" class="btn btn-secondary">
+                <a href="{{ route($profile->listRoute) }}" class="btn btn-secondary">
                     <x-ui.icon name="arrow-left" />
-                    Back to Assets
+                    Back to {{ $profile->label }}
                 </a>
             </x-slot:actions>
         </x-ui.page-header>
+
+        <nav class="ui-toolbar" aria-label="Upload type">
+            @foreach ($tabs as $tabType => [$tabLabel, $tabRoute])
+                <a href="{{ route($tabRoute) }}" class="btn {{ $tabType === $profile->type ? 'btn-primary' : 'btn-secondary' }}" @if ($tabType === $profile->type) aria-current="page" @endif>{{ $tabLabel }}</a>
+            @endforeach
+        </nav>
 
         @if (session('success'))
             <x-ui.alert tone="success" role="status">{{ session('success') }}</x-ui.alert>
@@ -28,6 +62,25 @@
             <x-ui.alert tone="danger" role="alert">
                 {{ $errors->first() }}
             </x-ui.alert>
+        @endif
+
+        @if ($result && ($result['type'] ?? null) === $profile->type)
+            <x-ui.card title="Import result" description="What the last import did.">
+                <div class="import-summary">
+                    <x-ui.status-pill tone="success" :label="$result['created'].' created'" />
+                    <x-ui.status-pill :tone="$result['skipped'] > 0 ? 'warning' : 'muted'" :label="$result['skipped'].' skipped (rows with errors)'" />
+                    <x-ui.status-pill :tone="$result['failed'] > 0 ? 'danger' : 'muted'" :label="$result['failed'].' failed when saving'" />
+                    @if ($result['assigned'] > 0)
+                        <x-ui.status-pill tone="muted" :label="$result['assigned'].' assigned to a person'" />
+                    @endif
+                </div>
+                <div class="import-section">
+                    <a href="{{ route($profile->listRoute) }}" class="btn btn-primary">
+                        <x-ui.icon name="list-checks" />
+                        View {{ $profile->label }}
+                    </a>
+                </div>
+            </x-ui.card>
         @endif
 
         <ol class="ui-steps" aria-label="Import steps">
@@ -43,16 +96,17 @@
         </ol>
 
         <div class="ui-grid ui-grid-main dash-row">
-            <x-ui.card title="Upload Workspace" description="Download the template, fill it in, then preview the file.">
+            <x-ui.card :title="'Upload '.$profile->label" description="Download the template, fill it in, then preview the file.">
                 <div class="ui-stack">
                     <div>
-                        <a href="{{ route('assets.import.template') }}" class="btn btn-secondary">
+                        <a href="{{ route($base.'.template') }}" class="btn btn-secondary">
                             <x-ui.icon name="download" />
                             Download Template
                         </a>
+                        <p class="ui-hint">The template has the exact columns, an example row (marked EXAMPLE, it is ignored) and a sheet of allowed values.</p>
                     </div>
 
-                    <form action="{{ route('assets.import.preview') }}" method="POST" enctype="multipart/form-data" class="ui-stack">
+                    <form action="{{ route($base.'.preview') }}" method="POST" enctype="multipart/form-data" class="ui-stack">
                         @csrf
                         <div class="ui-field">
                             <label for="asset-import-file" class="ui-label">Upload File</label>
@@ -70,20 +124,14 @@
                 </div>
             </x-ui.card>
 
-            <x-ui.card title="What is checked" description="The same rules as the Add Asset form." :padded="false">
+            <x-ui.card title="What is checked" description="The same rules as the matching Add form." :padded="false">
                 <div class="supported-types-list">
-                    <div class="supported-type-card">
-                        <div class="supported-type-title">Names and serial numbers</div>
-                        <div class="supported-type-desc">Each must be unique, in the system and inside the file.</div>
-                    </div>
-                    <div class="supported-type-card">
-                        <div class="supported-type-title">Manufacturer and model</div>
-                        <div class="supported-type-desc">They must already exist. Add a missing one under Settings first.</div>
-                    </div>
-                    <div class="supported-type-card">
-                        <div class="supported-type-title">Your region only</div>
-                        <div class="supported-type-desc">The location must be in your own region; a row for another region is an error.</div>
-                    </div>
+                    @foreach ($checks[$profile->type] as [$checkTitle, $checkText])
+                        <div class="supported-type-card">
+                            <div class="supported-type-title">{{ $checkTitle }}</div>
+                            <div class="supported-type-desc">{{ $checkText }}</div>
+                        </div>
+                    @endforeach
                 </div>
             </x-ui.card>
         </div>
@@ -100,22 +148,30 @@
                 :padded="false"
             >
                 <x-slot:actions>
-                    <form action="{{ route('assets.import.clear') }}" method="POST">
+                    @if ($errorCount > 0 || ! empty($preview['warning_count']))
+                        <a href="{{ route($base.'.errors') }}" class="btn btn-secondary">
+                            <x-ui.icon name="download" />
+                            Download issue list
+                        </a>
+                    @endif
+                    <form action="{{ route($base.'.clear') }}" method="POST">
                         @csrf
                         <button type="submit" class="btn btn-secondary">Clear Upload</button>
                     </form>
                 </x-slot:actions>
 
                 <div class="import-summary">
-                    <x-ui.status-pill tone="success" :label="$preview['valid_count'].' valid rows'" />
-                    <x-ui.status-pill :tone="$errorCount > 0 ? 'danger' : 'muted'" :label="$errorCount.' issues found'" />
-                    @if (! empty($preview['warning_count']))
-                        <x-ui.status-pill tone="warning" :label="$preview['warning_count'].' warnings'" />
+                    <x-ui.status-pill tone="muted" :label="$preview['total_rows'].' rows read'" />
+                    <x-ui.status-pill tone="success" :label="$preview['valid_count'].' valid'" />
+                    <x-ui.status-pill :tone="($preview['invalid_rows'] ?? 0) > 0 ? 'danger' : 'muted'" :label="($preview['invalid_rows'] ?? 0).' with errors'" />
+                    <x-ui.status-pill :tone="($preview['warning_rows'] ?? 0) > 0 ? 'warning' : 'muted'" :label="($preview['warning_rows'] ?? 0).' with warnings'" />
+                    @if (! empty($preview['example_rows']))
+                        <span class="ui-hint">{{ $preview['example_rows'] }} example row(s) ignored.</span>
                     @endif
                 </div>
 
                 @if ($preview['can_confirm'])
-                    <form action="{{ route('assets.import.run') }}" method="POST" class="import-section ui-stack" x-data>
+                    <form action="{{ route($base.'.run') }}" method="POST" class="import-section ui-stack" x-data>
                         @csrf
                         @if ($preview['invalid_rows'] > 0)
                             <label class="ui-check">
@@ -128,7 +184,7 @@
                                 type="submit"
                                 class="btn btn-primary"
                                 x-on:click.prevent="$dispatch('confirm-action', {
-                                    title: 'Run asset import?',
+                                    title: 'Run {{ strtolower($profile->label) }} import?',
                                     message: 'The file is read again and the valid rows are created and audited.',
                                     confirmLabel: 'Run Import',
                                     variant: 'primary',
@@ -153,8 +209,14 @@
 
                         @foreach ($previewRows as $row)
                             <tr>
-                                @foreach ($row as $value)
-                                    <td>{{ $value !== '' && $value !== null ? $value : '-' }}</td>
+                                @foreach ($row as $heading => $value)
+                                    <td>
+                                        @if ($heading === 'Result')
+                                            <x-ui.status-pill :tone="['OK' => 'success', 'Warning' => 'warning', 'Error' => 'danger'][$value] ?? 'muted'" :label="$value" />
+                                        @else
+                                            {{ $value !== '' && $value !== null ? $value : '-' }}
+                                        @endif
+                                    </td>
                                 @endforeach
                             </tr>
                         @endforeach
@@ -169,7 +231,7 @@
                             @foreach ($preview['warnings'] as $warning)
                                 <li>
                                     <x-ui.icon name="triangle-alert" />
-                                    <span><strong>Row {{ $warning['row'] }}:</strong> {{ $warning['message'] }}</span>
+                                    <span><strong>Row {{ $warning['row'] }}{{ ! empty($warning['column']) ? ' · '.$warning['column'] : '' }}:</strong> {{ $warning['message'] }}</span>
                                 </li>
                             @endforeach
                         </ul>
@@ -183,12 +245,12 @@
                             @foreach ($preview['errors'] as $error)
                                 <li>
                                     <x-ui.icon name="circle-alert" />
-                                    <span><strong>{{ is_numeric($error['row']) ? 'Row '.$error['row'] : $error['row'] }}:</strong> {{ $error['message'] }}</span>
+                                    <span><strong>{{ is_numeric($error['row']) ? 'Row '.$error['row'] : $error['row'] }}{{ ! empty($error['column']) ? ' · '.$error['column'] : '' }}:</strong> {{ $error['message'] }}</span>
                                 </li>
                             @endforeach
                         </ul>
                         @if ($preview['error_count'] > count($preview['errors']))
-                            <p class="ui-hint">Only the first {{ count($preview['errors']) }} issues are listed. Fix these and upload again.</p>
+                            <p class="ui-hint">Only the first {{ count($preview['errors']) }} issues are listed here. Download the issue list for all of them.</p>
                         @endif
                     </section>
                 @endif

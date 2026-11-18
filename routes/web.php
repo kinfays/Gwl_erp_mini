@@ -282,13 +282,19 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
             ->middleware('permission:assets.view_inventory')
             ->name('assets');
 
-        // Bulk upload of assets (create-only; the run reads the stored file again).
+        // Bulk upload (create-only; the run reads the stored file again), one flow per type: Assets (the original,
+        // unprefixed routes), Phones and Network. The type is fixed by the route, never read from the request.
         Route::middleware('permission:assets.import')->group(function () {
-            Route::get('/import', [AssetImportController::class, 'index'])->name('import');
-            Route::get('/import/template', [AssetImportController::class, 'template'])->name('import.template');
-            Route::post('/import/preview', [AssetImportController::class, 'preview'])->name('import.preview');
-            Route::post('/import/run', [AssetImportController::class, 'run'])->name('import.run');
-            Route::post('/import/clear', [AssetImportController::class, 'clear'])->name('import.clear');
+            foreach (['assets' => 'import', 'phones' => 'import.phones', 'network' => 'import.network'] as $uploadType => $routeName) {
+                $path = $uploadType === 'assets' ? '/import' : '/import/'.$uploadType;
+
+                Route::get($path, [AssetImportController::class, 'index'])->defaults('type', $uploadType)->name($routeName);
+                Route::get($path.'/template', [AssetImportController::class, 'template'])->defaults('type', $uploadType)->name($routeName.'.template');
+                Route::get($path.'/errors', [AssetImportController::class, 'errors'])->defaults('type', $uploadType)->name($routeName.'.errors');
+                Route::post($path.'/preview', [AssetImportController::class, 'preview'])->defaults('type', $uploadType)->name($routeName.'.preview');
+                Route::post($path.'/run', [AssetImportController::class, 'run'])->defaults('type', $uploadType)->name($routeName.'.run');
+                Route::post($path.'/clear', [AssetImportController::class, 'clear'])->defaults('type', $uploadType)->name($routeName.'.clear');
+            }
         });
 
         Route::get('/phones/export/excel', [PhonesListExportController::class, 'excel'])

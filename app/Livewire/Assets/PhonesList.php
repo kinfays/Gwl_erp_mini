@@ -105,6 +105,7 @@ class PhonesList extends Component
         'district_id' => null,
         'user_phone_number' => '',
         'device_phone_number' => '',
+        'purchased_at' => null,
     ];
 
     public function mount(): void
@@ -161,6 +162,7 @@ class PhonesList extends Component
             'district_id' => $asset->district_id,
             'user_phone_number' => (string) $asset->user_phone_number,
             'device_phone_number' => (string) $asset->device_phone_number,
+            'purchased_at' => $asset->purchased_at?->toDateString(),
         ];
     }
 
@@ -382,6 +384,7 @@ class PhonesList extends Component
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.user_phone_number' => ['nullable', 'string', 'max:30'],
             'form.device_phone_number' => ['nullable', 'string', 'max:30'],
+            'form.purchased_at' => ['nullable', 'date'],
             ...$this->assignmentChangeRules(),
         ];
     }
@@ -423,6 +426,7 @@ class PhonesList extends Component
             'district_id' => null,
             'user_phone_number' => '',
             'device_phone_number' => '',
+            'purchased_at' => null,
         ];
     }
 

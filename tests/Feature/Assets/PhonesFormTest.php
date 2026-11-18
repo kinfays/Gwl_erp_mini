@@ -61,6 +61,36 @@ class PhonesFormTest extends TestCase
         $this->assertSame($district->region_id, $asset->region_id);
     }
 
+    public function test_a_phone_can_be_created_with_a_purchase_date_and_it_can_be_edited_or_cleared(): void
+    {
+        $this->seedCoreAssetsAccess();
+        $this->actingAs($this->superAdmin($this->district('Accra Central District', 'Greater Accra')));
+
+        Livewire::test(PhonesList::class)
+            ->call('openCreate')
+            ->set('form.asset_name', 'Dated Phone')
+            ->set('form.asset_type', 'Ph')
+            ->set('form.serial_number', 'DATE-0001')
+            ->set('form.purchased_at', '2026-03-14')
+            ->set('form.status', IctAsset::STATUS_ACTIVE)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $phone = IctAsset::query()->where('asset_name', 'Dated Phone')->firstOrFail();
+        $this->assertSame('2026-03-14', $phone->purchased_at->toDateString());
+
+        // Opening it for edit shows the date; clearing it stores NULL; junk is refused.
+        $screen = Livewire::test(PhonesList::class)->call('openEdit', $phone->id)->assertSet('form.purchased_at', '2026-03-14');
+        $screen->set('form.purchased_at', 'not a date')->call('save')->assertHasErrors(['form.purchased_at']);
+        $screen->set('form.purchased_at', '')->call('save')->assertHasNoErrors();
+        $this->assertNull($phone->fresh()->purchased_at);
+
+        // The date is optional on a new phone too.
+        Livewire::test(PhonesList::class)->call('openCreate')
+            ->set('form.asset_name', 'Undated Phone')->set('form.asset_type', 'POS')->set('form.status', IctAsset::STATUS_ACTIVE)
+            ->call('save')->assertHasNoErrors();
+    }
+
     public function test_phone_region_is_forced_to_the_actor_region_and_never_accepted_from_form_input(): void
     {
         $this->seedCoreAssetsAccess();
