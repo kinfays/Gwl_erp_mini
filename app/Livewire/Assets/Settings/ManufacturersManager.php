@@ -6,12 +6,17 @@ use App\Livewire\Concerns\EnforcesModuleAccess;
 use App\Models\AuditLog;
 use App\Models\IctAssetManufacturer;
 use App\Models\Permission;
+use App\Services\Assets\AssetListQuery;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 class ManufacturersManager extends Component
 {
     use EnforcesModuleAccess;
+
+    #[Url(as: 'q')]
+    public string $search = '';
 
     public string $name = '';
 
@@ -133,6 +138,13 @@ class ManufacturersManager extends Component
         return view('livewire.assets.settings.manufacturers-manager', [
             'manufacturers' => IctAssetManufacturer::query()
                 ->withCount('models')
+                ->when(trim($this->search) !== '', function ($query) {
+                    $like = AssetListQuery::like(trim($this->search));
+
+                    $query->where(fn ($inner) => $inner
+                        ->whereRaw("name LIKE ? ESCAPE '!'", [$like])
+                        ->orWhereRaw("notes LIKE ? ESCAPE '!'", [$like]));
+                })
                 ->orderBy('name')
                 ->get(),
         ]);

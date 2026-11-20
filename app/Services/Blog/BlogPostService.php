@@ -276,6 +276,20 @@ class BlogPostService
 
         $body = $this->bodyAttributes($data, (int) $locked->region_id, $locked->id);
 
+        // Never replace written text with an empty document unless the caller says so on purpose (an editor that failed to
+        // load, or one re-created by a re-render, sends an empty document). The old content stays untouched.
+        if ($body['attributes'] !== [] && ($body['empty'] ?? false) && ! ($data['allow_empty_body'] ?? false) && $this->hasContent($locked)) {
+            throw ValidationException::withMessages([
+                'body_json' => 'The text editor sent an empty article, so nothing was saved and your saved text is untouched. Reload the page and try again.',
+            ]);
+        }
+
+        // Keep what is stored restorable: when the newest saved version no longer matches the article (automatic saves
+        // overwrite one another), save the current state as a version before it is replaced.
+        if ($body['attributes'] !== [] && $audit) {
+            $this->snapshotIfUnsaved($locked, $actor);
+        }
+
         if ($body['attributes'] !== []) {
             $changes += $body['attributes'];
         }
@@ -444,6 +458,7 @@ class BlogPostService
                     'body' => $result['text'],
                 ],
                 'media_ids' => $result['media_ids'],
+                'empty' => $result['empty'],
             ];
         }
 
@@ -466,6 +481,33 @@ class BlogPostService
         }
 
         return ['attributes' => [], 'media_ids' => []];
+    }
+
+    /** Record the article as it is now when its newest version differs (so an overwrite can always be undone). */
+    protected function snapshotIfUnsaved(BlogPost $locked, User $actor): void
+    {
+        if (! $this->hasContent($locked)) {
+            return;
+        }
+
+        $latest = BlogPostRevision::query()->where('blog_post_id', $locked->id)->latest('id')->first();
+
+        if ($latest && $latest->lock_version === (int) $locked->lock_version && $latest->body_json == ($locked->isRich() ? $locked->body_json : null)) {
+            return;
+        }
+
+        $fields = [
+            'blog_post_id' => $locked->id,
+            'user_id' => $actor->id,
+            'title' => Str::limit($locked->title, 200, ''),
+            'body_format' => $locked->body_format,
+            'body_json' => $locked->isRich() ? $locked->body_json : null,
+            'body_markdown' => $locked->isRich() ? null : $locked->body,
+            'lock_version' => (int) $locked->lock_version,
+            'reason' => 'before',
+        ];
+
+        BlogPostRevision::query()->create($fields);
     }
 
     /** Save the article as it now stands as a version, and keep only the newest few. */

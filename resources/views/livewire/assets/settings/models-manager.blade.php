@@ -8,8 +8,25 @@
 
     <x-ui.page-header title="Asset Models" description="Manage the model catalogue used by the Assets, Phones and Network add/edit forms. Models are shared across all regions." />
 
+    <div class="ui-stack" style="margin-bottom: 1rem;">
+        <input
+            type="search"
+            wire:model.live.debounce.300ms="search"
+            class="form-input"
+            style="width: 100%;"
+            placeholder="Search models by name or manufacturer"
+            aria-label="Search models"
+        >
+        <div style="overflow-x: auto; white-space: nowrap;" data-testid="model-tabs">
+            @php
+                $tabOptions = collect($tabs)->mapWithKeys(fn ($t, $key) => [$key => $t['label'].' ('.$tabCounts[$key].')'])->all();
+            @endphp
+            <x-ui.segmented label="Model type" wire:model.live="tab" :options="$tabOptions" :value="$activeTab" />
+        </div>
+    </div>
+
     <div class="ui-grid ui-grid-main">
-        <x-ui.card title="Model Directory" :description="$models->count().' models'" :padded="false">
+        <x-ui.card title="Model Directory" :description="$models->total().' models'" :padded="false">
             <x-ui.table label="Asset models">
                 <x-slot:head>
                     <tr>
@@ -65,8 +82,14 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="7" icon="boxes" title="No models found." description="Add the first one with the form alongside." />
+                    <x-ui.empty-row :colspan="7" icon="boxes" title="No models found." :description="trim($search) !== '' ? 'Try a different search or tab.' : 'Add the first one with the form alongside.'" />
                 @endforelse
+
+                @if ($models->hasPages())
+                    <x-slot:footer>
+                        <div class="pager-end">{{ $models->links() }}</div>
+                    </x-slot:footer>
+                @endif
             </x-ui.table>
         </x-ui.card>
 

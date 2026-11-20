@@ -6,6 +6,22 @@
 
     <x-ui.page-header title="Manufacturers" description="Manage the manufacturers offered when adding or editing an asset model. Shared across all regions." />
 
+    <div style="position: relative; margin-bottom: 1rem;">
+        <input
+            type="search"
+            wire:model.live.debounce.300ms="search"
+            class="form-input"
+            style="width: 100%; padding-right: 2.5rem;"
+            placeholder="Search manufacturers..."
+            aria-label="Search manufacturers"
+        >
+        @if ($search !== '')
+            <button type="button" wire:click="$set('search', '')" class="btn btn-ghost btn-sm btn-icon" style="position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%);" title="Clear search" aria-label="Clear search">
+                <x-ui.icon name="x" />
+            </button>
+        @endif
+    </div>
+
     <div class="ui-grid ui-grid-main">
         <x-ui.card title="Manufacturer Directory" :description="$manufacturers->count().' manufacturers'" :padded="false">
             <x-ui.table label="Manufacturers">
@@ -58,7 +74,7 @@
                         </td>
                     </tr>
                 @empty
-                    <x-ui.empty-row :colspan="4" icon="factory" title="No manufacturers found." description="Add the first one with the form alongside." />
+                    <x-ui.empty-row :colspan="4" icon="factory" :title="trim($search) !== '' ? 'No manufacturers match your search' : 'No manufacturers found.'" :description="trim($search) !== '' ? 'Try a different search term.' : 'Add the first one with the form alongside.'" />
                 @endforelse
             </x-ui.table>
         </x-ui.card>

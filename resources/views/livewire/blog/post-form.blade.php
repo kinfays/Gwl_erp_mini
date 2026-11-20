@@ -1,6 +1,6 @@
 <div
     class="be-root"
-    x-data="blogEditor(@js($editorConfig))"
+    x-data="blogEditor"
     x-on:blog-saved.window="saved($event.detail)"
     x-on:blog-document-replaced.window="replace($event.detail.document)"
 >
@@ -21,6 +21,11 @@
                 <button type="button" class="b-btn b-btn-primary" x-on:click="save('publish')" x-bind:disabled="busy">{{ __('Publish to the region') }}</button>
             @endif
         </div>
+    </div>
+
+    <div class="b-notice b-notice-warn" role="alert" x-show="restorable" x-cloak>
+        {{ __('The editor opened empty, but a copy of text you had not saved is kept on this device.') }}
+        <button type="button" class="b-btn" x-on:click="restoreBackup()">{{ __('Restore unsaved text') }}</button>
     </div>
 
     @if ($conflict)
@@ -117,6 +122,8 @@
 
             {{-- The editing surface: TipTap owns it, Livewire must not touch it. --}}
             <div class="be-surface" id="be-surface" wire:ignore>
+                {{-- Read once by the editor. Inside wire:ignore so a re-render can never hand the editor another starting document. --}}
+                <script type="application/json" x-ref="config">{!! json_encode($editorConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES) !!}</script>
                 <div x-ref="surface"></div>
 
                 <div x-ref="bubble" class="be-bubble" role="toolbar" aria-label="{{ __('Format the selected text') }}">
@@ -232,7 +239,7 @@
                                 <li wire:key="rev-{{ $revision->id }}">
                                     <span>
                                         {{ $revision->created_at?->format('j M, H:i') }}
-                                        <small>{{ $revision->user?->full_name ?? __('Someone') }} · {{ match ($revision->reason) { 'autosave' => __('automatic'), 'restore' => __('restored'), default => __('saved') } }}</small>
+                                        <small>{{ $revision->user?->full_name ?? __('Someone') }} · {{ match ($revision->reason) { 'autosave' => __('automatic'), 'restore' => __('restored'), 'before' => __('before a later save'), default => __('saved') } }}</small>
                                     </span>
                                     <button type="button" class="b-btn" wire:click="restoreRevision({{ $revision->id }})"
                                         wire:confirm="{{ __('Restore this version? What is on screen now stays in the list of versions.') }}">{{ __('Restore') }}</button>

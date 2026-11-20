@@ -37,7 +37,13 @@ const Doc = Document.extend({ content: '(block | blogBlock)+' });
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] };
 
 document.addEventListener('alpine:init', () => {
-    window.Alpine.data('blogEditor', (config) => {
+    window.Alpine.data('blogEditor', () => {
+        // Read once from the JSON block inside the wire:ignore'd surface. It is NOT an x-data argument: an argument is
+        // re-rendered by Livewire with the server's (empty) idea of the document on every request.
+        let config = {};
+        let hadBody = false;
+        let touched = false;
+        let backupKey = '';
         // The editor lives OUTSIDE Alpine's reactive state (a proxied ProseMirror instance misbehaves).
         let editor = null;
         let syncTimer = null;
@@ -57,8 +63,26 @@ document.addEventListener('alpine:init', () => {
             previewOpen: false,
             previewHtml: '',
             toolbarOpen: false,
+            restorable: null,
 
             init() {
+                try {
+                    config = JSON.parse(this.$refs.config.textContent || '{}');
+                } catch (error) {
+                    config = { initial: { json: EMPTY_DOC }, mediaBase: '', uploadUrl: '', autosaveSeconds: 10 };
+                }
+
+                // Alpine can run init() again on the same element (a re-render that re-registers x-data). Never build a second
+                // editor over the first one: it would start from the server's copy and drop what has been typed.
+                if (this.$refs.surface.__blogEditor) {
+                    editor = this.$refs.surface.__blogEditor;
+
+                    return;
+                }
+
+                hadBody = Boolean(config.hadBody);
+                backupKey = `blog-editor-backup:${config.postKey || 'new'}`;
+
                 const ctx = {
                     mediaUrl: (id, size) => config.mediaBase.replace('/0/thumb', `/${id}/${size}`),
                     pickFiles: (multiple) => this.pickFiles(multiple),
@@ -130,10 +154,12 @@ document.addEventListener('alpine:init', () => {
                     },
                     onCreate: () => {
                         this.counts();
+                        this.offerBackup();
                         // A Markdown article is converted by loading it here; hand the converted document to the form at once.
                         this.flush();
                     },
                     onUpdate: () => {
+                        touched = true;
                         editVersion++;
                         this.dirty = true;
                         this.counts();
@@ -143,6 +169,16 @@ document.addEventListener('alpine:init', () => {
                         this.tick++;
                     },
                 });
+
+                this.$refs.surface.__blogEditor = editor;
+
+                // The cover upload re-renders the form: hand the text to it first, synchronously (the capture phase runs
+                // before Livewire's own handler on the file input).
+                this.$el.addEventListener('change', (event) => {
+                    if (event.target?.id === 'blog-cover') {
+                        this.flush();
+                    }
+                }, true);
 
                 this.$el.addEventListener('input', (event) => {
                     if (! this.$refs.surface.contains(event.target)) {
@@ -203,24 +239,98 @@ document.addEventListener('alpine:init', () => {
             /** Hand the current document to the Livewire form (no request: it travels with the next action). */
             flush() {
                 window.clearTimeout(syncTimer);
-                this.$wire.bodyJson = JSON.stringify(editor.getJSON());
+
+                // An editor that is empty although the article has text, and that nobody has typed in, is a failed load,
+                // not a decision: never hand that to the form.
+                if (this.looksLost()) {
+                    return;
+                }
+
+                const json = JSON.stringify(editor.getJSON());
+
+                this.$wire.bodyJson = json;
+                this.backup(json);
+            },
+
+            looksLost() {
+                return hadBody && ! touched && editor.isEmpty;
+            },
+
+            backup(json) {
+                if (editor.isEmpty) {
+                    return;
+                }
+
+                try {
+                    window.localStorage.setItem(backupKey, JSON.stringify({ at: Date.now(), json }));
+                } catch (error) {
+                    // Storage may be blocked: the safety net is optional.
+                }
+            },
+
+            clearBackup() {
+                try {
+                    window.localStorage.removeItem(backupKey);
+                } catch (error) {
+                    // ignore
+                }
+            },
+
+            /** An empty editor with a local copy of unsaved text: offer it back instead of letting it be lost. */
+            offerBackup() {
+                if (! editor.isEmpty) {
+                    return;
+                }
+
+                try {
+                    const saved = JSON.parse(window.localStorage.getItem(backupKey) || 'null');
+
+                    if (saved?.json) {
+                        this.restorable = saved.json;
+                    }
+                } catch (error) {
+                    // ignore
+                }
+            },
+
+            restoreBackup() {
+                if (! this.restorable) {
+                    return;
+                }
+
+                editor.commands.setContent(JSON.parse(this.restorable), { emitUpdate: false });
+                touched = true;
+                this.restorable = null;
+                this.counts();
+                this.dirty = true;
+                editVersion++;
+                this.flush();
             },
 
             async save(action) {
+                if (this.looksLost()) {
+                    this.notify('The text did not load into the editor, so nothing was saved and your saved article is untouched. Reload the page.', true);
+
+                    return;
+                }
+
                 this.flush();
                 const sent = editVersion;
                 const leaving = action === 'publish';
 
-                if (leaving) {
-                    this.dirty = false;
-                }
-
                 this.busy = true;
-                await this.$wire[action]();
-                this.busy = false;
 
-                // Still unsaved when the call came back with an error (or a redirect is on its way).
-                this.dirty = leaving ? true : editVersion !== sent;
+                try {
+                    await this.$wire[action]();
+                    // Still unsaved when the call came back with an error (or a redirect is on its way).
+                    this.dirty = leaving ? true : editVersion !== sent;
+                } catch (error) {
+                    // A 419, a timeout or a lost connection: keep everything on screen and say so.
+                    this.dirty = true;
+                    this.notify('The article could not be saved (connection or session problem). Your text is still here and a copy is kept on this device. Try again.', true);
+                } finally {
+                    this.busy = false;
+                }
             },
 
             async autosave() {
@@ -235,6 +345,8 @@ document.addEventListener('alpine:init', () => {
                 try {
                     await this.$wire.autosave();
                     this.dirty = editVersion !== sent;
+                } catch (error) {
+                    // Quiet: the next tick tries again and the text is backed up locally.
                 } finally {
                     this.busy = false;
                 }
@@ -255,12 +367,18 @@ document.addEventListener('alpine:init', () => {
 
             saved(detail) {
                 this.savedLabel = detail?.label || '';
+
+                // The server confirmed a save: the local copy is only needed again if more is typed.
+                if (! this.dirty) {
+                    this.clearBackup();
+                }
             },
 
             /** The server replaced the article (a restored version, or the other person's save): show it. */
             replace(document) {
                 try {
                     editor.commands.setContent(typeof document === 'string' ? JSON.parse(document) : document, { emitUpdate: false });
+                    touched = true;
                     this.counts();
                     this.flush();
                     this.dirty = false;

@@ -12,14 +12,23 @@ use App\Services\Assets\AssetModelService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 class ModelsManager extends Component
 {
     use EnforcesModuleAccess;
     use WithFileUploads;
+    use WithPagination;
+
+    #[Url(as: 'tab')]
+    public string $tab = 'all';
+
+    #[Url(as: 'q')]
+    public string $search = '';
 
     public string $name = '';
 
@@ -52,6 +61,21 @@ class ModelsManager extends Component
         if (! $this->canManageModels()) {
             abort(403);
         }
+    }
+
+    public function updatedTab(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    protected function activeTab(): string
+    {
+        return array_key_exists($this->tab, IctAssetModel::tabs()) ? $this->tab : 'all';
     }
 
     public function updatedImage(): void
@@ -221,14 +245,31 @@ class ModelsManager extends Component
     {
         $editingModel = $this->editingId ? IctAssetModel::query()->find($this->editingId) : null;
         $user = auth()->user();
+        $tabs = IctAssetModel::tabs();
+        $activeTab = $this->activeTab();
+        $term = trim($this->search);
+        $like = $term;
+
+        // One grouped query feeds every tab badge (they ignore the search term).
+        $byCategory = IctAssetModel::query()->selectRaw('category, count(*) as total')->groupBy('category')->pluck('total', 'category');
+        $tabCounts = collect($tabs)->map(fn ($t) => $t['types'] === null
+            ? (int) $byCategory->sum()
+            : (int) $byCategory->only($t['types'])->sum())->all();
 
         return view('livewire.assets.settings.models-manager', [
+            'tabs' => $tabs,
+            'activeTab' => $activeTab,
+            'tabCounts' => $tabCounts,
             'models' => IctAssetModel::query()
                 ->with('manufacturer')
                 ->withCount('assets')
+                ->when($tabs[$activeTab]['types'], fn ($q, $types) => $q->whereIn('category', $types))
+                ->when($term !== '', fn ($q) => $q->where(fn ($inner) => $inner
+                    ->where('name', 'like', '%'.$like.'%')
+                    ->orWhereHas('manufacturer', fn ($m) => $m->where('name', 'like', '%'.$like.'%'))))
                 ->orderBy('category')
                 ->orderBy('name')
-                ->get(),
+                ->paginate(15),
             'assetTypeGroups' => IctAsset::ASSET_TYPES,
             'manufacturers' => IctAssetManufacturer::query()
                 ->where(fn ($query) => $query

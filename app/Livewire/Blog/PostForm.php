@@ -475,6 +475,9 @@ class PostForm extends Component
                 : collect(),
             'editorConfig' => [
                 'initial' => $this->initial ?: ['json' => app(BlogContentService::class)->emptyDocument()],
+                'postKey' => $this->postId ? 'post-'.$this->postId : 'new',
+                // Only read by the editor on its first load: a saved article with text must never be saved back as empty.
+                'hadBody' => $this->postId !== null && app(BlogPostService::class)->hasContent($this->findPost($this->postId)),
                 'mediaBase' => route('blog.media', ['media' => 0, 'size' => 'thumb'], false),
                 'uploadUrl' => route('blog.media.upload'),
                 'autosaveSeconds' => (int) config('gwl.blog_autosave_seconds', 10),

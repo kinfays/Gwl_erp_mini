@@ -17,6 +17,21 @@ class IctAssetModel extends Model
      */
     public const IMAGE_DIRECTORY = 'ict-asset-models';
 
+    /**
+     * Tabs of the Models settings screen: key => [label, asset-type codes (a model's "category")]. The one place the
+     * grouping is written. Phones and Network are the whole device category; null means every type (the All tab).
+     */
+    public static function tabs(): array
+    {
+        return [
+            'all' => ['label' => 'All', 'types' => null],
+            'computers' => ['label' => 'Computers', 'types' => ['PC', 'Laptop', 'Server', 'AIO']],
+            'printers' => ['label' => 'Printers', 'types' => ['PRT', 'TPR', 'CM', 'PTC']],
+            'phones' => ['label' => 'Phones', 'types' => array_keys(IctAsset::ASSET_TYPES[IctAsset::DEVICE_CATEGORY_PHONE])],
+            'network' => ['label' => 'Network', 'types' => array_keys(IctAsset::ASSET_TYPES[IctAsset::DEVICE_CATEGORY_NETWORK])],
+        ];
+    }
+
     protected $table = 'ict_asset_models';
 
     protected $fillable = [
