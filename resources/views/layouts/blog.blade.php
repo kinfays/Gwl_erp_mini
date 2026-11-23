@@ -31,6 +31,12 @@
                             {{ __('Back to ERP') }}
                         </a>
                         <span class="b-date">{{ now()->format('l, j F Y') }}</span>
+                        @if ($unread > 0)
+                            <a href="{{ route('blog.home') }}" class="b-unread" aria-label="{{ trans_choice(':count unread article|:count unread articles', $unread) }}">
+                                <span class="b-unread-count" aria-hidden="true">{{ $unreadLabel }}</span>
+                                <span aria-hidden="true">{{ __('new') }}</span>
+                            </a>
+                        @endif
                     </div>
 
                     <div class="b-util-right">

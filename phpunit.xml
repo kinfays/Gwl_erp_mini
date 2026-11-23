@@ -49,6 +49,10 @@
         <env name="GWL_BLOG_MEDIA_MAX_DIMENSION" value="3000"/>
         <env name="GWL_BLOG_MEDIA_MAX_MEGAPIXELS" value="8"/>
         <env name="GWL_BLOG_MEDIA_MAX_PER_ARTICLE" value="6"/>
+        <env name="GWL_BLOG_UNREAD_LOOKBACK_DAYS" value="30"/>
+        <env name="GWL_BLOG_UNREAD_CACHE_SECONDS" value="60"/>
+        <env name="GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX" value="3"/>
+        <env name="GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS" value="12"/>
         <env name="GWL_GWATER_MODULE_ENABLED" value="true"/>
         <env name="GWL_FINANCE_AUDIT_ENABLED" value="true"/>
     </php>

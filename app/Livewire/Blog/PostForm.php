@@ -57,6 +57,13 @@ class PostForm extends Component
 
     public string $venue = '';
 
+    /** Show this (published) article in the window at login, from `announceFrom` (blank = now) up to and including `announceUntil`. */
+    public bool $announce = false;
+
+    public string $announceFrom = '';
+
+    public string $announceUntil = '';
+
     public ?int $districtId = null;
 
     /** @var TemporaryUploadedFile|null a newly chosen cover photo, not yet saved */
@@ -332,6 +339,13 @@ class PostForm extends Component
             'cover_focal_y' => $this->coverFocalY,
         ];
 
+        // Only a published article can be a login announcement; a draft never sends the keys (so an autosave leaves them alone).
+        if ($this->status === BlogPost::STATUS_PUBLISHED) {
+            $data['announce'] = $this->announce;
+            $data['announce_from'] = $this->announceFrom;
+            $data['announce_until'] = $this->announceUntil;
+        }
+
         if (trim($this->bodyJson) !== '') {
             $data['body_json'] = $this->bodyJson;
         }
@@ -352,6 +366,9 @@ class PostForm extends Component
         $this->tags = implode(', ', $post->tags ?? []);
         $this->eventDate = $post->event_date?->toDateString() ?? '';
         $this->venue = (string) $post->venue;
+        $this->announce = $post->announce_until !== null;
+        $this->announceFrom = $post->announce_from?->toDateString() ?? '';
+        $this->announceUntil = $post->announce_until?->toDateString() ?? '';
         $this->districtId = $post->district_id;
         $this->status = $post->status;
         $this->existingCoverUrl = $post->coverUrl('medium');
@@ -404,6 +421,8 @@ class PostForm extends Component
         return match ($key) {
             'district_id' => 'districtId',
             'region_id' => 'regionId',
+            'announce_from' => 'announceFrom',
+            'announce_until' => 'announceUntil',
             'file' => 'cover',
             'body', 'body_json' => 'bodyJson',
             default => $key,
@@ -413,7 +432,14 @@ class PostForm extends Component
     /** @return array<string, mixed> */
     protected function rules(): array
     {
-        return [
+        $announcement = $this->announce && $this->status === BlogPost::STATUS_PUBLISHED
+            ? [
+                'announceUntil' => ['required', 'date'],
+                'announceFrom' => ['nullable', 'date', 'before_or_equal:announceUntil'],
+            ]
+            : [];
+
+        return $announcement + [
             'regionId' => ['required', 'integer', 'exists:regions,id'],
             'title' => ['required', 'string', 'max:180'],
             'category' => ['required', 'in:'.implode(',', array_keys(BlogPost::CATEGORIES))],
@@ -438,6 +464,8 @@ class PostForm extends Component
             'regionId.required' => 'Choose the region whose blog this article is for.',
             'category.required' => 'Choose what kind of article this is.',
             'bodyJson.max' => 'The article is too large.',
+            'announceUntil.required' => 'Choose the last day the announcement is shown.',
+            'announceFrom.before_or_equal' => 'The first day cannot be after the last day.',
         ];
     }
 
@@ -447,6 +475,8 @@ class PostForm extends Component
         return [
             'regionId' => 'region',
             'eventDate' => 'event date',
+            'announceFrom' => 'first day',
+            'announceUntil' => 'last day',
             'districtId' => 'district',
             'cover' => 'cover photo',
             'coverCaption' => 'cover caption',
@@ -470,6 +500,10 @@ class PostForm extends Component
                 : collect(),
             'regionName' => $this->regionId ? Region::query()->whereKey($this->regionId)->value('region_name') : null,
             'maxMb' => (int) config('gwl.blog_cover_max_mb', 3),
+            // Y-m-d strings compare correctly as text; a last day before today is an announcement that has ended.
+            'announcementState' => $this->announce && $this->announceUntil !== '' && $this->announceUntil < now()->toDateString()
+                ? BlogPost::ANNOUNCEMENT_EXPIRED
+                : null,
             'revisions' => $editing
                 ? BlogPostRevision::query()->where('blog_post_id', $this->postId)->with('user:id,full_name')->latest('id')->limit(20)->get()
                 : collect(),

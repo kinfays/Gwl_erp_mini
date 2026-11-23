@@ -10,6 +10,17 @@
                 <div class="b-notice" role="status">{{ session('blog_notice') }}</div>
             @endif
 
+            {{-- Active login announcements of the region, with a way to dismiss them for this session. --}}
+            <livewire:blog.announcement-strip :region-id="$regionId" />
+
+            @if ($unreadCount > 0)
+                <form class="b-unread-bar" method="POST" action="{{ route('blog.read-all') }}">
+                    @csrf
+                    <span>{{ trans_choice(':count unread article|:count unread articles', $unreadCount) }}</span>
+                    <button type="submit" class="b-btn">{{ __('Mark all as read') }}</button>
+                </form>
+            @endif
+
             @if ($regions->isNotEmpty())
                 <form class="b-filters" method="GET" action="{{ route('blog.home') }}" style="margin-top:1.25rem">
                     <label class="b-field">{{ __('Region') }}
@@ -47,6 +58,7 @@
                         <p class="b-kicker" style="margin-top:.9rem">
                             <a href="{{ route('blog.category', $lead->category) }}">{{ $lead->categoryLabel() }}</a>
                             @if ($lead->is_pinned)<span class="b-tag-pin">{{ __('Pinned') }}</span>@endif
+                            @if (in_array($lead->id, $unreadIds, true))<span class="b-new">{{ __('New') }}</span>@endif
                         </p>
                         <h3><a href="{{ $lead->url() }}">{{ $lead->title }}</a></h3>
                         <p class="b-lead-sum">{{ $lead->teaser(260) }}</p>
@@ -63,7 +75,10 @@
                             @foreach ($secondary as $story)
                                 <article class="b-sec">
                                     <div>
-                                        <p class="b-kicker"><a href="{{ route('blog.category', $story->category) }}">{{ $story->categoryLabel() }}</a></p>
+                                        <p class="b-kicker">
+                                            <a href="{{ route('blog.category', $story->category) }}">{{ $story->categoryLabel() }}</a>
+                                            @if (in_array($story->id, $unreadIds, true))<span class="b-new">{{ __('New') }}</span>@endif
+                                        </p>
                                         <h3><a href="{{ $story->url() }}">{{ $story->title }}</a></h3>
                                         @include('blog.partials.meta', ['post' => $story])
                                     </div>

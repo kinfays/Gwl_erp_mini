@@ -192,6 +192,35 @@
                 </label>
             </section>
 
+            {{-- Login announcement: only a published article can be one (BlogPostService refuses a draft too). --}}
+            <section class="be-card" aria-labelledby="be-announce-h">
+                <h2 id="be-announce-h">{{ __('Login announcement') }}</h2>
+
+                @php($isPublished = $status === \App\Models\BlogPost::STATUS_PUBLISHED)
+
+                <label class="b-field" style="flex-direction:row;align-items:center;gap:.5rem">
+                    <input type="checkbox" wire:model.live="announce" @disabled(! $isPublished)>
+                    <span>{{ __('Show as announcement at login') }}</span>
+                </label>
+
+                @if (! $isPublished)
+                    <p class="be-hint">{{ __('Publish the article first, then come back here to show it as an announcement.') }}</p>
+                @elseif ($announce)
+                    <label class="b-field">{{ __('Show until (last day, required)') }}
+                        <input class="b-input" type="date" wire:model="announceUntil" min="{{ now()->toDateString() }}" required>
+                    </label>
+                    <label class="b-field">{{ __('Show from (optional)') }}
+                        <input class="b-input" type="date" wire:model="announceFrom">
+                        <span class="be-hint">{{ __('Blank means from the day it was published. The last day is included in full.') }}</span>
+                    </label>
+                    @if ($announcementState === \App\Models\BlogPost::ANNOUNCEMENT_EXPIRED)
+                        <p class="be-hint">{{ __('This announcement has ended. Choose a new last day to show it again, or untick the box.') }}</p>
+                    @endif
+                @else
+                    <p class="be-hint">{{ __('Staff of the region see it in a window when they sign in, until the date you choose.') }}</p>
+                @endif
+            </section>
+
             <section class="be-card">
                 <h2>{{ __('Cover photo') }}</h2>
 

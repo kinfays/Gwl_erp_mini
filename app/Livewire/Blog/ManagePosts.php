@@ -75,6 +75,12 @@ class ManagePosts extends Component
         $this->act(fn (BlogPost $post) => $posts->setPinned($post, $this->actor(), false), $postId, 'Unpinned.');
     }
 
+    /** The article stays published; it just stops being shown at login and in the announcement strip. */
+    public function endAnnouncement(int $postId, BlogPostService $posts): void
+    {
+        $this->act(fn (BlogPost $post) => $posts->endAnnouncement($post, $this->actor()), $postId, 'The announcement has ended. The article is still published.');
+    }
+
     public function delete(int $postId, BlogPostService $posts): void
     {
         $this->act(fn (BlogPost $post) => $posts->delete($post, $this->actor()), $postId, 'Article deleted.');

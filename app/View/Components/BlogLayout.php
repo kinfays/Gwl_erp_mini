@@ -3,6 +3,7 @@
 namespace App\View\Components;
 
 use App\Models\BlogPost;
+use App\Services\Blog\BlogReadService;
 use App\Services\Blog\BlogVisibility;
 use Illuminate\View\Component;
 use Illuminate\View\View;
@@ -30,11 +31,17 @@ class BlogLayout extends Component
         $region = $this->regionName
             ?? ($user && ! $visibility->seesAllRegions($user) ? $visibility->regionsFor($user)->first()?->region_name : null);
 
+        // The same cached number as the header badge (BlogReadService), so the masthead and the ERP header agree.
+        $reads = app(BlogReadService::class);
+        $unread = $user ? $reads->unreadCount($user) : 0;
+
         return view('layouts.blog', [
             'region' => $region,
             'canManage' => $user && $visibility->canManage($user),
             'categories' => BlogPost::CATEGORY_PLURALS,
             'user' => $user,
+            'unread' => $unread,
+            'unreadLabel' => $reads->display($unread),
         ]);
     }
 }

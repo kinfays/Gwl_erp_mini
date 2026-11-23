@@ -711,6 +711,9 @@ if (config('gwl.blog_module_enabled')) {
             Route::get('/search', [BlogController::class, 'search'])->name('search');
             Route::get('/gallery', [BlogController::class, 'gallery'])->name('gallery');
 
+            // "Mark all as read" on the blog home (CSRF, one INSERT ... SELECT over the person's own unread articles).
+            Route::post('/read-all', [BlogController::class, 'markAllRead'])->middleware('throttle:30,1')->name('read-all');
+
             // The id decides; the slug after it only makes the link readable.
             Route::get('/posts/{post}/{slug?}', [BlogController::class, 'show'])->whereNumber('post')->name('show');
             Route::get('/cover/{post}', [BlogController::class, 'cover'])->whereNumber('post')->name('cover');

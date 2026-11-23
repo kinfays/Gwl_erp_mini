@@ -71,6 +71,14 @@ return [
     // Saved versions kept per article, and how often (seconds) the editor saves a DRAFT by itself.
     'blog_revisions_keep' => (int) env('GWL_BLOG_REVISIONS_KEEP', 20),
     'blog_autosave_seconds' => (int) env('GWL_BLOG_AUTOSAVE_SECONDS', 10),
+    // Unread-articles badge on the header's Blog link: only articles first published within this many days count (so a new
+    // user is not shown the whole archive), and the number is cached per user for this many seconds (it is read on every page).
+    'blog_unread_lookback_days' => (int) env('GWL_BLOG_UNREAD_LOOKBACK_DAYS', 30),
+    'blog_unread_cache_seconds' => (int) env('GWL_BLOG_UNREAD_CACHE_SECONDS', 60),
+    // Login announcements: the most shown in the window after a login, and how many hours must pass before a remember-me
+    // re-authentication (no password typed, a new browser session) may show them again. 0 = only the login form shows them.
+    'blog_login_announcements_max' => (int) env('GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX', 3),
+    'blog_login_announcements_recall_hours' => (int) env('GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS', 12),
 
     // G-Water (bottled and sachet water bought from G Water and sold by each location: prices, trips, daily sales, stock,
     // reimbursements): off by default; when off the routes don't register and the module is hidden from navigation

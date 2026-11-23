@@ -141,17 +141,8 @@
 
                     @if (! empty($navigation['blog']))
                         {{-- The Regional Blog is a standalone blog, not a module: it opens in its own tab and shares this login. --}}
-                        <a
-                            href="{{ $navigation['blog']['url'] }}"
-                            target="_blank"
-                            rel="noopener"
-                            class="icon-btn blog-link"
-                            title="{{ __('Regional Blog (opens in a new tab)') }}"
-                            aria-label="{{ __('Regional Blog (opens in a new tab)') }}"
-                        >
-                            <x-ui.icon name="{{ $navigation['blog']['icon_name'] }}" />
-                            <span class="blog-link-label" aria-hidden="true">{{ __('Blog') }}</span>
-                        </a>
+                        {{-- The link is a deferred Livewire component: the page never waits for the unread number on its badge. --}}
+                        <livewire:blog.header-link :url="$navigation['blog']['url']" :icon="$navigation['blog']['icon_name']" />
                     @endif
                     <livewire:notifications.general-bell />
 
@@ -430,6 +421,11 @@
                 </div>
             </div>
         </div>
+
+        {{-- Login announcements of the Regional Blog: armed by the Login event, shown once on the first page, never on the blog tab. --}}
+        @if (! empty($navigation['blog']))
+            <livewire:blog.login-announcements />
+        @endif
 
         <x-global.toast-center />
         <x-global.confirm-modal />

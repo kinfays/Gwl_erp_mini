@@ -5,6 +5,7 @@ namespace App\Services\Blog;
 use App\Models\BlogMedia;
 use App\Models\BlogPost;
 use App\Models\Employee;
+use App\Models\Permission;
 use App\Models\Region;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -26,6 +27,16 @@ use Illuminate\Support\Collection;
 class BlogVisibility
 {
     public const PERMISSION_MANAGE = 'blog.manage_posts';
+
+    /**
+     * Whether the blog is switched on AND the person's role may enter the `blog` module (every role does). The unread badge and
+     * the login announcements ask this first, so a switched-off blog or an account without the module costs no blog query.
+     */
+    public function canEnter(User $user): bool
+    {
+        return (bool) config('gwl.blog_module_enabled')
+            && in_array(Permission::MODULE_BLOG, $user->getAccessibleModules(), true);
+    }
 
     public function can(User $user, string $slug): bool
     {

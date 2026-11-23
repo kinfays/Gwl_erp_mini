@@ -10,7 +10,9 @@ use App\Models\Permission;
 use App\Models\Region;
 use App\Services\Blog\BlogFeedService;
 use App\Services\Blog\BlogPostService;
+use App\Services\Blog\BlogReadService;
 use App\Services\Blog\BlogVisibility;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -29,19 +31,37 @@ class BlogController extends Controller
         protected BlogVisibility $visibility,
         protected BlogPostService $posts,
         protected BlogFeedService $feed,
+        protected BlogReadService $reads,
     ) {}
 
     public function home(Request $request): View
     {
         $context = $this->context($request);
+        $user = $request->user();
 
-        $front = $context['hasRegion'] ? $this->feed->front($request->user(), $context['regionId']) : ['lead' => null, 'secondary' => collect()];
+        $front = $context['hasRegion'] ? $this->feed->front($user, $context['regionId']) : ['lead' => null, 'secondary' => collect()];
         $shown = collect([$front['lead']])->merge($front['secondary'])->filter()->pluck('id')->all();
+        $stream = $this->feed->stream($user, $context['regionId'], [], $shown);
 
         return view('blog.home', $context + $front + [
-            'stream' => $this->feed->stream($request->user(), $context['regionId'], [], $shown),
-            'sidebar' => $this->feed->sidebar($request->user(), $context['regionId']),
+            'stream' => $stream,
+            'sidebar' => $this->feed->sidebar($user, $context['regionId']),
+            // "New" markers: the same definition of unread as the badge, for exactly the articles on this page.
+            'unreadIds' => $this->reads->unreadAmong($user, [...$shown, ...$stream->getCollection()->modelKeys()]),
+            'unreadCount' => $this->reads->unreadCount($user),
         ]);
+    }
+
+    /** "Mark all as read": one set-based statement over the person's unread articles, then back to the front page. */
+    public function markAllRead(Request $request): RedirectResponse
+    {
+        $this->enforceModule($request, Permission::MODULE_BLOG);
+
+        $marked = $this->reads->markAllRead($request->user());
+
+        return redirect()->route('blog.home')->with('blog_notice', $marked > 0
+            ? trans_choice(':count article marked as read.|:count articles marked as read.', $marked)
+            : __('You are all caught up: there was nothing unread.'));
     }
 
     public function category(Request $request, string $category): View
@@ -91,6 +111,9 @@ class BlogController extends Controller
 
         $context = $this->context($request, (int) $post->region_id);
         $user = $request->user();
+
+        // Opening the article page is what makes it read (idempotent). Before the page renders, so the masthead count is already current.
+        $this->reads->markRead($user, $post);
 
         return view('blog.show', $context + [
             'post' => $post,
@@ -142,14 +165,16 @@ class BlogController extends Controller
     protected function listing(Request $request, string $kind, string $heading, array $filters, ?string $activeCategory = null): View
     {
         $context = $this->context($request);
+        $stream = $context['hasRegion'] ? $this->feed->stream($request->user(), $context['regionId'], $filters) : null;
 
         return view('blog.listing', $context + [
             'kind' => $kind,
             'heading' => $heading,
             'activeCategory' => $activeCategory,
             'filters' => $filters,
-            'stream' => $context['hasRegion'] ? $this->feed->stream($request->user(), $context['regionId'], $filters) : null,
+            'stream' => $stream,
             'sidebar' => $this->feed->sidebar($request->user(), $context['regionId']),
+            'unreadIds' => $stream ? $this->reads->unreadAmong($request->user(), $stream->getCollection()->modelKeys()) : [],
         ]);
     }
 

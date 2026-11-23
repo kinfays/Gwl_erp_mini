@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +29,12 @@ class BlogPost extends Model
         self::STATUS_DRAFT => 'Draft',
         self::STATUS_PUBLISHED => 'Published',
     ];
+
+    public const ANNOUNCEMENT_ACTIVE = 'active';
+
+    public const ANNOUNCEMENT_SCHEDULED = 'scheduled';
+
+    public const ANNOUNCEMENT_EXPIRED = 'expired';
 
     public const FORMAT_MARKDOWN = 'markdown';
 
@@ -79,6 +87,8 @@ class BlogPost extends Model
         'cover_focal_y',
         'status',
         'is_pinned',
+        'announce_from',
+        'announce_until',
         'lock_version',
         'published_at',
     ];
@@ -96,6 +106,8 @@ class BlogPost extends Model
             'cover_focal_x' => 'integer',
             'cover_focal_y' => 'integer',
             'event_date' => 'date',
+            'announce_from' => 'date',
+            'announce_until' => 'date',
             'is_pinned' => 'boolean',
             'lock_version' => 'integer',
             'published_at' => 'datetime',
@@ -152,6 +164,48 @@ class BlogPost extends Model
         return $query
             ->orderByDesc($query->qualifyColumn('published_at'))
             ->orderByDesc($query->qualifyColumn('id'));
+    }
+
+    /**
+     * Published articles that are an ACTIVE login announcement on a day (default: today, in the app's timezone): the last day
+     * is shown INCLUSIVELY, and a blank first day means "from the day it was published".
+     *
+     * Worked out here, at query time, so nothing has to flip a flag when the date passes. The comparisons are written
+     * `announce_until >= day` and `announce_from < next day` (not `announce_from <= day`) on purpose: a date column holds
+     * `2026-11-30` on MySQL but the date cast stores `2026-11-30 00:00:00` on SQLite, and these two forms are right for both,
+     * while keeping the (region_id, status, announce_until) index usable.
+     */
+    public function scopeAnnouncementActive(Builder $query, ?CarbonInterface $day = null): Builder
+    {
+        $today = ($day ?? Carbon::now(config('app.timezone')))->copy()->startOfDay();
+
+        return $query->published()
+            ->whereNotNull($query->qualifyColumn('announce_until'))
+            ->where($query->qualifyColumn('announce_until'), '>=', $today->toDateString())
+            ->where(fn (Builder $from) => $from
+                ->whereNull($query->qualifyColumn('announce_from'))
+                ->orWhere($query->qualifyColumn('announce_from'), '<', $today->copy()->addDay()->toDateString()));
+    }
+
+    /**
+     * Where this article stands as a login announcement on a day: `active`, `scheduled` (starts later), `expired` (the last
+     * day has passed), or null (not an announcement, or not published, which can never be one).
+     */
+    public function announcementState(?CarbonInterface $day = null): ?string
+    {
+        if ($this->announce_until === null || ! $this->isPublished()) {
+            return null;
+        }
+
+        $today = ($day ?? Carbon::now(config('app.timezone')))->copy()->startOfDay();
+
+        if ($this->announce_until->copy()->startOfDay()->lt($today)) {
+            return self::ANNOUNCEMENT_EXPIRED;
+        }
+
+        return $this->announce_from !== null && $this->announce_from->copy()->startOfDay()->gt($today)
+            ? self::ANNOUNCEMENT_SCHEDULED
+            : self::ANNOUNCEMENT_ACTIVE;
     }
 
     public function isPublished(): bool

@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Audit;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -44,6 +45,7 @@ class BlogPostService
         protected BlogVisibility $visibility,
         protected BlogContentService $content,
         protected BlogMediaService $media,
+        protected BlogReadService $reads,
     ) {}
 
     /** The private disk covers live on. They are never given a URL: blog.cover and blog.media serve them after a region check. */
@@ -67,14 +69,17 @@ class BlogPostService
         }
 
         $attributes = $this->attributes($data, $regionId);
+        // A new article can be an announcement only if it is published by this very call.
+        $announcement = $this->announcementAttributes($data, null, $publish);
         $body = $this->bodyAttributes($data, $regionId, null);
         $coverMedia = $cover ? $this->media->store($cover, $actor, $regionId, BlogMedia::KIND_COVER) : null;
 
         try {
-            $post = DB::transaction(function () use ($actor, $attributes, $body, $coverMedia, $publish) {
+            $post = DB::transaction(function () use ($actor, $attributes, $announcement, $body, $coverMedia, $publish) {
                 $post = BlogPost::query()->create([
                     ...$attributes,
                     ...$body['attributes'],
+                    ...$announcement,
                     'author_user_id' => $actor->id,
                     'cover_media_id' => $coverMedia?->id,
                     'status' => BlogPost::STATUS_DRAFT,
@@ -87,6 +92,7 @@ class BlogPostService
                 Audit::log('blog_post_created', 'blog', 'BlogPost', $post->id, [
                     'title' => $post->title,
                     'region_id' => $post->region_id,
+                    'announcement' => ($announcement['announce_until'] ?? null) !== null,
                 ]);
 
                 return $publish ? $this->publishLocked($post, $actor) : $post;
@@ -97,6 +103,10 @@ class BlogPostService
             }
 
             throw $e;
+        }
+
+        if ($publish) {
+            $this->reads->forgetEveryone();
         }
 
         return $post->fresh(['coverMedia']);
@@ -158,24 +168,80 @@ class BlogPostService
 
     public function publish(BlogPost $post, User $actor): BlogPost
     {
-        return DB::transaction(fn () => $this->publishLocked($this->lock($post, $actor), $actor))->fresh();
+        $published = DB::transaction(function () use ($post, $actor) {
+            $locked = $this->lock($post, $actor);
+            $wasDraft = ! $locked->isPublished();
+
+            return [$this->publishLocked($locked, $actor), $wasDraft];
+        });
+
+        // Readers' unread numbers change the moment a new article is visible (after the commit, so nobody re-caches the old state).
+        if ($published[1]) {
+            $this->reads->forgetEveryone();
+        }
+
+        return $published[0]->fresh();
     }
 
-    /** Back to a draft: readers stop seeing it at once, and a pinned article is unpinned. */
+    /**
+     * Back to a draft: readers stop seeing it at once, a pinned article is unpinned, and it stops being a login announcement
+     * (only a published article can be one; publishing it again does not bring the old announcement back).
+     */
     public function unpublish(BlogPost $post, User $actor): BlogPost
     {
-        DB::transaction(function () use ($post, $actor) {
+        $changed = DB::transaction(function () use ($post, $actor) {
             $locked = $this->lock($post, $actor);
 
             if (! $locked->isPublished()) {
-                return;
+                return false;
             }
 
-            $locked->forceFill(['status' => BlogPost::STATUS_DRAFT, 'is_pinned' => false])->save();
+            $hadAnnouncement = $locked->announce_until !== null;
+
+            $locked->forceFill([
+                'status' => BlogPost::STATUS_DRAFT,
+                'is_pinned' => false,
+                'announce_from' => null,
+                'announce_until' => null,
+            ])->save();
 
             Audit::log('blog_post_unpublished', 'blog', 'BlogPost', $locked->id, [
                 'title' => $locked->title,
                 'region_id' => $locked->region_id,
+                'announcement_ended' => $hadAnnouncement,
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->reads->forgetEveryone();
+        }
+
+        return $post->fresh();
+    }
+
+    /**
+     * "End announcement now": the article stays published and readable, but is no longer shown at login or in the blog's
+     * announcement strip. Audited as its own action (ids only). Does nothing when it is not an announcement.
+     */
+    public function endAnnouncement(BlogPost $post, User $actor): BlogPost
+    {
+        DB::transaction(function () use ($post, $actor) {
+            $locked = $this->lock($post, $actor);
+
+            if ($locked->announce_until === null && $locked->announce_from === null) {
+                return;
+            }
+
+            $state = $locked->announcementState();
+
+            $locked->forceFill(['announce_from' => null, 'announce_until' => null])->save();
+
+            Audit::log('blog_announcement_ended', 'blog', 'BlogPost', $locked->id, [
+                'title' => $locked->title,
+                'region_id' => $locked->region_id,
+                'was' => $state,
             ]);
         });
 
@@ -246,12 +312,13 @@ class BlogPostService
                 'was_published' => $locked->isPublished(),
             ]);
 
-            // The files go with the article (the rows follow through the foreign keys).
+            // The files go with the article (the rows follow through the foreign keys: reads, dismissals, pictures, versions).
             $this->media->deleteFilesForPost($locked);
 
             $locked->delete();
         });
 
+        $this->reads->forgetEveryone();
         $this->forgetLegacyCover($legacyCover);
     }
 
@@ -293,6 +360,9 @@ class BlogPostService
         if ($body['attributes'] !== []) {
             $changes += $body['attributes'];
         }
+
+        // The login announcement: only when the caller sent it (a restore, an autosave of the text alone, leaves it as it is).
+        $changes += $this->announcementAttributes($data, $locked, $locked->isPublished());
 
         if ($newCover !== null) {
             $oldCoverMedia = $locked->cover_media_id ? $locked->coverMedia : null;
@@ -428,6 +498,73 @@ class BlogPostService
             'cover_focal_x' => $this->percent($data['cover_focal_x'] ?? null),
             'cover_focal_y' => $this->percent($data['cover_focal_y'] ?? null),
         ];
+    }
+
+    /**
+     * The login announcement columns for what the caller sent, or nothing when it sent nothing (so a restore or an autosave
+     * never touches them). `announce` false clears both dates. Ticked, the rules are:
+     *  - only a PUBLISHED article can be an announcement ($published is whether it is, or is being, published);
+     *  - the last day is required, and the first day (optional) cannot come after it;
+     *  - a NEW or CHANGED last day cannot be before today (in the app's timezone). An unchanged date that has since passed is
+     *    kept as it is, otherwise nobody could save any other change to an expired announcement.
+     *
+     * @return array{announce_from?: ?string, announce_until?: ?string}
+     */
+    protected function announcementAttributes(array $data, ?BlogPost $existing, bool $published): array
+    {
+        if (! array_key_exists('announce', $data)) {
+            return [];
+        }
+
+        if (! filter_var($data['announce'], FILTER_VALIDATE_BOOLEAN)) {
+            return ['announce_from' => null, 'announce_until' => null];
+        }
+
+        if (! $published) {
+            throw ValidationException::withMessages(['announce' => 'Publish the article first, then show it as a login announcement.']);
+        }
+
+        $until = $this->announcementDate($data['announce_until'] ?? null);
+
+        if ($until === null) {
+            throw ValidationException::withMessages(['announce_until' => 'Choose the last day the announcement is shown.']);
+        }
+
+        $from = null;
+
+        if (filled($data['announce_from'] ?? null)) {
+            $from = $this->announcementDate($data['announce_from']);
+
+            if ($from === null) {
+                throw ValidationException::withMessages(['announce_from' => 'The first day is not a valid date.']);
+            }
+
+            if ($from->gt($until)) {
+                throw ValidationException::withMessages(['announce_from' => 'The first day cannot be after the last day.']);
+            }
+        }
+
+        $unchanged = $existing !== null
+            && $existing->announce_until?->toDateString() === $until->toDateString()
+            && $existing->announce_from?->toDateString() === $from?->toDateString();
+
+        if (! $unchanged && $until->lt(Carbon::now(config('app.timezone'))->startOfDay())) {
+            throw ValidationException::withMessages(['announce_until' => 'The last day cannot be in the past.']);
+        }
+
+        return ['announce_from' => $from?->toDateString(), 'announce_until' => $until->toDateString()];
+    }
+
+    /** A `Y-m-d` day (a form's date input) or null; anything else is not a date. */
+    protected function announcementDate(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value))) {
+            return null;
+        }
+
+        $day = Carbon::createFromFormat('!Y-m-d', trim($value), config('app.timezone'));
+
+        return $day !== false && $day->format('Y-m-d') === trim($value) ? $day : null;
     }
 
     protected function percent(mixed $value): ?int

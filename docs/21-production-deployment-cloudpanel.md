@@ -502,6 +502,10 @@ GWL_COMMERCIAL_SMS_ENABLED=false               # needs Commercial + customer lis
 GWL_HEALTH_SAFETY_MODULE_ENABLED=false         # scheduler (hourly + daily alerts), mail, GWL_HS_QR_BASE_URL
 GWL_HS_QR_BASE_URL=https://<DOMAIN>            # printed on QR labels and posters: ALWAYS the production address (blank = APP_URL)
 GWL_BLOG_MODULE_ENABLED=true                   # default on; needs GD(WebP); daily blog:prune-media (scheduler)
+GWL_BLOG_UNREAD_LOOKBACK_DAYS=30               # blog badge: only articles first published within N days count as unread
+GWL_BLOG_UNREAD_CACHE_SECONDS=60               # the badge number is cached per person (no scheduler or worker needed)
+GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX=3             # most login announcements shown in the window after sign-in
+GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS=12   # hours between windows for a remember-me return (0 = login form only)
 GWL_GWATER_MODULE_ENABLED=false                # scheduler (gwater:remind)
 GWL_FINANCE_AUDIT_ENABLED=false                # Finance + Audit (one workflow). NOT in .env.example; default false. scheduler
 GWL_MDM_ENABLED=false                          # Android Enterprise: Google credentials, Pub/Sub, queue worker, scheduler, public webhook

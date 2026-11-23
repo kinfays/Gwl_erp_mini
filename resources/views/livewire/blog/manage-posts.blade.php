@@ -76,7 +76,17 @@
                             <td>{{ $post->region?->region_name }}</td>
                         @endif
                         <td>{{ $post->categoryLabel() }}</td>
-                        <td><span class="b-status b-status-{{ $post->status }}">{{ $statuses[$post->status] ?? $post->status }}</span></td>
+                        <td>
+                            <span class="b-status b-status-{{ $post->status }}">{{ $statuses[$post->status] ?? $post->status }}</span>
+                            @php($announcement = $post->announcementState())
+                            @if ($announcement === \App\Models\BlogPost::ANNOUNCEMENT_ACTIVE)
+                                <span class="b-status b-status-announce">{{ __('Announcement until :date', ['date' => $post->announce_until->format('j M')]) }}</span>
+                            @elseif ($announcement === \App\Models\BlogPost::ANNOUNCEMENT_SCHEDULED)
+                                <span class="b-status b-status-announce">{{ __('Announcement from :from to :date', ['from' => $post->announce_from->format('j M'), 'date' => $post->announce_until->format('j M')]) }}</span>
+                            @elseif ($announcement === \App\Models\BlogPost::ANNOUNCEMENT_EXPIRED)
+                                <span class="b-status b-status-expired">{{ __('Expired') }}</span>
+                            @endif
+                        </td>
                         <td style="white-space:nowrap">{{ $post->event_date?->format('d M Y') ?? '—' }}</td>
                         <td style="white-space:nowrap">{{ $post->updated_at->format('d M Y') }}</td>
                         <td>
@@ -87,6 +97,9 @@
                                         <button type="button" class="b-btn" wire:click="unpin({{ $post->id }})">{{ __('Unpin') }}</button>
                                     @else
                                         <button type="button" class="b-btn" wire:click="pin({{ $post->id }})">{{ __('Pin') }}</button>
+                                    @endif
+                                    @if (in_array($announcement, [\App\Models\BlogPost::ANNOUNCEMENT_ACTIVE, \App\Models\BlogPost::ANNOUNCEMENT_SCHEDULED], true))
+                                        <button type="button" class="b-btn" wire:click="endAnnouncement({{ $post->id }})" wire:confirm="End the login announcement now? The article stays published.">{{ __('End announcement now') }}</button>
                                     @endif
                                     <button type="button" class="b-btn" wire:click="unpublish({{ $post->id }})" wire:confirm="Move this article back to drafts? Staff will no longer be able to read it.">{{ __('Unpublish') }}</button>
                                 @else
