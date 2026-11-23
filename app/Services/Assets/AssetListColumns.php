@@ -4,9 +4,10 @@ namespace App\Services\Assets;
 
 use App\Models\IctAsset;
 use App\Models\IctAssetIssueReport;
+use App\Models\IctRack;
 
 /**
- * The columns of the four Assets lists (assets, phones, network, reports): which exist, which are locked or off by
+ * The columns of the five Assets lists (assets, phones, network, reports, racks): which exist, which are locked or off by
  * default, and what each one says as plain text in an export. The Livewire lists and the export controllers both read
  * this, so the screen and the file cannot disagree about a column. Manifest shape: see App\Support\ListColumns.
  */
@@ -19,6 +20,8 @@ class AssetListColumns
     public const NETWORK = 'network';
 
     public const REPORTS = 'reports';
+
+    public const RACKS = 'racks';
 
     /** @return array<string, array<string, mixed>> */
     public static function manifest(string $list): array
@@ -62,6 +65,15 @@ class AssetListColumns
                 'date_solved' => ['label' => 'Date Solved', 'default' => true],
                 'actions' => ['label' => 'Actions', 'default' => true, 'locked' => true, 'export' => false],
             ],
+            self::RACKS => [
+                'rack' => ['label' => 'Rack', 'default' => true, 'locked' => true],
+                'location' => ['label' => 'Location', 'default' => true],
+                'district' => ['label' => 'District', 'default' => true],
+                'usage' => ['label' => 'Used / Total U', 'default' => true],
+                'devices' => ['label' => 'Devices', 'default' => true],
+                'status' => ['label' => 'Status', 'default' => true],
+                'actions' => ['label' => 'Actions', 'default' => true, 'locked' => true, 'export' => false],
+            ],
             default => throw new \InvalidArgumentException("Unknown list [{$list}]."),
         };
     }
@@ -74,6 +86,8 @@ class AssetListColumns
             self::PHONES => ['assetModel', 'assignedTo'],
             self::NETWORK => ['assetModel', 'district'],
             self::REPORTS => ['asset', 'district', 'region'],
+            // The devices (three columns only) give the used U and the device count without a query per rack.
+            self::RACKS => ['district', 'region', 'devices:id,rack_id,rack_unit,rack_unit_span'],
         };
     }
 
@@ -125,6 +139,15 @@ class AssetListColumns
                 'date_solved' => ['Date Solved' => 'date_solved'],
                 default => [],
             },
+            self::RACKS => match ($key) {
+                'rack' => ['Rack' => 'name', 'Code' => 'code'],
+                'location' => ['Location' => 'location'],
+                'district' => ['District' => 'district', 'Region' => 'region'],
+                'usage' => ['Total U' => 'total_units', 'Used U' => 'used_units', 'Free U' => 'free_units'],
+                'devices' => ['Devices' => 'device_count'],
+                'status' => ['Status' => 'status'],
+                default => [],
+            },
             default => throw new \InvalidArgumentException("Unknown list [{$list}]."),
         };
     }
@@ -136,7 +159,7 @@ class AssetListColumns
     }
 
     /** One export row for these column keys, aligned with exportHeadings(). */
-    public static function exportRow(string $list, array $keys, IctAsset|IctAssetIssueReport $row): array
+    public static function exportRow(string $list, array $keys, IctAsset|IctAssetIssueReport|IctRack $row): array
     {
         $cells = [];
 
@@ -150,8 +173,24 @@ class AssetListColumns
     }
 
     /** One plain-text value; '' where it does not apply. */
-    protected static function value(IctAsset|IctAssetIssueReport $row, string $field): string
+    protected static function value(IctAsset|IctAssetIssueReport|IctRack $row, string $field): string
     {
+        if ($row instanceof IctRack) {
+            return match ($field) {
+                'name' => (string) $row->name,
+                'code' => (string) $row->code,
+                'location' => (string) $row->location,
+                'district' => (string) $row->district?->district_name,
+                'region' => (string) $row->region?->region_name,
+                'total_units' => (string) $row->total_units,
+                'used_units' => (string) $row->usedUnits(),
+                'free_units' => (string) $row->freeUnits(),
+                'device_count' => (string) $row->devices->count(),
+                'status' => (string) $row->status,
+                default => '',
+            };
+        }
+
         if ($row instanceof IctAssetIssueReport) {
             return match ($field) {
                 'title' => (string) $row->title,

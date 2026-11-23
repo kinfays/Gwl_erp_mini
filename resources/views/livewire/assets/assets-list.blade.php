@@ -275,6 +275,10 @@
                     @endif
                 @endif
 
+                @if ($formSupportsRack)
+                    <x-assets.rack-fields :racks="$rackOptions" :chosen="filled($form['rack_id'] ?? null)" />
+                @endif
+
                 <div class="span-2">
                     <x-ui.textarea label="Notes" wire:model.defer="form.notes" rows="3" />
                 </div>

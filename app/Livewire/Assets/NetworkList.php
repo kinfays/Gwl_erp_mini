@@ -8,6 +8,7 @@ use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
 use App\Livewire\Assets\Concerns\FiltersByLocationAndModel;
+use App\Livewire\Assets\Concerns\HandlesRackPlacement;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
 use App\Livewire\Concerns\EnforcesModuleAccess;
@@ -32,6 +33,7 @@ class NetworkList extends Component
     use FiltersByAnalytics;
     use FiltersByAssetTypes;
     use FiltersByLocationAndModel;
+    use HandlesRackPlacement;
     use HasSelectableColumns;
     use ResetsModelOnTypeChange;
     use ScopesAssetsByActor;
@@ -71,6 +73,9 @@ class NetworkList extends Component
         'ssid' => '',
         'ssid_password' => '',
         'device_ip' => '',
+        'rack_id' => null,
+        'rack_unit' => null,
+        'rack_unit_span' => 1,
         'district_id' => null,
         'region_id' => null,
         'serial_number' => '',
@@ -134,6 +139,7 @@ class NetworkList extends Component
             'ssid' => (string) $asset->ssid,
             'ssid_password' => '',
             'device_ip' => (string) $asset->device_ip,
+            ...$this->rackFormValues($asset),
             'district_id' => $asset->district_id,
             'region_id' => $this->actorRegionId(),
             'serial_number' => (string) $asset->serial_number,
@@ -172,6 +178,7 @@ class NetworkList extends Component
 
         $validated = $this->validate($this->rules())['form'];
         $validated['region_id'] = $regionId;
+        $validated = $this->rackPayload($validated);
 
         // Blank password fields mean "leave unchanged" on an edit.
         if ($this->editingAssetId) {
@@ -204,6 +211,7 @@ class NetworkList extends Component
             'form.ssid' => ['nullable', 'string', 'max:255'],
             'form.ssid_password' => ['nullable', 'string', 'max:255'],
             'form.device_ip' => ['nullable', 'ip'],
+            ...$this->rackFormRules(),
             'form.district_id' => ['nullable', 'integer', $this->actorRegionDistrictRule()],
             'form.serial_number' => [
                 'nullable',
@@ -221,7 +229,21 @@ class NetworkList extends Component
     {
         return [
             'form.district_id.exists' => 'The selected district is not in your region.',
+            ...$this->rackFormMessages(),
         ];
+    }
+
+    protected function validationAttributes(): array
+    {
+        return $this->rackFormAttributes();
+    }
+
+    /** Picking a type that sits in no rack (an access point, a MiFi unit) drops whatever was entered for one. */
+    public function updatedForm($value, $key): void
+    {
+        if ($key === 'asset_type') {
+            $this->clearRackFieldsUnlessSupported();
+        }
     }
 
     protected function authorizeAction(string $permission): void
@@ -244,6 +266,7 @@ class NetworkList extends Component
             'ssid' => '',
             'ssid_password' => '',
             'device_ip' => '',
+            ...$this->rackFormValues(),
             'district_id' => null,
             'region_id' => $this->actorRegionId(),
             'serial_number' => '',
@@ -306,6 +329,7 @@ class NetworkList extends Component
             'models' => $models,
             ...$this->addModelViewData(),
             'canViewSecrets' => $canViewSecrets,
+            ...$this->rackViewData(),
         ]);
     }
 }

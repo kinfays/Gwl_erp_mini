@@ -40,6 +40,27 @@ class AssetModuleController extends Controller
         return view('assets.network');
     }
 
+    public function racks(): View
+    {
+        return view('assets.racks.index');
+    }
+
+    public function rackCreate(): View
+    {
+        return view('assets.racks.form', ['rack' => null]);
+    }
+
+    /** The rack id is resolved inside the person's own scope by the Livewire component (404 outside it), never bound here. */
+    public function rackEdit(int $rack): View
+    {
+        return view('assets.racks.form', ['rack' => $rack]);
+    }
+
+    public function rackShow(int $rack): View
+    {
+        return view('assets.racks.show', ['rack' => $rack]);
+    }
+
     public function employee(Employee $employee): View
     {
         return view('assets.employee', ['employee' => $employee]);

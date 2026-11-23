@@ -683,6 +683,14 @@ class ErpNavigation
                 'can' => $canViewInventory,
             ],
             [
+                'label' => 'Racks',
+                'route' => 'assets.racks',
+                'active' => ['assets.racks', 'assets.racks.*'],
+                'icon' => $this->icon('stack'),
+                'icon_name' => 'server',
+                'can' => fn (User $currentUser) => $currentUser->hasPermission('assets.view_racks') || $currentUser->hasRoles('super_admin'),
+            ],
+            [
                 // The three uploads (Assets, Phones, Network) share one area; its tabs are inside the page.
                 'label' => 'Upload',
                 'route' => 'assets.import',

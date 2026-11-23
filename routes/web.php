@@ -16,6 +16,7 @@ use App\Http\Controllers\Assets\IssueReportsExportController;
 use App\Http\Controllers\Assets\MaintenanceExportController;
 use App\Http\Controllers\Assets\NetworkListExportController;
 use App\Http\Controllers\Assets\PhonesListExportController;
+use App\Http\Controllers\Assets\RacksListExportController;
 use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
@@ -320,6 +321,34 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
         Route::get('/network', [AssetModuleController::class, 'network'])
             ->middleware('permission:assets.view_inventory')
             ->name('network');
+
+        // Network cabinets / server racks. Fixed paths first so "create" and "export" are never read as a rack id; the id is
+        // resolved inside the person's own scope by the Livewire component (404 outside it), not by route-model binding.
+        Route::get('/racks/export/excel', [RacksListExportController::class, 'excel'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('racks.export.excel');
+
+        Route::get('/racks/export/pdf', [RacksListExportController::class, 'pdf'])
+            ->middleware('permission:assets.export_inventory')
+            ->name('racks.export.pdf');
+
+        Route::get('/racks/create', [AssetModuleController::class, 'rackCreate'])
+            ->middleware('permission:assets.manage_racks')
+            ->name('racks.create');
+
+        Route::get('/racks', [AssetModuleController::class, 'racks'])
+            ->middleware('permission:assets.view_racks')
+            ->name('racks');
+
+        Route::get('/racks/{rack}/edit', [AssetModuleController::class, 'rackEdit'])
+            ->whereNumber('rack')
+            ->middleware('permission:assets.manage_racks')
+            ->name('racks.edit');
+
+        Route::get('/racks/{rack}', [AssetModuleController::class, 'rackShow'])
+            ->whereNumber('rack')
+            ->middleware('permission:assets.view_racks')
+            ->name('racks.show');
 
         Route::get('/employees/{employee}', [AssetModuleController::class, 'employee'])
             ->middleware('permission:assets.view_inventory')

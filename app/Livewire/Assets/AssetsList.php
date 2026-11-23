@@ -9,6 +9,7 @@ use App\Livewire\Assets\Concerns\ExportsAssetLists;
 use App\Livewire\Assets\Concerns\FiltersByAnalytics;
 use App\Livewire\Assets\Concerns\FiltersByAssetTypes;
 use App\Livewire\Assets\Concerns\FiltersByLocationAndModel;
+use App\Livewire\Assets\Concerns\HandlesRackPlacement;
 use App\Livewire\Assets\Concerns\PrefillsLocationFromAssignee;
 use App\Livewire\Assets\Concerns\ResetsModelOnTypeChange;
 use App\Livewire\Assets\Concerns\ScopesAssetsByActor;
@@ -40,6 +41,7 @@ class AssetsList extends Component
     use FiltersByAnalytics;
     use FiltersByAssetTypes;
     use FiltersByLocationAndModel;
+    use HandlesRackPlacement;
     use HasSelectableColumns;
     use PrefillsLocationFromAssignee;
     use ResetsModelOnTypeChange;
@@ -85,6 +87,9 @@ class AssetsList extends Component
         'ups_status' => '',
         'ups_notes' => '',
         'cpu_name' => '',
+        'rack_id' => null,
+        'rack_unit' => null,
+        'rack_unit_span' => 1,
         'assigned_to_employee_id' => null,
         'is_general_use' => false,
         'department_id' => null,
@@ -159,6 +164,7 @@ class AssetsList extends Component
             'ups_status' => (string) $asset->ups_status,
             'ups_notes' => (string) $asset->ups_notes,
             'cpu_name' => (string) $asset->cpu_name,
+            ...$this->rackFormValues($asset),
             'assigned_to_employee_id' => $asset->assigned_to_employee_id,
             'is_general_use' => (bool) $asset->is_general_use,
             'department_id' => $asset->department_id,
@@ -217,6 +223,7 @@ class AssetsList extends Component
 
         $validated = $this->validate($this->rules())['form'];
         $validated['region_id'] = $regionId;
+        $validated = $this->rackPayload($validated);
 
         if (! $confirmedNoAssignee && $this->lacksNeededAssignee($validated)) {
             $this->confirmNoAssignee = true;
@@ -266,6 +273,7 @@ class AssetsList extends Component
             ],
             'form.ups_notes' => ['nullable', 'string', 'max:1000'],
             'form.cpu_name' => ['nullable', 'string', 'max:255'],
+            ...$this->rackFormRules(),
             'form.is_general_use' => ['boolean'],
             // A general-use asset has no holder: any assignee sent is ignored (and cleared by AssetRecordService).
             // Optional: nobody assigned only raises the warning in save().
@@ -285,6 +293,7 @@ class AssetsList extends Component
         return [
             'form.district_id.exists' => 'The selected location is not in your region.',
             'form.ups_status.required' => 'Say whether the UPS is working or spoiled.',
+            ...$this->rackFormMessages(),
             ...$this->assignmentChangeMessages(),
         ];
     }
@@ -301,6 +310,7 @@ class AssetsList extends Component
             'form.ups_status' => 'UPS condition',
             'form.ups_notes' => 'UPS notes',
             'form.cpu_name' => 'processor',
+            ...$this->rackFormAttributes(),
             'form.assigned_to_employee_id' => 'assigned to',
             'form.is_general_use' => 'general use',
             'form.department_id' => 'department',
@@ -354,6 +364,8 @@ class AssetsList extends Component
         if (! $this->formSupportsProcessor()) {
             $this->form['cpu_name'] = '';
         }
+
+        $this->clearRackFieldsUnlessSupported();
     }
 
     protected function columnManifest(): array
@@ -399,6 +411,7 @@ class AssetsList extends Component
             'ups_status' => '',
             'ups_notes' => '',
             'cpu_name' => '',
+            ...$this->rackFormValues(),
             'assigned_to_employee_id' => null,
             'is_general_use' => false,
             'department_id' => null,
@@ -438,6 +451,7 @@ class AssetsList extends Component
             'upsStatuses' => IctAsset::UPS_STATUSES,
             'formSupportsUps' => $this->formSupportsUps(),
             'formSupportsProcessor' => $this->formSupportsProcessor(),
+            ...$this->rackViewData(),
             ...$this->assignmentChangeViewData(),
             ...$this->columnViewData(),
             ...$this->exportViewData('assets.export_inventory'),

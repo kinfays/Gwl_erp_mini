@@ -92,6 +92,12 @@
             'retired' => ['muted'],
             'lost' => ['danger'],
         ],
+        // ict_racks.status
+        'rack' => [
+            'active' => ['success'],
+            'under maintenance' => ['warning'],
+            'decommissioned' => ['muted'],
+        ],
         // mdm_device_commands.status
         'mdm-command' => [
             'requested' => ['muted', 'Queued'],

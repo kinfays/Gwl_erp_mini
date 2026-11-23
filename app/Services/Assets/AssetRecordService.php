@@ -10,6 +10,7 @@ use App\Models\IctAssetAuditLine;
 use App\Models\IctAssetIssueReport;
 use App\Models\IctAssetMaintenance;
 use App\Models\IctAssetTransfer;
+use App\Models\IctRack;
 use App\Models\MdmDevice;
 use App\Models\Permission;
 use App\Models\User;
@@ -35,6 +36,7 @@ class AssetRecordService
         protected IpRangeService $ipRanges,
         protected AssetTransferService $transfers,
         protected AssetAssignmentService $assignments,
+        protected RackService $racks,
     ) {}
 
     /** Whether another asset already uses this name (case-insensitive, surrounding spaces ignored). */
@@ -253,6 +255,7 @@ class AssetRecordService
         $data = $this->normaliseGeneralUse($data, $category, $existing);
         $data = $this->normaliseUps($data, $category, $existing);
         $data = $this->normaliseProcessor($data, $category, $existing);
+        $data = $this->normaliseRack($data, $category, $existing);
 
         if (! empty($data['device_ip'])) {
             $error = $this->ipRanges->validateIpForLocation(
@@ -326,6 +329,9 @@ class AssetRecordService
     protected function persist(array $data, string $category, ?IctAsset $existing, bool $changesHolder, ?int $newHolder, ?string $assignmentChange, bool $audit = true): IctAsset
     {
         return DB::transaction(function () use ($data, $category, $existing, $changesHolder, $newHolder, $assignmentChange, $audit) {
+            // Inside the transaction, with the rack row locked: two people filling the same U at once cannot both succeed.
+            $this->guardRackPlacement($data, $existing);
+
             if ($existing) {
                 $old = $existing->toArray();
                 $existing->update($data);
@@ -453,6 +459,115 @@ class AssetRecordService
         }
 
         return $data;
+    }
+
+    /**
+     * Rack fields (rack_id, rack_unit, rack_unit_span) only mean something for the types in IctAsset::RACK_ASSET_TYPES
+     * (a server, a router, a switch). For any other device they are forced to NULL / NULL / 1, so a type changed to a
+     * laptop, or a phone, never keeps a stale position. With no rack chosen the position is cleared too, and a blank
+     * select arrives as '' and is stored as NULL. A save that carries none of the keys (an audit correction, the issue
+     * popup, a status change) leaves the placement alone, and so does a switch between two rack types.
+     *
+     * Whether the position FITS is not decided here: it needs the rack row locked, so guardRackPlacement() does it
+     * inside the write transaction.
+     */
+    protected function normaliseRack(array $data, string $category, ?IctAsset $existing): array
+    {
+        $touchesRack = array_key_exists('rack_id', $data) || array_key_exists('rack_unit', $data) || array_key_exists('rack_unit_span', $data);
+        $typeChanged = array_key_exists('asset_type', $data) && $existing && $data['asset_type'] !== $existing->asset_type;
+
+        if (! $touchesRack && ! $typeChanged) {
+            return $data;
+        }
+
+        $type = $data['asset_type'] ?? $existing?->asset_type;
+        $cleared = [...$data, 'rack_id' => null, 'rack_unit' => null, 'rack_unit_span' => 1];
+
+        if (! IctAsset::supportsRack($category, $type)) {
+            return $cleared;
+        }
+
+        if (! $touchesRack) {
+            return $data;
+        }
+
+        foreach (['rack_id', 'rack_unit', 'rack_unit_span'] as $key) {
+            if (array_key_exists($key, $data) && ($data[$key] === '' || $data[$key] === null)) {
+                $data[$key] = null;
+            }
+        }
+
+        $rackId = array_key_exists('rack_id', $data) ? $data['rack_id'] : $existing?->rack_id;
+
+        if (! $rackId) {
+            return $cleared;
+        }
+
+        $unit = array_key_exists('rack_unit', $data) ? $data['rack_unit'] : $existing?->rack_unit;
+        $span = array_key_exists('rack_unit_span', $data) ? $data['rack_unit_span'] : $existing?->rack_unit_span;
+        $span = ($span === null || $span === '') ? 1 : $span;
+
+        if ($unit === null || $unit === '') {
+            throw ValidationException::withMessages(['form.rack_unit' => 'Enter the starting U position (1 is the bottom of the rack).']);
+        }
+
+        foreach (['rack_unit' => $unit, 'rack_unit_span' => $span] as $field => $value) {
+            if (! is_numeric($value) || (int) $value != $value || (int) $value < 1) {
+                throw ValidationException::withMessages(["form.{$field}" => $field === 'rack_unit' ? 'The starting U must be a whole number, 1 or more.' : 'The height must be a whole number of U, 1 or more.']);
+            }
+        }
+
+        return [...$data, 'rack_id' => (int) $rackId, 'rack_unit' => (int) $unit, 'rack_unit_span' => (int) $span];
+    }
+
+    /**
+     * The database-backed half of the rack rules, run inside the save transaction. Only a placement that CHANGES is
+     * judged (a new device, another rack, another U or another height): an unrelated edit of a device that is already
+     * mounted is never blocked by the rack's later state. The rack is locked, then must be in the device's own region,
+     * must not be Decommissioned (when it is a new rack for the device), the span must fit in its height, and no other
+     * device may sit on any of those U. The conflict names the device in the way.
+     */
+    protected function guardRackPlacement(array $data, ?IctAsset $existing): void
+    {
+        $rackId = array_key_exists('rack_id', $data) ? $data['rack_id'] : $existing?->rack_id;
+
+        if (! $rackId) {
+            return;
+        }
+
+        $unit = array_key_exists('rack_unit', $data) ? $data['rack_unit'] : $existing?->rack_unit;
+        $span = array_key_exists('rack_unit_span', $data) ? $data['rack_unit_span'] : $existing?->rack_unit_span;
+
+        $unchanged = $existing
+            && (int) $rackId === (int) $existing->rack_id
+            && (int) $unit === (int) $existing->rack_unit
+            && (int) $span === (int) $existing->rack_unit_span;
+
+        if ($unchanged) {
+            return;
+        }
+
+        $rack = IctRack::query()->lockForUpdate()->find($rackId);
+
+        if (! $rack) {
+            throw ValidationException::withMessages(['form.rack_id' => 'That rack no longer exists.']);
+        }
+
+        $region = array_key_exists('region_id', $data) ? $data['region_id'] : $existing?->region_id;
+
+        if ($region === null || (int) $region !== (int) $rack->region_id) {
+            throw ValidationException::withMessages(['form.rack_id' => 'That rack is not in this device\'s region.']);
+        }
+
+        if ($rack->status === IctRack::STATUS_DECOMMISSIONED && (int) $rackId !== (int) $existing?->rack_id) {
+            throw ValidationException::withMessages(['form.rack_id' => "{$rack->name} is decommissioned. Pick another rack."]);
+        }
+
+        $problem = $this->racks->placementProblem($rack, (int) $unit, (int) $span, $existing?->id);
+
+        if ($problem) {
+            throw ValidationException::withMessages([$problem['field'] => $problem['message']]);
+        }
     }
 
     /**

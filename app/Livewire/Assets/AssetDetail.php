@@ -10,6 +10,7 @@ use App\Models\IctAssetAuditLine;
 use App\Models\IctAssetReplacementPolicy;
 use App\Services\Assets\AssetAssignmentService;
 use App\Services\Assets\AssetDashboardService;
+use App\Services\Assets\RackService;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -86,7 +87,7 @@ class AssetDetail extends Component
     public function render()
     {
         $asset = IctAsset::query()
-            ->with(['assetModel.manufacturer', 'assignedTo', 'previousAssignment.employee', 'department', 'district', 'region'])
+            ->with(['assetModel.manufacturer', 'assignedTo', 'previousAssignment.employee', 'department', 'district', 'region', 'rack'])
             ->findOrFail($this->assetId);
 
         $category = $asset->device_category;
@@ -110,6 +111,7 @@ class AssetDetail extends Component
             },
             // Same viewing rule as the asset itself (mount() already refused anyone who may not see this device).
             'assignments' => $asset->assignments()->with(['employee', 'recordedBy'])->limit(100)->get(),
+            'canViewRacks' => RackService::mayView($this->actor()),
             'canCorrectAssignments' => $this->canCorrectAssignments(),
             'correctionCodes' => IctAssetAssignment::CORRECTION_CODES,
             'maintenance' => $asset->maintenanceLogs()->latest()->limit(25)->get(),

@@ -42,6 +42,14 @@ class IctAsset extends Model
      */
     public const UPS_ASSET_TYPES = ['PC', 'AIO', 'Server', 'PRT', 'PTC'];
 
+    /**
+     * The only asset types that are mounted in a rack (they carry a rack, a starting U and a height in U): servers, and
+     * the network devices built for a cabinet, routers and switches. Access points, MiFi units, P2P radios and 4G
+     * routers hang on walls and masts or sit on a desk, so they take no rack space. Add a type here to offer the rack
+     * fields for it; nothing else needs to change.
+     */
+    public const RACK_ASSET_TYPES = ['Server', 'RT', 'SW'];
+
     /** Computers with a processor to record (printers and photocopiers have none worth tracking here). */
     public const PROCESSOR_ASSET_TYPES = ['PC', 'AIO', 'Laptop', 'Server'];
 
@@ -147,9 +155,15 @@ class IctAsset extends Model
         'ssid',
         'ssid_password',
         'actual_location',
+        'rack_id',
+        'rack_unit',
+        'rack_unit_span',
     ];
 
     protected $casts = [
+        'rack_id' => 'integer',
+        'rack_unit' => 'integer',
+        'rack_unit_span' => 'integer',
         'ict_asset_model_id' => 'integer',
         'assigned_to_employee_id' => 'integer',
         'department_id' => 'integer',
@@ -235,6 +249,14 @@ class IctAsset extends Model
         return $category === self::DEVICE_CATEGORY_ASSET && in_array($assetType, self::UPS_ASSET_TYPES, true);
     }
 
+    /** Whether a device of this category and type is one that is mounted in a rack (see RACK_ASSET_TYPES). */
+    public static function supportsRack(?string $category, ?string $assetType): bool
+    {
+        return $category !== null
+            && isset(self::ASSET_TYPES[$category][$assetType])
+            && in_array($assetType, self::RACK_ASSET_TYPES, true);
+    }
+
     /** Whether a device of this category and type is one whose processor is recorded. */
     public static function supportsProcessor(?string $category, ?string $assetType): bool
     {
@@ -279,6 +301,18 @@ class IctAsset extends Model
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    /** The rack this device is mounted in, if any (only the RACK_ASSET_TYPES carry one). */
+    public function rack(): BelongsTo
+    {
+        return $this->belongsTo(IctRack::class, 'rack_id');
+    }
+
+    /** "U12" or "U12-U13" for a mounted device, '' when it has no position. */
+    public function rackPositionLabel(): string
+    {
+        return $this->rack_id ? IctRack::positionLabel($this->rack_unit, $this->rack_unit_span) : '';
     }
 
     public function region(): BelongsTo

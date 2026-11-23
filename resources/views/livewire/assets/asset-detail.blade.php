@@ -23,6 +23,19 @@
                 @if (App\Models\IctAsset::supportsUps($asset->device_category, $asset->asset_type))
                     <div><dt>UPS</dt><dd>{{ $asset->has_ups ? ($asset->ups_status ?: 'Yes') : 'No UPS' }}@if ($asset->has_ups && $asset->ups_notes) <span class="ui-person-sub">{{ $asset->ups_notes }}</span>@endif</dd></div>
                 @endif
+                @if ($canViewRacks && App\Models\IctAsset::supportsRack($asset->device_category, $asset->asset_type))
+                    <div>
+                        <dt>Rack</dt>
+                        <dd>
+                            @if ($asset->rack)
+                                <a href="{{ route('assets.racks.show', $asset->rack) }}">{{ $asset->rack->name }}</a>
+                                <span class="ui-person-sub">{{ $asset->rackPositionLabel() }}</span>
+                            @else
+                                Not in a rack
+                            @endif
+                        </dd>
+                    </div>
+                @endif
                 <div><dt>Location</dt><dd>{{ $asset->district?->district_name ?: 'No district' }}@if ($asset->region) <span class="ui-person-sub">{{ $asset->region->region_name }}</span>@endif</dd></div>
                 <div><dt>Department</dt><dd>{{ $dash($asset->department?->department_name) }}</dd></div>
                 <div>

@@ -126,3 +126,41 @@ always wins and must be in the region. The preview lists every row's result, the
 list** (row, column, severity, message, rebuilt from the stored file). "Import valid rows only" skips rows with errors;
 without it nothing is imported while any row has an error. After a run the result card shows created / skipped / failed and
 links back to the list.
+
+## Racks (network cabinets / server racks)
+
+**Assets > Racks** (`assets.racks`, `assets.racks.create|edit|show`, export `assets.racks.export.excel|pdf`). A rack is its
+own record (`ict_racks`), **not** an asset type: devices point at it with `ict_assets.rack_id`, `rack_unit` (the starting
+U, **1 = the bottom of the rack**) and `rack_unit_span` (the height in U, default 1). A device covers
+`rack_unit .. rack_unit + rack_unit_span - 1`.
+
+- **Which devices carry a position:** `IctAsset::RACK_ASSET_TYPES` = `Server`, `RT` (Router), `SW` (Switch), tested with
+  `IctAsset::supportsRack($category, $type)` (the twin of `supportsUps()`). Access points, MiFi, P2P radios and 4G routers hang
+  on walls and masts or sit on a desk, so they take no rack space; add a key to the constant to change that. The Rack /
+  Starting U / U height fields are on the Assets form (servers) and the Network form (routers, switches) only, through the
+  `HandlesRackPlacement` trait and the `x-assets.rack-fields` component. They are optional; once a rack is chosen the starting U
+  and the height are required.
+- **The rules live in `AssetRecordService`** (every writer goes through it, so they hold for the forms, the audit
+  corrections and anything programmatic): `normaliseRack()` clears the three fields for a type with no rack or with no rack
+  chosen (so changing a server to a laptop never leaves a stale position), and `guardRackPlacement()` runs inside the save
+  transaction with the rack row locked: the range must fit in the rack's `total_units`, overlap no other device in it (the
+  error names the device in the way), the rack must be in the device's own region and not Decommissioned. Only a placement that
+  CHANGES is judged, so an unrelated edit of a device already mounted is never blocked by the rack's later state. The placement
+  rule itself is `RackService::placementProblem()`.
+- **Racks are written only by `RackService`** (create / update / delete, `assets.manage_racks`, re-read `lockForUpdate`, one
+  audit row each: `create_rack`, `update_rack`, `delete_rack`). A rack's name is unique company-wide ignoring case, its code
+  is optional and unique (a blank is NULL). It cannot be made shorter than the highest device in it, cannot be
+  Decommissioned while devices are mounted, and **a rack with devices is never deleted** (the refusal says how many).
+- **Scope:** a rack carries `region_id` (stamped from the actor's own region when created) and a `district_id` of that
+  region, and is scoped exactly like an asset: reading is `scopeAssetsForViewing()` (Head Office ICT and unscoped roles see
+  every region), writing is `scopeAssetsForActor()` / `RackService::mayWrite()` (own region; another region's rack answers 404).
+  The device forms offer only racks of the actor's own region (plus the one the device is already in).
+- **Permissions:** `assets.view_racks` (list, detail, the sidebar entry, the Rack row on a device page) and
+  `assets.manage_racks` (create, edit, delete), granted to `super_admin`, `ict_team` and `ict_manager`; `admin` holds only MDM
+  in Assets. Export of the rack list reuses `assets.export_inventory`. A person without `assets.view_racks` is not shown the
+  device-form fields, and `rackPayload()` takes the keys out of what they save, so a forged request cannot change a placement.
+- **List:** search (name, code, location, notes), status and district filters (all in the URL), selectable columns
+  (`AssetListColumns::RACKS`, Phase 8) and the same Excel / PDF export as the other lists (one audit row per download).
+  The detail page shows the rack, used / free U, the free stretches and the mounted devices from the bottom up.
+- **Not built (separate follow-ups):** a visual rack-elevation diagram, power / load, cable / port mapping, rack analytics
+  on Summary, a Racks card on the Dashboard, racks in the physical audit flow.

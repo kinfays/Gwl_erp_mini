@@ -151,6 +151,31 @@ class AssetListQuery
             ->when(filled($f['type'] ?? null), fn (Builder $q) => $q->where('issue_type', $f['type']));
     }
 
+    /**
+     * The Racks list: search (name, code, room / building, notes; `%` and `_` typed by the user are plain text), status and
+     * districts. The caller passes an already region-scoped query, and cuts `districts` down to what the user may see.
+     *
+     * @param  array<string, mixed>  $f
+     */
+    public function racks(Builder $query, array $f): Builder
+    {
+        $search = trim((string) ($f['search'] ?? ''));
+        $districts = self::ids($f['districts'] ?? null);
+
+        return $query
+            ->when($search !== '', function (Builder $q) use ($search) {
+                $like = self::like($search);
+
+                $q->where(fn (Builder $inner) => $inner
+                    ->whereRaw("ict_racks.name LIKE ? ESCAPE '!'", [$like])
+                    ->orWhereRaw("ict_racks.code LIKE ? ESCAPE '!'", [$like])
+                    ->orWhereRaw("ict_racks.location LIKE ? ESCAPE '!'", [$like])
+                    ->orWhereRaw("ict_racks.notes LIKE ? ESCAPE '!'", [$like]));
+            })
+            ->when(filled($f['status'] ?? null), fn (Builder $q) => $q->where('ict_racks.status', $f['status']))
+            ->when($districts !== [], fn (Builder $q) => $q->whereIn('ict_racks.district_id', $districts));
+    }
+
     /** The asset types in a ?type= value: one, or several joined by commas ("PC,Laptop"). */
     public static function types(mixed $value): array
     {
