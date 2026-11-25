@@ -21,6 +21,7 @@ use App\Http\Controllers\Assets\AssetSummaryExportController;
 use App\Http\Controllers\Assets\MdmEnterpriseController;
 use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\Blog\BlogController;
+use App\Http\Controllers\Blog\BlogLikeController;
 use App\Http\Controllers\Blog\BlogMediaController;
 use App\Http\Controllers\Commercial\CommercialExportController;
 use App\Http\Controllers\Commercial\CommercialModuleController;
@@ -746,6 +747,11 @@ if (config('gwl.blog_module_enabled')) {
             // The id decides; the slug after it only makes the link readable.
             Route::get('/posts/{post}/{slug?}', [BlogController::class, 'show'])->whereNumber('post')->name('show');
             Route::get('/cover/{post}', [BlogController::class, 'cover'])->whereNumber('post')->name('cover');
+
+            // The like button: two idempotent JSON actions, CSRF (web group), own bucket of 30 a minute (the third argument keeps it
+            // apart from the other throttled blog routes, which would otherwise share one counter per person).
+            Route::post('/posts/{post}/like', [BlogLikeController::class, 'store'])->whereNumber('post')->middleware('throttle:30,1,bloglike')->name('like');
+            Route::delete('/posts/{post}/like', [BlogLikeController::class, 'destroy'])->whereNumber('post')->middleware('throttle:30,1,bloglike')->name('unlike');
 
             // Pictures: private files, served only after the region check; thumb / medium / large.
             Route::get('/media/{media}/{size}', [BlogMediaController::class, 'show'])

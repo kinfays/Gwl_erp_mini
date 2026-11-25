@@ -4,7 +4,7 @@
     @endpush
 
     <article class="b-article">
-        @include('blog.partials.article', ['post' => $post, 'canManage' => $canManage, 'regions' => $regions, 'preview' => false])
+        @include('blog.partials.article', ['post' => $post, 'canManage' => $canManage, 'regions' => $regions, 'preview' => false, 'likedIds' => $likedIds, 'readers' => $readers])
 
         @if ($neighbours['older'] || $neighbours['newer'])
             <nav class="b-neighbours" aria-label="{{ __('More articles') }}">

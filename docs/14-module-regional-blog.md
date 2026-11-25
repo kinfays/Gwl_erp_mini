@@ -10,13 +10,14 @@ layout (no ERP sidebar, no module tabs) and is **not public**: the same login, m
 
 Code: `App\Services\Blog\BlogVisibility` (who sees and writes what), `BlogPostService` (every change to an article),
 `BlogContentService` (editor document -> safe HTML), `BlogMediaService` (pictures), `BlogFeedService` (reader-page queries),
-`BlogReadService` (unread count, read tracking), `BlogAnnouncementService` (login announcements); models
-`BlogPost`, `BlogMedia`, `BlogPostRevision`, `BlogPostRead`, `BlogAnnouncementDismissal`; `Blog\BlogController`, `Blog\BlogMediaController`;
+`BlogReadService` (unread count, read tracking), `BlogAnnouncementService` (login announcements), `BlogEngagementService` (likes and view
+counts); models `BlogPost`, `BlogMedia`, `BlogPostRevision`, `BlogPostRead`, `BlogPostLike`, `BlogAnnouncementDismissal`; `Blog\BlogController`,
+`Blog\BlogMediaController`, `Blog\BlogLikeController`; command `blog:recount-likes`;
 listener `Listeners\Blog\ArmLoginAnnouncements`; Livewire `Blog\ManagePosts` and `Blog\PostForm` (the editor), and the three small
-components `Blog\HeaderLink` (the ERP header's Blog link with its badge), `Blog\LoginAnnouncements` (the login window) and
-`Blog\AnnouncementStrip` (the strip on the blog home); layout `layouts/blog.blade.php` (component `x-blog-layout`); views in `resources/views/blog/` and
+components `Blog\HeaderLink` (the ERP header's Blog link with its badge), `Blog\LoginAnnouncements` (the login window),
+`Blog\AnnouncementStrip` (the strip on the blog home) and `Blog\PostStats` (the editor's Stats panel); layout `layouts/blog.blade.php` (component `x-blog-layout`); views in `resources/views/blog/` and
 `resources/views/livewire/blog/`; front end `resources/css/blog.css`, `blog-editor.css`, `resources/js/blog-lightbox.js`,
-`blog-editor.js`, `blog-editor-nodes.js`. Switch: `GWL_BLOG_MODULE_ENABLED` (default on; when off the routes are not registered and
+`blog-editor.js`, `blog-editor-nodes.js`, `blog-like.js` (the heart button). Switch: `GWL_BLOG_MODULE_ENABLED` (default on; when off the routes are not registered and
 the header link is hidden).
 
 ## Who can do what
@@ -50,6 +51,7 @@ region. Module access `blog` is allowed for every role, and no permission was ad
 | `blog.manage`, `blog.create`, `blog.edit` | `/blog/manage...` | The writers' list and editor (`blog.manage_posts`) |
 | `blog.media.upload` | `POST /blog/manage/media` | The editor's picture upload (CSRF, `throttle:60,1`, `blog.manage_posts`, a region the writer manages) |
 | `blog.read-all` | `POST /blog/read-all` | "Mark all as read" on the front page (CSRF, `throttle:30,1`); redirects to `blog.home` with a notice |
+| `blog.like`, `blog.unlike` | `POST` / `DELETE /blog/posts/{id}/like` | The heart button: like / take the like back. JSON `{liked, count}`, CSRF, `throttle:30,1,bloglike` (its own bucket) |
 
 Every list page is a normal GET with the filters in the address, so a link can be shared inside the region (an ordinary reader's
 `?region=` is ignored). A guest who opens any of them is sent to the login and brought back afterwards.
@@ -105,6 +107,78 @@ the window.
   cached number is stale at once without anyone having to know who is cached. Only numbers are cached.
 * **It refreshes without a page reload:** the link polls about once a minute (never faster than the cache) and again when the browser tab
   gets focus or becomes visible, so reading an article in the blog tab updates the ERP tab's badge when the person switches back.
+
+## Likes and views
+
+Every published article shows a **heart with a count** and a **view count**. Both are plain columns of `blog_posts` (`like_count`,
+`view_count`), read on every feed render, so they are never `COUNT(*)`-ed at read time. Everything is written by
+`BlogEngagementService` and nowhere else.
+
+**Likes**
+
+* A reader can like or unlike any **published** article of **their own region** (`BlogVisibility::canRead`; `super_admin` any region). An
+  article of another region, a missing one and a **draft** (even for the PR team that can read it) answer **404**. One like per person
+  (`blog_post_likes`, composite primary key); the author may like their own article.
+* **Two idempotent actions, not a toggle**: `POST` likes and `DELETE` takes the like back, both answer the final state and count
+  (`{"liked": true, "count": 14}`). A double click, a retry or two tabs therefore cannot flip the state the person asked for.
+* **The counter moves only when a row really changed**, in the same transaction: `insertOrIgnore` then `like_count + 1` only when a row
+  was inserted; `delete` then `like_count - 1` (guarded by `like_count > 0`) only when a row was deleted. It can never go below zero.
+  Races and double clicks cannot make it drift.
+* **The button** is a small Alpine component (`resources/js/blog-like.js`) that posts to the endpoint and shows the answer: no page
+  reload, nothing else re-rendered. It is **optimistic** (heart and number change at once, put back if the request fails), ignores clicks
+  while a request is in flight (`aria-busy`) and keeps the hearts of the same article on a page (top and bottom) in step. It is a real
+  `<button>`: Enter and Space work, `aria-pressed` carries "you liked this" and the name carries the count ("Like this article, 14
+  likes"). It is rendered complete on the server, so it reads right before the script runs.
+* **Where it shows:** on the article page **under the headline and again at the end** (with "You and 12 others" / "14 likes"), and
+  compact (heart and number) in the meta line of the lead story, secondary stories and every row of the lists. Not in the editor's preview,
+  not on a draft, and not in print.
+* **Who sees who:** readers see the count and "You and 12 others", **never a name**. Managers (the PR officer of the region, `super_admin`)
+  open the **Stats** panel on the edit screen and "Who liked it": name, district, date, newest first, 20 a page
+  (`BlogEngagementService::likers()` re-checks `canManagePost`; another region's officer gets a 404).
+* One query per page finds which of the page's articles the reader liked (`likedAmong()`, `whereIn` on the page's ids), never one per card.
+
+**Views**
+
+* One view is counted when a person **opens the article page** (`blog.show`, next to the read tracking). The rules, all in
+  `BlogEngagementService::recordView()`:
+  * only a **signed-in reader of that region** counts; a guest, another region, a 404 and a **draft** never count;
+  * **the author and every manager of the article's region (and `super_admin`) are never counted**, so nobody can inflate their own
+    numbers. (The editor's preview never reaches the article page; a PR officer opening a colleague's article from the list is excluded too.);
+  * **one person's repeat opens of one article within `GWL_BLOG_VIEW_THROTTLE_MINUTES` (30) count once.** The throttle is a cache key
+    (user + article) taken with an atomic `Cache::add`, so a refresh, a double request or a second tab costs no database read. `0` = every
+    open counts;
+  * **a prefetch or prerender** (`Sec-Purpose` / `Purpose` / `X-Moz: prefetch`, `X-Purpose: preview`) and a **HEAD** request are not somebody
+    reading: they do not count and do not use up the throttle window.
+* The total (`view_count`) and the day's row (`blog_post_view_daily`, one row per article and day, app timezone) go up **together in one
+  transaction** with atomic statements (`view_count + 1`, and an upsert with `views = views + 1`). A failure to write is reported and
+  never stops the page; the throttle key is then released so the next open counts.
+* **Readers** (managers only: the article page and the Stats panel) is the number of rows in `blog_post_reads` for the article, i.e. the
+  unread badge's table, not a second tracker. Note that opening an article writes a read row for everyone but the author, **including a
+  manager**, who is not counted as a view; and articles read before this feature shipped have read rows but no views. So `readers` can
+  exceed `views` for older articles, and views count only from the day the feature was deployed.
+* **Popularity.** "**Most read this week**" (sidebar, top 5) is the sum of `blog_post_view_daily` over the last seven days (today and
+  the six before) for the reader's region; "**Most liked**" (top 5, all time) is `like_count`. Both start from `BlogVisibility::scopeFeed()`
+  (published, own region) and list nothing with zero. Ties: the newer article (most read), the article created later (most liked, by id, so the
+  index can serve the order). They are in `BlogFeedService::sidebar()`.
+* The daily rollup is **kept forever** (one small row per article per day); nothing prunes it.
+
+**Integrity of the article's own bookkeeping.** `view_count` and `like_count` are **not mass-assignable**, are never written by the
+editor form, never copied into a saved version and never part of the concurrency comparison. Every counter write is a bare `toBase()`
+query: no Eloquent timestamps, no model events, no audit row. So a like or a view **never changes `updated_at` or `lock_version`**
+(the manage list's sort and the editor's "someone else saved first" warning cannot be tripped by readers), and saving the article
+touches only the columns that changed, so a counter is never reset. Likes and views are **not audited** (volume); the like endpoints are
+rate-limited and permission-checked. **Privacy:** no IP address and no user agent is stored anywhere; a like row holds the person,
+the article and the time, and a daily row holds only a number.
+
+**The manage list and the Stats panel.** The list gets **Views**, **Readers** and **Likes** columns, each **sortable** (click the heading,
+again to flip; only these three words are accepted; the default stays "last updated first"), with a 14-day sparkline under the views. The
+**Stats** panel on the edit screen shows views, readers, likes, the 14-day sparkline and, on request, the likers.
+
+**`php artisan blog:recount-likes`** (weekly, Sunday 03:40, while the blog is on; needs the scheduler) repairs `like_count` from the like
+rows: idempotent, chunked by article id (`--chunk=500`), one `UPDATE` per chunk that counts and compares inside the database (so a like that
+lands while it runs is never overwritten by an older count), and it leaves `updated_at` alone. `--dry-run` only reports. **`view_count`
+cannot be rebuilt**: a view is an event that left no row to recount (the daily rows are a second copy of the same counter, written
+together with it, not a source), so the command never touches it.
 
 ## Login announcements
 
@@ -239,7 +313,12 @@ article only through that method. A video is built from a validated id and skips
 * `blog_post_reads`: `user_id`, `blog_post_id`, `read_at`; the composite primary key is the uniqueness rule, an index on `blog_post_id`,
   both links cascade. Written only by `BlogReadService`, set-based.
 * `blog_announcement_dismissals`: `user_id`, `blog_post_id`, `dismissed_at`; same shape; written only by `BlogAnnouncementService`.
-* No view counter and no PDF attachment block were built (see "Not built").
+* `blog_posts` (added for likes and views): `view_count`, `like_count` (unsigned int, default 0), index `blog_posts_liked_index (region_id, status, like_count)`
+  for "Most liked" (two equality columns, then the order column, so the database walks it backwards and stops at the limit).
+* `blog_post_likes`: `user_id`, `blog_post_id`, `created_at`; the composite primary key is the uniqueness rule, an index `(blog_post_id, created_at)`
+  (the cascade and the likers list), both links cascade. Written only by `BlogEngagementService`.
+* `blog_post_view_daily`: `blog_post_id`, `view_date`, `views`; composite primary key, cascade. Written only by `BlogEngagementService` (upsert).
+* No PDF attachment block was built (see "Not built").
 
 ## Configuration (`config/gwl.php`, `.env.example`)
 
@@ -258,6 +337,7 @@ article only through that method. A video is built from a validated id and skips
 | `blog_unread_cache_seconds` (`GWL_BLOG_UNREAD_CACHE_SECONDS`) | 60 | How long the header badge's number is cached per person (it also sets the poll, never under 30 s). `0` = no cache |
 | `blog_login_announcements_max` (`GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX`) | 3 | Most announcements shown in the login window (and the strip) |
 | `blog_login_announcements_recall_hours` (`GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS`) | 12 | Hours between windows for a remember-me re-authentication. `0` = only the login form shows the window |
+| `blog_view_throttle_minutes` (`GWL_BLOG_VIEW_THROTTLE_MINUTES`) | 30 | A person's repeat opens of one article within this many minutes count as one view. `0` = every open counts |
 
 None of this needs the scheduler or a queue worker. After editing `.env` on a server run `php artisan config:cache` again.
 
@@ -284,6 +364,10 @@ Decoding a large picture needs memory (about 10 bytes a pixel). The upload is re
 * The login flag is armed by the `Login` event and consumed **only** by `Blog\LoginAnnouncements::mount()`; keep that component out of the
   blog layout, and keep the listener free of queries. Do not register `ArmLoginAnnouncements` in `AppServiceProvider` (event discovery
   finds it; registering it too would run it twice).
+* **Likes and views are written only by `BlogEngagementService`**, with `toBase()` queries (never an Eloquent save: that would touch `updated_at`
+  and could overwrite a counter with a stale value). Never add `view_count` / `like_count` to `$fillable`, to the editor form, to a saved version or
+  to the concurrency check, and never count likes or views with `COUNT(*)` on a page. Likes are read per page with `likedAmong()`.
+  "Most read" and "Most liked" are `BlogFeedService::mostRead()` / `mostLiked()` and start from `scopeFeed()`.
 * A deferred Livewire component is **not mounted** when its placeholder renders: `Blog\HeaderLink::placeholder()` reads its mount
   parameters from the argument, not from `$this`.
 
@@ -295,6 +379,10 @@ disk only, who is given which picture, 304 and WebP, clean-up), `BlogEditorFlowT
 concurrency warning, autosave drafts only, Markdown articles, picture usage, preview, audit), `BlogPagesTest`, `BlogNavigationTest` (the tab is
 gone, the header link opens a new tab, the layout has no ERP chrome), `BlogPruneCommandTest`, `BlogUnreadTest` (what counts, window, read once,
 authors, republish, mark all as one statement, cap, cache invalidation, no query when off or without access, masthead and markers) and
+`BlogLikesTest`, `BlogViewsTest` and `BlogEngagementIntegrityTest` (likes: toggle, double click, one per person, region and draft 404, rate limit, cascade, who sees
+the likers; views: throttle window, author / manager / other region / draft / prefetch excluded, total and daily rows together, readers;
+integrity: `updated_at` and `lock_version` untouched, no editor conflict, counters not mass-assignable and not in versions, fixed query count of
+a feed page, sidebar blocks, the recount command, aria attributes) and
 `BlogAnnouncementTest` (the last-day boundary and timezone, first day, region isolation, once per login through the real login form, intended URL,
 remember-me throttle, Close against Don't show again, the maximum, the validation rules, unpublish and delete, the form, the manage list, audit,
 the migration), plus the earlier reading, authoring and seeder tests.
@@ -335,9 +423,16 @@ Run once after a deploy, as a PR officer (and once as an ordinary reader).
     appears without animation.
 19. **Ending:** "End announcement now" on the manage list; the reader no longer sees it at the next login. Set the last day to yesterday via the
     database to see the "Expired" badge.
+20.**Likes:** open an article as a reader: the heart under the headline and the one at the end show the same count and stay in step when
+    you press either. Press with the keyboard (Tab to it, Enter / Space): the heart fills, the number goes up at once, "You and N others"
+    appears, and reloading the page shows it still pressed. Double-click quickly: the count changes by one only. Switch the network off in
+    the browser tools and press: the heart goes back. On the front page the compact hearts on the lead story and the rows work the same way.
+21. **Views:** open an article as a reader and refresh it a few times: "views" goes up by one only. As the author or a PR officer it does not move.
+    The edit screen's **Stats** panel shows views, readers, likes and the 14-day line; "Who liked it" lists names for the officer and is not
+    offered to a reader.
 
 ## Not built (ideas for later)
 
 In-app notices when an article is published; comments; a "latest from your region" card on the ERP dashboard; scheduled publishing; a PDF
-attachment block (programme / agenda) served through the same region-checked route; a view counter; the demo seeder
+attachment block (programme / agenda) served through the same region-checked route; the demo seeder
 (`RegionalBlogDemoSeeder`) still writes Markdown articles, so its articles show the older format until opened in the editor.

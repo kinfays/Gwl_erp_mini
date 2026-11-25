@@ -8,6 +8,7 @@ use App\Models\BlogPost;
 use App\Models\District;
 use App\Models\Permission;
 use App\Models\Region;
+use App\Services\Blog\BlogEngagementService;
 use App\Services\Blog\BlogFeedService;
 use App\Services\Blog\BlogPostService;
 use App\Services\Blog\BlogReadService;
@@ -32,6 +33,7 @@ class BlogController extends Controller
         protected BlogPostService $posts,
         protected BlogFeedService $feed,
         protected BlogReadService $reads,
+        protected BlogEngagementService $engagement,
     ) {}
 
     public function home(Request $request): View
@@ -42,12 +44,15 @@ class BlogController extends Controller
         $front = $context['hasRegion'] ? $this->feed->front($user, $context['regionId']) : ['lead' => null, 'secondary' => collect()];
         $shown = collect([$front['lead']])->merge($front['secondary'])->filter()->pluck('id')->all();
         $stream = $this->feed->stream($user, $context['regionId'], [], $shown);
+        $onPage = [...$shown, ...$stream->getCollection()->modelKeys()];
 
         return view('blog.home', $context + $front + [
             'stream' => $stream,
             'sidebar' => $this->feed->sidebar($user, $context['regionId']),
             // "New" markers: the same definition of unread as the badge, for exactly the articles on this page.
-            'unreadIds' => $this->reads->unreadAmong($user, [...$shown, ...$stream->getCollection()->modelKeys()]),
+            'unreadIds' => $this->reads->unreadAmong($user, $onPage),
+            // The heart's pressed state: ONE query for the whole page, never one per card.
+            'likedIds' => $this->engagement->likedAmong($user, $onPage),
             'unreadCount' => $this->reads->unreadCount($user),
         ]);
     }
@@ -115,9 +120,20 @@ class BlogController extends Controller
         // Opening the article page is what makes it read (idempotent). Before the page renders, so the masthead count is already current.
         $this->reads->markRead($user, $post);
 
+        // ...and counts one view, under the rules in BlogEngagementService::recordView() (not the author or a manager, once per
+        // throttle window). A prefetch or a HEAD request is not somebody reading, so it neither counts nor marks anything twice.
+        if ($request->isMethod('GET') && ! $this->isPrefetch($request) && $this->engagement->recordView($user, $post)) {
+            $post->setAttribute('view_count', (int) $post->view_count + 1)->syncOriginalAttribute('view_count');
+        }
+
+        $canManage = $this->visibility->canManagePost($user, $post);
+
         return view('blog.show', $context + [
             'post' => $post,
-            'canManage' => $this->visibility->canManagePost($user, $post),
+            'canManage' => $canManage,
+            'likedIds' => $this->engagement->likedAmong($user, [$post->id]),
+            // "N readers" is for managers only.
+            'readers' => $canManage && $post->isPublished() ? $this->engagement->readersOf($post) : null,
             'related' => $post->isPublished() ? $this->feed->related($user, $post) : collect(),
             'neighbours' => $post->isPublished() ? $this->feed->neighbours($user, $post) : ['older' => null, 'newer' => null],
             'fromDistrict' => $post->isPublished() ? $this->feed->moreFromDistrict($user, $post) : collect(),
@@ -175,7 +191,17 @@ class BlogController extends Controller
             'stream' => $stream,
             'sidebar' => $this->feed->sidebar($request->user(), $context['regionId']),
             'unreadIds' => $stream ? $this->reads->unreadAmong($request->user(), $stream->getCollection()->modelKeys()) : [],
+            'likedIds' => $stream ? $this->engagement->likedAmong($request->user(), $stream->getCollection()->modelKeys()) : [],
         ]);
+    }
+
+    /** A browser warming a link in the background (Chrome / Firefox / Safari prefetch and prerender headers). */
+    protected function isPrefetch(Request $request): bool
+    {
+        return str_contains(strtolower((string) $request->headers->get('Sec-Purpose', '')), 'prefetch')
+            || str_contains(strtolower((string) $request->headers->get('Purpose', '')), 'prefetch')
+            || str_contains(strtolower((string) $request->headers->get('X-Moz', '')), 'prefetch')
+            || strtolower((string) $request->headers->get('X-Purpose', '')) === 'preview';
     }
 
     /**

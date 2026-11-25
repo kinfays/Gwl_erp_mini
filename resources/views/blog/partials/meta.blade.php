@@ -12,4 +12,8 @@
     @if (! empty($showRegion) && $post->region)
         <li>{{ $post->region->region_name }}</li>
     @endif
+    @if ($post->isPublished())
+        <li>{{ trans_choice(':count view|:count views', (int) $post->view_count) }}</li>
+        <li>@include('blog.partials.like', ['post' => $post, 'liked' => in_array($post->id, $likedIds ?? [], true), 'variant' => 'compact'])</li>
+    @endif
 </ul>

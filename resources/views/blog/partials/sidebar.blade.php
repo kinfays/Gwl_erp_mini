@@ -3,6 +3,28 @@
     $regionQuery = ($regionId ?? null) && ($regions ?? collect())->isNotEmpty() ? ['region' => $regionId] : [];
 @endphp
 <aside class="b-side" aria-label="{{ __('More from the blog') }}">
+    @if ($sidebar['mostRead']->isNotEmpty())
+        <section aria-labelledby="side-most-read">
+            <h2 id="side-most-read">{{ __('Most read this week') }}</h2>
+            <ol class="b-side-list b-rank">
+                @foreach ($sidebar['mostRead'] as $popular)
+                    <li><a href="{{ $popular->url() }}">{{ $popular->title }}</a><span class="b-count">{{ trans_choice(':count view|:count views', (int) $popular->week_views) }}</span></li>
+                @endforeach
+            </ol>
+        </section>
+    @endif
+
+    @if ($sidebar['mostLiked']->isNotEmpty())
+        <section aria-labelledby="side-most-liked">
+            <h2 id="side-most-liked">{{ __('Most liked') }}</h2>
+            <ol class="b-side-list b-rank">
+                @foreach ($sidebar['mostLiked'] as $likedPost)
+                    <li><a href="{{ $likedPost->url() }}">{{ $likedPost->title }}</a><span class="b-count">{{ trans_choice(':count like|:count likes', (int) $likedPost->like_count) }}</span></li>
+                @endforeach
+            </ol>
+        </section>
+    @endif
+
     @if ($sidebar['events']->isNotEmpty())
         <section aria-labelledby="side-events">
             <h2 id="side-events">{{ __('Upcoming events') }}</h2>

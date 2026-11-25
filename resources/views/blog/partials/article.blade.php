@@ -7,6 +7,9 @@
     $preview = $preview ?? false;
     $canManage = $canManage ?? false;
     $regions = $regions ?? collect();
+    // The like button and the counts exist only on a published article read on its own page (never in the editor's preview).
+    $engage = ! $preview && $post->isPublished();
+    $liked = in_array($post->id, $likedIds ?? [], true);
 @endphp
 <header class="b-art-head">
     <p class="b-kicker">
@@ -25,6 +28,11 @@
         @if ($post->district)<span>{{ $post->district->district_name }}</span>@endif
         @if ($regions->isNotEmpty() && $post->region)<span>{{ $post->region->region_name }}</span>@endif
         @if ($post->reading_minutes)<span>{{ $post->reading_minutes }} {{ __('min read') }}</span>@endif
+        @if ($engage)
+            <span>{{ trans_choice(':count view|:count views', (int) $post->view_count) }}</span>
+            {{-- Managers only: how many different people opened it (rows of blog_post_reads). --}}
+            @if (isset($readers) && $readers !== null)<span>{{ trans_choice(':count reader|:count readers', $readers) }}</span>@endif
+        @endif
 
         @unless ($preview)
             <span class="b-actions">
@@ -44,6 +52,10 @@
         @endunless
     </div>
 </header>
+
+@if ($engage)
+    <div class="b-engage">@include('blog.partials.like', ['post' => $post, 'liked' => $liked, 'variant' => 'full', 'live' => true])</div>
+@endif
 
 @if ($post->hasCover())
     @php $cover = $post->coverDimensions('large'); @endphp
@@ -87,5 +99,12 @@
         @foreach ($post->tags as $tag)
             <a class="b-chip" href="{{ $preview ? '#' : route('blog.tag', $tag) }}">{{ $tag }}</a>
         @endforeach
+    </div>
+@endif
+
+@if ($engage)
+    <div class="b-engage b-engage-end">
+        <p>{{ __('Did you find this useful?') }}</p>
+        @include('blog.partials.like', ['post' => $post, 'liked' => $liked, 'variant' => 'full'])
     </div>
 @endif

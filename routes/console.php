@@ -107,6 +107,8 @@ Schedule::command('transport:check-expiries')->dailyAt('07:30');
 // any more (older than gwl.blog_media_orphan_hours). Needs the scheduler running, like the other daily jobs.
 if (config('gwl.blog_module_enabled')) {
     Schedule::command('blog:prune-media')->dailyAt('03:20')->withoutOverlapping();
+    // Repair like counters from the like rows (they should never differ; this is the safety net). Weekly, Sunday night.
+    Schedule::command('blog:recount-likes')->weeklyOn(0, '03:40')->withoutOverlapping();
 }
 // Android Enterprise (MDM). Schedules exist only while the feature flag is on. These need BOTH a running scheduler
 // (`php artisan schedule:work`, or a per-minute cron / Task Scheduler entry) and a queue worker — see docs/assets/mdm.md.

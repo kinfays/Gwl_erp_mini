@@ -58,6 +58,11 @@
                     <th scope="col">{{ __('Kind') }}</th>
                     <th scope="col">{{ __('Status') }}</th>
                     <th scope="col">{{ __('Activity date') }}</th>
+                    @foreach (['views' => __('Views'), 'readers' => __('Readers'), 'likes' => __('Likes')] as $key => $heading)
+                        <th scope="col" class="b-num" aria-sort="{{ $sort === $key ? ($dir === 'asc' ? 'ascending' : 'descending') : 'none' }}">
+                            <button type="button" class="b-sort" wire:click="sortBy('{{ $key }}')">{{ $heading }}@if ($sort === $key) <span aria-hidden="true">{{ $dir === 'asc' ? '▲' : '▼' }}</span>@endif</button>
+                        </th>
+                    @endforeach
                     <th scope="col">{{ __('Updated') }}</th>
                     <th scope="col"><span class="b-sr">{{ __('Actions') }}</span></th>
                 </tr>
@@ -88,6 +93,14 @@
                             @endif
                         </td>
                         <td style="white-space:nowrap">{{ $post->event_date?->format('d M Y') ?? '—' }}</td>
+                        <td class="b-num">
+                            {{ number_format($post->view_count) }}
+                            @if ($post->isPublished())
+                                @include('blog.partials.sparkline', ['values' => $series[$post->id] ?? [], 'label' => __('Views per day')])
+                            @endif
+                        </td>
+                        <td class="b-num">{{ number_format($post->reads_count) }}</td>
+                        <td class="b-num">{{ number_format($post->like_count) }}</td>
                         <td style="white-space:nowrap">{{ $post->updated_at->format('d M Y') }}</td>
                         <td>
                             <div class="b-row-actions">
@@ -111,7 +124,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="{{ $showRegion ? 7 : 6 }}" class="b-empty" style="padding:2.5rem 1rem">
+                        <td colspan="{{ $showRegion ? 10 : 9 }}" class="b-empty" style="padding:2.5rem 1rem">
                             {{ __('No articles yet.') }}
                             <a class="b-btn b-btn-primary" href="{{ route('blog.create') }}">{{ __('Write the first article') }}</a>
                         </td>

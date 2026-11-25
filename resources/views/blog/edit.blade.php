@@ -1,5 +1,6 @@
 <x-blog-layout title="Edit article" active="manage" :region-name="$regionName" :wide="true">
     <div class="b-wrap b-wrap-wide">
+        <livewire:blog.post-stats :post-id="$post->id" />
         <livewire:blog.post-form :post-id="$post->id" />
     </div>
 

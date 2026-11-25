@@ -79,6 +79,9 @@ return [
     // re-authentication (no password typed, a new browser session) may show them again. 0 = only the login form shows them.
     'blog_login_announcements_max' => (int) env('GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX', 3),
     'blog_login_announcements_recall_hours' => (int) env('GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS', 12),
+    // Likes and views: a person's repeat opens of one article within this many minutes count as ONE view (0 = every open counts;
+    // the author, a manager of the region and a prefetch never count either way). The throttle lives in the cache, not the database.
+    'blog_view_throttle_minutes' => (int) env('GWL_BLOG_VIEW_THROTTLE_MINUTES', 30),
 
     // G-Water (bottled and sachet water bought from G Water and sold by each location: prices, trips, daily sales, stock,
     // reimbursements): off by default; when off the routes don't register and the module is hidden from navigation

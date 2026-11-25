@@ -89,7 +89,10 @@ class BlogFeedService
     /**
      * The sidebar: what is coming up, what is pinned, the districts with articles, the commonest tags.
      *
-     * @return array{events: Collection<int, BlogPost>, pinned: Collection<int, BlogPost>, districts: Collection<int, object>, tags: Collection<string, int>}
+     * Also the two popularity blocks, both from the same scoped feed: the most read this week (views of the last
+     * BlogEngagementService::POPULAR_DAYS days, from blog_post_view_daily) and the most liked of all time (like_count).
+     *
+     * @return array{events: Collection<int, BlogPost>, pinned: Collection<int, BlogPost>, districts: Collection<int, object>, tags: Collection<string, int>, mostRead: Collection<int, BlogPost>, mostLiked: Collection<int, BlogPost>}
      */
     public function sidebar(User $user, ?int $regionId): array
     {
@@ -112,7 +115,54 @@ class BlogFeedService
         $tags = $this->base($user, $regionId)->whereNotNull('blog_posts.tags')->newestFirst()->limit(300)->pluck('tags')
             ->flatten()->filter()->countBy()->sortDesc()->take(14);
 
-        return ['events' => $events, 'pinned' => $pinned, 'districts' => $districts, 'tags' => $tags];
+        return [
+            'events' => $events,
+            'pinned' => $pinned,
+            'districts' => $districts,
+            'tags' => $tags,
+            'mostRead' => $this->mostRead($user, $regionId),
+            'mostLiked' => $this->mostLiked($user, $regionId),
+        ];
+    }
+
+    /**
+     * "Most read this week": the published articles of the user's feed with the most views over the last seven days (today
+     * included), counted from the daily rollup. An article with no view in the window is not listed. Ties: the newer article first.
+     * The plan starts from one region's published articles (blog_posts_liked_index / feed index) and reads each one's recent days
+     * by primary-key range on blog_post_view_daily.
+     *
+     * @return Collection<int, BlogPost> each with a `week_views` attribute
+     */
+    public function mostRead(User $user, ?int $regionId, int $limit = 5): Collection
+    {
+        return $this->base($user, $regionId)
+            ->join('blog_post_view_daily as d', 'd.blog_post_id', '=', 'blog_posts.id')
+            ->where('d.view_date', '>=', app(BlogEngagementService::class)->popularSince())
+            ->groupBy('blog_posts.id', 'blog_posts.title', 'blog_posts.slug', 'blog_posts.region_id', 'blog_posts.published_at')
+            ->selectRaw('blog_posts.id, blog_posts.title, blog_posts.slug, blog_posts.region_id, blog_posts.published_at, sum(d.views) as week_views')
+            ->orderByDesc('week_views')
+            ->orderByDesc('blog_posts.published_at')
+            ->orderByDesc('blog_posts.id')
+            ->limit($limit)
+            ->get();
+    }
+
+    /**
+     * "Most liked": the published articles of the user's feed with the most likes, all time (the like_count column; an article
+     * nobody liked is not listed). Ties: the article created later first. The tie-break is the id on purpose: blog_posts_liked_index
+     * is (region_id, status, like_count) plus the primary key InnoDB appends to it, so ORDER BY like_count DESC, id DESC is read
+     * straight off the index backwards and stops at the limit (a published_at tie-break would force a sort of the whole region).
+     *
+     * @return Collection<int, BlogPost>
+     */
+    public function mostLiked(User $user, ?int $regionId, int $limit = 5): Collection
+    {
+        return $this->base($user, $regionId)
+            ->where('blog_posts.like_count', '>', 0)
+            ->orderByDesc('blog_posts.like_count')
+            ->orderByDesc('blog_posts.id')
+            ->limit($limit)
+            ->get(['blog_posts.id', 'blog_posts.title', 'blog_posts.slug', 'blog_posts.region_id', 'blog_posts.published_at', 'blog_posts.like_count']);
     }
 
     /**

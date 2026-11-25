@@ -67,6 +67,8 @@
                             @if ($lead->published_at)<li><time datetime="{{ $lead->published_at->toDateString() }}">{{ $lead->published_at->format('j M Y') }}</time></li>@endif
                             @if ($lead->district)<li>{{ $lead->district->district_name }}</li>@endif
                             @if ($lead->reading_minutes)<li>{{ $lead->reading_minutes }} {{ __('min read') }}</li>@endif
+                            <li>{{ trans_choice(':count view|:count views', (int) $lead->view_count) }}</li>
+                            <li>@include('blog.partials.like', ['post' => $lead, 'liked' => in_array($lead->id, $likedIds, true), 'variant' => 'compact'])</li>
                         </ul>
                     </article>
 

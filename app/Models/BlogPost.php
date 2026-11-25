@@ -62,6 +62,15 @@ class BlogPost extends Model
 
     public const MAX_TAGS = 5;
 
+    /**
+     * view_count and like_count are deliberately NOT fillable: they are written only by BlogEngagementService (atomic UPDATEs
+     * that leave updated_at and lock_version alone), never by the editor form, a revision or a restore.
+     */
+    protected $attributes = [
+        'view_count' => 0,
+        'like_count' => 0,
+    ];
+
     protected $fillable = [
         'region_id',
         'district_id',
@@ -110,6 +119,8 @@ class BlogPost extends Model
             'announce_until' => 'date',
             'is_pinned' => 'boolean',
             'lock_version' => 'integer',
+            'view_count' => 'integer',
+            'like_count' => 'integer',
             'published_at' => 'datetime',
         ];
     }
@@ -137,6 +148,18 @@ class BlogPost extends Model
     public function media(): HasMany
     {
         return $this->hasMany(BlogMedia::class, 'blog_post_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Who has opened the article (the "readers" figure; written by BlogReadService only). */
+    public function reads(): HasMany
+    {
+        return $this->hasMany(BlogPostRead::class, 'blog_post_id');
+    }
+
+    /** Who likes it (written by BlogEngagementService only). */
+    public function likes(): HasMany
+    {
+        return $this->hasMany(BlogPostLike::class, 'blog_post_id');
     }
 
     public function revisions(): HasMany

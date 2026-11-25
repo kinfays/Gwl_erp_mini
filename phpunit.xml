@@ -53,6 +53,7 @@
         <env name="GWL_BLOG_UNREAD_CACHE_SECONDS" value="60"/>
         <env name="GWL_BLOG_LOGIN_ANNOUNCEMENTS_MAX" value="3"/>
         <env name="GWL_BLOG_LOGIN_ANNOUNCEMENTS_RECALL_HOURS" value="12"/>
+        <env name="GWL_BLOG_VIEW_THROTTLE_MINUTES" value="30"/>
         <env name="GWL_GWATER_MODULE_ENABLED" value="true"/>
         <env name="GWL_FINANCE_AUDIT_ENABLED" value="true"/>
     </php>
