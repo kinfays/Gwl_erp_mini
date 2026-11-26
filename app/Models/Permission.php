@@ -18,6 +18,8 @@ class Permission extends Model
     public const MODULE_VISITORS = 'visitors';
     public const MODULE_ASSETS = 'assets';
     public const MODULE_TRANSPORT = 'transport';
+    // The Commercial module was removed (migration 2026_11_26_000001_remove_commercial_module). The constant stays only
+    // because older, already-merged migrations read it; it is deliberately NOT in MODULES.
     public const MODULE_COMMERCIAL = 'commercial';
     public const MODULE_HEALTH_SAFETY = 'health_safety';
     public const MODULE_BLOG = 'blog';
@@ -33,7 +35,6 @@ class Permission extends Model
         self::MODULE_VISITORS,
         self::MODULE_ASSETS,
         self::MODULE_TRANSPORT,
-        self::MODULE_COMMERCIAL,
         self::MODULE_HEALTH_SAFETY,
         self::MODULE_BLOG,
         self::MODULE_GWATER,

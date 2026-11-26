@@ -53,10 +53,9 @@ are in "Problems found".
           +-----------------------+              +---------------------------+
 
    Disk: <APP_DIR>/storage/app/private  (uploads, never public)      Outbound HTTPS only:
-         <APP_DIR>/storage/app/public   (2 public features, see 8.3)   Google APIs, Arkesel, SMTP
+         <APP_DIR>/storage/app/public   (2 public features, see 8.3)   Google APIs, SMTP
 
    Inbound from the Internet that is NOT a person: POST /webhooks/android-management (Google Pub/Sub),
-                                                   POST /webhooks/sms-arkesel (optional)
 ```
 
 ### 0.2 Every required background process and credential
@@ -65,7 +64,7 @@ are in "Problems found".
 |---|---|---|---|---|
 | 1 | Nginx + PHP-FPM | always | CloudPanel | section 2 |
 | 2 | MySQL 8.4 (MariaDB works, see 4.1) | always | CloudPanel | section 4 |
-| 3 | **Queue worker** (`queue:work`, 2 processes) | always (notifications; **required** by Commercial customer list, Detailed Billing, SMS, MDM) | Supervisor, as `<SITE_USER>` | section 9 |
+| 3 | **Queue worker** (`queue:work`, 2 processes) | always (notifications; **required** by MDM) | Supervisor, as `<SITE_USER>` | section 9 |
 | 4 | **Scheduler** (`schedule:run` every minute) | always (visitor auto-checkout, leave jobs, transport expiries; more with each module flag) | cron, as `<SITE_USER>` | section 10 |
 | 5 | Redis | optional (section 16) | systemd | section 16 |
 | 6 | Outbound mail (SMTP) | always (leave emails, invites, password reset) | SMTP provider | section 6 |
@@ -79,8 +78,6 @@ are in "Problems found".
 | GitHub deploy key (private half) | `~/.ssh/erp_deploy` | **YES** | read-only deploy key |
 | Google service-account file | file named by `GOOGLE_APPLICATION_CREDENTIALS` | **YES** | MDM only; outside the web root, mode 600 |
 | Pub/Sub push secret | `GWL_MDM_PUBSUB_PUSH_TOKEN` | **YES** | MDM push mode only |
-| Arkesel API key | `GWL_ARKESEL_API_KEY` | **YES** | SMS only |
-| Arkesel webhook secret | `GWL_ARKESEL_WEBHOOK_TOKEN` | **YES** | SMS only |
 | Redis password | `REDIS_PASSWORD` | **YES** | only if Redis is used |
 | CloudPanel admin login + MFA | CloudPanel | **YES** | |
 | Backup storage credentials | CloudPanel / rclone | **YES** | |
@@ -96,20 +93,17 @@ Keep all secrets in the organisation's password manager. Never paste them into t
 
 * **Fresh** Ubuntu **24.04 LTS** (22.04 LTS also works) with nothing else installed. CloudPanel must be installed on a clean server (VERIFY the supported list on the CloudPanel installation page for the CloudPanel version you download).
 * Public IPv4, root SSH access, and a DNS name you control.
-* Do not host other sites on this server: the Commercial imports run for minutes to hours and use a lot of CPU, memory and disk I/O.
+* Do not host other sites on this server.
 
 ### 1.2 Sizing
 
-The heavy parts are the **Commercial Customer List** (millions of rows; the benchmark in `docs/15-module-commercial-customer-list.md` measured a table of several GB with 9 indexes at 5 million customers), the **Detailed Billing Report** (a 133 MB sheet per region and period) and the **queue workers**.
+The heavy parts are the Excel imports and exports (PhpSpreadsheet), Dompdf and the queue workers. The Commercial module (whose multi-million-row customer list drove the earlier, larger sizing) has been removed.
 
-| Profile | vCPU | RAM | Disk (NVMe/SSD) | When |
-|---|---|---|---|---|
-| Minimum (pilot, other modules, Commercial without the customer list) | 4 | 8 GB | 160 GB | up to ~1 million customers or no customer list |
-| **Recommended** | 8 | 32 GB | 500 GB | 5 to 10 million customers |
+| Profile | vCPU | RAM | Disk (NVMe/SSD) |
+|---|---|---|---|
+| **Recommended** | 4 | 8 GB | 160 GB |
 
-How the RAM is shared on the recommended server: MySQL buffer pool 16 GB, PHP-FPM about 8 GB, two queue workers up to 1 GB each, OS and page cache the rest. Disk: the database (several times the raw file size once indexed), `binlog` files, uploads under `storage/app/private`, and **local backup copies** (section 13). Add a 4 GB swap file as a safety net.
-
-> **VERIFY**: the 5-million-customer benchmark missed its targets on a laptop with a 128 MB buffer pool. Before relying on these sizes for 5 to 10 million customers, re-run `php artisan commercial:customers:benchmark` on the real server settings (it refuses any database whose name does not contain `bench`) and run `ANALYZE TABLE commercial_customers` after the first big load, as the Customer List doc says.
+How the RAM is shared: MySQL buffer pool about 3 GB, PHP-FPM, two queue workers, OS and page cache the rest. Disk: the database, `binlog` files, uploads under `storage/app/private`, and **local backup copies** (section 13). Add a 4 GB swap file as a safety net. (VERIFY against real usage after go-live.)
 
 ### 1.3 Domain and DNS
 
@@ -197,8 +191,8 @@ Checked against `composer.json`/`composer.lock` (PhpSpreadsheet, Dompdf, Google 
 |---|---|---|
 | `pdo_mysql` (mysqlnd) | MySQL | **yes** |
 | `mbstring`, `ctype`, `json`, `tokenizer`, `filter`, `iconv`, `hash`, `session`, `pcre` | Laravel core | **yes** |
-| `openssl`, `curl` | Google APIs (MDM), Arkesel HTTP, mail TLS, JWT verification, encrypted signatures | **yes** |
-| `xml`, `dom`, `libxml`, `simplexml`, `xmlreader`, `xmlwriter` | PhpSpreadsheet (xlsx import/export), `XlsxStreamReader` (customer list), Dompdf | **yes** |
+| `openssl`, `curl` | Google APIs (MDM), mail TLS, JWT verification, encrypted signatures | **yes** |
+| `xml`, `dom`, `libxml`, `simplexml`, `xmlreader`, `xmlwriter` | PhpSpreadsheet (xlsx import/export), Dompdf | **yes** |
 | `zip`, `zlib` | xlsx files are zip archives | **yes** |
 | `gd` (with JPEG, PNG, WebP, GIF) | Blog pictures, Finance/H&S/G-Water photo checks, signatures, PhpSpreadsheet | **yes** |
 | `fileinfo` | content-type checks on every upload | **yes** |
@@ -234,9 +228,6 @@ Uploads that matter (the app's own limits come from `.env`; PHP and Nginx must b
 
 | Upload | `.env` limit | Default |
 |---|---|---|
-| Customer List workbook (plain form post) | `GWL_COMMERCIAL_CUSTOMER_IMPORT_MAX_MB` | 200 MB |
-| Detailed Billing Report | `GWL_COMMERCIAL_BILLING_DETAILS_IMPORT_MAX_MB` | 250 MB |
-| Other Commercial reports | `GWL_COMMERCIAL_IMPORT_MAX_MB` | 10 MB |
 | Blog picture / cover | `GWL_BLOG_MEDIA_MAX_MB` / `GWL_BLOG_COVER_MAX_MB` | 8 / 3 MB |
 | Assets import | `GWL_ASSETS_IMPORT_MAX_MB` | 5 MB |
 
@@ -287,8 +278,8 @@ fastcgi_read_timeout 600s;       # VERIFY: must be >= max_execution_time
 ### 4.1 Why production must be MySQL, not SQLite
 
 * `.env.example` defaults to SQLite for developers and tests only.
-* The Commercial **Customer List** is built on **set-based SQL** that exists in two versions: `CustomerSql` branches on the driver and uses MySQL's `UPDATE ... JOIN` for MySQL/MariaDB (and `UPDATE ... FROM` for SQLite), keyset pages with row-value comparisons, and a merge that rewrites hundreds of thousands of rows per statement. The benchmark and the performance notes were measured on **MySQL 8.4**. SQLite has one writer at a time: the web app, two queue workers and the scheduler would constantly hit "database is locked".
-* MySQL **8.4** is the tested engine. MariaDB is accepted by `CustomerSql` (it checks `mysql` and `mariadb`) but was never benchmarked: use it only if the organisation requires it, and then run the whole smoke test of section 15 twice (VERIFY).
+* SQLite has one writer at a time: the web app, two queue workers and the scheduler would constantly hit "database is locked".
+* MySQL **8.4** is the tested engine. MariaDB was never tested: use it only if the organisation requires it, and then run the whole smoke test of section 15 twice (VERIFY).
 
 ### 4.2 Create the database and user (CloudPanel UI)
 
@@ -321,7 +312,7 @@ DB_CHARSET=utf8mb4
 DB_COLLATION=utf8mb4_unicode_ci
 ```
 
-Use `127.0.0.1` (TCP), not `localhost`. MySQL stays bound to `127.0.0.1` only (checked in section 12). MySQL tuning for the Customer List is in section 16.3.
+Use `127.0.0.1` (TCP), not `localhost`. MySQL stays bound to `127.0.0.1` only (checked in section 12). MySQL tuning is in section 16.3.
 
 ### 4.5 Phase 4 checklist
 
@@ -424,8 +415,8 @@ Create it as `<SITE_USER>`: `cp .env.example .env && chmod 640 .env`, then edit 
 
 | Choice | Decision | Why |
 |---|---|---|
-| Queue | `database` | Already the default and what `docs/assets/mdm.md` assumes; the `jobs`, `job_batches`, `failed_jobs` tables ship with the migrations; no extra service to secure, monitor or back up; jobs survive a restart and are in the same backup as the data; the volume (minutes-long imports, a few thousand SMS chunks) is tiny. |
-| Cache | `database` | Supports the atomic locks the app needs (`Cache::lock` for customer-list districts, SMS campaigns, MDM events, and `withoutOverlapping()` in the scheduler). |
+| Queue | `database` | Already the default and what `docs/assets/mdm.md` assumes; the `jobs`, `job_batches`, `failed_jobs` tables ship with the migrations; no extra service to secure, monitor or back up; jobs survive a restart and are in the same backup as the data; the volume is tiny. |
+| Cache | `database` | Supports the atomic locks the app needs (`Cache::lock` for MDM events, and `withoutOverlapping()` in the scheduler). |
 | Sessions | `database` | Already the default; survives restarts. |
 | Redis | optional later | Section 16.4 says when and how. |
 
@@ -471,8 +462,8 @@ SESSION_DOMAIN=null
 CACHE_STORE=database
 QUEUE_CONNECTION=database
 DB_QUEUE_RETRY_AFTER=7500            # REQUIRED and missing from .env.example. Must be LONGER than the worker --timeout (7300)
-                                     # which is longer than the longest job (7200 s). The default (90 s) would hand a running
-                                     # 2-hour import to a second worker. Trade-off: a job whose worker is killed is retried only
+                                     # (see 9.1). The default (90 s) would hand a running
+                                     # long job to a second worker. Trade-off: a job whose worker is killed is retried only
                                      # after 7500 s (about 2 hours).
 FILESYSTEM_DISK=local                # private disk: storage/app/private
 BROADCAST_CONNECTION=log
@@ -493,12 +484,6 @@ VITE_APP_NAME="${APP_NAME}"
 ############ Feature flags: each one decides whether the routes, menus AND schedules exist ############
 # Routes are registered at boot from these, so after changing any of them run `config:cache` AND `route:cache`
 # (the `php artisan optimize` in section 14 does both) and restart the workers.
-GWL_COMMERCIAL_MODULE_ENABLED=false            # Commercial: needs queue worker + scheduler + the PHP/Nginx limits of section 3
-GWL_COMMERCIAL_CUSTOMER_LIST_ENABLED=true      # only has an effect while Commercial is on; millions of rows: MySQL tuning (16.3) first
-GWL_COMMERCIAL_CUSTOMER_IMPORT_MAX_MB=200
-GWL_COMMERCIAL_BILLING_DETAILS_IMPORT_MAX_MB=250
-GWL_COMMERCIAL_IMPORT_MAX_MB=10
-GWL_COMMERCIAL_SMS_ENABLED=false               # needs Commercial + customer list ON, queue worker, scheduler, Arkesel (section 11.3)
 GWL_HEALTH_SAFETY_MODULE_ENABLED=false         # scheduler (hourly + daily alerts), mail, GWL_HS_QR_BASE_URL
 GWL_HS_QR_BASE_URL=https://<DOMAIN>            # printed on QR labels and posters: ALWAYS the production address (blank = APP_URL)
 GWL_BLOG_MODULE_ENABLED=true                   # default on; needs GD(WebP); daily blog:prune-media (scheduler)
@@ -524,15 +509,6 @@ GWL_MDM_ENROLLMENT_TOKEN_MINUTES=60
 GWL_MDM_LOST_MODE_MESSAGE="This phone is company property and has been reported lost. Please contact the number shown to return it."
 GWL_MDM_LOST_MODE_PHONE=
 GWL_MDM_LOST_MODE_ADDRESS=
-
-############ SMS (only when GWL_COMMERCIAL_SMS_ENABLED=true; docs/16-module-commercial-sms.md) ############
-GWL_COMMERCIAL_SMS_REGIONS="ACCRA WEST"        # the only region that can be messaged
-GWL_ARKESEL_API_KEY=                           # SECRET
-GWL_ARKESEL_SENDER_ID=                         # approved sender IDs, comma separated, 11 characters at most each; first = default
-GWL_ARKESEL_SANDBOX=true                       # keep TRUE until the first real send has been agreed in writing (11.3)
-GWL_ARKESEL_WEBHOOK_TOKEN=                     # SECRET: php -r 'echo bin2hex(random_bytes(32));'  (empty = webhook is off)
-GWL_ARKESEL_BASE_URL=https://sms.arkesel.com
-GWL_ARKESEL_TIMEOUT=15
 
 ############ Everything else is optional ############
 GWL_AUTH_BACKGROUND=video                      # sign-in page background: video | gif
@@ -593,7 +569,7 @@ art migrate:status | grep -c Pending          # 0
 art db:seed --force
 ```
 
-`DatabaseSeeder` runs, in this order: `RoleSeeder` -> `PermissionSeeder` -> `ModuleAccessSeeder` -> `StaffRolePermissionSeeder` -> `LettersRolePermissionSeeder` -> `VisitorsRolePermissionSeeder` -> `UacRolePermissionSeeder` -> `LeaveApprovalRolePermissionSeeder` -> `AssetsRolePermissionSeeder` -> `TransportRolePermissionSeeder` -> `CommercialRolePermissionSeeder` -> `HealthSafetyRolePermissionSeeder` -> `RegionalBlogRolePermissionSeeder` -> `GwaterRolePermissionSeeder` -> `FinanceAuditRolePermissionSeeder` -> `MdmStarterPolicySeeder` -> `TransportSeeder` -> `HolidaySeeder` -> `SuperAdminSeeder` (last). Run it **once**; permissions, module access and role grants are also inserted by migrations, so a normal deploy only needs `migrate`, never `db:seed`.
+`DatabaseSeeder` runs, in this order: `RoleSeeder` -> `PermissionSeeder` -> `ModuleAccessSeeder` -> `StaffRolePermissionSeeder` -> `LettersRolePermissionSeeder` -> `VisitorsRolePermissionSeeder` -> `UacRolePermissionSeeder` -> `LeaveApprovalRolePermissionSeeder` -> `AssetsRolePermissionSeeder` -> `TransportRolePermissionSeeder` -> `HealthSafetyRolePermissionSeeder` -> `RegionalBlogRolePermissionSeeder` -> `GwaterRolePermissionSeeder` -> `FinanceAuditRolePermissionSeeder` -> `MdmStarterPolicySeeder` -> `TransportSeeder` -> `HolidaySeeder` -> `SuperAdminSeeder` (last). Run it **once**; permissions, module access and role grants are also inserted by migrations, so a normal deploy only needs `migrate`, never `db:seed`.
 
 Seeders in `database/seeders/` that are **not** run and must **not** be run on production:
 
@@ -670,8 +646,6 @@ The Nginx root is `public/`, and the `local` disk is `storage/app/private` (`con
 | `gwater/waybills/` | G-Water waybill photos/PDFs | `gwater.purchases.waybill` route |
 | `finance/pvs/` | payment-voucher attachments | scope-checked Finance/Audit routes |
 | `health_safety/incidents/` and equipment attachments | incident and equipment photos | H&S routes |
-| `commercial/imports/`, `commercial/billing-details/`, `commercial/customer-imports/` | uploaded workbooks (customer files hold names and phones) | never served; deleted when processing finishes |
-| `commercial/customer-exports/` and `commercial-export-*.xlsx` | generated exports (personal data) | download route, then discarded |
 | `import-tmp/`, `livewire-tmp/` | temporary upload parts | temporary |
 
 ### 8.3 `storage:link`: needed, because two features use the public disk
@@ -708,12 +682,12 @@ Do **not** back up `vendor/`, `node_modules/`, `bootstrap/cache/`, `storage/fram
 
 ### 9.1 What the app needs
 
-The app **requires** a worker: `ProcessCustomerListBatch`, `ProcessBillingDetailsBatch`, `VoidCustomerListUpload/Batch`, `BuildCustomerListExport`, `SendSmsCampaignChunk`, `ApplySmsDeliveryReport`, and the MDM jobs `ProcessAndroidNotification`, `SendMdmCommand`, `SyncMdmDevice`, plus queued notifications. Facts verified in the code:
+The app **requires** a worker: the MDM jobs `ProcessAndroidNotification`, `SendMdmCommand`, `SyncMdmDevice`, plus queued notifications. Facts verified in the code:
 
 * **Every job uses the single `default` queue** (nothing calls `onQueue()` and no job sets `$queue`), so there are **no queue names** to configure; the worker must listen to `default`.
-* Job time limits: Customer List import/void **7200 s**, Detailed Billing **7200 s**, customer export 3600 s, SMS chunk 900 s; `$tries`: 5, 3, 1, unlimited (`maxExceptions = 1`), MDM jobs 3. The worker `--timeout` must be at least the longest job, and `DB_QUEUE_RETRY_AFTER` must be longer than the worker timeout: **7500 > 7300 > 7200**.
+* Job time limits: the Commercial import jobs that needed 7200 s have been removed; what is left is the MDM jobs (`$tries` 3) and queued notifications. This guide still uses `--timeout=7300` and `DB_QUEUE_RETRY_AFTER=7500` (**7500 > 7300**): generous now, and they can be lowered (VERIFY the MDM job timeouts first). `DB_QUEUE_RETRY_AFTER` must stay longer than the worker timeout.
 * While the site is in maintenance mode (`artisan down`) **workers do not run jobs**.
-* One import per district at a time (a cache lock, 4 hours); a long import occupies one worker for up to two hours. So run **two worker processes**: one can be busy with an import while the other still sends SMS, MDM commands and notices. Raise `numprocs` to 3 if several districts are imported together (about 1 GB RAM each at most).
+* Run **two worker processes**, so one slow job does not hold up MDM commands and notices.
 
 ### 9.2 Install Supervisor (Run as: `root`)
 
@@ -753,7 +727,7 @@ Replace `<PHP>`, `<APP_DIR>` and `<SITE_USER>` with the real values (supervisor 
 | Flag | Value | Why |
 |---|---|---|
 | `-d memory_limit=1024M` | 1 GB | the CLI default is 128 MB; imports stream, but exports and PDFs need room |
-| `--timeout=7300` | > 7200 | longest job plus margin; `pcntl` enforces it |
+| `--timeout=7300` | generous | longest job plus margin; `pcntl` enforces it (see 9.1) |
 | `--tries=3` | default for jobs that set no `$tries` | jobs that set their own keep it |
 | `--max-time=3600` | restart each hour | an idle worker restarts and picks up new code/config; a running job is **never** cut short by it |
 | `--memory=768` | MB | the worker exits (and Supervisor restarts it) after a job if it grew past this |
@@ -838,12 +812,6 @@ All times are the application timezone, which is **UTC** (`config/app.php` is fi
 | `blog:prune-media` | daily 03:20 | `GWL_BLOG_MODULE_ENABLED` |
 | `mdm:poll-events` | every minute (does nothing in push mode) | `GWL_MDM_ENABLED` |
 | `mdm:sync-devices` / `mdm:prune-events` | 02:15 / 03:00 | `GWL_MDM_ENABLED` |
-| `commercial:remind-uploads` | 07:45 | `GWL_COMMERCIAL_MODULE_ENABLED` |
-| `commercial:billing-details:purge` | 03:35 | Commercial |
-| `commercial:remind-customer-uploads` / `commercial:customers:purge` | 07:50 / 03:30 | Commercial + `GWL_COMMERCIAL_CUSTOMER_LIST_ENABLED` |
-| `commercial:sms:run-due` | every minute | SMS flag (and Commercial and the customer list) |
-| `commercial:sms:poll-delivery` | every 10 minutes | SMS |
-| `commercial:sms:check-balance` / `commercial:sms:purge` | 07:55 / 03:40 | SMS |
 | `gwater:remind` | 07:55 | `GWL_GWATER_MODULE_ENABLED` |
 | `finance:remind` and `audit:remind` | 08:00 | `GWL_FINANCE_AUDIT_ENABLED` |
 | `health-safety:send-alerts --group=acknowledgement` | hourly | `GWL_HEALTH_SAFETY_MODULE_ENABLED` |
@@ -855,7 +823,7 @@ Most use `withoutOverlapping()`, which keeps a lock in the cache table; after a 
 
 - [ ] The cron line exists in `<SITE_USER>`'s crontab.
 - [ ] `schedule:list` shows the expected commands for the enabled flags.
-- [ ] After a few minutes a scheduled command has left a trace (for example the SMS/MDM minute jobs in the log, or `schedule:run -v` output).
+- [ ] After a few minutes a scheduled command has left a trace (for example the MDM minute jobs in the log, or `schedule:run -v` output).
 
 ---
 
@@ -887,25 +855,12 @@ curl -i  "https://<DOMAIN>/webhooks/android-management"                         
 
 ### 11.2 Outbound access
 
-The server needs outbound HTTPS to Google (`*.googleapis.com`, `accounts.google.com`) for MDM and to `sms.arkesel.com` for SMS, and outbound SMTP to your mail provider. A default UFW setup allows outbound traffic; if you restrict it, allow these.
+The server needs outbound HTTPS to Google (`*.googleapis.com`, `accounts.google.com`) for MDM, and outbound SMTP to your mail provider. A default UFW setup allows outbound traffic; if you restrict it, allow these.
 
-### 11.3 Arkesel SMS
-
-Details and limits: `docs/16-module-commercial-sms.md`. Server-side steps:
-
-1. In the Arkesel dashboard get the **API key** and have your **sender ID(s)** approved (11 characters at most). Put them in `.env` (`GWL_ARKESEL_API_KEY`, `GWL_ARKESEL_SENDER_ID`).
-2. **Allowed server IP:** if your Arkesel account restricts API calls by source IP, whitelist this server's public IP (`curl -s https://ifconfig.me`). VERIFY whether the account has such a setting.
-3. **Delivery callback** (optional, VERIFY): `https://<DOMAIN>/webhooks/sms-arkesel?token=<GWL_ARKESEL_WEBHOOK_TOKEN>`. The endpoint exists, but the app does not yet send a `callback_url` per message and Arkesel's payload shape has never been verified, so rely on the scheduled `commercial:sms:poll-delivery` (every 10 minutes) for delivery status. Leave the token empty to keep the webhook off.
-4. `GWL_ARKESEL_SANDBOX=true` first: nothing is delivered or billed.
-5. Make sure the queue worker and the scheduler are running (section 9 and 10); campaigns are sent by queued chunks.
-
-> **Never test the SMS gateway against production customers.** Test only in sandbox mode, or with one hand-picked number that belongs to the tester. Do not pick an audience group "just to see". A real send cannot be recalled, and the region lock (`GWL_COMMERCIAL_SMS_REGIONS`) only protects *which* customers, not *whether* they get a test message. Turning sandbox off is a business decision, not a deployment step.
-
-### 11.4 Phase 11 checklist
+### 11.3 Phase 11 checklist
 
 - [ ] (MDM) Pull mode works first; push switched only after the webhook answers 401/405 as above.
 - [ ] (MDM) The Google JSON file is outside `htdocs`, mode 600.
-- [ ] (SMS) Sandbox is `true`, sender IDs approved, server IP whitelisted if required.
 - [ ] No Basic Auth or IP block on the site while webhooks are in use.
 
 ---
@@ -1073,7 +1028,7 @@ chmod 700 ~/bin/db-backup.sh && ~/bin/db-backup.sh && ls -lh ~/backups
 
 Schedule it with CloudPanel **Cron Jobs** (as above): `30 1 * * *   /home/<SITE_USER>/bin/db-backup.sh >> /home/<SITE_USER>/logs/db-backup.log 2>&1`. Keep `~/backups` outside `htdocs`.
 
-> **Warning: the Customer List database is large.** With millions of customers `mysqldump` takes a long time (expect a long run and a dump of many GB), holds a consistent snapshot open for its whole duration, and the restore is slower still (an hour or many hours; measure it, see 13.4). The staging tables are transient, but `commercial_customers` is **not** rebuildable (the uploaded workbooks are deleted once staged). If a dump takes longer than a few hours or the database exceeds roughly 20 GB, move to a physical backup (Percona XtraBackup or MySQL Enterprise-style hot backup, or a provider disk snapshot taken with `FLUSH TABLES WITH READ LOCK` / from a replica) and keep binary logs for point-in-time recovery. Decide this before the Customer List goes live, not after (VERIFY with the real size).
+> If a dump takes longer than a few hours or the database exceeds roughly 20 GB, move to a physical backup (Percona XtraBackup, or a provider disk snapshot) and keep binary logs for point-in-time recovery.
 
 CloudPanel's own backup feature (Site -> **Backups**, with remote storage configured under **Admin Area** -> **Backups**; VERIFY the menus) can back up the site folder and be the off-server copy for `storage/`; do not rely on it alone for the database.
 
@@ -1108,8 +1063,7 @@ Once before go-live and then every quarter: restore the latest dump and files **
 
 * Deploy a **tag** (`v1.4.0`) from `main`; the server's working copy must be clean (`git status` empty).
 * **Migrations are never edited once merged.** A mistake is fixed with a **new** migration. Production never runs `migrate:rollback`, `migrate:fresh` or `db:wipe`.
-* Do not deploy while a Customer List or Detailed Billing import is running (look at the batch pages and `SELECT COUNT(*) FROM jobs`). Maintenance mode also pauses the workers.
-* Do **not** run `cache:clear` or `optimize:clear`: they delete the cache table, including the district locks of a running import, the `queue:restart` signal and the scheduler's overlap locks. `php artisan optimize` rebuilds the config, route, view and event caches without touching the data cache.
+* Do **not** run `cache:clear` or `optimize:clear`: they delete the cache table, including the `queue:restart` signal and the scheduler's overlap locks. `php artisan optimize` rebuilds the config, route, view and event caches without touching the data cache.
 
 ### 14.2 One-time: let the deploy user reload PHP-FPM
 
@@ -1222,12 +1176,10 @@ cd <APP_DIR>
 | Assets | open the dashboard and an asset record; Assets export downloads |
 | MDM (flag on) | MDM dashboard "Event intake" tile shows PULL or PUSH and a recent event time |
 | Transport | open Vehicles for your region only (another region's vehicle answers 404); run `art transport:check-expiries` |
-| Commercial (flag on) | upload a **small synthetic** report on Uploads, watch the batch become `imported`; for the Customer List upload a tiny test file, confirm the worker processes it, then void it |
 | Health & Safety (flag on) | file a test incident, open the register; `art health-safety:send-alerts --dry-run` runs |
 | Blog | open the Blog link (new tab), write a draft with a picture; the picture URL is `/blog/media/...` |
 | G-Water (flag on) | record a test price/sale in a test location and void it with a reason |
 | Finance / Audit (flag on) | prepare a PV, send it, and check Audit sees it only after assignment |
-| SMS (flag on, **sandbox**) | build an audience, see the cost estimate, stop before confirming unless sandbox is `true` |
 
 ### 15.3 Logs to watch
 
@@ -1277,24 +1229,24 @@ Rule of thumb: `pm.max_children = (RAM left for PHP) / 150 MB`.
 
 Keep MySQL `max_connections` above `max_children + workers + cron + spare` (200 is plenty).
 
-### 16.3 MySQL for the Customer List (Run as: `root`)
+### 16.3 MySQL settings (Run as: `root`)
 
-The Customer List benchmark's one open question is the **buffer pool** (the laptop had 128 MB while the data was several GB). Give it real memory.
+Give the **buffer pool** real memory.
 
 ```bash
 cat > /etc/mysql/conf.d/zz-erp.cnf <<'EOF'
 [mysqld]
 bind-address                 = 127.0.0.1
 skip-name-resolve
-innodb_buffer_pool_size      = 16G        # about 50% of RAM on the 32 GB server; 3G on the 8 GB server
-innodb_redo_log_capacity     = 4G         # MySQL 8.4 (older: innodb_log_file_size); bulk merges write a lot
+innodb_buffer_pool_size      = 3G         # about 40% of RAM on the 8 GB server
+innodb_redo_log_capacity     = 1G         # MySQL 8.4 (older: innodb_log_file_size)
 innodb_flush_method          = O_DIRECT
 innodb_file_per_table        = 1
 max_connections              = 200
 max_allowed_packet           = 64M
 tmp_table_size               = 256M
 max_heap_table_size          = 256M
-binlog_expire_logs_seconds   = 259200     # 3 days: bulk loads create huge binary logs; the default is 30 days of them
+binlog_expire_logs_seconds   = 259200     # 3 days; the default is 30 days of them
 local_infile                 = 0
 slow_query_log               = 1
 slow_query_log_file          = /var/log/mysql/slow.log
@@ -1304,13 +1256,9 @@ systemctl restart mysql
 mysql -e "SHOW VARIABLES LIKE 'innodb_buffer_pool_size';"
 ```
 
-(VERIFY the file location CloudPanel's MySQL reads, `mysqld --verbose --help | grep -A1 'Default options'`, and the variable names for the installed version.) After the **first** large Customer List load, once:
+(VERIFY the file location CloudPanel's MySQL reads, `mysqld --verbose --help | grep -A1 'Default options'`, and the variable names for the installed version.)
 
-```bash
-mysql <DB> -e "ANALYZE TABLE commercial_customers, commercial_customer_contacts;"
-```
-
-Watch disk usage during the first imports (`df -h`, `du -sh /var/lib/mysql`): indexes and binary logs grow first.
+Watch disk usage during the first weeks (`df -h`, `du -sh /var/lib/mysql`): indexes and binary logs grow first.
 
 ### 16.4 Redis (optional)
 
@@ -1349,7 +1297,6 @@ gzip_types text/plain text/css application/json application/javascript text/java
 - [ ] OPcache file in place; the deploy script reloads PHP-FPM.
 - [ ] `pm.max_children` set for the server size.
 - [ ] MySQL buffer pool set and confirmed with `SHOW VARIABLES`.
-- [ ] `ANALYZE TABLE` run after the first large Customer List load.
 - [ ] `/build/` assets return a long `Cache-Control`.
 
 ---
@@ -1364,17 +1311,15 @@ gzip_types text/plain text/css application/json application/javascript text/java
 | **419 Page Expired** on login or Livewire actions | `APP_URL` is not the real address, `SESSION_SECURE_COOKIE=true` while the site is opened over http, wrong `SESSION_DOMAIN`, a proxy changes scheme/IP, stale cached config | open the site only via `https://<DOMAIN>`; fix `.env`; `config:cache`; clear browser cookies; if a proxy/CDN is in front see 2.3 (a code change is needed) |
 | **403/404 on an image or file** | Nginx root wrong, `storage:link` missing (only for the 2 public-disk features), or a scope rule (a 404 is intentional for another region's record) | `ls -l public/storage`; check the roles/region before treating it as a bug |
 | **Permission denied** writing to `storage` or `bootstrap/cache` | something ran as root, or wrong owner | as root `chown -R <SITE_USER>:<SITE_USER> <APP_DIR>/storage <APP_DIR>/bootstrap/cache`; then 8.1 |
-| **Jobs not processing** (batch stays "queued", SMS never goes) | no worker, worker crashed, site in maintenance mode, wrong PHP path, config cached before `.env` change | `supervisorctl status`; the worker log; `artisan up`; `queue:failed`; `queue:restart` |
-| **Same import started twice / "district busy" loops** | `DB_QUEUE_RETRY_AFTER` left at 90 s | set `DB_QUEUE_RETRY_AFTER=7500`, `config:cache`, `supervisorctl restart erp-worker:*`, then check the batch pages |
-| **Import stuck "processing" after a crash** | the district lock (4 h) of a killed worker | wait for it to expire, or ask a developer; do **not** `cache:clear` |
+| **Jobs not processing** (MDM commands stay queued, notices never arrive) | no worker, worker crashed, site in maintenance mode, wrong PHP path, config cached before `.env` change | `supervisorctl status`; the worker log; `artisan up`; `queue:failed`; `queue:restart` |
 | **Scheduler not firing** | cron line missing or wrong PHP path/user, the module flag off (command not scheduled), overlap lock stuck | `crontab -l`, `schedule:list`, `schedule:run -v`, `schedule:clear-cache`, `journalctl -u cron` |
 | **Upload fails at the size limit** (413, or "failed to upload", or the page just reloads) | Nginx `client_max_body_size`, PHP `upload_max_filesize` / `post_max_size`, or the app's `GWL_*_MAX_MB` is the smaller of the three | raise all three consistently (section 3); a 413 in the Nginx error log is the web server |
-| **Memory exhausted on an Excel import/export** (web) | web `memory_limit` too low for PhpSpreadsheet (the smaller reports and Staff/UAC imports are read whole; a 5000-row export is memory hungry) | raise the site `memory_limit`; narrow the filters; a Customer List / Detailed Billing file is **streamed in the worker** and does not need more |
+| **Memory exhausted on an Excel import/export** (web) | web `memory_limit` too low for PhpSpreadsheet (the smaller reports and Staff/UAC imports are read whole; a 5000-row export is memory hungry) | raise the site `memory_limit`; narrow the filters |
 | **Memory exhausted inside the worker** | the CLI `memory_limit` (128 MB) was used | the Supervisor command must contain `-d memory_limit=1024M` (9.3) |
 | **Mail not arriving** | `MAIL_MAILER` still `log`, wrong port/scheme, provider blocks the server IP | check `.env`; `tail storage/logs/*.log` for the transport error; send the 15.1 test; ask the provider about SPF/DKIM |
 | **Webhook 401/404/503** | wrong token or audience (the log names the reason), flag off or routes cached before the flag, Basic Auth on the site, maintenance mode | 11.1 tests; `config:cache` + `route:cache` after a flag change |
 | **Wrong times** | the app is fixed to UTC (`config/app.php`) | nothing to fix in Ghana (UTC+0); for another zone this needs a code change |
-| **Someone ran a demo command in production** | `finance:demo-data` and `letters:demo-data` **refuse to run when `APP_ENV=production`** (and the Commercial `*:sample` commands are documented to refuse too, VERIFY each), but `DemoDataSeeder` has no such guard, and every guard fails open if `APP_ENV` is wrong | **`php artisan finance:demo-data` must never be run in production.** Keep `APP_ENV=production`, never run `db:seed --class=DemoDataSeeder`. If demo rows exist: stop, take a dump, and have a developer remove them (the finance demo command has a `--remove` that deletes only its own `DEMO-` rows, but it must be run by someone who has read `docs/20-module-finance-audit.md`); do not delete by hand |
+| **Someone ran a demo command in production** | `finance:demo-data` and `letters:demo-data` **refuse to run when `APP_ENV=production`** but `DemoDataSeeder` has no such guard, and every guard fails open if `APP_ENV` is wrong | **`php artisan finance:demo-data` must never be run in production.** Keep `APP_ENV=production`, never run `db:seed --class=DemoDataSeeder`. If demo rows exist: stop, take a dump, and have a developer remove them (the finance demo command has a `--remove` that deletes only its own `DEMO-` rows, but it must be run by someone who has read `docs/20-module-finance-audit.md`); do not delete by hand |
 
 ---
 
@@ -1383,20 +1328,18 @@ gzip_types text/plain text/css application/json application/javascript text/java
 Gaps in the repository that affect deployment. **None of these was fixed**; they need a decision from the developers.
 
 1. **`SuperAdminSeeder` ships a known login** (`staff_id 21475`, `Admin@12`, `superadmin@ml.local`) and does not set `must_change_password`. Anyone with the repository can log in as super admin on a fresh deploy until 7.4 is done. Suggest: read the password from an env/prompt or generate one and set `must_change_password = true`.
-2. **`DB_QUEUE_RETRY_AFTER` is not in `.env.example`** and `config/queue.php` defaults it to **90 s**, while the import jobs run up to 7200 s (the job docblocks say it must be longer). A missed setting gives duplicate import runs. Add it to `.env.example` with a note.
-3. **`.env.example` is incomplete and misleading for production**: it has no `GWL_FINANCE_AUDIT_ENABLED` (Finance and Audit stay off by default and nobody can find the switch), and no `GWL_FIN_*`, `GWL_AUDIT_REMIND_*`, `GWL_ASSETS_*`, `GWL_SIGNATURE_*`, `GWL_MDM_*_RATE/RETENTION`, `GWL_COMMERCIAL_SMS_WEBHOOK_RATE_PER_MINUTE`, `GWL_AUTO_CHECKOUT_TIME`, `GWL_CARRY_OVER_EXPIRY_DAYS`, `GWL_LEAVE_NOTIFICATION_POLL_SECONDS`, `GWL_VISITOR_KIOSK_RESET_SECONDS`, `GWL_MAX_IMPORT_FAILURE_PERCENT`, and no `SESSION_SECURE_COOKIE`. Two comment lines are garbled (the "PLACEHOLDER targets # --- Health & Safety module" line and the "# --- Commercial module (buntil the Commercial team..." line). It defaults to `APP_ENV=local`, `APP_DEBUG=true`, `DB_CONNECTION=sqlite`, `LOG_LEVEL=debug`, `LOG_STACK=single`, `APP_NAME=Laravel`. A `.env.production.example` would remove the guesswork.
+2. **`DB_QUEUE_RETRY_AFTER` is not in `.env.example`** and `config/queue.php` defaults it to **90 s**, while this guide's worker timeout is 7300 s. A missed setting gives duplicate job runs. Add it to `.env.example` with a note.
+3. **`.env.example` is incomplete and misleading for production**: it has no `GWL_FINANCE_AUDIT_ENABLED` (Finance and Audit stay off by default and nobody can find the switch), and no `GWL_FIN_*`, `GWL_AUDIT_REMIND_*`, `GWL_ASSETS_*`, `GWL_SIGNATURE_*`, `GWL_MDM_*_RATE/RETENTION`, `GWL_AUTO_CHECKOUT_TIME`, `GWL_CARRY_OVER_EXPIRY_DAYS`, `GWL_LEAVE_NOTIFICATION_POLL_SECONDS`, `GWL_VISITOR_KIOSK_RESET_SECONDS`, `GWL_MAX_IMPORT_FAILURE_PERCENT`, and no `SESSION_SECURE_COOKIE`. Two comment lines are garbled (the "PLACEHOLDER targets # --- Health & Safety module" line and the "# --- Commercial module (buntil the Commercial team..." line). It defaults to `APP_ENV=local`, `APP_DEBUG=true`, `DB_CONNECTION=sqlite`, `LOG_LEVEL=debug`, `LOG_STACK=single`, `APP_NAME=Laravel`. A `.env.production.example` would remove the guesswork.
 4. **No trusted-proxy configuration** (`bootstrap/app.php` has no `trustProxies`). Fine for Nginx -> PHP-FPM on the same host; broken behind Cloudflare, a load balancer or Varnish (wrong client IP for the login lock-out and webhook rate limits, scheme detection). A code change is needed before any such proxy.
 5. **Two features use the public disk**: leave supporting documents (`storage/app/public/leave_attachments`, `ApplyForm`) and asset model pictures. Leave documents are openly downloadable by URL, unlike everything else in the app (private `local` disk behind scope-checked routes), and require `storage:link`. Suggest moving leave attachments to the private disk behind an authorised route.
-6. **No queue separation**: all jobs use the `default` queue and one `retry_after`. A multi-hour import and a one-second MDM or SMS job share it; the only mitigation here is running two workers and a large `retry_after` (which also delays recovery of any killed job by about 2 hours). Suggest `onQueue('imports')` plus a second connection with its own `retry_after`.
-7. **Worker documentation disagrees**: `docs/assets/mdm.md` shows `queue:work --tries=3 --timeout=90`, `docs/15-...` says `--timeout=7300`, `docs/commercial-module-design.md` says `--timeout=7200 --memory=256`. This guide uses 7300/768 MB; the other docs should point here.
+6. **No queue separation**: all jobs use the `default` queue and one `retry_after`. With the Commercial imports gone this matters less, but the large `retry_after` still delays recovery of any killed job by about 2 hours: lower it together with the worker timeout (section 9.1).
+7. **Worker documentation disagrees**: `docs/assets/mdm.md` shows `queue:work --tries=3 --timeout=90`; this guide uses 7300/768 MB. They should agree (see 9.1).
 8. **No deployment assets in the repository**: no deploy script, no Supervisor file, no cron entry, no production `.env`. `docker-compose.yml` at the root is unrelated to this layout (an image named `laravel-master`, a 256 MB limit, a `/var/www/copilot-infra/ultrahorizon99` path) and looks like a leftover from another project: it should be removed or documented.
 9. **`DemoDataSeeder` has no production guard** (the finance/letters demo commands and the sample commands do). One mistyped `db:seed --class=DemoDataSeeder` would insert invented staff and records into a live database.
 10. **`config/app.php` hard-codes `'timezone' => 'UTC'`** (no `APP_TIMEZONE`). Harmless in Ghana (UTC+0), but schedule times and stored times cannot follow a different zone without a code change.
 11. **Test artefacts are tracked in git**: `storage/framework/testing/disks/...` (G-Water waybills, scanned letter PDFs) and `storage/framework/lsp-*.php` are committed. A production clone would contain them; they should be removed from git and ignored.
 12. **A fresh `migrate` on empty MySQL has not been proven end to end** in the project notes (several migrations were only run on SQLite/dev; one earlier MySQL-only foreign-key bug is documented in `CLAUDE.md`). Step 7.2 is the safeguard; consider making it a CI job on a MySQL service container.
-13. **SMS delivery callback is unverified**: Arkesel's webhook payload shape and per-message status API have never been checked against a real account, and the app does not send a `callback_url` yet (`docs/16-module-commercial-sms.md`). The poll is the only delivery source until then.
-14. **Customer List at 5 to 10 million rows is not proven**: the 5M benchmark missed its targets on a 128 MB buffer pool and was never repeated on production-like settings (`docs/15-module-commercial-customer-list.md`). The sizing in section 1.2 is an estimate until it is.
-15. **The code to deploy is not committed**: the working branch is `feat/assets-mdm` with many uncommitted changes. Production must deploy a reviewed, tagged commit on `main`.
+13. **The code to deploy is not committed**: the working branch is `feat/assets-mdm` with many uncommitted changes. Production must deploy a reviewed, tagged commit on `main`.
 
 ---
 
@@ -1415,7 +1358,7 @@ Everything in this guide that could not be confirmed from the repository and mus
 10. Mail provider port/scheme combination (`MAIL_SCHEME`) (6.2).
 11. Whether UAC lets you rename/deactivate the seeded staff ID 21475 (7.4).
 12. CloudPanel's per-site log folders (`/home/<SITE_USER>/logs/...`) (9.3, 15.3); cron log name on Ubuntu 24.04 (10.1).
-13. Pub/Sub retry policy defaults, and Arkesel's source-IP restriction and callback support (11.1, 11.3).
+13. Pub/Sub retry policy defaults (11.1).
 14. The `systemctl` service name `php8.5-fpm` (14.2, 16.1); whether CloudPanel overrides the OPcache values (16.1).
 15. Redis cache/lock connections in `config/database.php` before switching to Redis (16.4).
 16. The 5 to 10 million customer sizing and backup method, by benchmark on the real server (1.2, 13.2).

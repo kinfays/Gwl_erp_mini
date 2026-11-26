@@ -11,7 +11,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 /**
- * Turns the G-Water data into plain, titled tables. One report array feeds the Excel workbook AND the PDF (the Commercial
+ * Turns the G-Water data into plain, titled tables. One report array feeds the Excel workbook AND the PDF (the shared
  * export classes, which take exactly this shape), so they cannot disagree with each other; and it is built from the same
  * services and scoped queries as the screens (GwaterProfitService, GwaterStockService, GwaterSummaryService and the books
  * scoped through GwaterVisibility), so it cannot disagree with them either.

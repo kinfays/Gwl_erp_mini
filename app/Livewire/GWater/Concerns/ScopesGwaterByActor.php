@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 /**
- * The Livewire-side wrapper of GwaterVisibility. A separate trait from the Assets, Commercial, Health & Safety and Blog ones
+ * The Livewire-side wrapper of GwaterVisibility. A separate trait from the Assets, Health & Safety and Blog ones
  * on purpose (CLAUDE.md: scoping traits are not shared), and it holds no rule of its own: the rules live in GwaterVisibility,
  * which the services call too. Every G-Water component uses it.
  *

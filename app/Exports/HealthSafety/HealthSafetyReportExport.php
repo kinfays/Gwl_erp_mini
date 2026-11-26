@@ -2,14 +2,14 @@
 
 namespace App\Exports\HealthSafety;
 
-use App\Exports\Commercial\Sheets\ReportSheet;
+use App\Exports\Shared\Sheets\ReportSheet;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\Export;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 /**
  * Any Health & Safety report as a workbook: a "Notes" sheet (what it is, who took it, when, how many rows and the caveats)
- * and the table. The sheets are the Commercial module's ReportSheet, a string value binder: text that starts with "=", "+",
+ * and the table. The sheets are the shared ReportSheet, a string value binder: text that starts with "=", "+",
  * "-" or "@" stays text and is never turned into a formula, so a description or a name cannot run anything in Excel.
  */
 class HealthSafetyReportExport implements Export, WithMultipleSheets

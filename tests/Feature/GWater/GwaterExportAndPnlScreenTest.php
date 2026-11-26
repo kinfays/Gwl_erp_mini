@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\GWater;
 
-use App\Exports\Commercial\CommercialReportExport;
+use App\Exports\Shared\TitledReportExport;
 use App\Livewire\GWater\Overview;
 use App\Livewire\GWater\ProfitAndLoss;
 use App\Models\AuditLog;
@@ -236,7 +236,7 @@ class GwaterExportAndPnlScreenTest extends GwaterTestCase
     public function test_the_workbook_class_keeps_leading_symbols_as_text_for_any_report(): void
     {
         $report = ['key' => 'x', 'file' => ['region' => 'r', 'period' => 'p'], 'title' => 'T', 'meta' => ['Location' => '-L'], 'notes' => ['=note'], 'row_count' => 1, 'tables' => [['title' => 'Sheet', 'headings' => ['A'], 'rows' => [['+1', '-2', '@x', '=3']]]]];
-        $book = $this->load(Excel::raw(new CommercialReportExport($report, now()), ExcelWriter::XLSX));
+        $book = $this->load(Excel::raw(new TitledReportExport($report, now()), ExcelWriter::XLSX));
 
         foreach (['A2', 'B2', 'C2', 'D2'] as $address) {
             $this->assertSame('s', $book->getSheetByName('Sheet')->getCell($address)->getDataType(), $address);

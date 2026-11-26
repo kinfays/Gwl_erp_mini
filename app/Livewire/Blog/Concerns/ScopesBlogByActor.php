@@ -7,7 +7,7 @@ use App\Services\Blog\BlogVisibility;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * The Livewire-side wrapper of BlogVisibility. A separate trait from the Assets, Commercial and Health & Safety ones on
+ * The Livewire-side wrapper of BlogVisibility. A separate trait from the Assets and Health & Safety ones on
  * purpose (CLAUDE.md: scoping traits are not shared), and it holds no rule of its own: the rules live in BlogVisibility,
  * which the controller and the publishing service call too.
  */

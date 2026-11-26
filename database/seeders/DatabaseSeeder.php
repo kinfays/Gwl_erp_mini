@@ -25,7 +25,6 @@ class DatabaseSeeder extends Seeder
             LeaveApprovalRolePermissionSeeder::class,
             AssetsRolePermissionSeeder::class,
             TransportRolePermissionSeeder::class,
-            CommercialRolePermissionSeeder::class,
             HealthSafetyRolePermissionSeeder::class,
             RegionalBlogRolePermissionSeeder::class,
             GwaterRolePermissionSeeder::class,

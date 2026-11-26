@@ -293,8 +293,8 @@ the period and the view, so a figure is never shown after a change.
 **Exports** (`FinanceExportService`, controller `FinanceExportController`, routes `finance.export` / `audit.export`
 `/export/{report}/{format}`): reports `register` (every voucher of the period with marks, one row each), `summary` (the analytics as
 titled tables) and `waiting` (every waiting voucher), in Excel and PDF. The same titled-tables array feeds both: Excel through the
-Commercial `CommercialReportExport` / `ReportSheet` (a text cell that starts `= + - @` stays text) and the PDF through the Commercial
-report page. A file needs `{module}.export` AND `{module}.view_reports`, is for ONE location (the user's own; `?district=` only for
+shared `App\Exports\Shared\TitledReportExport` / `Sheets\ReportSheet` (a text cell that starts `= + - @` stays text) and the PDF through the shared
+report page `exports.report-pdf`. A file needs `{module}.export` AND `{module}.view_reports`, is for ONE location (the user's own; `?district=` only for
 super_admin, ignored for anyone else), is seen as Finance or as Audit (no drafts), and is capped (`fin_export_max_rows` 5000,
 `fin_export_pdf_max_rows` 1500; a register over the cap is not even built). One audit row per download holds the report, format,
 period, row count and location, never a payee, number or amount.

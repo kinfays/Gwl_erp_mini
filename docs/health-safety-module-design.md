@@ -4,7 +4,7 @@
 >
 > **How this was checked.** Built from the four form printouts (`INCIDENT_REPORT_*.pdf`), `CLAUDE.md`, `APP_DOCUMENTATION.md`, and the three earlier design docs (`credit-union`, `commercial`, `ict-assets-analytics-roadmap`) for conventions. **It was not checked against the live repository** — only the docs were available. Every file/class named below that comes from those docs is flagged in the Phase 1 prompt as "read first and confirm"; anything the design depends on that is not yet known is in §10 rather than assumed.
 >
-> Follows the same shape as `commercial-module-design.md`: permissions → data model → derived rules → screens → phases → a paste-ready kickoff prompt per phase (Phase 1 now; later phases are written against the real schema once Phase 1 is built, as with Commercial).
+> Follows the same shape as the (since removed) Commercial module design: permissions → data model → derived rules → screens → phases → a paste-ready kickoff prompt per phase (Phase 1 now; later phases are written against the real schema once Phase 1 is built, as with Commercial).
 
 ---
 

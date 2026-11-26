@@ -20,7 +20,6 @@ use App\Services\Assets\Mdm\AndroidManagementClient;
 use App\Services\Assets\Mdm\AndroidManagementGateway;
 use App\Services\Assets\Mdm\GoogleOidcTokenVerifier;
 use App\Services\Assets\Mdm\IdTokenVerifier;
-use App\Services\Commercial\CommercialSettings;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -41,12 +40,6 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AndroidManagementGateway::class, AndroidManagementClient::class);
         $this->app->bind(IdTokenVerifier::class, GoogleOidcTokenVerifier::class);
 
-        // SMS to customers (Arkesel). Tests rebind SmsGateway to Tests\Support\Commercial\FakeSmsGateway; nothing in the suite may reach Arkesel.
-        $this->app->singleton(\App\Services\Commercial\Sms\SmsGateway::class, \App\Services\Commercial\Sms\ArkeselGateway::class);
-
-        // Commercial settings keep a pristine copy of the config (the defaults) for the life of the request, so the one
-        // instance must be shared between the boot hook below and everything that asks for it later.
-        $this->app->singleton(CommercialSettings::class);
         // One instance per application: it reads the saved Health & Safety settings once and forgets them on a save.
         $this->app->singleton(\App\Services\HealthSafety\HealthSafetySettings::class);
         // Finance / Audit reminder settings: one instance per application, so a save is seen by every reader (PvBacklog, Reports).
@@ -76,14 +69,7 @@ class AppServiceProvider extends ServiceProvider
 
         URL::forceScheme('https');
 
-        // Commercial: targets and thresholds edited on the settings screen are laid over config('gwl.*'), so every
-        // analysis and export sees them. Only while the module is on; quietly nothing before its table exists.
-        if (config('gwl.commercial_module_enabled')) {
-            $this->app->make(CommercialSettings::class)->applyToConfig();
-        }
-
         // Google's Pub/Sub push deliveries come from a small set of addresses and can burst after an outage.
-        RateLimiter::for('sms-webhook', fn (Request $request) => Limit::perMinute(max(1, (int) config('gwl.commercial_sms_webhook_rate_per_minute', 600)))->by($request->ip()));
         RateLimiter::for('mdm-webhook', fn (Request $request) => Limit::perMinute(max(1, (int) config('gwl.mdm_webhook_rate_per_minute', 600)))->by($request->ip()));
     }
 }

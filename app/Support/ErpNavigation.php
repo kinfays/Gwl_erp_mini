@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Services\Leave\LeaveActingAssignmentService;
 use App\Services\Leave\LeaveLetterSettingsService;
 use App\Services\Leave\SignatureService;
-use App\Services\Commercial\Sms\SmsAccess;
 use App\Services\Letters\LetterWorkflowService;
 use App\Services\Transport\TransportScope;
 use Illuminate\Support\Facades\Route;
@@ -168,13 +167,6 @@ class ErpNavigation
                 'route' => $this->safeRoute('transport.home'),
             ],
             [
-                'slug' => Permission::MODULE_COMMERCIAL,
-                'title' => 'Commercial',
-                'short' => 'Commercial',
-                'icon_name' => 'chart-column',
-                'route' => $this->safeRoute('commercial.home'),
-            ],
-            [
                 'slug' => Permission::MODULE_HEALTH_SAFETY,
                 'title' => 'Environmental Health and Safety',
                 'short' => 'EHS',
@@ -214,7 +206,6 @@ class ErpNavigation
         return array_values(array_filter(
             $definitions,
             fn (array $def) => match ($def['slug']) {
-                Permission::MODULE_COMMERCIAL => (bool) config('gwl.commercial_module_enabled'),
                 Permission::MODULE_HEALTH_SAFETY => (bool) config('gwl.health_safety_module_enabled'),
                 Permission::MODULE_GWATER => (bool) config('gwl.gwater_module_enabled'),
                 Permission::MODULE_FINANCE, Permission::MODULE_AUDIT => (bool) config('gwl.finance_audit_enabled'),
@@ -233,7 +224,6 @@ class ErpNavigation
             Permission::MODULE_VISITORS => $this->visitorsSidebar($user),
             Permission::MODULE_ASSETS => $this->assetsSidebar($user),
             Permission::MODULE_TRANSPORT => $this->transportSidebar($user),
-            Permission::MODULE_COMMERCIAL => $this->commercialSidebar($user),
             Permission::MODULE_HEALTH_SAFETY => $this->healthSafetySidebar($user),
             Permission::MODULE_GWATER => $this->gwaterSidebar($user),
             Permission::MODULE_FINANCE => $this->financeSidebar($user),
@@ -907,139 +897,6 @@ class ErpNavigation
                 'icon' => $this->icon('grid'),
                 'icon_name' => 'car',
                 'can' => $canManageCatalog,
-            ],
-        ];
-    }
-
-    protected function commercialSidebar(User $user): array
-    {
-        $canUpload = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('commercial.upload_reports')
-            || $currentUser->hasPermission('commercial.resolve_matches')
-            || $currentUser->hasPermission('commercial.void_batches');
-
-        $canSeeReading = fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-            || $currentUser->hasPermission('commercial.view_reading')
-            || $currentUser->hasPermission('commercial.view_reader_performance');
-
-        return [
-            [
-                'label' => 'Overview',
-                'route' => 'commercial.home',
-                'active' => ['commercial.home'],
-                'icon' => $this->icon('dashboard'),
-                'icon_name' => 'layout-dashboard',
-            ],
-            [
-                'label' => 'Summary',
-                'route' => 'commercial.summary',
-                'active' => ['commercial.summary'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'chart-column',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin')
-                    || $currentUser->hasPermission('commercial.view_dashboard')
-                    || $currentUser->hasPermission('commercial.view_billing')
-                    || $currentUser->hasPermission('commercial.view_reading'),
-            ],
-            [
-                'label' => 'Reading',
-                'route' => 'commercial.reading',
-                'active' => ['commercial.reading', 'commercial.reading.reader'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'trending-up',
-                'can' => $canSeeReading,
-            ],
-            [
-                'label' => 'Reading by route',
-                'route' => 'commercial.reading.routes',
-                'active' => ['commercial.reading.routes'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'list',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading'),
-            ],
-            [
-                'label' => 'Billing details',
-                'route' => 'commercial.billing.details',
-                'active' => ['commercial.billing.details'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'receipt',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
-            ],
-            [
-                'label' => 'Across the files',
-                'route' => 'commercial.cross',
-                'active' => ['commercial.cross', 'commercial.cross.show', 'commercial.cross.route'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'layers',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading') || $currentUser->hasPermission('commercial.view_billing') || $currentUser->hasPermission('commercial.view_customer_analytics'),
-            ],
-            [
-                'label' => 'Trends',
-                'route' => 'commercial.trends',
-                'active' => ['commercial.trends', 'commercial.trends.show'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'trending-up',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_reading') || $currentUser->hasPermission('commercial.view_billing') || $currentUser->hasPermission('commercial.view_customer_analytics'),
-            ],
-            [
-                'label' => 'Billing',
-                'route' => 'commercial.billing',
-                'active' => ['commercial.billing'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'banknote',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
-            ],
-            [
-                'label' => 'KPIs',
-                'route' => 'commercial.kpis',
-                'active' => ['commercial.kpis', 'commercial.kpis.targets'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'target',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_billing'),
-            ],
-            [
-                'label' => 'Customer List',
-                'route' => 'commercial.customers',
-                'active' => ['commercial.customers', 'commercial.customers.list', 'commercial.customers.show'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'users',
-                'can' => fn (User $currentUser) => (bool) config('gwl.commercial_customer_list_enabled')
-                    && ($currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.view_customer_analytics')),
-            ],
-            [
-                'label' => 'SMS',
-                'route' => 'commercial.sms',
-                'active' => ['commercial.sms'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'message-square',
-                'can' => fn (User $currentUser) => SmsAccess::enabled()
-                    && collect([SmsAccess::SEND, SmsAccess::BALANCE, SmsAccess::REPORTS, SmsAccess::SETTINGS])
-                        ->contains(fn (string $permission) => SmsAccess::allows($currentUser, $permission)),
-            ],
-            [
-                'label' => 'Settings',
-                'route' => 'commercial.settings',
-                'active' => ['commercial.settings'],
-                'icon' => $this->icon('shield'),
-                'icon_name' => 'settings',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.manage_settings'),
-            ],
-            [
-                'label' => 'Route master',
-                'route' => 'commercial.routes',
-                'active' => ['commercial.routes'],
-                'icon' => $this->icon('report'),
-                'icon_name' => 'map',
-                'can' => fn (User $currentUser) => $currentUser->hasRoles('super_admin') || $currentUser->hasPermission('commercial.manage_routes'),
-            ],
-            [
-                'label' => 'Uploads',
-                'route' => 'commercial.batches',
-                // Reading / billing reports and the customer list share this one entry (a switch at the top of each page).
-                'active' => ['commercial.batches', 'commercial.batches.show', 'commercial.customers.uploads', 'commercial.customers.batch', 'commercial.customers.lookups'],
-                'icon' => $this->icon('stack'),
-                'icon_name' => 'file-spreadsheet',
-                'can' => $canUpload,
             ],
         ];
     }

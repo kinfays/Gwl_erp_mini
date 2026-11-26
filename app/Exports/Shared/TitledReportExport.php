@@ -1,19 +1,20 @@
 <?php
 
-namespace App\Exports\Commercial;
+namespace App\Exports\Shared;
 
-use App\Exports\Commercial\Sheets\ReportSheet;
+use App\Exports\Shared\Sheets\ReportSheet;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\Export;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 /**
- * Any Commercial report as a workbook: a "Notes" sheet (what it is, for which region and period, when, and the caveats)
- * followed by one sheet per table. Built from CommercialExportService, the same array the PDF is built from.
+ * A titled-tables report as a workbook: a "Notes" sheet (what it is, for which location and period, when, and the caveats)
+ * followed by one sheet per table. Used by the G-Water and Finance/Audit exports; the same array feeds the PDF page
+ * `exports.report-pdf`.
  */
-class CommercialReportExport implements Export, WithMultipleSheets
+class TitledReportExport implements Export, WithMultipleSheets
 {
-    /** @param array<string, mixed> $report a CommercialExportService report */
+    /** @param array<string, mixed> $report {title, meta, row_count, notes, tables: [{title, headings, rows}]} */
     public function __construct(protected array $report, protected Carbon $generatedAt) {}
 
     public function sheets(): array

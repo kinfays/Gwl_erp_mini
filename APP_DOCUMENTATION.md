@@ -199,6 +199,8 @@ Defined via `config/gwl.php` and `config/gwcl.php`:
 
 ## 6. Modules and Functional Behavior
 
+> The **Commercial** module has been removed; only its name remains, as an inert "Coming soon" card on the Home screen.
+
 ## 6.1 UAC (User Access Control)
 
 ### Main capabilities

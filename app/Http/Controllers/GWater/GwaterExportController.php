@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\GWater;
 
-use App\Exports\Commercial\CommercialReportExport;
+use App\Exports\Shared\TitledReportExport;
 use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
@@ -23,7 +23,7 @@ use Maatwebsite\Excel\Facades\Excel;
  * screen it comes from, for ONE location: the user's own, or (super_admin only) the district named in ?district=. The route
  * needs gwater.export; this controller also needs gwater.view_reports and answers 403 without them.
  *
- * The workbook and the PDF page are the Commercial module's generic report classes: they take a titled-tables array and keep
+ * The workbook and the PDF page are the shared generic report classes: they take a titled-tables array and keep
  * text cells as text (a value starting = + - @ is never turned into a formula).
  */
 class GwaterExportController extends Controller
@@ -71,7 +71,7 @@ class GwaterExportController extends Controller
         $filename = 'gwater_'.str_replace('-', '_', $report).'_'.(Str::slug($result['file']['region']) ?: 'all').'_'.$result['file']['period'].'_'.$generatedAt->format('Ymd').'.'.($isPdf ? 'pdf' : 'xlsx');
 
         if (! $isPdf) {
-            return Excel::download(new CommercialReportExport($result, $generatedAt), $filename);
+            return Excel::download(new TitledReportExport($result, $generatedAt), $filename);
         }
 
         $options = new Options;
@@ -79,7 +79,7 @@ class GwaterExportController extends Controller
         $options->set('isRemoteEnabled', false);
 
         $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('commercial.exports.report-pdf', ['report' => $result, 'generatedAt' => $generatedAt])->render());
+        $pdf->loadHtml(view('exports.report-pdf', ['report' => $result, 'generatedAt' => $generatedAt])->render());
         $pdf->setPaper('a4', 'landscape');
         $pdf->render();
 

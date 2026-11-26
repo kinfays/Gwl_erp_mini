@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Exports\Commercial\Sheets;
+namespace App\Exports\Shared\Sheets;
 
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -10,8 +10,8 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Cell\StringValueBinder;
 
 /**
- * One sheet of a Commercial export. Reader names, district labels and route codes are text from an uploaded file, and the
- * default value binder turns a cell that starts with "=", "+", "-" or "@" into a formula, so the sheet is also the value
+ * One sheet of a titled-tables export (G-Water, Finance/Audit, Health & Safety, import templates). Names, labels and codes
+ * are free text, and the default value binder turns a cell that starts with "=", "+", "-" or "@" into a formula, so the sheet is also the value
  * binder: text stays text (numbers stay numbers).
  */
 class ReportSheet extends StringValueBinder implements FromArray, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithTitle

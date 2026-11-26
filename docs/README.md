@@ -18,9 +18,7 @@ This folder contains split documentation pages for easier maintenance.
 - Assets — Android Enterprise device management (MDM): [assets/mdm.md](assets/mdm.md)
 - Health & Safety — incident reporting (design, and Phase 1 as built): [health-safety-module-design.md](health-safety-module-design.md)
 - Regional Blog — a standalone, magazine-style blog (opened in a new tab from the ERP header) of the PR team's articles with a rich editor, pictures and galleries, read by the staff of one region; includes the unread-articles badge, login announcements, likes and view counts, and the editor's manual QA checklist: [14-module-regional-blog.md](14-module-regional-blog.md)
-- Commercial — billing and meter-reading analytics: [commercial-module-design.md](commercial-module-design.md)
-- Commercial — Customer List (millions of customers: import, rollups, analytics, privacy, benchmark): [15-module-commercial-customer-list.md](15-module-commercial-customer-list.md)
-- Commercial — SMS to customers (Arkesel, locked to Accra West: audiences, sending safety, delivery reports): [16-module-commercial-sms.md](16-module-commercial-sms.md)
+- Commercial — removed; only its name remains, as an inert "Coming soon" card on the Home screen.
 - Transport — region scoping (a vehicle belongs to a region or Head Office; who sees what, the backfill): [18-transport-region-scoping.md](18-transport-region-scoping.md)
 - G-Water — bottled and sachet water: prices, trips, daily sales, stock ledger, fuel reimbursement (Phase 1 built): [17-module-g-water.md](17-module-g-water.md)
 - Finance and Audit — one payment-voucher workflow (Finance prepares, Audit ticks or queries) shown through two modules, per-location books (all three phases built: core workflow, suppliers, reports, exports, reminders): [20-module-finance-audit.md](20-module-finance-audit.md)

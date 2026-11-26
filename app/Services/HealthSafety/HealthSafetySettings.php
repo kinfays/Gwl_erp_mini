@@ -17,7 +17,7 @@ use Illuminate\Validation\ValidationException;
  * A saved value is an OVERRIDE: one equal to its default is stored as no row at all, so "default" keeps meaning "whatever
  * config / .env says", and a test (or a deployment) that sets the config still wins when nothing has been saved.
  *
- * Unlike the Commercial module's settings, nothing is laid over config() at boot: callers ask this class. The saved rows
+ * Nothing is laid over config() at boot: callers ask this class. The saved rows
  * are read once per instance (a container singleton), not cached across requests, so a save is seen at once everywhere.
  */
 class HealthSafetySettings

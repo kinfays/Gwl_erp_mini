@@ -17,7 +17,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * The Livewire-side wrapper of FinanceScope, used by every Finance and Audit component. A separate trait from the Assets,
- * Commercial, Health & Safety, Blog and G-Water ones on purpose (CLAUDE.md: scoping traits are not shared), and it holds no
+ * Health & Safety, Blog and G-Water ones on purpose (CLAUDE.md: scoping traits are not shared), and it holds no
  * rule of its own: the rules live in FinanceScope, which the services call too (FinanceScopeParityTest pins the two).
  *
  * Everyone but super_admin works in their own location (taken from their employee record). super_admin has none and picks the

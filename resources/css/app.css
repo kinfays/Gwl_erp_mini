@@ -2218,6 +2218,18 @@ textarea.form-input {
     box-shadow: var(--shadow-raised), var(--highlight);
 }
 
+/* A module that exists only as a name (Commercial, removed): not a link, so no hover lift. */
+.dashboard-card.is-placeholder {
+    cursor: default;
+    box-shadow: none;
+    background: var(--color-surface-2);
+}
+
+.dashboard-card.is-placeholder:hover {
+    border-color: var(--color-line);
+    box-shadow: none;
+}
+
 .dashboard-card-top {
     display: flex;
     align-items: flex-start;

@@ -3,13 +3,6 @@
 use App\Events\Transport\DocumentExpiryDetected;
 use App\Models\Vehicle;
 use App\Services\Leave\AnnualEntitlementService;
-use App\Services\Commercial\Customers\CustomerUploadReminders;
-use App\Services\Commercial\Sms\SmsAccess;
-use App\Services\Commercial\Sms\SmsBalanceService;
-use App\Services\Commercial\Sms\SmsCampaignService;
-use App\Services\Commercial\Sms\SmsDeliveryPoller;
-use App\Services\Commercial\Sms\SmsRetention;
-use App\Services\Commercial\UploadReminderService;
 use App\Services\GWater\GwaterReminderService;
 use App\Services\HealthSafety\HealthSafetyAlertService;
 use App\Services\Finance\AuditReminderService;
@@ -120,8 +113,6 @@ if (config('gwl.mdm_enabled')) {
     Schedule::command('mdm:prune-events')->dailyAt('03:00');
 }
 
-// Commercial: tell the officers of a region when no report of a type has arrived for too long (days set on the
-// Commercial settings screen). Scheduled only while the module is on, and it needs the scheduler to be running.
 // G-Water: tell a location's G-Water users when stock is low or a payment request to G Water is overdue (thresholds and days are the
 // location's own settings). Scheduled only while the module is on, and it needs the scheduler to be running.
 if (config('gwl.gwater_module_enabled')) {
@@ -180,91 +171,6 @@ if (config('gwl.finance_audit_enabled')) {
 
     Schedule::command('finance:remind')->dailyAt('08:00')->withoutOverlapping();
     Schedule::command('audit:remind')->dailyAt('08:00')->withoutOverlapping();
-}
-
-if (config('gwl.commercial_module_enabled')) {
-    Artisan::command('commercial:remind-uploads {--dry-run : List the overdue uploads and who would be told, without sending anything}', function (UploadReminderService $reminders) {
-        $dryRun = (bool) $this->option('dry-run');
-        $summary = $reminders->remind(dryRun: $dryRun);
-
-        if (! $summary['enabled']) {
-            $this->info('Upload reminders are switched off in the Commercial settings.');
-
-            return 0;
-        }
-
-        $this->info(sprintf(
-            '%d overdue upload(s): %s %d reminder(s) to %d officer notification(s); %d already reminded recently.',
-            $summary['overdue'],
-            $dryRun ? 'would send' : 'sent',
-            $summary['reminded'],
-            $summary['notifications'],
-            $summary['skipped']
-        ));
-
-        return 0;
-    })->purpose('Remind officers of overdue Commercial report uploads');
-
-    Schedule::command('commercial:remind-uploads')->dailyAt('07:45')->withoutOverlapping();
-
-    // Phase 8d: the account lists of the Detailed Billing Report are kept for commercial_billing_detail_issue_keep_months, then deleted.
-    Schedule::command('commercial:billing-details:purge')->dailyAt('03:35')->withoutOverlapping();
-
-    // Customer list: per-district upload reminders (by the cadence set for each district) and the personal-data housekeeping.
-    if (config('gwl.commercial_customer_list_enabled')) {
-        Artisan::command('commercial:remind-customer-uploads {--dry-run : List the overdue districts and who would be told, without sending anything}', function (CustomerUploadReminders $reminders) {
-            $dryRun = (bool) $this->option('dry-run');
-            $summary = $reminders->remind(dryRun: $dryRun);
-
-            $this->info(sprintf('%d overdue district(s): %s %d reminder(s) to %d officer notification(s); %d already reminded recently.', $summary['overdue'], $dryRun ? 'would send' : 'sent', $summary['reminded'], $summary['notifications'], $summary['skipped']));
-
-            return 0;
-        })->purpose('Remind officers of overdue customer-list uploads, district by district');
-
-        Schedule::command('commercial:remind-customer-uploads')->dailyAt('07:50')->withoutOverlapping();
-        Schedule::command('commercial:customers:purge')->dailyAt('03:30')->withoutOverlapping();
-    }
-
-    // SMS to customers (Phase 7): registered only while the SMS flag (and the module and customer list) are on.
-    if (SmsAccess::enabled()) {
-        Artisan::command('commercial:sms:check-balance {--dry-run : Say what would happen without telling anyone}', function (SmsBalanceService $balance) {
-            $result = $balance->checkLowBalance((bool) $this->option('dry-run'));
-
-            $this->info('SMS balance check: '.$result['status'].'; '.$result['notified'].' notification(s).');
-
-            return 0;
-        })->purpose('Tell the Accra West officers in-app when the SMS credits are running low');
-
-        Schedule::command('commercial:sms:check-balance')->dailyAt('07:55')->withoutOverlapping();
-
-        Artisan::command('commercial:sms:run-due', function (SmsCampaignService $campaigns) {
-            $result = $campaigns->dispatchDue();
-
-            $this->info('SMS campaigns: '.$result['started'].' started, '.$result['resumed'].' picked up again.');
-
-            return 0;
-        })->purpose('Start scheduled SMS campaigns that are due and pick up any that stalled');
-
-        Artisan::command('commercial:sms:poll-delivery', function (SmsDeliveryPoller $poller) {
-            $result = $poller->poll();
-
-            $this->info('SMS delivery: asked about '.$result['asked'].' message(s): '.$result['delivered'].' delivered, '.$result['failed'].' failed, '.$result['still_pending'].' still pending.');
-
-            return 0;
-        })->purpose('Ask the SMS provider what became of the messages of recent campaigns');
-
-        Artisan::command('commercial:sms:purge {--dry-run : Count what would go and delete nothing}', function (SmsRetention $retention) {
-            $result = $retention->purge((bool) $this->option('dry-run'));
-
-            $this->info($result['rows'].' recipient row(s) of '.$result['campaigns'].' campaign(s) '.($this->option('dry-run') ? 'would be' : 'were').' deleted.');
-
-            return 0;
-        })->purpose('Delete the who-got-what rows of old SMS campaigns (keeps the totals; off while retention is 0 days)');
-
-        Schedule::command('commercial:sms:run-due')->everyMinute()->withoutOverlapping();
-        Schedule::command('commercial:sms:poll-delivery')->everyTenMinutes()->withoutOverlapping();
-        Schedule::command('commercial:sms:purge')->dailyAt('03:40')->withoutOverlapping();
-    }
 }
 
 // Health & Safety (design 8.18 B): one digest per recipient about due dates (extinguishers, kit items, PPE replacements,

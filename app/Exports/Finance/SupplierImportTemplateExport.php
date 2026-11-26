@@ -2,7 +2,7 @@
 
 namespace App\Exports\Finance;
 
-use App\Exports\Commercial\Sheets\ReportSheet;
+use App\Exports\Shared\Sheets\ReportSheet;
 use Maatwebsite\Excel\Concerns\Export;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;

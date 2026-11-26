@@ -8,7 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 /**
- * Turns the payment-voucher data into plain, titled tables. One report array feeds the Excel workbook AND the PDF (the Commercial
+ * Turns the payment-voucher data into plain, titled tables. One report array feeds the Excel workbook AND the PDF (the shared
  * export classes, which take exactly this shape), so they cannot disagree with each other; the summary comes from PvAnalyticsService
  * (the only evaluator) and the lists are read through FinanceScope (as Finance, or as Audit, which never sees a draft), so a file
  * can only hold what the screen it comes from holds. ONE location per file, authorised by the caller.

@@ -33,9 +33,6 @@ Thumbs.db
 /*-service-account*.json
 /gwl-amapi*.json
 
-# Commercial customer list: the real rptCustomerDetails exports hold names, phones and addresses and must never be committed
+# Former Commercial module (removed): real rptCustomerDetails exports hold names, phones and addresses; never commit one
 rptCustomerDetail*.xlsx
 **/rptCustomerDetail*.xlsx
-/storage/app/bench-*.xlsx
-/storage/app/commercial-benchmark*
-/storage/app/sample-customer-files/

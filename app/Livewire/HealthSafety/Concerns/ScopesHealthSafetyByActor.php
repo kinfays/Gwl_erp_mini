@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Who sees which Health & Safety records. A separate trait from the Assets and Commercial ones on purpose: the rules
+ * Who sees which Health & Safety records. A separate trait from the Assets one on purpose: the rules
  * differ (here everyone sees their own reports, officers their region, district managers their district) and none of
  * them should change when another does. The rules themselves live in IncidentVisibility, which the controllers,
  * notifications and print copy call too, so this trait is only the Livewire-side wrapper.

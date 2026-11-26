@@ -89,7 +89,7 @@ Seeded (migration `2026_09_30_000001` and `RoleSeeder`):
   `chief_manager`, `regional_chief_manager`, `hr_region`, `hr_headoffice`, `secretary`, `receptionist`,
   `transport_manager`, `driver`.
 - `ict_assignable = false`: `admin`, `super_admin`, `managing_director`, `ict_team`,
-  `commercial_officer`, `commercial_manager`, and every custom role until flagged.
+  and every custom role until flagged.
 - `is_protected = true`: `super_admin`, `admin`.
 
 The `managing_director` role (Leave approval) is Global-Admin-only and has no location rule; the Leave routing roles

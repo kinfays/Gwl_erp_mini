@@ -71,13 +71,16 @@ if (! function_exists('dashboardModules')) {
                 'icon' => 'TR',
                 'route' => route('transport.home'),
             ],
-            ...(config('gwl.commercial_module_enabled') ? [[
+            // The Commercial module was removed; only its name stays, as an inert card for everyone (no route, no flag,
+            // no module access, no query). The view draws a card with 'placeholder' as a plain box, not a link.
+            [
                 'slug' => 'commercial',
                 'title' => 'Commercial',
-                'description' => 'Billing and meter-reading analytics from the weekly and monthly reports',
+                'description' => 'Coming soon',
                 'icon' => 'CM',
-                'route' => route('commercial.home'),
-            ]] : []),
+                'route' => null,
+                'placeholder' => true,
+            ],
             ...(config('gwl.health_safety_module_enabled') ? [[
                 'slug' => 'health_safety',
                 'title' => 'Environmental Health and Safety',
@@ -127,8 +130,9 @@ if (! function_exists('dashboardModules')) {
         $visible = collect($allModules)->where('slug', 'leave');
         $allowedSlugs = $user->getAccessibleModules();
 
+        // Leave is for everyone and comes first; so is the Commercial name card (a placeholder that opens nothing), in its place.
         $visible = $visible->merge(
-            collect($allModules)->whereIn('slug', $allowedSlugs)
+            collect($allModules)->filter(fn (array $module) => in_array($module['slug'], $allowedSlugs, true) || ($module['placeholder'] ?? false))
         );
 
         return $visible->unique('slug')->values()->all();

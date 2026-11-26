@@ -1,10 +1,5 @@
 <?php
 
-use App\Http\Controllers\Commercial\CommercialBillingDetailsController;
-use App\Http\Controllers\Commercial\CommercialCustomerController;
-use App\Http\Controllers\Commercial\CommercialSmsController;
-use App\Http\Controllers\Commercial\SmsWebhookController;
-use App\Services\Commercial\Sms\SmsAccess;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\Api\AndroidManagementWebhookController;
@@ -23,8 +18,6 @@ use App\Http\Controllers\Assets\MdmModuleController;
 use App\Http\Controllers\Blog\BlogController;
 use App\Http\Controllers\Blog\BlogLikeController;
 use App\Http\Controllers\Blog\BlogMediaController;
-use App\Http\Controllers\Commercial\CommercialExportController;
-use App\Http\Controllers\Commercial\CommercialModuleController;
 use App\Http\Controllers\HealthSafety\EquipmentController;
 use App\Http\Controllers\HealthSafety\ExportController;
 use App\Http\Controllers\HealthSafety\HealthSafetyModuleController;
@@ -423,7 +416,7 @@ Route::middleware(['auth', 'active', 'module:assets', 'role:super_admin,ict_team
     });
 
 // Android Enterprise (MDM) inside the Assets module. Registered only while GWL_MDM_ENABLED is on, exactly like the
-// Commercial block below. These routes live in their own group (not the group above) because `admin` may use MDM
+// other flagged modules below. These routes live in their own group (not the group above) because `admin` may use MDM
 // but is deliberately not allowed anywhere else in Assets; a nested group cannot loosen its parent's role check.
 if (config('gwl.mdm_enabled')) {
     // Google Pub/Sub push webhook. Outside auth / active / module, with no session and no CSRF check (dropping the
@@ -525,205 +518,6 @@ Route::middleware(['auth', 'active', 'module:transport', 'role:transport_manager
             ->middleware('permission:transport.view_reports')
             ->name('reports.export.excel');
     });
-
-if (config('gwl.commercial_module_enabled')) {
-    Route::middleware(['auth', 'active', 'module:commercial'])
-        ->prefix('commercial')
-        ->name('commercial.')
-        ->group(function () {
-            Route::get('/', [CommercialModuleController::class, 'home'])
-                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading,commercial.view_customer_analytics,commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                ->name('home');
-
-            Route::get('/export/{report}/{format}', [CommercialExportController::class, 'download'])
-                ->where('report', '[a-z0-9-]+')
-                ->where('format', 'excel|pdf')
-                ->middleware('permission:commercial.export_reports')
-                ->name('export');
-
-            Route::get('/settings', [CommercialModuleController::class, 'settings'])
-                ->middleware('permission:commercial.manage_settings')
-                ->name('settings');
-
-            Route::get('/summary', [CommercialModuleController::class, 'summary'])
-                ->middleware('permission:commercial.view_dashboard,commercial.view_billing,commercial.view_reading')
-                ->name('summary');
-
-            Route::get('/billing', [CommercialModuleController::class, 'billing'])
-                ->middleware('permission:commercial.view_billing')
-                ->name('billing');
-
-            // Phase 8d: the Detailed Billing Report's analyses B1 to B13
-            Route::get('/billing/details', [CommercialModuleController::class, 'billingDetails'])
-                ->middleware('permission:commercial.view_billing')
-                ->name('billing.details');
-
-            // Phase 8e: the analyses that need more than one file, and route 360. Each part checks the permission of its own data.
-            Route::get('/cross', [CommercialModuleController::class, 'cross'])
-                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
-                ->name('cross');
-
-            Route::get('/cross/route/{route}', [CommercialModuleController::class, 'crossRoute'])
-                ->whereNumber('route')
-                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
-                ->name('cross.route');
-
-            Route::get('/cross/{analysis}', [CommercialModuleController::class, 'crossShow'])
-                ->where('analysis', 'x[0-9]{1,2}')
-                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
-                ->name('cross.show');
-
-            // Phase 8f: trends (T2 to T8). Each part checks the permission of its own data.
-            Route::get('/trends', [CommercialModuleController::class, 'trends'])
-                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
-                ->name('trends');
-
-            Route::get('/trends/{trend}', [CommercialModuleController::class, 'trendsShow'])
-                ->where('trend', 't[0-9]')
-                ->middleware('permission:commercial.view_reading,commercial.view_billing,commercial.view_customer_analytics')
-                ->name('trends.show');
-
-            Route::get('/kpis', [CommercialModuleController::class, 'kpis'])
-                ->middleware('permission:commercial.view_billing')
-                ->name('kpis');
-
-            Route::get('/kpis/targets', [CommercialModuleController::class, 'kpiTargets'])
-                ->middleware('permission:commercial.manage_settings')
-                ->name('kpis.targets');
-
-            // Phase 8a: the route master (which district a route is in; the X10 conflicts)
-            Route::get('/routes', [CommercialModuleController::class, 'routes'])
-                ->middleware('permission:commercial.manage_routes')
-                ->name('routes');
-
-            Route::get('/reading', [CommercialModuleController::class, 'reading'])
-                ->middleware('permission:commercial.view_reading,commercial.view_reader_performance')
-                ->name('reading');
-
-            // Phase 8c: the reading report BY ROUTE AND CCA (rptReadingSumm)
-            Route::get('/reading/routes', [CommercialModuleController::class, 'readingRoutes'])
-                ->middleware('permission:commercial.view_reading')
-                ->name('reading.routes');
-
-            Route::get('/reading/readers/{staffId}', [CommercialModuleController::class, 'readerShow'])
-                ->where('staffId', '[A-Za-z0-9_-]+')
-                ->middleware('permission:commercial.view_reader_performance')
-                ->name('reading.reader');
-
-            Route::get('/batches', [CommercialModuleController::class, 'batches'])
-                ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                ->name('batches');
-
-            Route::get('/batches/{batch}', [CommercialModuleController::class, 'batchShow'])
-                ->whereNumber('batch')
-                ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                ->name('batches.show');
-
-            // Phase 8d: the Detailed Billing Report (rptBillingDetails_ExP) is a plain POST read in the background (a 130 MB sheet)
-            Route::post('/batches/billing-details', [CommercialBillingDetailsController::class, 'upload'])
-                ->middleware(['permission:commercial.upload_reports', 'throttle:20,1'])
-                ->name('batches.billing-details');
-
-            // Customer list (rptCustomerDetails): millions of customers, personal data. Switched on and off by its own flag; every
-            // page, list and export also re-checks the viewer's region and permission (CustomerScope / the scoping trait).
-            if (config('gwl.commercial_customer_list_enabled')) {
-                Route::prefix('customers')->name('customers')->group(function () {
-                    Route::get('/', [CommercialCustomerController::class, 'dashboard'])
-                        ->middleware('permission:commercial.view_customer_analytics')
-                        ->name('');
-
-                    Route::get('/find', [CommercialCustomerController::class, 'list'])
-                        ->middleware('permission:commercial.view_customer_analytics')
-                        ->name('.list');
-
-                    Route::get('/uploads', [CommercialCustomerController::class, 'uploads'])
-                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                        ->name('.uploads');
-
-                    Route::post('/uploads', [CommercialCustomerController::class, 'upload'])
-                        ->middleware(['permission:commercial.upload_reports', 'throttle:20,1'])
-                        ->name('.upload');
-
-                    Route::get('/batches/{batch}', [CommercialCustomerController::class, 'batch'])
-                        ->whereNumber('batch')
-                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                        ->name('.batch');
-
-                    // one uploaded FILE with its districts (Phase 8b): the check before it is loaded, every district's batch, undo
-                    Route::get('/files/{upload}', [CommercialCustomerController::class, 'file'])
-                        ->whereNumber('upload')
-                        ->middleware('permission:commercial.upload_reports,commercial.resolve_matches,commercial.void_batches')
-                        ->name('.file');
-
-                    Route::get('/settings', [CommercialCustomerController::class, 'lookups'])
-                        ->middleware('permission:commercial.manage_settings')
-                        ->name('.lookups');
-
-                    Route::get('/export/{report}/{format}', [CommercialCustomerController::class, 'export'])
-                        ->where('report', 'summary|list')
-                        ->where('format', 'excel')
-                        ->middleware(['permission:commercial.export_reports', 'permission:commercial.view_customer_analytics'])
-                        ->name('.export');
-
-                    Route::get('/downloads/{token}', [CommercialCustomerController::class, 'download'])
-                        ->where('token', '[0-9a-f-]{36}')
-                        ->middleware('permission:commercial.export_reports')
-                        ->name('.download');
-
-                    Route::get('/{customer}', [CommercialCustomerController::class, 'show'])
-                        ->whereNumber('customer')
-                        ->middleware('permission:commercial.view_customer_analytics')
-                        ->name('.show');
-                });
-            }
-
-            // SMS to customers (Arkesel), locked to the regions of gwl.commercial_sms_region_names. The permission middleware is the
-            // first line only: SmsAccess (flag, region lock, permission) is asked again in the controller, every Livewire action and
-            // every queued job. With the flag off none of these routes exists.
-            if (SmsAccess::enabled()) {
-                Route::prefix('sms')->name('sms')->group(function () {
-                    Route::get('/', [CommercialSmsController::class, 'home'])
-                        ->middleware('permission:commercial.send_sms,commercial.view_sms_balance,commercial.view_sms_reports,commercial.manage_sms_settings')
-                        ->name('');
-
-                    Route::get('/send', [CommercialSmsController::class, 'send'])
-                        ->middleware('permission:commercial.send_sms')
-                        ->name('.send');
-
-                    Route::get('/campaigns', [CommercialSmsController::class, 'campaigns'])
-                        ->middleware('permission:commercial.send_sms,commercial.view_sms_reports')
-                        ->name('.campaigns');
-
-                    Route::get('/campaigns/{campaign}', [CommercialSmsController::class, 'campaign'])
-                        ->whereNumber('campaign')
-                        ->middleware('permission:commercial.view_sms_reports')
-                        ->name('.campaigns.show');
-
-                    Route::get('/campaigns/{campaign}/export', [CommercialSmsController::class, 'export'])
-                        ->whereNumber('campaign')
-                        ->middleware(['permission:commercial.view_sms_reports', 'permission:commercial.export_reports'])
-                        ->name('.campaigns.export');
-
-                    Route::get('/templates', [CommercialSmsController::class, 'templates'])
-                        ->middleware('permission:commercial.send_sms')
-                        ->name('.templates');
-
-                    Route::get('/settings', [CommercialSmsController::class, 'settings'])
-                        ->middleware('permission:commercial.manage_sms_settings')
-                        ->name('.settings');
-                });
-            }
-        });
-}
-
-if (SmsAccess::enabled()) {
-    // Arkesel's delivery reports. Like the MDM webhook: no session, no CSRF (the `web` group is dropped), rate limited, authenticated by a
-    // shared secret in the URL, and it only queues a job: no provider call and no customer data in here.
-    Route::post('/webhooks/sms-arkesel', SmsWebhookController::class)
-        ->withoutMiddleware('web')
-        ->middleware('throttle:sms-webhook')
-        ->name('webhooks.sms-arkesel');
-}
 
 if (config('gwl.blog_module_enabled')) {
     // Regional Blog: every member of staff reads the published articles of their OWN region (module access is true for every

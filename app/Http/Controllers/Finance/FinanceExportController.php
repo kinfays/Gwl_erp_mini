@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Finance;
 
-use App\Exports\Commercial\CommercialReportExport;
+use App\Exports\Shared\TitledReportExport;
 use App\Http\Controllers\Concerns\EnforcesModuleAccess;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
@@ -22,7 +22,7 @@ use Maatwebsite\Excel\Facades\Excel;
  * Excel / PDF downloads of the Finance and Audit reports. Every file is built by FinanceExportService from the same scoped data as the
  * screen it comes from (as Finance, or as Audit which never sees a draft), for ONE location: the user's own, or (super_admin only) the
  * district named in ?district=. The route needs {module}.export; this controller also needs {module}.view_reports and answers 403
- * without it. The workbook and the PDF page are the Commercial module's generic report classes (text cells stay text).
+ * without it. The workbook and the PDF page are the shared generic report classes (text cells stay text).
  *
  * One audit row per download: who, which report and format, the period, how many rows and the location; never a payee or an amount.
  */
@@ -82,7 +82,7 @@ class FinanceExportController extends Controller
         $filename = $module.'_pv_'.$report.'_'.(Str::slug($result['file']['region']) ?: 'all').'_'.$result['file']['period'].'_'.$generatedAt->format('Ymd').'.'.($isPdf ? 'pdf' : 'xlsx');
 
         if (! $isPdf) {
-            return Excel::download(new CommercialReportExport($result, $generatedAt), $filename);
+            return Excel::download(new TitledReportExport($result, $generatedAt), $filename);
         }
 
         $options = new Options;
@@ -90,7 +90,7 @@ class FinanceExportController extends Controller
         $options->set('isRemoteEnabled', false);
 
         $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('commercial.exports.report-pdf', ['report' => $result, 'generatedAt' => $generatedAt])->render());
+        $pdf->loadHtml(view('exports.report-pdf', ['report' => $result, 'generatedAt' => $generatedAt])->render());
         $pdf->setPaper('a4', 'landscape');
         $pdf->render();
 

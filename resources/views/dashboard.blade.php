@@ -100,6 +100,21 @@
                     @php
                         $slug = $moduleCard['slug'] ?? '';
                     @endphp
+                    @if ($moduleCard['placeholder'] ?? false)
+                        {{-- A name only (the Commercial module was removed): not a link, no route, no query. --}}
+                        <div class="dashboard-card is-placeholder" aria-disabled="true">
+                            <div class="dashboard-card-top">
+                                <span class="dashboard-module-icon" aria-hidden="true">
+                                    <x-ui.icon :name="$moduleIcons[$slug] ?? 'layout-dashboard'" class="icon-lg" />
+                                </span>
+                                <span class="dashboard-badge">{{ __('Coming soon') }}</span>
+                            </div>
+
+                            <h3>{{ $moduleCard['title'] }}</h3>
+                            <p>{{ $moduleCard['description'] }}</p>
+                        </div>
+                        @continue
+                    @endif
                     <a href="{{ $moduleCard['route'] }}" class="dashboard-card">
                         <div class="dashboard-card-top">
                             <span class="dashboard-module-icon" aria-hidden="true">
